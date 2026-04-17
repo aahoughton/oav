@@ -61,7 +61,10 @@ export {
 } from "./keywords/index.js";
 export {
   SchemaRegistry,
+  collectDynamicAnchors,
+  createRefResolver,
   resolve,
+  type RefResolver,
   type ResolvedGraph,
   type ResolveOptions,
 } from "./resolve/index.js";
