@@ -38,6 +38,11 @@ import {
   refKeyword,
   schemaDialectKeyword,
 } from "./ref.js";
+import {
+  discriminatorKeyword,
+  unevaluatedItemsKeyword,
+  unevaluatedPropertiesKeyword,
+} from "./unevaluated.js";
 import { formatKeyword, maxLengthKeyword, minLengthKeyword, patternKeyword } from "./string.js";
 import { typeKeyword } from "./type.js";
 import type { Vocabulary } from "./types.js";
@@ -62,6 +67,13 @@ export const CORE_VALIDATION_VOCAB = "https://json-schema.org/draft/2020-12/voca
  * @public
  */
 export const APPLICATOR_VOCAB = "https://json-schema.org/draft/2020-12/vocab/applicator";
+
+/**
+ * URI of the JSON Schema 2020-12 unevaluated vocabulary.
+ *
+ * @public
+ */
+export const UNEVALUATED_VOCAB = "https://json-schema.org/draft/2020-12/vocab/unevaluated";
 
 /**
  * URI of the JSON Schema 2020-12 format-annotation vocabulary.
@@ -129,6 +141,7 @@ export const validationVocabulary: Vocabulary = {
 export const applicatorVocabulary: Vocabulary = {
   uri: APPLICATOR_VOCAB,
   keywords: [
+    discriminatorKeyword,
     allOfKeyword,
     anyOfKeyword,
     oneOfKeyword,
@@ -144,6 +157,17 @@ export const applicatorVocabulary: Vocabulary = {
     additionalPropertiesKeyword,
     propertyNamesKeyword,
   ],
+};
+
+/**
+ * The built-in unevaluated vocabulary: `unevaluatedProperties` /
+ * `unevaluatedItems`.
+ *
+ * @public
+ */
+export const unevaluatedVocabulary: Vocabulary = {
+  uri: UNEVALUATED_VOCAB,
+  keywords: [unevaluatedPropertiesKeyword, unevaluatedItemsKeyword],
 };
 
 /**
@@ -166,5 +190,6 @@ export const defaultVocabularies: Vocabulary[] = [
   coreVocabulary,
   validationVocabulary,
   applicatorVocabulary,
+  unevaluatedVocabulary,
   formatVocabulary,
 ];

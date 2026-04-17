@@ -54,9 +54,16 @@ export {
   CORE_VALIDATION_VOCAB,
   CORE_VOCAB,
   FORMAT_VOCAB,
+  UNEVALUATED_VOCAB,
   applicatorVocabulary,
   coreVocabulary,
   defaultVocabularies,
   formatVocabulary,
+  unevaluatedVocabulary,
   validationVocabulary,
 } from "./vocabulary.js";
+export {
+  discriminatorKeyword,
+  unevaluatedItemsKeyword,
+  unevaluatedPropertiesKeyword,
+} from "./unevaluated.js";

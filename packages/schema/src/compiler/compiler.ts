@@ -161,7 +161,19 @@ function buildFunctionBody(
       `${NAMES.ERRORS}.push(${NAMES.DEPS}.createLeafError("false", ${NAMES.PATH}, "schema is false, nothing is valid"));`,
     );
   } else {
-    compileSchemaKeywords(schema, gen, state);
+    const hasUnevaluatedProps = "unevaluatedProperties" in schema;
+    const hasUnevaluatedItems = "unevaluatedItems" in schema;
+    let evaluatedPropertiesVar: string | null = null;
+    let evaluatedItemsVar: string | null = null;
+    if (hasUnevaluatedProps) {
+      evaluatedPropertiesVar = gen.scope.name("evalProps");
+      gen.const(evaluatedPropertiesVar, "new Set()");
+    }
+    if (hasUnevaluatedItems) {
+      evaluatedItemsVar = gen.scope.name("evalItems");
+      gen.const(evaluatedItemsVar, "new Set()");
+    }
+    compileSchemaKeywords(schema, gen, state, evaluatedPropertiesVar, evaluatedItemsVar);
   }
 
   gen.line(
@@ -171,15 +183,22 @@ function buildFunctionBody(
   return gen.toString();
 }
 
-function compileSchemaKeywords(schema: SchemaObject, gen: CodeGen, state: CompileState): void {
+function compileSchemaKeywords(
+  schema: SchemaObject,
+  gen: CodeGen,
+  state: CompileState,
+  evaluatedPropertiesVar: string | null,
+  evaluatedItemsVar: string | null,
+): void {
   const subCompiler = (subSchema: SchemaOrBoolean): string => compileValidator(subSchema, state);
   const resolveRefToFunction = (ref: string): string => {
     const target = state.refResolver.resolve(ref);
     return compileValidator(target, state);
   };
 
+  const runOrder = orderKeywordsForSchema(schema, state);
   const seen = new Set<string>();
-  for (const kw of state.ordered) {
+  for (const kw of runOrder) {
     if (seen.has(kw.keyword)) continue;
     if (!(kw.keyword in schema)) continue;
     const schemaValue = (schema as Record<string, unknown>)[kw.keyword];
@@ -192,11 +211,22 @@ function compileSchemaKeywords(schema: SchemaObject, gen: CodeGen, state: Compil
       errors: NAMES.ERRORS,
       subschema: subCompiler,
       resolveRef: resolveRefToFunction,
+      evaluatedPropertiesVar,
+      evaluatedItemsVar,
     });
     kw.compile(ctx);
     seen.add(kw.keyword);
     if (kw.implements) for (const impl of kw.implements) seen.add(impl);
   }
+}
+
+const UNEVALUATED_LAST = new Set(["unevaluatedProperties", "unevaluatedItems"]);
+
+function orderKeywordsForSchema(schema: SchemaObject, state: CompileState): KeywordDefinition[] {
+  const present = state.ordered.filter((kw) => kw.keyword in schema);
+  const lead = present.filter((kw) => !UNEVALUATED_LAST.has(kw.keyword));
+  const trail = present.filter((kw) => UNEVALUATED_LAST.has(kw.keyword));
+  return [...lead, ...trail];
 }
 
 function assembleSource(state: CompileState, rootName: string): string {
