@@ -38,6 +38,7 @@ type Result = {
   lib: "ajv" | "hyperjump" | "oav";
   hz: number; // ops/sec
   mean: number; // µs/op
+  variant?: string; // full task name (e.g. "oav validate (valid)")
 };
 const results: Result[] = [];
 
@@ -106,8 +107,11 @@ async function benchSchema(s: PerfSchema): Promise<void> {
     results.push({ schema: s.name, metric: "compile", lib, hz, mean });
   }
 
-  // VALIDATE BENCH: compile once, then hammer the compiled fn with
-  // alternating valid/invalid inputs so both paths are exercised.
+  // VALIDATE BENCH: every library pre-compiles its validator OUTSIDE the
+  // timed loop; the hot path is just `validator(sample)`. No closure,
+  // no modulo, no cursor math — so what we measure is as close as
+  // possible to the real production cost of "I already loaded the spec;
+  // now validate this one payload".
   const ajv = new Ajv({ allErrors: true, strict: false });
   const ajvValidate = ajv.compile(s.schema);
 
@@ -120,24 +124,31 @@ async function benchSchema(s: PerfSchema): Promise<void> {
     formats: builtInFormats,
   });
 
-  const inputs = [...s.validInputs, ...s.invalidInputs];
-  let cursor = 0;
-  const next = (): unknown => {
-    const v = inputs[cursor % inputs.length];
-    cursor += 1;
-    return v;
-  };
+  // Measure both the happy path (valid) and the failure path (invalid)
+  // so nobody gets to win by short-circuiting. Pick one representative
+  // sample of each up front — no per-iteration selection work.
+  const validSample = s.validInputs[0];
+  const invalidSample = s.invalidInputs[0];
 
   const validateBench = new Bench({ time });
   validateBench
-    .add("ajv validate", () => {
-      ajvValidate(next());
+    .add("ajv validate (valid)", () => {
+      ajvValidate(validSample);
     })
-    .add("hyperjump validate", () => {
-      hjV(next());
+    .add("ajv validate (invalid)", () => {
+      ajvValidate(invalidSample);
     })
-    .add("oav validate", () => {
-      oav.validate(next());
+    .add("hyperjump validate (valid)", () => {
+      hjV(validSample);
+    })
+    .add("hyperjump validate (invalid)", () => {
+      hjV(invalidSample);
+    })
+    .add("oav validate (valid)", () => {
+      oav.validate(validSample);
+    })
+    .add("oav validate (invalid)", () => {
+      oav.validate(invalidSample);
     });
   await validateBench.run();
 
@@ -147,9 +158,9 @@ async function benchSchema(s: PerfSchema): Promise<void> {
     const hz = t.result?.throughput.mean ?? 0;
     const mean = (t.result?.latency.mean ?? 0) * 1e3;
     console.log(
-      `  ${t.name.padEnd(22)}  ${fmtHz(hz).padStart(8)} ops/s   ${fmtUs(mean).padStart(10)} / op`,
+      `  ${t.name.padEnd(30)}  ${fmtHz(hz).padStart(8)} ops/s   ${fmtUs(mean).padStart(10)} / op`,
     );
-    results.push({ schema: s.name, metric: "validate", lib, hz, mean });
+    results.push({ schema: s.name, metric: "validate", lib, hz, mean, variant: t.name });
   }
 
   unregisterSchema(hjUri);
@@ -161,12 +172,14 @@ for (const s of filtered) await benchSchema(s);
 // Relative table: oav ops/sec / ajv ops/sec per row.
 console.log("\n=== Relative throughput (vs ajv = 1.00) ===");
 console.log(
-  "schema".padEnd(16) + "metric".padEnd(10) + "ajv".padEnd(10) + "hyperjump".padEnd(12) + "oav",
+  "schema".padEnd(14) + "metric".padEnd(20) + "ajv".padEnd(10) + "hyperjump".padEnd(12) + "oav",
 );
-console.log("-".repeat(60));
+console.log("-".repeat(70));
 const byKey = new Map<string, Record<string, number>>();
 for (const r of results) {
-  const key = `${r.schema}|${r.metric}`;
+  // Distinguish validate-valid vs validate-invalid when we have variants.
+  const variantLabel = r.variant ? r.variant.replace(/^\S+\s+/, "") : r.metric;
+  const key = `${r.schema}|${variantLabel}`;
   const row = byKey.get(key) ?? {};
   row[r.lib] = r.hz;
   byKey.set(key, row);
@@ -178,8 +191,8 @@ for (const [key, row] of byKey) {
   const oav = row["oav"] ?? 0;
   const base = ajv || 1;
   console.log(
-    (schema ?? "").padEnd(16) +
-      (metric ?? "").padEnd(10) +
+    (schema ?? "").padEnd(14) +
+      (metric ?? "").padEnd(20) +
       "1.00".padEnd(10) +
       (hj / base).toFixed(2).padEnd(12) +
       (oav / base).toFixed(2),
