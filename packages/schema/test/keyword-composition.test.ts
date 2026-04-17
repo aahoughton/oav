@@ -1,0 +1,135 @@
+/* eslint-disable unicorn/no-thenable -- `then` is a JSON Schema keyword here */
+import { describe, expect, it } from "vitest";
+import { compile } from "./helpers.js";
+
+describe("allOf keyword", () => {
+  it("passes when every branch validates", () => {
+    const v = compile({ allOf: [{ type: "number" }, { minimum: 0 }, { maximum: 10 }] });
+    expect(v.validate(5).valid).toBe(true);
+    expect(v.validate(-1).valid).toBe(false);
+  });
+
+  it("error children are the failing conjuncts only", () => {
+    const v = compile({
+      allOf: [{ type: "number" }, { minimum: 0 }, { maximum: 10 }],
+    });
+    const r = v.validate(-1);
+    expect(r.error?.code).toBe("allOf");
+    expect(r.error?.children).toHaveLength(1);
+    expect(r.error?.children[0]?.code).toBe("minimum");
+  });
+
+  it("single failing conjunct still wraps in an allOf branch (consistent tree)", () => {
+    const v = compile({ allOf: [{ minimum: 0 }] });
+    const r = v.validate(-1);
+    expect(r.error?.code).toBe("allOf");
+    expect(r.error?.children).toHaveLength(1);
+    expect(r.error?.children[0]?.code).toBe("minimum");
+  });
+});
+
+describe("anyOf keyword", () => {
+  it("passes as long as one branch matches", () => {
+    const v = compile({ anyOf: [{ type: "string" }, { type: "number" }] });
+    expect(v.validate("x").valid).toBe(true);
+    expect(v.validate(1).valid).toBe(true);
+  });
+
+  it("error has children for every branch when none match", () => {
+    const v = compile({ anyOf: [{ type: "string" }, { type: "number" }] });
+    const r = v.validate(true);
+    expect(r.error?.code).toBe("anyOf");
+    expect(r.error?.children).toHaveLength(2);
+    expect(r.error?.children.map((c) => c.code)).toEqual(["type", "type"]);
+  });
+});
+
+describe("oneOf keyword", () => {
+  it("passes when exactly one branch matches", () => {
+    const v = compile({ oneOf: [{ type: "string" }, { type: "number" }] });
+    expect(v.validate("x").valid).toBe(true);
+    expect(v.validate(1).valid).toBe(true);
+  });
+
+  it("children include every branch's result when 0 match", () => {
+    const v = compile({ oneOf: [{ type: "string" }, { type: "number" }] });
+    const r = v.validate(true);
+    expect(r.error?.code).toBe("oneOf");
+    expect(r.error?.children).toHaveLength(2);
+    expect(r.error?.params).toMatchObject({ matchCount: 0 });
+  });
+
+  it("errors when multiple branches match", () => {
+    const v = compile({ oneOf: [{ type: "number" }, { minimum: 0 }] });
+    const r = v.validate(5);
+    expect(r.error?.code).toBe("oneOf");
+    expect(r.error?.params).toMatchObject({ matchCount: 2 });
+  });
+});
+
+describe("not keyword", () => {
+  it("is a leaf (no children) when the inner schema matches", () => {
+    const v = compile({ not: { type: "string" } });
+    expect(v.validate(1).valid).toBe(true);
+    const r = v.validate("x");
+    expect(r.error?.code).toBe("not");
+    expect(r.error?.children).toEqual([]);
+  });
+});
+
+describe("if/then/else keyword", () => {
+  it("validates `then` when `if` matches", () => {
+    const schema = {
+      if: { type: "string" },
+      then: { minLength: 3 },
+      else: { type: "number" },
+    } as const;
+    const v = compile(schema);
+    expect(v.validate("abc").valid).toBe(true);
+    expect(v.validate("ab").valid).toBe(false);
+    expect(v.validate(1).valid).toBe(true);
+    expect(v.validate(true).valid).toBe(false);
+  });
+
+  it("omitting then/else is a no-op on that branch", () => {
+    const schema = { if: { type: "string" }, then: { minLength: 3 } } as const;
+    const v = compile(schema);
+    expect(v.validate(1).valid).toBe(true); // else branch omitted
+    expect(v.validate("ab").valid).toBe(false);
+  });
+});
+
+describe("dependent keywords", () => {
+  it("dependentRequired enforces companion presence", () => {
+    const v = compile({ dependentRequired: { creditCard: ["billingAddress"] } });
+    expect(v.validate({ creditCard: "x", billingAddress: "y" }).valid).toBe(true);
+    expect(v.validate({ creditCard: "x" }).valid).toBe(false);
+    expect(v.validate({}).valid).toBe(true);
+  });
+
+  it("dependentSchemas validates when the trigger key is present", () => {
+    const v = compile({
+      dependentSchemas: {
+        creditCard: { required: ["billingAddress"] },
+      },
+    });
+    expect(v.validate({ creditCard: "x", billingAddress: "y" }).valid).toBe(true);
+    expect(v.validate({ creditCard: "x" }).valid).toBe(false);
+    expect(v.validate({ billingAddress: "y" }).valid).toBe(true);
+  });
+});
+
+describe("nested composition error tree", () => {
+  it("allOf containing oneOf produces a two-level tree", () => {
+    const v = compile({
+      allOf: [{ type: "object" }, { oneOf: [{ type: "string" }, { type: "number" }] }],
+    });
+    const r = v.validate(true);
+    expect(r.error?.code).toBe("allOf");
+    const inner = r.error?.children ?? [];
+    expect(inner.length).toBeGreaterThanOrEqual(1);
+    const oneOfChild = inner.find((c) => c.code === "oneOf");
+    expect(oneOfChild).toBeDefined();
+    expect(oneOfChild?.children.length).toBeGreaterThan(0);
+  });
+});
