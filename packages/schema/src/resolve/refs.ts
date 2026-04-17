@@ -75,7 +75,17 @@ function resolveJsonPointer(root: SchemaOrBoolean, pointer: string): SchemaOrBoo
   const parts = pointer
     .slice(1)
     .split("/")
-    .map((s) => s.replace(/~1/g, "/").replace(/~0/g, "~"));
+    .map((s) => {
+      // `$ref` fragments are URI-encoded first, then JSON-Pointer-escaped;
+      // reverse in that order.
+      let decoded: string;
+      try {
+        decoded = decodeURIComponent(s);
+      } catch {
+        decoded = s;
+      }
+      return decoded.replace(/~1/g, "/").replace(/~0/g, "~");
+    });
   let cur: unknown = root;
   for (const part of parts) {
     if (cur === null || typeof cur !== "object") {

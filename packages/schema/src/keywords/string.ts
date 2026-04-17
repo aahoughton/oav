@@ -2,7 +2,8 @@ import { NAMES, quoteString } from "../codegen/index.js";
 import type { KeywordCompileContext, KeywordDefinition } from "./types.js";
 
 const CORE_VOCAB = "https://json-schema.org/draft/2020-12/vocab/validation";
-const FORMAT_VOCAB = "https://json-schema.org/draft/2020-12/vocab/format-annotation";
+const FORMAT_ANNOTATION_VOCAB = "https://json-schema.org/draft/2020-12/vocab/format-annotation";
+const FORMAT_ASSERTION_VOCAB = "https://json-schema.org/draft/2020-12/vocab/format-assertion";
 
 /**
  * The JSON Schema `maxLength` keyword. String data must have at most N
@@ -79,15 +80,32 @@ export const patternKeyword: KeywordDefinition = {
 };
 
 /**
- * The JSON Schema `format` keyword (format-annotation vocabulary). By
- * default, `format` is assertive here: if a validator is registered for the
- * named format, the string must pass it.
+ * The JSON Schema 2020-12 `format` keyword, annotation-only mode. Matches
+ * the spec default: `format` is a structural hint, not an assertion. Use
+ * {@link formatAssertionKeyword} (or the OpenAPI validator) to actually
+ * reject malformed strings.
  *
  * @public
  */
 export const formatKeyword: KeywordDefinition = {
   keyword: "format",
-  vocabulary: FORMAT_VOCAB,
+  vocabulary: FORMAT_ANNOTATION_VOCAB,
+  compile(): void {
+    // format-annotation mode: emit no runtime check.
+  },
+};
+
+/**
+ * The JSON Schema 2020-12 `format` keyword, assertion mode. When a
+ * validator is registered for the named format, the string must pass it.
+ * Callers activate this by including {@link formatAssertionVocabulary}
+ * ahead of {@link formatVocabulary}.
+ *
+ * @public
+ */
+export const formatAssertionKeyword: KeywordDefinition = {
+  keyword: "format",
+  vocabulary: FORMAT_ASSERTION_VOCAB,
   compile(ctx: KeywordCompileContext): void {
     const formatName = ctx.schema as string;
     const formatLit = quoteString(formatName);

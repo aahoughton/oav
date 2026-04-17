@@ -26,13 +26,31 @@ describe("string keywords", () => {
     expect(v.validate(1).valid).toBe(true);
   });
 
-  it("format: only asserts when a format validator is registered", () => {
-    const looksLikeEmail = compile({ format: "email" }, { formats: { email: (s) => /@/.test(s) } });
-    expect(looksLikeEmail.validate("x@y").valid).toBe(true);
-    expect(looksLikeEmail.validate("nope").valid).toBe(false);
-    expect(looksLikeEmail.validate("nope").error?.code).toBe("format");
+  it("format is annotation-only by default (spec default)", () => {
+    // Without the format-assertion vocabulary opt-in, bad values pass.
+    const v = compile({ format: "email" }, { formats: { email: (s) => /@/.test(s) } });
+    expect(v.validate("not an email").valid).toBe(true);
+  });
 
-    const noValidator = compile({ format: "whatever" });
+  it("format asserts when the format-assertion vocabulary is enabled", async () => {
+    const schema = await import("../src/index.js");
+    const vocabularies = [
+      schema.coreVocabulary,
+      schema.validationVocabulary,
+      schema.applicatorVocabulary,
+      schema.unevaluatedVocabulary,
+      schema.formatAssertionVocabulary,
+      schema.formatVocabulary,
+    ];
+    const v = schema.compileSchema(
+      { format: "email" },
+      { vocabularies, formats: { email: (s) => /@/.test(s) } },
+    );
+    expect(v.validate("x@y").valid).toBe(true);
+    expect(v.validate("nope").valid).toBe(false);
+    expect(v.validate("nope").error?.code).toBe("format");
+
+    const noValidator = schema.compileSchema({ format: "whatever" }, { vocabularies });
     expect(noValidator.validate("anything").valid).toBe(true);
   });
 });

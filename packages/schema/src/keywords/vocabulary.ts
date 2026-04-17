@@ -43,7 +43,13 @@ import {
   unevaluatedItemsKeyword,
   unevaluatedPropertiesKeyword,
 } from "./unevaluated.js";
-import { formatKeyword, maxLengthKeyword, minLengthKeyword, patternKeyword } from "./string.js";
+import {
+  formatAssertionKeyword,
+  formatKeyword,
+  maxLengthKeyword,
+  minLengthKeyword,
+  patternKeyword,
+} from "./string.js";
 import { typeKeyword } from "./type.js";
 import type { Vocabulary } from "./types.js";
 
@@ -81,6 +87,16 @@ export const UNEVALUATED_VOCAB = "https://json-schema.org/draft/2020-12/vocab/un
  * @public
  */
 export const FORMAT_VOCAB = "https://json-schema.org/draft/2020-12/vocab/format-annotation";
+
+/**
+ * URI of the JSON Schema 2020-12 format-assertion vocabulary. Opt-in:
+ * when placed before {@link FORMAT_VOCAB} in the vocabularies list,
+ * `format` becomes an assertion instead of an annotation.
+ *
+ * @public
+ */
+export const FORMAT_ASSERTION_VOCAB =
+  "https://json-schema.org/draft/2020-12/vocab/format-assertion";
 
 /**
  * The JSON Schema 2020-12 core vocabulary: `$ref`, `$dynamicRef`, `$id`,
@@ -171,13 +187,27 @@ export const unevaluatedVocabulary: Vocabulary = {
 };
 
 /**
- * The built-in format-annotation vocabulary (assertive mode).
+ * The built-in format-annotation vocabulary. Non-assertive per the spec
+ * default — use {@link formatAssertionVocabulary} to make `format`
+ * actually reject data.
  *
  * @public
  */
 export const formatVocabulary: Vocabulary = {
   uri: FORMAT_VOCAB,
   keywords: [formatKeyword],
+};
+
+/**
+ * Opt-in format-assertion vocabulary. Place BEFORE {@link formatVocabulary}
+ * in the vocabularies list so its assertive `format` keyword wins keyword
+ * dispatch.
+ *
+ * @public
+ */
+export const formatAssertionVocabulary: Vocabulary = {
+  uri: FORMAT_ASSERTION_VOCAB,
+  keywords: [formatAssertionKeyword],
 };
 
 /**

@@ -12,13 +12,29 @@ import {
 import { builtInFormats } from "@oav/formats";
 import { createRouter, type RouteMatch, type Router } from "@oav/router";
 import {
+  applicatorVocabulary,
   compileSchema,
+  coreVocabulary,
   createRefResolver,
-  defaultVocabularies,
+  formatAssertionVocabulary,
+  formatVocabulary,
   resolve,
+  unevaluatedVocabulary,
+  validationVocabulary,
   type CompiledSchema,
   type RefResolver,
 } from "@oav/schema";
+
+// OpenAPI semantics: `format` is assertive. Place the assertion vocabulary
+// ahead of the annotation vocabulary so the assertive keyword wins.
+const openapiVocabularies = [
+  coreVocabulary,
+  validationVocabulary,
+  applicatorVocabulary,
+  unevaluatedVocabulary,
+  formatAssertionVocabulary,
+  formatVocabulary,
+];
 import { deserialize, matchMediaType, matchResponseKey } from "./deserialize.js";
 
 function prefixPath(err: ValidationError, prefix: (string | number)[]): ValidationError {
@@ -99,7 +115,7 @@ export function createValidator(
     const cached = compiledCache.get(schema);
     if (cached !== undefined) return cached;
     const c = compileSchema(schema, {
-      vocabularies: defaultVocabularies,
+      vocabularies: openapiVocabularies,
       formats,
       refResolver,
     });

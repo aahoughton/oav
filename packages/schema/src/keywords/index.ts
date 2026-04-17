@@ -47,17 +47,25 @@ export {
   minPropertiesKeyword,
   requiredKeyword,
 } from "./object-validation.js";
-export { formatKeyword, maxLengthKeyword, minLengthKeyword, patternKeyword } from "./string.js";
+export {
+  formatAssertionKeyword,
+  formatKeyword,
+  maxLengthKeyword,
+  minLengthKeyword,
+  patternKeyword,
+} from "./string.js";
 export { typeKeyword } from "./type.js";
 export {
   APPLICATOR_VOCAB,
   CORE_VALIDATION_VOCAB,
   CORE_VOCAB,
+  FORMAT_ASSERTION_VOCAB,
   FORMAT_VOCAB,
   UNEVALUATED_VOCAB,
   applicatorVocabulary,
   coreVocabulary,
   defaultVocabularies,
+  formatAssertionVocabulary,
   formatVocabulary,
   unevaluatedVocabulary,
   validationVocabulary,
