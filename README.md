@@ -61,3 +61,16 @@ truncates deeply-nested trees. `--overlay file.json` applies spec overlays
 | `@oav/cli`       | `oav` binary                                         |
 
 See each package's README for API reference.
+
+## Dev sub-packages
+
+Two standalone packages in the repo root (own `package.json`, own
+install, not part of the main workspace):
+
+- [`conformance/`](./conformance/README.md) — runs the canonical
+  JSON Schema Test Suite and OpenAPI scenarios through `@oav/schema`
+  and the CLI. See `conformance/REPORT.md` for the latest
+  divergence analysis.
+- [`performance/`](./performance/README.md) — benchmarks against
+  [ajv](https://github.com/ajv-validator/ajv) and
+  [@hyperjump/json-schema](https://github.com/hyperjump-io/json-schema).
