@@ -1,0 +1,173 @@
+/**
+ * Representative JSON Schemas used by the performance benchmarks.
+ *
+ * Each entry declares:
+ *  - a schema (2020-12),
+ *  - a set of valid inputs,
+ *  - a set of invalid inputs,
+ * so validation benchmarks exercise both the pass and fail paths, and
+ * don't just measure a hot no-op loop.
+ */
+
+export interface PerfSchema {
+  name: string;
+  description: string;
+  schema: Record<string, unknown>;
+  validInputs: unknown[];
+  invalidInputs: unknown[];
+}
+
+// 1. Tiny schema — floor-case for overhead measurement.
+const tiny: PerfSchema = {
+  name: "tiny",
+  description: "single type + minimum; baseline per-call overhead",
+  schema: {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    type: "integer",
+    minimum: 0,
+  },
+  validInputs: [0, 1, 42, 1000],
+  invalidInputs: [-1, 3.14, "nope", null],
+};
+
+// 2. Petstore-ish object — the most common real shape.
+const petstore: PerfSchema = {
+  name: "petstore",
+  description: "object with required + scalar properties; realistic small API payload",
+  schema: {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    type: "object",
+    required: ["id", "name"],
+    properties: {
+      id: { type: "integer", minimum: 1 },
+      name: { type: "string", minLength: 1, maxLength: 200 },
+      tag: { type: "string" },
+      status: { type: "string", enum: ["available", "pending", "sold"] },
+      price: { type: "number", minimum: 0 },
+    },
+    additionalProperties: false,
+  },
+  validInputs: [
+    { id: 1, name: "Fido" },
+    { id: 2, name: "Whiskers", tag: "cat", status: "available", price: 12.5 },
+  ],
+  invalidInputs: [
+    { name: "Missing id" },
+    { id: 1, name: "" },
+    { id: 1, name: "Fido", extra: true },
+    { id: 1, name: "Fido", price: -1 },
+  ],
+};
+
+// 3. Nested + $ref — recursive tree; exercises the ref cache.
+const tree: PerfSchema = {
+  name: "tree",
+  description: "recursive tree via $ref; exercises the compiled-fn cache",
+  schema: {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    $defs: {
+      Node: {
+        type: "object",
+        required: ["value"],
+        properties: {
+          value: { type: "number" },
+          label: { type: "string" },
+          children: { type: "array", items: { $ref: "#/$defs/Node" } },
+        },
+      },
+    },
+    $ref: "#/$defs/Node",
+  },
+  validInputs: [
+    { value: 1 },
+    {
+      value: 1,
+      label: "root",
+      children: [
+        { value: 2, children: [{ value: 4 }, { value: 5 }] },
+        { value: 3, label: "x" },
+      ],
+    },
+  ],
+  invalidInputs: [
+    { value: "not a number" },
+    { value: 1, children: [{ value: "bad" }] },
+    { label: "missing value" },
+  ],
+};
+
+// 4. Composition (oneOf + allOf) — the expensive path.
+const composition: PerfSchema = {
+  name: "composition",
+  description: "oneOf + allOf + nested properties; stresses applicator dispatch",
+  schema: {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    $defs: {
+      Cat: {
+        type: "object",
+        required: ["kind", "purr"],
+        properties: { kind: { const: "Cat" }, purr: { type: "boolean" } },
+      },
+      Dog: {
+        type: "object",
+        required: ["kind", "bark"],
+        properties: { kind: { const: "Dog" }, bark: { type: "string" } },
+      },
+      Fish: {
+        type: "object",
+        required: ["kind", "fins"],
+        properties: { kind: { const: "Fish" }, fins: { type: "integer", minimum: 0 } },
+      },
+    },
+    allOf: [{ type: "object", required: ["kind"] }],
+    oneOf: [{ $ref: "#/$defs/Cat" }, { $ref: "#/$defs/Dog" }, { $ref: "#/$defs/Fish" }],
+  },
+  validInputs: [
+    { kind: "Cat", purr: true },
+    { kind: "Dog", bark: "woof" },
+    { kind: "Fish", fins: 2 },
+  ],
+  invalidInputs: [
+    { kind: "Cat" },
+    { kind: "Lizard" },
+    { kind: "Dog", bark: 42 },
+    { kind: "Fish", fins: -1 },
+  ],
+};
+
+// 5. Array-heavy — exercises the hot per-item validation loop.
+const arrayHeavy: PerfSchema = {
+  name: "array-heavy",
+  description: "array of 100 objects; amortised throughput on collections",
+  schema: {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    type: "array",
+    items: {
+      type: "object",
+      required: ["id"],
+      properties: {
+        id: { type: "integer", minimum: 1 },
+        name: { type: "string" },
+        tags: { type: "array", items: { type: "string" } },
+      },
+    },
+  },
+  validInputs: [makeValidArray(100)],
+  invalidInputs: [makeInvalidArray(100)],
+};
+
+function makeValidArray(n: number): Array<Record<string, unknown>> {
+  const out = [];
+  for (let i = 0; i < n; i += 1) {
+    out.push({ id: i + 1, name: `item-${i}`, tags: ["a", "b", "c"] });
+  }
+  return out;
+}
+
+function makeInvalidArray(n: number): Array<Record<string, unknown>> {
+  const out = makeValidArray(n);
+  (out[n - 1] as Record<string, unknown>).id = -1;
+  return out;
+}
+
+export const perfSchemas: PerfSchema[] = [tiny, petstore, tree, composition, arrayHeavy];
