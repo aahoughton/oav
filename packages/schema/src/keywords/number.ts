@@ -1,0 +1,126 @@
+import { NAMES, quoteString } from "../codegen/index.js";
+import type { KeywordCompileContext, KeywordDefinition } from "./types.js";
+
+const CORE_VOCAB = "https://json-schema.org/draft/2020-12/vocab/validation";
+
+function numberGuard(dataExpr: string): string {
+  return `typeof ${dataExpr} === "number" && Number.isFinite(${dataExpr})`;
+}
+
+function emitNumericError(
+  ctx: KeywordCompileContext,
+  code: string,
+  message: string,
+  paramsObj: string,
+): void {
+  ctx.gen.line(
+    `${ctx.errors}.push(${NAMES.DEPS}.createLeafError(` +
+      `${quoteString(code)}, ${ctx.path}, ${message}, ${paramsObj}));`,
+  );
+}
+
+/**
+ * The JSON Schema `multipleOf` keyword. Data must be divisible by the schema
+ * value (without floating-point remainder).
+ *
+ * @public
+ */
+export const multipleOfKeyword: KeywordDefinition = {
+  keyword: "multipleOf",
+  vocabulary: CORE_VOCAB,
+  compile(ctx: KeywordCompileContext): void {
+    const divisor = ctx.schema as number;
+    ctx.gen.if(`${numberGuard(ctx.data)} && (${ctx.data} / ${divisor}) % 1 !== 0`, (g) => {
+      g.line(
+        `${ctx.errors}.push(${NAMES.DEPS}.createLeafError(` +
+          `${quoteString("multipleOf")}, ${ctx.path}, ` +
+          `\`must be a multiple of ${divisor}\`, ` +
+          `{ multipleOf: ${divisor}, actual: ${ctx.data} }));`,
+      );
+    });
+  },
+};
+
+/**
+ * The JSON Schema `maximum` keyword. Data must be <= the schema value.
+ *
+ * @public
+ */
+export const maximumKeyword: KeywordDefinition = {
+  keyword: "maximum",
+  vocabulary: CORE_VOCAB,
+  compile(ctx: KeywordCompileContext): void {
+    const limit = ctx.schema as number;
+    ctx.gen.if(`${numberGuard(ctx.data)} && ${ctx.data} > ${limit}`, (g) => {
+      emitNumericError(
+        { ...ctx, gen: g },
+        "maximum",
+        `\`must be <= ${limit}\``,
+        `{ maximum: ${limit}, actual: ${ctx.data} }`,
+      );
+    });
+  },
+};
+
+/**
+ * The JSON Schema `exclusiveMaximum` keyword. Data must be < the schema value.
+ *
+ * @public
+ */
+export const exclusiveMaximumKeyword: KeywordDefinition = {
+  keyword: "exclusiveMaximum",
+  vocabulary: CORE_VOCAB,
+  compile(ctx: KeywordCompileContext): void {
+    const limit = ctx.schema as number;
+    ctx.gen.if(`${numberGuard(ctx.data)} && ${ctx.data} >= ${limit}`, (g) => {
+      emitNumericError(
+        { ...ctx, gen: g },
+        "exclusiveMaximum",
+        `\`must be < ${limit}\``,
+        `{ exclusiveMaximum: ${limit}, actual: ${ctx.data} }`,
+      );
+    });
+  },
+};
+
+/**
+ * The JSON Schema `minimum` keyword. Data must be >= the schema value.
+ *
+ * @public
+ */
+export const minimumKeyword: KeywordDefinition = {
+  keyword: "minimum",
+  vocabulary: CORE_VOCAB,
+  compile(ctx: KeywordCompileContext): void {
+    const limit = ctx.schema as number;
+    ctx.gen.if(`${numberGuard(ctx.data)} && ${ctx.data} < ${limit}`, (g) => {
+      emitNumericError(
+        { ...ctx, gen: g },
+        "minimum",
+        `\`must be >= ${limit}\``,
+        `{ minimum: ${limit}, actual: ${ctx.data} }`,
+      );
+    });
+  },
+};
+
+/**
+ * The JSON Schema `exclusiveMinimum` keyword. Data must be > the schema value.
+ *
+ * @public
+ */
+export const exclusiveMinimumKeyword: KeywordDefinition = {
+  keyword: "exclusiveMinimum",
+  vocabulary: CORE_VOCAB,
+  compile(ctx: KeywordCompileContext): void {
+    const limit = ctx.schema as number;
+    ctx.gen.if(`${numberGuard(ctx.data)} && ${ctx.data} <= ${limit}`, (g) => {
+      emitNumericError(
+        { ...ctx, gen: g },
+        "exclusiveMinimum",
+        `\`must be > ${limit}\``,
+        `{ exclusiveMinimum: ${limit}, actual: ${ctx.data} }`,
+      );
+    });
+  },
+};
