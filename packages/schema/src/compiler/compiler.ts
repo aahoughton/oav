@@ -2,6 +2,7 @@ import type { SchemaObject, SchemaOrBoolean, ValidationError } from "@oav/core";
 import { CodeGen, NAMES, quoteString } from "../codegen/index.js";
 import type { KeywordDefinition, Vocabulary } from "../keywords/types.js";
 import { createKeywordContext } from "../keywords/context.js";
+import { createRefResolver, resolve, type RefResolver } from "../resolve/index.js";
 import { createDeps, type ValidatorDeps } from "./runtime.js";
 
 /**
@@ -42,19 +43,24 @@ export interface CompileOptions {
   formats?: Record<string, (value: string) => boolean>;
   /** Extra runtime deps to merge into the compiled closure. Used for tests. */
   extraDeps?: Partial<ValidatorDeps>;
+  /** Custom ref resolver — overrides the default (which resolves fragments within the root). */
+  refResolver?: RefResolver;
 }
 
-type WrapperCode = "schema" | "not" | "ref";
-
-interface CompileState {
+/** @internal */
+export interface CompileState {
   readonly gen: CodeGen;
   readonly byKeyword: Map<string, KeywordDefinition>;
   readonly ordered: KeywordDefinition[];
   readonly compiledFor: Map<SchemaOrBoolean, string>;
   readonly functionBodies: string[];
   readonly deps: ValidatorDeps;
+  readonly refResolver: RefResolver;
+  readonly compileValidator: (schema: SchemaOrBoolean) => string;
   nextFn: number;
 }
+
+type WrapperCode = "schema" | "not" | "ref";
 
 /**
  * Compile a JSON Schema 2020-12 document into an executable validator.
@@ -92,6 +98,14 @@ export function compileSchema(schema: SchemaOrBoolean, options: CompileOptions):
   }
   if (options.extraDeps) Object.assign(deps, options.extraDeps);
 
+  const graph = resolve(schema);
+  if (options.external !== undefined) {
+    for (const [uri, ext] of options.external) {
+      if (!graph.registry.has(uri)) graph.registry.add(uri, ext);
+    }
+  }
+  const refResolver = options.refResolver ?? createRefResolver(graph);
+
   const state: CompileState = {
     gen: new CodeGen(),
     byKeyword,
@@ -99,7 +113,11 @@ export function compileSchema(schema: SchemaOrBoolean, options: CompileOptions):
     compiledFor: new Map(),
     functionBodies: [],
     deps,
+    refResolver,
     nextFn: 0,
+    compileValidator(sub) {
+      return compileValidator(sub, state);
+    },
   };
 
   const rootName = compileValidator(schema, state);
@@ -155,6 +173,10 @@ function buildFunctionBody(
 
 function compileSchemaKeywords(schema: SchemaObject, gen: CodeGen, state: CompileState): void {
   const subCompiler = (subSchema: SchemaOrBoolean): string => compileValidator(subSchema, state);
+  const resolveRefToFunction = (ref: string): string => {
+    const target = state.refResolver.resolve(ref);
+    return compileValidator(target, state);
+  };
 
   const seen = new Set<string>();
   for (const kw of state.ordered) {
@@ -169,6 +191,7 @@ function compileSchemaKeywords(schema: SchemaObject, gen: CodeGen, state: Compil
       path: NAMES.PATH,
       errors: NAMES.ERRORS,
       subschema: subCompiler,
+      resolveRef: resolveRefToFunction,
     });
     kw.compile(ctx);
     seen.add(kw.keyword);

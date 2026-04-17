@@ -57,6 +57,11 @@ export interface KeywordCompileContext {
    * `(data, path)` inside generated code.
    */
   subschema(schema: SchemaOrBoolean): string;
+  /**
+   * Resolve a `$ref` (absolute URI or fragment) to a compiled function
+   * name. Used by `$ref` and `$dynamicRef` keywords.
+   */
+  resolveRef(ref: string): string;
   /** Push a {@link EmitErrorParams | configured} error onto the accumulator. */
   error(params: EmitErrorParams): void;
   /** Mark a data property as evaluated (for `unevaluatedProperties`). */

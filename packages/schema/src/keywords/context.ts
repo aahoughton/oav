@@ -16,6 +16,7 @@ export interface KeywordContextInputs {
   path: string;
   errors: string;
   subschema: (schema: SchemaOrBoolean) => string;
+  resolveRef: (ref: string) => string;
   markPropertyEvaluated?: (nameExpr: string) => void;
   markItemEvaluated?: (indexExpr: string) => void;
   evaluatedPropertiesVar?: string | null;
@@ -62,6 +63,7 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     path: inputs.path,
     errors: inputs.errors,
     subschema: inputs.subschema,
+    resolveRef: inputs.resolveRef,
     evaluatedPropertiesVar,
     evaluatedItemsVar,
     markPropertyEvaluated,

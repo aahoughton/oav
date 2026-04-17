@@ -28,9 +28,26 @@ import {
   propertiesKeyword,
   propertyNamesKeyword,
 } from "./properties.js";
+import {
+  anchorKeyword,
+  commentKeyword,
+  defsKeyword,
+  dynamicAnchorKeyword,
+  dynamicRefKeyword,
+  idKeyword,
+  refKeyword,
+  schemaDialectKeyword,
+} from "./ref.js";
 import { formatKeyword, maxLengthKeyword, minLengthKeyword, patternKeyword } from "./string.js";
 import { typeKeyword } from "./type.js";
 import type { Vocabulary } from "./types.js";
+
+/**
+ * URI of the JSON Schema 2020-12 core vocabulary.
+ *
+ * @public
+ */
+export const CORE_VOCAB = "https://json-schema.org/draft/2020-12/vocab/core";
 
 /**
  * URI of the core JSON Schema 2020-12 validation vocabulary.
@@ -52,6 +69,26 @@ export const APPLICATOR_VOCAB = "https://json-schema.org/draft/2020-12/vocab/app
  * @public
  */
 export const FORMAT_VOCAB = "https://json-schema.org/draft/2020-12/vocab/format-annotation";
+
+/**
+ * The JSON Schema 2020-12 core vocabulary: `$ref`, `$dynamicRef`, `$id`,
+ * `$defs`, anchors, etc. No runtime behavior except `$ref` / `$dynamicRef`.
+ *
+ * @public
+ */
+export const coreVocabulary: Vocabulary = {
+  uri: CORE_VOCAB,
+  keywords: [
+    refKeyword,
+    dynamicRefKeyword,
+    anchorKeyword,
+    dynamicAnchorKeyword,
+    idKeyword,
+    defsKeyword,
+    schemaDialectKeyword,
+    commentKeyword,
+  ],
+};
 
 /**
  * The built-in validation vocabulary: `type`, `enum`, `const`, numeric
@@ -126,6 +163,7 @@ export const formatVocabulary: Vocabulary = {
  * @public
  */
 export const defaultVocabularies: Vocabulary[] = [
+  coreVocabulary,
   validationVocabulary,
   applicatorVocabulary,
   formatVocabulary,

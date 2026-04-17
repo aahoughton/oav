@@ -20,6 +20,16 @@ export {
 export { constKeyword, enumKeyword } from "./equality.js";
 export { containsKeyword, itemsKeyword, prefixItemsKeyword } from "./items.js";
 export {
+  anchorKeyword,
+  commentKeyword,
+  defsKeyword,
+  dynamicAnchorKeyword,
+  dynamicRefKeyword,
+  idKeyword,
+  refKeyword,
+  schemaDialectKeyword,
+} from "./ref.js";
+export {
   additionalPropertiesKeyword,
   patternPropertiesKeyword,
   propertiesKeyword,
@@ -42,8 +52,10 @@ export { typeKeyword } from "./type.js";
 export {
   APPLICATOR_VOCAB,
   CORE_VALIDATION_VOCAB,
+  CORE_VOCAB,
   FORMAT_VOCAB,
   applicatorVocabulary,
+  coreVocabulary,
   defaultVocabularies,
   formatVocabulary,
   validationVocabulary,
