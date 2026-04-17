@@ -4,7 +4,5 @@ dist/
 *.tsbuildinfo
 .turbo/
 coverage/
-JSON-Schema-Test-Suite/
-conformance/
 .DS_Store
 *.log
