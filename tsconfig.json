@@ -1,0 +1,12 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/core" },
+    { "path": "./packages/schema" },
+    { "path": "./packages/formats" },
+    { "path": "./packages/spec" },
+    { "path": "./packages/router" },
+    { "path": "./packages/validator" },
+    { "path": "./packages/cli" }
+  ]
+}

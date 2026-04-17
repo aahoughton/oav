@@ -1,0 +1,42 @@
+{
+  "name": "@oav/cli",
+  "version": "0.0.0",
+  "description": "Command-line tool for the @oav OpenAPI validator.",
+  "bin": {
+    "oav": "./dist/bin/oav.js"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts src/bin/oav.ts --format esm --dts --clean",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@oav/core": "workspace:*",
+    "@oav/spec": "workspace:*",
+    "@oav/validator": "workspace:*",
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.9"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

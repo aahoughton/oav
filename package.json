@@ -1,13 +1,25 @@
 {
-  "name": "workspace",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "name": "oav",
+  "version": "0.0.0",
+  "private": true,
+  "description": "OpenAPI 3.1 HTTP request/response validator",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "pnpm -r --filter \"./packages/**\" run build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "oxlint && oxfmt --check .",
+    "fmt": "oxfmt --write .",
+    "typecheck": "tsc -b"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.9"
+  },
+  "engines": {
+    "node": ">=20"
+  },
   "packageManager": "pnpm@10.33.0"
 }

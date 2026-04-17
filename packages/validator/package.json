@@ -1,0 +1,40 @@
+{
+  "name": "@oav/validator",
+  "version": "0.0.0",
+  "description": "OpenAPI 3.1 HTTP request/response validator.",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts --clean",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@oav/core": "workspace:*",
+    "@oav/formats": "workspace:*",
+    "@oav/router": "workspace:*",
+    "@oav/schema": "workspace:*",
+    "@oav/spec": "workspace:*"
+  },
+  "devDependencies": {
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.9"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

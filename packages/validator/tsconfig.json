@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": ["src/**/*"],
+  "exclude": ["dist", "node_modules", "src/**/*.test.ts"],
+  "references": [
+    { "path": "../core" },
+    { "path": "../schema" },
+    { "path": "../formats" },
+    { "path": "../spec" },
+    { "path": "../router" }
+  ]
+}
