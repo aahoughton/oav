@@ -1,0 +1,174 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    # Nightly (08:30 UTC) run of the upstream JSON Schema Test Suite.
+    - cron: "30 8 * * *"
+  workflow_dispatch:
+
+concurrency:
+  # Cancel in-progress runs for the same ref when new commits land. Main
+  # always runs to completion so release-please sees the final state.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+
+  test:
+    runs-on: ubuntu-latest
+    # engines.node is ">=20"; exercise every supported major so we
+    # catch version-specific regressions before consumers do.
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [22, 24]
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+  conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: install conformance deps
+        working-directory: conformance
+        run: pnpm install --frozen-lockfile
+      - name: OpenAPI conformance cases
+        working-directory: conformance
+        run: pnpm tsx run-openapi-cases.ts
+
+  json-schema-suite:
+    # Full upstream JSON Schema Test Suite. Runs nightly and on
+    # workflow_dispatch — not on every PR, because the suite is ~1300
+    # cases and its clone is ~15 MB. Fails only when the current pass
+    # count regresses below the committed baseline.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: install conformance deps
+        working-directory: conformance
+        run: pnpm install --frozen-lockfile
+      - name: clone upstream suite
+        working-directory: conformance
+        run: git clone --depth 1 https://github.com/json-schema-org/JSON-Schema-Test-Suite.git
+      - name: JSON Schema suite (required)
+        working-directory: conformance
+        run: pnpm tsx run-json-schema-suite.ts --check-baseline
+
+  pack-smoke:
+    # Catches `exports` map / `files` / bundler regressions that unit
+    # tests don't surface. Packs the publish tarball, installs it into
+    # a fresh sandbox, and imports each documented subpath.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm pack
+      - name: smoke-import the packed tarball
+        run: |
+          set -euo pipefail
+          TARBALL="$(ls aahoughton-oav-*.tgz | head -n1)"
+          mkdir -p /tmp/smoke && cd /tmp/smoke
+          npm init -y > /dev/null
+          npm install "$GITHUB_WORKSPACE/$TARBALL"
+          cat > smoke.mjs <<'EOF'
+          import { createValidator } from "@aahoughton/oav";
+          import { compileSchema, jsonSchemaDialect } from "@aahoughton/oav/schema";
+          const v = createValidator({
+            openapi: "3.1.0",
+            info: { title: "t", version: "1" },
+            paths: {
+              "/x": {
+                post: {
+                  requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["a"] } } } },
+                  responses: { "200": { description: "ok" } },
+                },
+              },
+            },
+          });
+          if (v.validateRequest({ method: "POST", path: "/x", contentType: "application/json", body: {} }) === null) {
+            throw new Error("expected invalid");
+          }
+          const { validate } = compileSchema({ type: "integer" }, { dialect: jsonSchemaDialect });
+          if (!validate(42).valid) throw new Error("expected valid");
+          console.log("smoke ok");
+          EOF
+          node smoke.mjs

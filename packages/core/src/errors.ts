@@ -1,0 +1,389 @@
+/**
+ * The error model shared by every layer of the @oav validator. All errors form
+ * a tree: every node has a {@link ValidationError.children} array (possibly
+ * empty) regardless of whether it is a leaf or a branch. Applicator keywords
+ * (oneOf, allOf, etc.) and HTTP-level validators produce branch nodes; simple
+ * keywords (type, required, maxLength, etc.) produce leaves.
+ */
+
+/**
+ * A segment of a data or schema path. Property names are strings; array
+ * indices are numbers. Paths are never pre-joined — consumers choose how
+ * to render them.
+ *
+ * @public
+ */
+export type PathSegment = string | number;
+
+/**
+ * Machine-readable `params` shape, per built-in error {@link ValidationError.code}.
+ *
+ * Acts as the single contract that consumers can type-narrow against:
+ *
+ * ```ts
+ * if (err.code === "type") {
+ *   const p = err.params as BuiltInErrorParams["type"];
+ *   console.log(p.expected); // typed as string[]
+ * }
+ * ```
+ *
+ * Extended via TypeScript interface declaration merging — a custom
+ * consumer (or, internally, a new keyword) can augment the map by
+ * re-declaring the interface in its own module:
+ *
+ * ```ts
+ * declare module "@oav/core" {
+ *   interface BuiltInErrorParams {
+ *     "my-custom": { reason: string };
+ *   }
+ * }
+ * ```
+ *
+ * When adding a new built-in keyword, extend this interface with the
+ * entry that describes its `params` shape. Contributors are asked to
+ * keep this list in sync — the compiler cannot verify it because
+ * errors are emitted from generated JS source.
+ *
+ * @public
+ */
+export interface BuiltInErrorParams {
+  // --- JSON Schema keywords ---
+  /** Schema-is-`false`: no data validates. */
+  false: Record<string, never>;
+  /** `type` mismatch. */
+  type: { expected: string[]; actual: string };
+  /** `const` mismatch. */
+  const: { expected: unknown; actual: unknown };
+  /** `enum` mismatch. */
+  enum: { allowed: unknown[]; actual: unknown };
+  /** `minimum` (optionally exclusive) violation. */
+  minimum: { minimum: number; exclusive: boolean; actual: number };
+  /** `maximum` (optionally exclusive) violation. */
+  maximum: { maximum: number; exclusive: boolean; actual: number };
+  /** `multipleOf` violation. */
+  multipleOf: { multipleOf: number; actual: number };
+  /** `minLength` violation. Length counted in code points. */
+  minLength: { minLength: number; actual: number };
+  /** `maxLength` violation. */
+  maxLength: { maxLength: number; actual: number };
+  /** `pattern` mismatch. */
+  pattern: { pattern: string; actual: string };
+  /** `format` assertion failure (requires format-assertion vocabulary). */
+  format: { format: string; actual: string };
+  /** `minItems` violation. */
+  minItems: { minItems: number; actual: number };
+  /** `maxItems` violation. */
+  maxItems: { maxItems: number; actual: number };
+  /** `uniqueItems` violation — indices of the first duplicate pair. */
+  uniqueItems: { duplicates: [number, number] };
+  /** `minProperties` violation. */
+  minProperties: { minProperties: number; actual: number };
+  /** `maxProperties` violation. */
+  maxProperties: { maxProperties: number; actual: number };
+  /** `required` — a required property is missing. */
+  required: { missing: string };
+  /** `items: false` — no items allowed past the prefix. */
+  items: Record<string, never>;
+  /** `contains` with `minContains` unmet. */
+  contains: { minContains: number; actual: number };
+  /** `contains` with `maxContains` exceeded. */
+  maxContains: { maxContains: number; actual: number };
+  /** `additionalProperties: false` — an unexpected property was found. */
+  additionalProperties: { unexpected: string };
+  /** `unevaluatedProperties` — a property isn't evaluated by the schema. */
+  unevaluatedProperties: { unexpected: string };
+  /** `unevaluatedItems` — an index isn't evaluated by the schema. */
+  unevaluatedItems: { index: number };
+  /** `not` — the schema matched when it shouldn't. */
+  not: Record<string, never>;
+  /** `allOf` branch — failing conjuncts listed in `children`. */
+  allOf: { total: number; failed: number };
+  /** `anyOf` branch — no branch matched. */
+  anyOf: { total: number };
+  /** `oneOf` branch — zero or >1 matched. */
+  oneOf: { total: number; matchCount: number };
+  /** Inline multi-keyword subschema wrapper — matches a compiled function's `wrapErrors` shape. */
+  schema: Record<string, never>;
+  /** `discriminator` — property absent/non-string, or value not in the mapping. */
+  discriminator: { propertyName: string; value?: string };
+  /** `dependentRequired` — a sibling required by the trigger key is missing. */
+  dependentRequired: { trigger: string; missing: string };
+  /** Draft-07 `dependencies` array form — same as dependentRequired. */
+  dependencies: { trigger: string; missing: string };
+
+  // --- HTTP-level wrappers (emitted by @oav/validator) ---
+  /** No route matched `method` + `path`. */
+  route: { method: string; path: string };
+  /** Request or response body. Branch when sub-errors bubble; leaf when the body is missing. */
+  body: Record<string, never>;
+  /** Request branch — children are parameter / body failures. */
+  request: Record<string, never>;
+  /** Response branch — children are status / content-type / header / body failures. */
+  response: { status: number };
+  /** Content-Type negotiation failed. */
+  "content-type": { contentType: string | undefined; accepted?: string[]; declared?: string[] };
+  /** No declared response matches the status. */
+  status: { status: number; declared?: string[] };
+  /** A required response header is missing. */
+  header: { name: string };
+  /** Parameter validation failures, scoped by `in`. */
+  "path-param": { name: string; in: "path" };
+  "query-param": { name: string; in: "query" };
+  "header-param": { name: string; in: "header" };
+  "cookie-param": { name: string; in: "cookie" };
+
+  /** Catch-all for custom / not-yet-documented codes. */
+  [code: string]: Record<string, unknown>;
+}
+
+/**
+ * Type helper that narrows `ValidationError.params` for a specific
+ * `code`. The generic parameter must be a key of
+ * {@link BuiltInErrorParams}.
+ *
+ * ```ts
+ * function describe(err: ValidationError): string {
+ *   if (err.code === "required") {
+ *     const p = err.params as ErrorParamsFor<"required">;
+ *     return `missing ${p.missing}`;
+ *   }
+ *   return err.message;
+ * }
+ * ```
+ *
+ * @public
+ */
+export type ErrorParamsFor<Code extends keyof BuiltInErrorParams> = BuiltInErrorParams[Code];
+
+/**
+ * A single validation error, always a node in a {@link ValidationError} tree.
+ *
+ * Every error has a `children` array — leaf errors have `children: []`,
+ * branch errors produced by applicator keywords have one child per relevant
+ * subschema. Consumers can traverse without null checks.
+ *
+ * @remarks
+ * The `code` field is a stable identifier (e.g. `"type"`, `"required"`,
+ * `"oneOf"`, `"body"`) suitable for programmatic matching. The `message`
+ * field is free-form human-readable text and SHOULD NOT be pattern-matched.
+ * Machine-readable details live in `params`.
+ *
+ * @public
+ */
+export interface ValidationError {
+  /** Stable identifier of the keyword or validation layer that produced this error. */
+  code: string;
+  /** Path segments pointing at the offending data location. */
+  path: PathSegment[];
+  /** Human-readable description of the failure. */
+  message: string;
+  /**
+   * Keyword-specific machine-readable details. The shape per `code` is
+   * documented in {@link BuiltInErrorParams}; consumers can use
+   * {@link ErrorParamsFor} to narrow.
+   */
+  params: Record<string, unknown>;
+  /** Child errors; always an array, empty for leaf errors. */
+  children: ValidationError[];
+}
+
+/**
+ * Parameters accepted by {@link createError}.
+ *
+ * @public
+ */
+export interface CreateErrorParams {
+  /** Stable identifier of the keyword/layer. */
+  code: string;
+  /** Path segments of the offending data. */
+  path: PathSegment[];
+  /** Human-readable message. */
+  message: string;
+  /** Machine-readable details. Defaults to `{}`. */
+  params?: Record<string, unknown>;
+  /** Child errors. Defaults to `[]`. */
+  children?: ValidationError[];
+}
+
+/**
+ * Construct a {@link ValidationError}, supplying defaults for `params` and
+ * `children` so callers never have to write `params: {}, children: []`.
+ *
+ * @param params - Fields describing the error.
+ * @returns A new {@link ValidationError} with `children` guaranteed to be an array.
+ *
+ * @example
+ * ```ts
+ * const err = createError({
+ *   code: "type",
+ *   path: ["body", "age"],
+ *   message: "must be number",
+ *   params: { expected: "number", actual: "string" },
+ * });
+ * // err.children === []
+ * ```
+ *
+ * @public
+ */
+export function createError(params: CreateErrorParams): ValidationError {
+  // Snapshot path — generated validators reuse a single mutable path array
+  // across traversal (push/pop per depth), so freezing the segments here
+  // protects the error from later mutations.
+  return {
+    code: params.code,
+    path: [...params.path],
+    message: params.message,
+    params: params.params ?? {},
+    children: params.children ?? [],
+  };
+}
+
+/**
+ * Construct a leaf error. Equivalent to {@link createError} with an empty
+ * `children` array; exists to make intent explicit at call sites.
+ *
+ * @param code - Stable identifier (e.g. `"type"`, `"required"`).
+ * @param path - Path segments to the offending data.
+ * @param message - Human-readable description.
+ * @param params - Optional machine-readable details.
+ * @returns A new leaf {@link ValidationError}.
+ *
+ * @example
+ * ```ts
+ * createLeafError("type", ["body", "age"], "must be number", {
+ *   expected: "number",
+ * });
+ * ```
+ *
+ * @public
+ */
+export function createLeafError(
+  code: string,
+  path: PathSegment[],
+  message: string,
+  params: Record<string, unknown> = {},
+): ValidationError {
+  // See note in {@link createError} on snapshotting.
+  return { code, path: [...path], message, params, children: [] };
+}
+
+/**
+ * Construct a branch error that wraps a list of child errors (e.g. the
+ * per-branch failures of an `oneOf` keyword).
+ *
+ * @param code - Stable identifier (e.g. `"oneOf"`, `"allOf"`, `"body"`).
+ * @param path - Path segments to the offending data.
+ * @param message - Human-readable description.
+ * @param children - Child errors.
+ * @param params - Optional machine-readable details.
+ * @returns A new branch {@link ValidationError}.
+ *
+ * @example
+ * ```ts
+ * createBranchError(
+ *   "oneOf",
+ *   ["body"],
+ *   "must match exactly one of 2 schemas",
+ *   [branch0Error, branch1Error],
+ *   { matchCount: 0 },
+ * );
+ * ```
+ *
+ * @public
+ */
+export function createBranchError(
+  code: string,
+  path: PathSegment[],
+  message: string,
+  children: ValidationError[],
+  params: Record<string, unknown> = {},
+): ValidationError {
+  // See note in {@link createError} on snapshotting.
+  return { code, path: [...path], message, params, children };
+}
+
+/**
+ * Walk a {@link ValidationError} tree in pre-order, visiting every node
+ * (branch and leaf).
+ *
+ * @param error - Root of the error tree.
+ * @param visit - Callback invoked once per node with the node and its depth.
+ *
+ * @example
+ * ```ts
+ * walkErrors(root, (err, depth) => {
+ *   console.log(" ".repeat(depth) + err.code);
+ * });
+ * ```
+ *
+ * @public
+ */
+export function walkErrors(
+  error: ValidationError,
+  visit: (error: ValidationError, depth: number) => void,
+): void {
+  const stack: Array<{ node: ValidationError; depth: number }> = [{ node: error, depth: 0 }];
+  while (stack.length > 0) {
+    const entry = stack.pop();
+    if (entry === undefined) break;
+    visit(entry.node, entry.depth);
+    for (let i = entry.node.children.length - 1; i >= 0; i -= 1) {
+      const child = entry.node.children[i];
+      if (child !== undefined) {
+        stack.push({ node: child, depth: entry.depth + 1 });
+      }
+    }
+  }
+}
+
+/**
+ * Collect every leaf error (any node with `children.length === 0`) in a
+ * {@link ValidationError} tree. Order is a pre-order traversal.
+ *
+ * @param error - Root of the error tree.
+ * @returns The flat list of leaves in traversal order.
+ *
+ * @example
+ * ```ts
+ * const leaves = collectLeaves(rootError);
+ * leaves.forEach((leaf) => console.log(leaf.code));
+ * ```
+ *
+ * @public
+ */
+export function collectLeaves(error: ValidationError): ValidationError[] {
+  const leaves: ValidationError[] = [];
+  walkErrors(error, (node) => {
+    if (node.children.length === 0) leaves.push(node);
+  });
+  return leaves;
+}
+
+/**
+ * Format a path as a JSON-Pointer-ish dotted string, e.g.
+ * `body.users[3].email`. Intended for human consumption; not a spec-conformant
+ * JSON Pointer.
+ *
+ * @param path - Path segments.
+ * @returns A dotted path string, or `""` if empty.
+ *
+ * @example
+ * ```ts
+ * joinPath(["body", "users", 3, "email"]); // "body.users[3].email"
+ * ```
+ *
+ * @public
+ */
+export function joinPath(path: PathSegment[]): string {
+  let out = "";
+  for (const segment of path) {
+    if (typeof segment === "number") {
+      out += `[${segment}]`;
+    } else if (out.length === 0) {
+      out = segment;
+    } else {
+      out += `.${segment}`;
+    }
+  }
+  return out;
+}

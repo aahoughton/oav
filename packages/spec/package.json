@@ -1,0 +1,23 @@
+{
+  "name": "@oav/spec",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Internal: OpenAPI spec loader, $ref resolver, and overlay merger for @aahoughton/oav.",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "dependencies": {
+    "@oav/core": "workspace:*",
+    "@oav/schema": "workspace:*",
+    "yaml": "2.8.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

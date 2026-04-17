@@ -1,0 +1,25 @@
+{
+  "name": "@oav/validator",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Internal: HTTP request/response validator orchestrator for @aahoughton/oav.",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "dependencies": {
+    "@oav/core": "workspace:*",
+    "@oav/formats": "workspace:*",
+    "@oav/router": "workspace:*",
+    "@oav/schema": "workspace:*",
+    "@oav/spec": "workspace:*"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

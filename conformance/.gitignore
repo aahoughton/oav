@@ -1,0 +1,4 @@
+node_modules/
+JSON-Schema-Test-Suite/
+json-schema-results*.json
+openapi-results.json

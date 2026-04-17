@@ -1,0 +1,13 @@
+{
+  "printWidth": 100,
+  "singleQuote": false,
+  "trailingComma": "all",
+  "semi": true,
+  "ignorePatterns": [
+    "dist/",
+    "node_modules/",
+    "coverage/",
+    "JSON-Schema-Test-Suite/",
+    "AUTONOMOUS-BUILD-PROMPT.md"
+  ]
+}

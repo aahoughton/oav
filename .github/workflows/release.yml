@@ -1,0 +1,65 @@
+name: release
+
+# Two-stage flow driven by release-please:
+#
+# 1. Every push to main runs the `release-please` job. It scans commits
+#    since the last release and either opens a "release" PR (bumping
+#    package.json + appending to CHANGELOG.md) or updates the existing
+#    one. No release is created until you merge that PR.
+#
+# 2. When the release PR is merged, release-please creates a GitHub
+#    Release + git tag, sets `release_created: true` in outputs, and
+#    the `publish` job runs: installs, builds, and publishes the
+#    tagged commit to npm.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.rp.outputs.release_created }}
+      tag_name: ${{ steps.rp.outputs.tag_name }}
+    steps:
+      - id: rp
+        uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4.4.1
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  publish:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm test
+      # --no-git-checks: the release-please commit is on main but CI
+      # checks it out in detached-HEAD mode, which pnpm otherwise refuses.
+      # --access public: required the first time a scoped package publishes;
+      # harmless afterwards.
+      # --provenance: attaches a signed build attestation (uses the
+      # id-token: write OIDC permission above) so npmjs shows a
+      # "verified" badge on the published tarball.
+      - run: pnpm publish --access public --provenance --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

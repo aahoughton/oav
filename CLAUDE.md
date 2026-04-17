@@ -1,0 +1,211 @@
+# CLAUDE.md — project-internal notes for contributors using Claude Code
+
+## Build commands
+
+```bash
+pnpm install
+pnpm build                        # tsup: single multi-entry bundle (ESM + CJS + .d.ts)
+pnpm test                         # vitest for everything
+pnpm vitest run packages/schema   # run a single package's tests (path filter)
+pnpm lint                         # oxlint + oxfmt --check
+pnpm fmt                          # oxfmt --write .
+pnpm typecheck                    # tsc -b (composite project references)
+```
+
+`pnpm test` uses vitest with workspace aliases from `vitest.config.ts` so
+tests run against `packages/*/src` directly — no need to build before
+testing.
+
+## Dev-only sub-packages (standalone; not in the workspace)
+
+- `conformance/` — upstream JSON Schema Test Suite + OpenAPI case
+  harness. `cd conformance && pnpm install` to bootstrap.
+- `performance/` — ajv/hyperjump/oav benchmarks. `cd performance &&
+pnpm install` to bootstrap.
+
+Both have their own `package.json` + `pnpm-workspace.yaml` (with empty
+`packages:` list so pnpm treats them as isolated roots). Their deps
+(ajv, hyperjump, tinybench, tsx) are NOT in the main workspace install.
+
+## Architecture, package by package
+
+- **`@oav/core`** — pure types. `ValidationError` tree (children always an
+  array), path segments as `(string | number)[]`, and four formatters
+  (`formatText` / `formatJson` / `formatFlat` / `formatGithub`). Everything
+  else depends on this.
+- **`@oav/schema`** — the JSON Schema 2020-12 compiler. Walks a schema,
+  dispatches each keyword via `KeywordDefinition.compile(ctx)`, assembles
+  the generated JS source, and `eval`s it through `new Function(deps, src)`.
+  Boolean schemas (`true`/`false`) are first-class. `$ref` uses an
+  identity-keyed cache so self-recursive refs emit normal recursive calls.
+- **`@oav/formats`** — pure string validators; exported as a `Record<string,
+(s: string) => boolean>` suitable for `compileSchema`'s `formats` option.
+- **`@oav/spec`** — `DocumentReader` abstraction (file/http/memory/composite)
+  plus `resolveSpec()` which inlines external `$ref`s and leaves circular
+  ones as internal refs. `applyOverlays()` handles the extension system.
+- **`@oav/router`** — a trie-ish router. Sorted at construction so `match`
+  is O(segments).
+- **`@oav/validator`** — orchestrator. Pre-compiles every operation's
+  parameter/body/response schemas, does content-type negotiation and
+  parameter deserialization (style + explode), and returns a
+  `ValidationError` tree. Subtrees returned from sub-validators are
+  prefixed with the HTTP location (`body`, `query`, `header`, ...) via
+  `prefixPath`.
+- **`@oav/cli`** — thin commander wrapper. No business logic beyond arg
+  parsing, I/O, and exit codes.
+
+## Dependency graph (strictly enforced; no cycles)
+
+```
+cli → validator → router
+               → spec → schema → core
+               → formats → core
+               → schema
+               → core
+     → spec
+     → core
+```
+
+## How to add a new keyword
+
+1. Create `packages/schema/src/keywords/<area>.ts` exporting a
+   `KeywordDefinition` with `keyword`, `vocabulary`, `compile(ctx)`.
+   The context (`KeywordCompileContext`) offers:
+   - `ctx.gen` — code emitter (see the `CodeEmitter` interface).
+   - `ctx.data`, `ctx.path`, `ctx.errors` — JS expressions for the
+     current data, path array, and error accumulator.
+   - `ctx.schema`, `ctx.parentSchema` — the keyword's value and the
+     surrounding schema object.
+   - `ctx.emitError(kind, expr)` / `ctx.errorStatement(kind, expr)` —
+     push an error expression (`"leaf"` = counts against `maxErrors`,
+     `"lift"` = propagating an already-counted sub-validator result).
+   - `ctx.withPathSegment(seg, body)` — scoped path push/pop.
+   - `ctx.validateSubschema(schema, dataExpr, { segment? })` — the
+     common "descend into a subschema" pattern (inlines when simple).
+   - `ctx.compileSubschema(schema) -> fnName` — lower-level; use when
+     a keyword needs the sub-validator's return value for its own
+     logic (composition keywords do this).
+   - `ctx.resolveRef(ref)`, `ctx.evaluatedPropertiesVar` /
+     `ctx.evaluatedItemsVar` — for `$ref` and unevaluated-tracking.
+   - `ctx.emitBudgetBreak()` at the tail of hot loops.
+2. Add it to the vocabulary's `keywords` array in `vocabulary.ts`.
+3. Re-export from `keywords/index.ts` and top-level `src/index.ts`.
+4. Add a `test/keyword-<name>.test.ts` that compiles a schema, validates
+   good + bad data, and asserts on `code` / `path` / `params` /
+   `children` structure — never on generated code strings.
+5. Add an entry to `BuiltInErrorParams` in `packages/core/src/errors.ts`
+   describing the new error `code` and the shape of its `params`
+   object. The compiler can't check this (errors are emitted through
+   generated JS source), but it's the documented contract consumers
+   narrow against — drift here is a silent bug.
+
+## How to add a new format
+
+1. Add the validator to `packages/formats/src/<area>.ts`.
+2. Export from `packages/formats/src/index.ts`.
+3. Add it to the `builtInFormats` record.
+4. Test with RFC-sourced valid + invalid examples.
+
+## How to add a new CLI output format
+
+1. Add the name to `KNOWN_OUTPUT_FORMATS` in
+   `packages/cli/src/format-output.ts` — the `OutputFormat` type and
+   the Commander `--format` validator are both derived from it.
+2. Add the rendering function to `packages/core/src/format.ts` (or emit
+   straight from the leaves).
+3. Add a branch to `formatError()`.
+4. Add a test in `packages/cli/test/format-output.test.ts`.
+
+## Error-collection modes
+
+By default the compiler collects every error into a tree. For very
+large payloads (think "10 MB JSON array where every element is wrong
+the same way") that's wasted CPU and memory. `compileSchema(schema,
+{ maxErrors: N })` — also exposed on `@oav/validator`'s
+`createValidator` — caps the tree at N leaves and short-circuits the
+hot loops once the budget is exhausted. `maxErrors: 1` is the classic
+fast-fail mode; the returned `{ valid: false, error, truncated: true }`
+tells consumers their report is partial. Codegen is specialised: when
+`maxErrors` is left unset, the generated source is identical to before
+(no budget checks, no `truncated` tracking) — zero overhead for
+callers who don't opt in.
+
+The budget semantics show up at the keyword-authoring level through
+the `kind` argument on `ctx.emitError` / `ctx.errorStatement`:
+
+- `ctx.emitError("leaf", expr)` — a **fresh leaf error**; counts
+  against the budget. Use when the keyword itself is constructing a
+  `createLeafError(...)` expression.
+- `ctx.emitError("lift", expr)` — a **lift**: propagating a
+  sub-validator's already-counted error up the tree, or wrapping
+  already-counted children in a `createBranchError`. Always
+  unconditional.
+
+Using the wrong kind silently miscounts errors against the budget.
+The `kind` is a required argument — TypeScript enforces that a choice
+is made at every call site; the correctness of the choice is on the
+author.
+
+## Version support
+
+`@oav/validator` buckets the spec's `openapi` string at validator
+construction time via `detectOpenAPIVersion` and picks a dialect:
+
+| Spec version | Status    | Dialect                            |
+| ------------ | --------- | ---------------------------------- |
+| 3.0.x        | Supported | OAS 3.0 Schema Object flavour      |
+| 3.1.x        | Supported | JSON Schema 2020-12                |
+| 3.2.x        | Supported | JSON Schema 2020-12 + QUERY method |
+
+Dispatch is a one-liner inside `createValidator` — `dialectFor(version)`.
+The check runs once at construction; there's no per-request branching,
+so adding more versions adds zero runtime cost.
+
+### What differs in the 3.0 dialect
+
+Only three things vary from 2020-12; everything else (numeric / string
+/ array / object bounds, `enum`, `required`, `allOf`/`anyOf`/`oneOf`,
+`not`, `format`, discriminator, etc.) is shared.
+
+1. **`type` is string-only** (no arrays). `oas30TypeKeyword` enforces
+   this at compile time and adds `"null"` to the acceptable types when
+   the sibling `nullable: true` is set.
+2. **`exclusiveMaximum` / `exclusiveMinimum` are booleans**. They
+   modify the sibling `maximum` / `minimum` rather than standing alone
+   as numeric bounds. `oas30MaximumKeyword` / `oas30MinimumKeyword`
+   read the boolean and emit `>=` vs `>` (or `<=` vs `<`) accordingly.
+3. **`$ref` siblings are ignored**. The dialect's
+   `rules.refSuppressesSiblings` flag makes the keyword dispatcher
+   skip every non-`$ref` keyword in a schema that declares `$ref`.
+   `oas30Dialect` sets it to `true`; every other built-in dialect
+   sets it to `false`.
+
+Keywords not present in 3.0 (`const`, `if`/`then`/`else`, `contains`,
+`patternProperties`, `propertyNames`, `unevaluatedProperties`/`Items`,
+`prefixItems`, `$defs`, `$id`, anchors, `$dynamicRef`) are simply not
+in the 3.0 vocabulary stack — schemas that use them are treated as
+having an unknown field, which 2020-12 allows in every dialect.
+
+### Running tests per version
+
+- **Schema-level tests** (`packages/schema/test/*`) are
+  dialect-agnostic — they compile schemas with the default 2020-12
+  vocab and assert on 2020-12 semantics. Dialect-specific keyword
+  tests sit next to their keyword files where sensible.
+- **HTTP-level conformance** lives in
+  `conformance/openapi-cases/petstore-{30,31,32}/` — one petstore per
+  version, each exercising the version's distinctive features (3.0:
+  `nullable`, boolean `exclusiveMinimum`; 3.2: QUERY method).
+- **Validator integration tests** in
+  `packages/validator/test/versioning.test.ts` cover dispatch,
+  dialect-specific keyword behaviour, and the `dialect` override.
+
+## Known limitations
+
+- `unevaluatedProperties` / `unevaluatedItems` do not propagate evaluation
+  sets across `allOf` / `anyOf` / `oneOf` boundaries; each subschema
+  compiles as its own function. See the TSDoc on
+  `unevaluatedPropertiesKeyword` for detail.
+- `$dynamicRef` currently behaves like `$ref` with an anchor lookup — no
+  runtime dynamic-scope traversal. Good enough for schemas that don't
+  actually rewire the extension point at runtime.

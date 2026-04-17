@@ -1,0 +1,67 @@
+openapi: 3.2.0
+info:
+  title: Petstore (OAS 3.2)
+  version: "1.0"
+paths:
+  /pets:
+    get:
+      operationId: listPets
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100 }
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Pet" }
+    post:
+      operationId: createPet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NewPet" }
+      responses:
+        "201":
+          description: created
+  /pets/search:
+    # QUERY is new in 3.2 — a read-style request that carries a body.
+    query:
+      operationId: searchPets
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [filter]
+              properties:
+                filter: { type: string, minLength: 1 }
+                maxResults: { type: integer, minimum: 1, maximum: 1000 }
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Pet" }
+components:
+  schemas:
+    Pet:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: integer, minimum: 1 }
+        name: { type: string, minLength: 1 }
+        tag: { type: string }
+    NewPet:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1 }
+        tag: { type: string }

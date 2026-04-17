@@ -1,0 +1,189 @@
+/**
+ * OpenAPI 3.0.x Schema Object keywords.
+ *
+ * 3.0 uses a constrained JSON Schema Wright-00 dialect with three
+ * deviations from the 2020-12 dialect used by 3.1 / 3.2:
+ *
+ * 1. `type` is a single string (never an array), and nullability is
+ *    expressed via a sibling `nullable: true` instead of
+ *    `type: ["…", "null"]`.
+ * 2. `exclusiveMaximum` / `exclusiveMinimum` are **booleans**: they
+ *    modify the sibling `maximum` / `minimum` rather than standing
+ *    alone as numeric bounds.
+ * 3. `$ref`, when present, causes every sibling keyword to be
+ *    ignored. The containing schema is _only_ the reference.
+ *
+ * Each of these gets its own keyword implementation in this file;
+ * everything else (string/array/object bounds, required, enum, the
+ * applicators we support in 3.0, etc.) reuses the 2020-12 vocabulary
+ * as-is.
+ *
+ * @packageDocumentation
+ */
+
+import { NAMES, quoteString } from "../codegen/index.js";
+import type { KeywordCompileContext, KeywordDefinition } from "./types.js";
+import { OAS30_VOCAB } from "./vocabulary-uris.js";
+
+/**
+ * The `type` keyword in OAS 3.0: MUST be a single string. If the
+ * sibling `nullable: true` is also set, the predicate additionally
+ * admits `null`.
+ *
+ * @public
+ */
+export const oas30TypeKeyword: KeywordDefinition = {
+  keyword: "type",
+  vocabulary: OAS30_VOCAB,
+  compile(ctx: KeywordCompileContext): void {
+    if (typeof ctx.schema !== "string") {
+      throw new Error(
+        `OpenAPI 3.0 'type' must be a single string; got ${JSON.stringify(ctx.schema)}. ` +
+          `For nullability, add 'nullable: true' instead of 'type: ["X","null"]'.`,
+      );
+    }
+    const declared = ctx.schema;
+    const nullable = ctx.parentSchema.nullable === true;
+    const types = nullable ? [declared, "null"] : [declared];
+
+    const condition = buildTypeMismatchCondition(ctx.data, types);
+    ctx.gen.if(condition, () => {
+      const expectedLit = JSON.stringify(types);
+      const actualExpr = `${NAMES.DEPS}.typeOf(${ctx.data})`;
+      ctx.emitError(
+        "leaf",
+        `${NAMES.DEPS}.createLeafError(` +
+          `${quoteString("type")}, ${ctx.path}, ` +
+          `"must be " + ${JSON.stringify(nullable ? `${declared} or null` : declared)}, ` +
+          `{ expected: ${expectedLit}, actual: ${actualExpr} })`,
+      );
+    });
+  },
+};
+
+/**
+ * The `nullable` keyword is a metadata flag that the OAS 3.0 `type`
+ * keyword consults on its sibling lookup. This entry exists so the
+ * dispatcher doesn't flag it as an unknown keyword; it emits no
+ * validation code.
+ *
+ * @public
+ */
+export const oas30NullableKeyword: KeywordDefinition = {
+  keyword: "nullable",
+  vocabulary: OAS30_VOCAB,
+  compile(): void {
+    // intentionally empty — consumed by oas30TypeKeyword
+  },
+};
+
+/**
+ * OAS 3.0's `maximum`. Looks at the sibling `exclusiveMaximum`
+ * boolean to decide whether the check is `<=` (default) or `<`
+ * (exclusive).
+ *
+ * @public
+ */
+export const oas30MaximumKeyword: KeywordDefinition = {
+  keyword: "maximum",
+  vocabulary: OAS30_VOCAB,
+  compile(ctx: KeywordCompileContext): void {
+    const limit = ctx.schema as number;
+    const exclusive = ctx.parentSchema.exclusiveMaximum === true;
+    const op = exclusive ? ">=" : ">";
+    ctx.gen.if(
+      `typeof ${ctx.data} === "number" && Number.isFinite(${ctx.data}) && ${ctx.data} ${op} ${limit}`,
+      () => {
+        ctx.emitError(
+          "leaf",
+          `${NAMES.DEPS}.createLeafError(` +
+            `${quoteString("maximum")}, ${ctx.path}, ` +
+            `\`must be ${exclusive ? "<" : "<="} ${limit}\`, ` +
+            `{ maximum: ${limit}, exclusive: ${exclusive}, actual: ${ctx.data} })`,
+        );
+      },
+    );
+  },
+};
+
+/**
+ * OAS 3.0's `minimum`. Looks at the sibling `exclusiveMinimum`
+ * boolean to decide whether the check is `>=` (default) or `>`.
+ *
+ * @public
+ */
+export const oas30MinimumKeyword: KeywordDefinition = {
+  keyword: "minimum",
+  vocabulary: OAS30_VOCAB,
+  compile(ctx: KeywordCompileContext): void {
+    const limit = ctx.schema as number;
+    const exclusive = ctx.parentSchema.exclusiveMinimum === true;
+    const op = exclusive ? "<=" : "<";
+    ctx.gen.if(
+      `typeof ${ctx.data} === "number" && Number.isFinite(${ctx.data}) && ${ctx.data} ${op} ${limit}`,
+      () => {
+        ctx.emitError(
+          "leaf",
+          `${NAMES.DEPS}.createLeafError(` +
+            `${quoteString("minimum")}, ${ctx.path}, ` +
+            `\`must be ${exclusive ? ">" : ">="} ${limit}\`, ` +
+            `{ minimum: ${limit}, exclusive: ${exclusive}, actual: ${ctx.data} })`,
+        );
+      },
+    );
+  },
+};
+
+/**
+ * OAS 3.0's `exclusiveMaximum` is a metadata boolean consumed by
+ * {@link oas30MaximumKeyword}. No validation code on its own.
+ *
+ * @public
+ */
+export const oas30ExclusiveMaximumKeyword: KeywordDefinition = {
+  keyword: "exclusiveMaximum",
+  vocabulary: OAS30_VOCAB,
+  compile(): void {
+    // intentionally empty
+  },
+};
+
+/**
+ * OAS 3.0's `exclusiveMinimum` is a metadata boolean consumed by
+ * {@link oas30MinimumKeyword}.
+ *
+ * @public
+ */
+export const oas30ExclusiveMinimumKeyword: KeywordDefinition = {
+  keyword: "exclusiveMinimum",
+  vocabulary: OAS30_VOCAB,
+  compile(): void {
+    // intentionally empty
+  },
+};
+
+function buildTypeMismatchCondition(dataExpr: string, expected: string[]): string {
+  const predicates = expected.map((t) => typePredicate(dataExpr, t));
+  return `!(${predicates.join(" || ")})`;
+}
+
+function typePredicate(dataExpr: string, typeName: string): string {
+  switch (typeName) {
+    case "null":
+      return `${dataExpr} === null`;
+    case "boolean":
+      return `typeof ${dataExpr} === "boolean"`;
+    case "string":
+      return `typeof ${dataExpr} === "string"`;
+    case "array":
+      return `Array.isArray(${dataExpr})`;
+    case "object":
+      return `(typeof ${dataExpr} === "object" && ${dataExpr} !== null && !Array.isArray(${dataExpr}))`;
+    case "number":
+      return `(typeof ${dataExpr} === "number" && Number.isFinite(${dataExpr}))`;
+    case "integer":
+      return `(typeof ${dataExpr} === "number" && Number.isFinite(${dataExpr}) && Number.isInteger(${dataExpr}))`;
+    default:
+      return "false";
+  }
+}
