@@ -1,0 +1,21 @@
+{
+  "name": "@oav-dev/conformance",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Conformance harness: runs upstream test suites and OpenAPI cases through @oav/schema and the oav CLI.",
+  "type": "module",
+  "scripts": {
+    "suite": "tsx run-json-schema-suite.ts",
+    "suite:optional": "tsx run-json-schema-suite.ts --optional",
+    "openapi": "tsx run-openapi-cases.ts",
+    "setup": "git clone --depth 1 https://github.com/json-schema-org/JSON-Schema-Test-Suite.git"
+  },
+  "devDependencies": {
+    "tsx": "^4.21.0",
+    "typescript": "^5.7.3",
+    "yaml": "^2.6.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

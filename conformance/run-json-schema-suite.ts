@@ -1,0 +1,192 @@
+/**
+ * Runner for the JSON Schema 2020-12 Test Suite.
+ *
+ * Clones of that repo live under ./JSON-Schema-Test-Suite (gitignored).
+ * This script walks `tests/draft2020-12/*.json` (and optionally
+ * `tests/draft2020-12/optional/*.json`), compiles each group's schema
+ * with @oav/schema, runs each case's data, and reports:
+ *
+ *   - total cases attempted
+ *   - pass (our verdict matches `valid`)
+ *   - fail (verdict mismatch)
+ *   - error (compile/runtime crash — we couldn't produce a verdict)
+ *   - a per-file breakdown with concrete mismatches listed
+ *
+ * Usage:
+ *   pnpm tsx conformance/run-json-schema-suite.ts               # required suite
+ *   pnpm tsx conformance/run-json-schema-suite.ts --optional    # + optional suite
+ *   pnpm tsx conformance/run-json-schema-suite.ts --filter=type # only files matching "type"
+ */
+
+import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { resolve, join, basename } from "node:path";
+import { compileSchema, defaultVocabularies } from "../packages/schema/src/index.ts";
+import { builtInFormats } from "../packages/formats/src/index.ts";
+
+interface Case {
+  description: string;
+  data: unknown;
+  valid: boolean;
+}
+interface Group {
+  description: string;
+  schema: unknown;
+  tests: Case[];
+}
+interface FileResult {
+  file: string;
+  groups: number;
+  cases: number;
+  pass: number;
+  fail: number;
+  error: number;
+  mismatches: Array<{
+    group: string;
+    test: string;
+    data: unknown;
+    expected: boolean;
+    actual: boolean | "error";
+    reason?: string;
+  }>;
+}
+
+const SUITE_ROOT = resolve(new URL(".", import.meta.url).pathname, "JSON-Schema-Test-Suite");
+const TESTS_DIR = join(SUITE_ROOT, "tests", "draft2020-12");
+
+const args = new Set(process.argv.slice(2));
+const includeOptional = args.has("--optional");
+const filterArg = process.argv.slice(2).find((a) => a.startsWith("--filter="));
+const filterPattern = filterArg?.slice("--filter=".length);
+
+function listJsonFiles(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir)) {
+    const p = join(dir, entry);
+    const st = statSync(p);
+    if (st.isFile() && entry.endsWith(".json")) out.push(p);
+  }
+  return out;
+}
+
+function runFile(path: string): FileResult {
+  const groups = JSON.parse(readFileSync(path, "utf8")) as Group[];
+  const result: FileResult = {
+    file: basename(path),
+    groups: groups.length,
+    cases: 0,
+    pass: 0,
+    fail: 0,
+    error: 0,
+    mismatches: [],
+  };
+  for (const group of groups) {
+    let validate: ((data: unknown) => { valid: boolean }) | undefined;
+    try {
+      const compiled = compileSchema(group.schema as never, {
+        vocabularies: defaultVocabularies,
+        formats: builtInFormats,
+      });
+      validate = compiled.validate;
+    } catch (err) {
+      for (const t of group.tests) {
+        result.cases += 1;
+        result.error += 1;
+        result.mismatches.push({
+          group: group.description,
+          test: t.description,
+          data: t.data,
+          expected: t.valid,
+          actual: "error",
+          reason: `compile: ${(err as Error).message}`,
+        });
+      }
+      continue;
+    }
+    for (const t of group.tests) {
+      result.cases += 1;
+      let actual: boolean | "error";
+      let reason: string | undefined;
+      try {
+        actual = validate(t.data).valid;
+      } catch (err) {
+        actual = "error";
+        reason = `runtime: ${(err as Error).message}`;
+      }
+      if (actual === t.valid) {
+        result.pass += 1;
+      } else {
+        if (actual === "error") result.error += 1;
+        else result.fail += 1;
+        result.mismatches.push({
+          group: group.description,
+          test: t.description,
+          data: t.data,
+          expected: t.valid,
+          actual,
+          reason,
+        });
+      }
+    }
+  }
+  return result;
+}
+
+function matches(filename: string): boolean {
+  if (filterPattern === undefined) return true;
+  return filename.includes(filterPattern);
+}
+
+const files: string[] = [];
+for (const f of listJsonFiles(TESTS_DIR)) if (matches(basename(f))) files.push(f);
+if (includeOptional) {
+  const optDir = join(TESTS_DIR, "optional");
+  try {
+    for (const f of listJsonFiles(optDir)) if (matches(basename(f))) files.push(f);
+  } catch {
+    // optional directory is missing — that's fine
+  }
+}
+
+const results: FileResult[] = [];
+for (const f of files) results.push(runFile(f));
+
+let totalCases = 0;
+let totalPass = 0;
+let totalFail = 0;
+let totalError = 0;
+for (const r of results) {
+  totalCases += r.cases;
+  totalPass += r.pass;
+  totalFail += r.fail;
+  totalError += r.error;
+}
+
+// Print terse table, plus the per-file breakdown at the end.
+console.log("file".padEnd(40) + "pass  fail  error  total");
+console.log("-".repeat(70));
+for (const r of results.sort((a, b) => a.file.localeCompare(b.file))) {
+  const line =
+    r.file.padEnd(40) +
+    String(r.pass).padStart(4) +
+    String(r.fail).padStart(6) +
+    String(r.error).padStart(7) +
+    String(r.cases).padStart(7);
+  console.log(line);
+}
+console.log("-".repeat(70));
+console.log(
+  "TOTAL".padEnd(40) +
+    String(totalPass).padStart(4) +
+    String(totalFail).padStart(6) +
+    String(totalError).padStart(7) +
+    String(totalCases).padStart(7) +
+    `    (${((100 * totalPass) / Math.max(totalCases, 1)).toFixed(1)}%)`,
+);
+
+// Drop a JSON summary for the "flag inconsistencies" workflow.
+const summaryPath = resolve(
+  new URL(".", import.meta.url).pathname,
+  `json-schema-results${includeOptional ? "-with-optional" : ""}.json`,
+);
+writeFileSync(summaryPath, JSON.stringify(results, null, 2));
+console.log(`\nPer-file mismatches written to ${summaryPath}`);
