@@ -82,9 +82,12 @@ export interface CreateErrorParams {
  * @public
  */
 export function createError(params: CreateErrorParams): ValidationError {
+  // Snapshot path — generated validators reuse a single mutable path array
+  // across traversal (push/pop per depth), so freezing the segments here
+  // protects the error from later mutations.
   return {
     code: params.code,
-    path: params.path,
+    path: [...params.path],
     message: params.message,
     params: params.params ?? {},
     children: params.children ?? [],
@@ -116,7 +119,8 @@ export function createLeafError(
   message: string,
   params: Record<string, unknown> = {},
 ): ValidationError {
-  return { code, path, message, params, children: [] };
+  // See note in {@link createError} on snapshotting.
+  return { code, path: [...path], message, params, children: [] };
 }
 
 /**
@@ -150,7 +154,8 @@ export function createBranchError(
   children: ValidationError[],
   params: Record<string, unknown> = {},
 ): ValidationError {
-  return { code, path, message, params, children };
+  // See note in {@link createError} on snapshotting.
+  return { code, path: [...path], message, params, children };
 }
 
 /**

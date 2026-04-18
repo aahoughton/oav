@@ -233,12 +233,14 @@ export const dependentRequiredKeyword: KeywordDefinition = {
             for (const prop of required) {
               const propLit = quoteString(prop);
               gi.if(`!Object.prototype.hasOwnProperty.call(${ctx.data}, ${propLit})`, () => {
-                ctx.pushError(
-                  `${NAMES.DEPS}.createLeafError(` +
-                    `${quoteString("dependentRequired")}, [...${ctx.path}, ${propLit}], ` +
-                    `\`property "${prop}" is required when "${trigger}" is present\`, ` +
-                    `{ trigger: ${triggerLit}, missing: ${propLit} })`,
-                );
+                ctx.withPathSegment(propLit, () => {
+                  ctx.pushError(
+                    `${NAMES.DEPS}.createLeafError(` +
+                      `${quoteString("dependentRequired")}, ${ctx.path}, ` +
+                      `\`property "${prop}" is required when "${trigger}" is present\`, ` +
+                      `{ trigger: ${triggerLit}, missing: ${propLit} })`,
+                  );
+                });
               });
             }
           });

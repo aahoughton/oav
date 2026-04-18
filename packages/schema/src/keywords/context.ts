@@ -139,7 +139,17 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     if (stmt !== "") inputs.gen.line(stmt);
   };
 
-  const tryInline = (schema: SchemaObject, dataExpr: string, pathExpr: string): boolean => {
+  // Push a path segment onto the shared mutable path array, run `body`,
+  // then pop. Runtime helpers (`createError`, `createLeafError`,
+  // `createBranchError`) snapshot `path` at error-creation time, so
+  // errors emitted inside `body` keep the correct path after the pop.
+  const withPathSegment = (segmentExpr: string, body: () => void): void => {
+    inputs.gen.line(`${inputs.path}.push(${segmentExpr});`);
+    body();
+    inputs.gen.line(`${inputs.path}.pop();`);
+  };
+
+  const tryInline = (schema: SchemaObject, dataExpr: string): boolean => {
     if (inputs.byKeyword === undefined) return false;
     const allKeys = Object.keys(schema);
     let validationKey: string | undefined;
@@ -152,14 +162,16 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     if (!INLINEABLE_SINGLE_KEYWORDS.has(validationKey)) return false;
     const kw = inputs.byKeyword.get(validationKey);
     if (kw === undefined) return false;
-    // Compile the single keyword inline with the caller's errors accumulator
-    // and overridden data/path expressions.
+    // Compile the single keyword inline with the caller's errors
+    // accumulator and overridden data expression. The path variable is
+    // shared: the surrounding withPathSegment() (if any) has already
+    // pushed the segment.
     const innerCtx = createKeywordContext({
       gen: inputs.gen,
       schema: (schema as Record<string, unknown>)[validationKey],
       parentSchema: schema,
       data: dataExpr,
-      path: pathExpr,
+      path: inputs.path,
       errors: inputs.errors,
       subschema: inputs.subschema,
       resolveRef: inputs.resolveRef,
@@ -175,24 +187,34 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
   const emitSubschemaValidation = (
     schema: SchemaOrBoolean,
     dataExpr: string,
-    pathExpr: string,
+    segmentExpr?: string,
   ): void => {
-    if (schema === true) return;
-    if (schema === false) {
-      const falseErr =
-        `${NAMES.DEPS}.createLeafError("false", ${pathExpr}, ` +
-        `"schema is false, nothing is valid")`;
-      inputs.gen.line(emitPushStatement(inputs.errors, falseErr, gated));
-      return;
+    const emitInner = (): void => {
+      if (schema === true) return;
+      if (schema === false) {
+        const falseErr =
+          `${NAMES.DEPS}.createLeafError("false", ${inputs.path}, ` +
+          `"schema is false, nothing is valid")`;
+        inputs.gen.line(emitPushStatement(inputs.errors, falseErr, gated));
+        return;
+      }
+      if (tryInline(schema, dataExpr)) return;
+      // Fall back: compile subschema to a named function and call it
+      // with the SHARED path. The sub-function's error emissions
+      // snapshot the path before committing it to ValidationError, so
+      // the shared-array reuse is safe.
+      const fn = inputs.subschema(schema);
+      const errVar = inputs.gen.scope.name("e");
+      inputs.gen.const(errVar, `${fn}(${dataExpr}, ${inputs.path})`);
+      inputs.gen.if(`${errVar} !== null`, () => {
+        inputs.gen.line(`${inputs.errors}.push(${errVar});`);
+      });
+    };
+    if (segmentExpr === undefined) {
+      emitInner();
+    } else {
+      withPathSegment(segmentExpr, emitInner);
     }
-    if (tryInline(schema, dataExpr, pathExpr)) return;
-    // Fall back: compile subschema to a named function and call it.
-    const fn = inputs.subschema(schema);
-    const errVar = inputs.gen.scope.name("e");
-    inputs.gen.const(errVar, `${fn}(${dataExpr}, ${pathExpr})`);
-    inputs.gen.if(`${errVar} !== null`, () => {
-      inputs.gen.line(`${inputs.errors}.push(${errVar});`);
-    });
   };
 
   return {
@@ -215,6 +237,7 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     liftError,
     budgetBreakStmt,
     emitBudgetBreak,
+    withPathSegment,
     emitSubschemaValidation,
     error: (params: EmitErrorParams) => emitError(inputs, params, gated),
   };

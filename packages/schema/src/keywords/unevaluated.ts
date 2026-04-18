@@ -42,16 +42,18 @@ export const unevaluatedPropertiesKeyword: KeywordDefinition = {
           return;
         }
         if (sub === false) {
-          ctx.pushError(
-            `${NAMES.DEPS}.createLeafError(` +
-              `${quoteString("unevaluatedProperties")}, [...${ctx.path}, ${key}], ` +
-              `\`property "\${${key}}" is not evaluated by the schema\`, ` +
-              `{ unexpected: ${key} })`,
-          );
+          ctx.withPathSegment(key, () => {
+            ctx.pushError(
+              `${NAMES.DEPS}.createLeafError(` +
+                `${quoteString("unevaluatedProperties")}, ${ctx.path}, ` +
+                `\`property "\${${key}}" is not evaluated by the schema\`, ` +
+                `{ unexpected: ${key} })`,
+            );
+          });
           ctx.emitBudgetBreak();
           return;
         }
-        ctx.emitSubschemaValidation(sub, `${ctx.data}[${key}]`, `[...${ctx.path}, ${key}]`);
+        ctx.emitSubschemaValidation(sub, `${ctx.data}[${key}]`, key);
         ctx.emitBudgetBreak();
       });
     });
@@ -85,16 +87,18 @@ export const unevaluatedItemsKeyword: KeywordDefinition = {
           return;
         }
         if (sub === false) {
-          ctx.pushError(
-            `${NAMES.DEPS}.createLeafError(` +
-              `${quoteString("unevaluatedItems")}, [...${ctx.path}, ${i}], ` +
-              `"item is not evaluated by the schema", ` +
-              `{ index: ${i} })`,
-          );
+          ctx.withPathSegment(i, () => {
+            ctx.pushError(
+              `${NAMES.DEPS}.createLeafError(` +
+                `${quoteString("unevaluatedItems")}, ${ctx.path}, ` +
+                `"item is not evaluated by the schema", ` +
+                `{ index: ${i} })`,
+            );
+          });
           ctx.emitBudgetBreak();
           return;
         }
-        ctx.emitSubschemaValidation(sub, `${ctx.data}[${i}]`, `[...${ctx.path}, ${i}]`);
+        ctx.emitSubschemaValidation(sub, `${ctx.data}[${i}]`, i);
         ctx.emitBudgetBreak();
       });
     });
@@ -167,12 +171,14 @@ export const discriminatorKeyword: KeywordDefinition = {
         g.if(
           `typeof ${discVal} !== "string"`,
           () => {
-            ctx.pushError(
-              `${NAMES.DEPS}.createLeafError(` +
-                `${quoteString("discriminator")}, [...${ctx.path}, ${propLit}], ` +
-                `\`discriminator property "${propertyName}" must be a string\`, ` +
-                `{ propertyName: ${propLit} })`,
-            );
+            ctx.withPathSegment(propLit, () => {
+              ctx.pushError(
+                `${NAMES.DEPS}.createLeafError(` +
+                  `${quoteString("discriminator")}, ${ctx.path}, ` +
+                  `\`discriminator property "${propertyName}" must be a string\`, ` +
+                  `{ propertyName: ${propLit} })`,
+              );
+            });
           },
           (gi) => {
             // Discriminator routes to ONE branch. If it returns an error,
@@ -187,14 +193,18 @@ export const discriminatorKeyword: KeywordDefinition = {
               .join("\n");
             gi.line(`switch (${discVal}) {`);
             gi.line(switchLines);
+            gi.line(`      default: {`);
+            gi.line(`        ${ctx.path}.push(${propLit});`);
             gi.line(
-              `      default: ${ctx.pushErrorStmt(
+              `        ${ctx.pushErrorStmt(
                 `${NAMES.DEPS}.createLeafError(` +
-                  `${quoteString("discriminator")}, [...${ctx.path}, ${propLit}], ` +
+                  `${quoteString("discriminator")}, ${ctx.path}, ` +
                   `\`discriminator value "\${${discVal}}" does not match any branch\`, ` +
                   `{ propertyName: ${propLit}, value: ${discVal} })`,
               )}`,
             );
+            gi.line(`        ${ctx.path}.pop();`);
+            gi.line(`      }`);
             gi.line(`    }`);
           },
         );

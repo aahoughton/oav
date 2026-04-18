@@ -128,21 +128,35 @@ export interface KeywordCompileContext {
    */
   emitBudgetBreak(): void;
   /**
-   * Emit validation for a subschema against `dataExpr` with `pathExpr`,
-   * writing any errors into the current scope's accumulator.
+   * Emit validation for a subschema against `dataExpr`, writing any
+   * errors into the current scope's accumulator. When `segmentExpr` is
+   * provided, wraps the emission in a `path.push(seg) … path.pop()`
+   * pair so the shared-mutable `path` array carries the extra segment
+   * only for the duration of this subschema's traversal.
    *
    * When the subschema is simple enough — a boolean, or a single
    * validation keyword from a safe whitelist — the keyword's code is
-   * inlined directly, avoiding the per-call function dispatch and the
-   * eager path-array allocation that a function boundary forces. For
+   * inlined directly, avoiding the per-call function dispatch. For
    * anything more complex, it falls back to compiling the subschema
-   * into a named function and emitting the usual call + lift.
+   * into a named function and emitting the usual call + lift. Either
+   * way the path is reused, not re-allocated.
    *
    * Use this instead of hand-rolling the sub-call pattern inside
    * applicator keywords (items, properties, additionalProperties,
    * patternProperties, propertyNames, unevaluatedProperties/Items).
    */
-  emitSubschemaValidation(schema: SchemaOrBoolean, dataExpr: string, pathExpr: string): void;
+  emitSubschemaValidation(schema: SchemaOrBoolean, dataExpr: string, segmentExpr?: string): void;
+  /**
+   * Emit `path.push(segmentExpr); <body>; path.pop();` into the current
+   * code generator. Use when a keyword needs to emit errors whose path
+   * includes an extra segment (e.g. `required` reports a missing
+   * property at `[...path, missingKey]`).
+   *
+   * Every runtime error-creation helper snapshots `path` before
+   * committing it to the `ValidationError`, so errors emitted inside
+   * `body` retain the correct path even after the `pop`.
+   */
+  withPathSegment(segmentExpr: string, body: () => void): void;
 }
 
 /**

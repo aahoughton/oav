@@ -20,7 +20,7 @@ export const prefixItemsKeyword: KeywordDefinition = {
     ctx.gen.if(`Array.isArray(${ctx.data})`, (g) => {
       schemas.forEach((sub, i) => {
         g.if(`${ctx.data}.length > ${i}`, (gi) => {
-          ctx.emitSubschemaValidation(sub, `${ctx.data}[${i}]`, `[...${ctx.path}, ${i}]`);
+          ctx.emitSubschemaValidation(sub, `${ctx.data}[${i}]`, String(i));
           if (ctx.evaluatedItemsVar !== null) {
             gi.line(`${ctx.evaluatedItemsVar}.add(${i});`);
           }
@@ -54,13 +54,15 @@ export const itemsKeyword: KeywordDefinition = {
           g.line(`${ctx.evaluatedItemsVar}.add(${i});`);
         }
       } else if (subSchema === false) {
-        ctx.pushError(
-          `${NAMES.DEPS}.createLeafError(` +
-            `${quoteString("items")}, [...${ctx.path}, ${i}], ` +
-            `"no additional items allowed", {})`,
-        );
+        ctx.withPathSegment(i, () => {
+          ctx.pushError(
+            `${NAMES.DEPS}.createLeafError(` +
+              `${quoteString("items")}, ${ctx.path}, ` +
+              `"no additional items allowed", {})`,
+          );
+        });
       } else {
-        ctx.emitSubschemaValidation(subSchema, `${ctx.data}[${i}]`, `[...${ctx.path}, ${i}]`);
+        ctx.emitSubschemaValidation(subSchema, `${ctx.data}[${i}]`, i);
         if (ctx.evaluatedItemsVar !== null) {
           g.line(`${ctx.evaluatedItemsVar}.add(${i});`);
         }
@@ -100,7 +102,9 @@ export const containsKeyword: KeywordDefinition = {
       const i = g.scope.name("i");
       g.forRange(i, `${ctx.data}.length`, (gi) => {
         const errVar = gi.scope.name("e");
-        gi.const(errVar, `${fn}(${ctx.data}[${i}], [...${ctx.path}, ${i}])`);
+        gi.line(`${ctx.path}.push(${i});`);
+        gi.const(errVar, `${fn}(${ctx.data}[${i}], ${ctx.path})`);
+        gi.line(`${ctx.path}.pop();`);
         gi.if(`${errVar} === null`, (gii) => {
           gii.line(`${count} += 1;`);
           gii.line(`${matchedIdx}.push(${i});`);

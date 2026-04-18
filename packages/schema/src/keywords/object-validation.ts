@@ -85,12 +85,14 @@ export const requiredKeyword: KeywordDefinition = {
       });
       g.if(`${missingVar}.length > 0`, (gi) => {
         gi.forOf("_m", missingVar, () => {
-          ctx.pushError(
-            `${NAMES.DEPS}.createLeafError(` +
-              `${quoteString("required")}, [...${ctx.path}, _m], ` +
-              `\`must have required property "\${_m}"\`, ` +
-              `{ missing: _m })`,
-          );
+          ctx.withPathSegment("_m", () => {
+            ctx.pushError(
+              `${NAMES.DEPS}.createLeafError(` +
+                `${quoteString("required")}, ${ctx.path}, ` +
+                `\`must have required property "\${_m}"\`, ` +
+                `{ missing: _m })`,
+            );
+          });
           ctx.emitBudgetBreak();
         });
       });
