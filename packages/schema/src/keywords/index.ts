@@ -11,6 +11,7 @@ export { maxItemsKeyword, minItemsKeyword, uniqueItemsKeyword } from "./array-va
 export {
   allOfKeyword,
   anyOfKeyword,
+  dependenciesKeyword,
   dependentRequiredKeyword,
   dependentSchemasKeyword,
   ifThenElseKeyword,

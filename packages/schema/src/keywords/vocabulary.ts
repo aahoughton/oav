@@ -2,6 +2,7 @@ import { maxItemsKeyword, minItemsKeyword, uniqueItemsKeyword } from "./array-va
 import {
   allOfKeyword,
   anyOfKeyword,
+  dependenciesKeyword,
   dependentRequiredKeyword,
   dependentSchemasKeyword,
   ifThenElseKeyword,
@@ -165,6 +166,7 @@ export const applicatorVocabulary: Vocabulary = {
     ifThenElseKeyword,
     dependentSchemasKeyword,
     dependentRequiredKeyword,
+    dependenciesKeyword,
     prefixItemsKeyword,
     itemsKeyword,
     containsKeyword,

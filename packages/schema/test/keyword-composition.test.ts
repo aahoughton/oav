@@ -117,6 +117,23 @@ describe("dependent keywords", () => {
     expect(v.validate({ creditCard: "x" }).valid).toBe(false);
     expect(v.validate({ billingAddress: "y" }).valid).toBe(true);
   });
+
+  it("dependencies (draft-07 compat) supports both array and schema forms", () => {
+    // Array form behaves like dependentRequired.
+    const arrayForm = compile({ dependencies: { creditCard: ["billingAddress"] } });
+    expect(arrayForm.validate({ creditCard: "x", billingAddress: "y" }).valid).toBe(true);
+    expect(arrayForm.validate({ creditCard: "x" }).valid).toBe(false);
+    expect(arrayForm.validate({}).valid).toBe(true);
+    // Schema form behaves like dependentSchemas.
+    const schemaForm = compile({
+      dependencies: { creditCard: { required: ["billingAddress"] } },
+    });
+    expect(schemaForm.validate({ creditCard: "x", billingAddress: "y" }).valid).toBe(true);
+    expect(schemaForm.validate({ creditCard: "x" }).valid).toBe(false);
+    // Non-objects are ignored (per spec) regardless of form.
+    expect(arrayForm.validate("string").valid).toBe(true);
+    expect(schemaForm.validate([1, 2]).valid).toBe(true);
+  });
 });
 
 describe("nested composition error tree", () => {

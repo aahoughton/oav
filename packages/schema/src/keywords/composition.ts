@@ -212,6 +212,60 @@ export const dependentSchemasKeyword: KeywordDefinition = {
 };
 
 /**
+ * The draft-07-compat `dependencies` keyword. Dispatches per entry:
+ * array values get `dependentRequired` semantics; object/boolean
+ * values get `dependentSchemas` semantics. Kept as a distinct
+ * keyword so schemas authored against older drafts but served under
+ * a 2020-12 dialect still validate.
+ *
+ * @public
+ */
+export const dependenciesKeyword: KeywordDefinition = {
+  keyword: "dependencies",
+  vocabulary: APPLICATOR_VOCAB,
+  applicator: true,
+  compile(ctx: KeywordCompileContext): void {
+    const deps = ctx.schema as Record<string, string[] | SchemaOrBoolean>;
+    ctx.gen.if(
+      `typeof ${ctx.data} === "object" && ${ctx.data} !== null && !Array.isArray(${ctx.data})`,
+      (g) => {
+        for (const trigger of Object.keys(deps)) {
+          const entry = deps[trigger];
+          if (entry === undefined) continue;
+          const triggerLit = quoteString(trigger);
+          if (Array.isArray(entry)) {
+            // Array form → required-property semantics.
+            g.if(`Object.prototype.hasOwnProperty.call(${ctx.data}, ${triggerLit})`, (gi) => {
+              for (const prop of entry) {
+                const propLit = quoteString(prop);
+                gi.if(`!Object.prototype.hasOwnProperty.call(${ctx.data}, ${propLit})`, () => {
+                  ctx.withPathSegment(propLit, () => {
+                    ctx.pushError(
+                      `${NAMES.DEPS}.createLeafError(` +
+                        `${quoteString("dependencies")}, ${ctx.path}, ` +
+                        `\`property "${prop}" is required when "${trigger}" is present\`, ` +
+                        `{ trigger: ${triggerLit}, missing: ${propLit} })`,
+                    );
+                  });
+                });
+              }
+            });
+          } else {
+            // Schema form → dependent-schema semantics.
+            const fn = ctx.subschema(entry);
+            g.if(`Object.prototype.hasOwnProperty.call(${ctx.data}, ${triggerLit})`, (gi) => {
+              const errVar = gi.scope.name("e");
+              gi.const(errVar, `${fn}(${ctx.data}, ${ctx.path})`);
+              gi.if(`${errVar} !== null`, () => ctx.liftError(errVar));
+            });
+          }
+        }
+      },
+    );
+  },
+};
+
+/**
  * The `dependentRequired` keyword. When a given property is present, each
  * listed companion property must also be present.
  *

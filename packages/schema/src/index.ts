@@ -31,6 +31,7 @@ export {
   createKeywordContext,
   defaultVocabularies,
   defsKeyword,
+  dependenciesKeyword,
   dependentRequiredKeyword,
   dependentSchemasKeyword,
   discriminatorKeyword,
