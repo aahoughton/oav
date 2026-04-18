@@ -8,3 +8,5 @@ tmp/
 .DS_Store
 *.log
 oav-*.tgz
+aahoughton-oav-*.tgz
+MIGRATION-NOTES.md
