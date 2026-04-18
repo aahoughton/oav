@@ -4,9 +4,9 @@
 
 ```bash
 pnpm install
-pnpm build                        # tsup each package (ESM + CJS + .d.ts)
+pnpm build                        # tsup: single multi-entry bundle (ESM + CJS + .d.ts)
 pnpm test                         # vitest for everything
-pnpm --filter=@oav/schema test    # run a single package's tests
+pnpm vitest run packages/schema   # run a single package's tests (path filter)
 pnpm lint                         # oxlint + oxfmt --check
 pnpm fmt                          # oxfmt --write .
 pnpm typecheck                    # tsc -b (composite project references)

@@ -9,23 +9,23 @@ importers:
   .:
     dependencies:
       commander:
-        specifier: ^12.1.0
+        specifier: 12.1.0
         version: 12.1.0
       yaml:
-        specifier: ^2.6.1
+        specifier: 2.8.3
         version: 2.8.3
     devDependencies:
       '@types/node':
-        specifier: ^22.10.0
+        specifier: 22.19.17
         version: 22.19.17
       tsup:
-        specifier: ^8.3.5
+        specifier: 8.5.1
         version: 8.5.1(postcss@8.5.10)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
       typescript:
-        specifier: ^5.7.3
+        specifier: 5.9.3
         version: 5.9.3
       vitest:
-        specifier: ^2.1.9
+        specifier: 2.1.9
         version: 2.1.9(@types/node@22.19.17)
 
   packages/cli:
@@ -40,23 +40,23 @@ importers:
         specifier: workspace:*
         version: link:../validator
       commander:
-        specifier: ^12.1.0
+        specifier: 12.1.0
         version: 12.1.0
     devDependencies:
       typescript:
-        specifier: ^5.7.3
+        specifier: 5.9.3
         version: 5.9.3
       vitest:
-        specifier: ^2.1.9
+        specifier: 2.1.9
         version: 2.1.9(@types/node@22.19.17)
 
   packages/core:
     devDependencies:
       typescript:
-        specifier: ^5.7.3
+        specifier: 5.9.3
         version: 5.9.3
       vitest:
-        specifier: ^2.1.9
+        specifier: 2.1.9
         version: 2.1.9(@types/node@22.19.17)
 
   packages/formats:
@@ -66,10 +66,10 @@ importers:
         version: link:../core
     devDependencies:
       typescript:
-        specifier: ^5.7.3
+        specifier: 5.9.3
         version: 5.9.3
       vitest:
-        specifier: ^2.1.9
+        specifier: 2.1.9
         version: 2.1.9(@types/node@22.19.17)
 
   packages/router:
@@ -79,10 +79,10 @@ importers:
         version: link:../core
     devDependencies:
       typescript:
-        specifier: ^5.7.3
+        specifier: 5.9.3
         version: 5.9.3
       vitest:
-        specifier: ^2.1.9
+        specifier: 2.1.9
         version: 2.1.9(@types/node@22.19.17)
 
   packages/schema:
@@ -92,10 +92,10 @@ importers:
         version: link:../core
     devDependencies:
       typescript:
-        specifier: ^5.7.3
+        specifier: 5.9.3
         version: 5.9.3
       vitest:
-        specifier: ^2.1.9
+        specifier: 2.1.9
         version: 2.1.9(@types/node@22.19.17)
 
   packages/spec:
@@ -107,14 +107,14 @@ importers:
         specifier: workspace:*
         version: link:../schema
       yaml:
-        specifier: ^2.6.1
+        specifier: 2.8.3
         version: 2.8.3
     devDependencies:
       typescript:
-        specifier: ^5.7.3
+        specifier: 5.9.3
         version: 5.9.3
       vitest:
-        specifier: ^2.1.9
+        specifier: 2.1.9
         version: 2.1.9(@types/node@22.19.17)
 
   packages/validator:
@@ -136,10 +136,10 @@ importers:
         version: link:../spec
     devDependencies:
       typescript:
-        specifier: ^5.7.3
+        specifier: 5.9.3
         version: 5.9.3
       vitest:
-        specifier: ^2.1.9
+        specifier: 2.1.9
         version: 2.1.9(@types/node@22.19.17)
 
 packages:
