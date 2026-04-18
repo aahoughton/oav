@@ -87,7 +87,9 @@ cli → validator → router
 
 ## How to add a new CLI output format
 
-1. Add a branch to `OutputFormat` in `packages/cli/src/format-output.ts`.
+1. Add the name to `KNOWN_OUTPUT_FORMATS` in
+   `packages/cli/src/format-output.ts` — the `OutputFormat` type and
+   the Commander `--format` validator are both derived from it.
 2. Add the rendering function to `packages/core/src/format.ts` (or emit
    straight from the leaves).
 3. Add a branch to `formatError()`.

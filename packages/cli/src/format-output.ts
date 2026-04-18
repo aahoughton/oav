@@ -1,11 +1,17 @@
 import { formatFlat, formatGithub, formatJson, formatText, type ValidationError } from "@oav/core";
 
+export const KNOWN_OUTPUT_FORMATS = ["text", "json", "flat", "github"] as const;
+
 /**
  * Supported output formats for the CLI.
  *
  * @public
  */
-export type OutputFormat = "text" | "json" | "flat" | "github";
+export type OutputFormat = (typeof KNOWN_OUTPUT_FORMATS)[number];
+
+export function isOutputFormat(value: string): value is OutputFormat {
+  return (KNOWN_OUTPUT_FORMATS as readonly string[]).includes(value);
+}
 
 /**
  * Format a {@link ValidationError} tree as a string in the requested style.

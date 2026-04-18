@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { resolveCommand, validateCommand, type ValidateMode } from "./commands.js";
-import type { OutputFormat } from "./format-output.js";
+import { KNOWN_OUTPUT_FORMATS, isOutputFormat, type OutputFormat } from "./format-output.js";
 
 /**
  * Build the Commander program. Exported so tests can invoke the program
@@ -43,11 +43,9 @@ export function buildProgram(): Command {
     .option("--status <code>", "response status code (required when --response)")
     .option(
       "--format <format>",
-      "text | json | flat | github",
+      KNOWN_OUTPUT_FORMATS.join(" | "),
       (value: string): OutputFormat => {
-        if (value !== "text" && value !== "json" && value !== "flat" && value !== "github") {
-          throw new Error(`unknown format: ${value}`);
-        }
+        if (!isOutputFormat(value)) throw new Error(`unknown format: ${value}`);
         return value;
       },
       "text" as OutputFormat,
