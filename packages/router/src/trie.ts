@@ -10,6 +10,12 @@ export type Segment = { kind: "literal"; value: string } | { kind: "template"; n
 /**
  * Result of a successful route match.
  *
+ * `operation` and `pathItem` are the identical references supplied to
+ * {@link createRouter}. Downstream consumers (notably `@oav/validator`)
+ * key per-operation caches on `operation`'s object identity via
+ * `WeakMap`, so any future router change must preserve that identity —
+ * do not clone, merge, or otherwise reconstruct these references.
+ *
  * @public
  */
 export interface RouteMatch {
