@@ -1,5 +1,5 @@
-import { resolve } from "node:path";
 import { defineConfig } from "tsup";
+import { workspaceAliases } from "./workspace-aliases.js";
 
 /**
  * Single-package build for the publishable `oav`.
@@ -35,14 +35,6 @@ export default defineConfig({
   tsconfig: "tsconfig.build.json",
   external: ["commander", "yaml"],
   esbuildOptions(options) {
-    options.alias = {
-      "@oav/core": resolve(__dirname, "packages/core/src/index.ts"),
-      "@oav/schema": resolve(__dirname, "packages/schema/src/index.ts"),
-      "@oav/formats": resolve(__dirname, "packages/formats/src/index.ts"),
-      "@oav/spec": resolve(__dirname, "packages/spec/src/index.ts"),
-      "@oav/router": resolve(__dirname, "packages/router/src/index.ts"),
-      "@oav/validator": resolve(__dirname, "packages/validator/src/index.ts"),
-      "@oav/cli": resolve(__dirname, "packages/cli/src/index.ts"),
-    };
+    options.alias = workspaceAliases(__dirname);
   },
 });
