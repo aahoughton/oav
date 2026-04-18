@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, expectTypeOf } from "vitest";
 import {
   collectLeaves,
   createBranchError,
@@ -6,6 +6,7 @@ import {
   createLeafError,
   joinPath,
   walkErrors,
+  type ErrorParamsFor,
   type ValidationError,
 } from "../src/errors.js";
 
@@ -98,6 +99,27 @@ describe("collectLeaves", () => {
   it("returns the root itself when the tree is a single leaf", () => {
     const leaf = createLeafError("type", [], "x");
     expect(collectLeaves(leaf)).toEqual([leaf]);
+  });
+});
+
+describe("BuiltInErrorParams", () => {
+  it("narrows known params shapes via ErrorParamsFor", () => {
+    expectTypeOf<ErrorParamsFor<"type">>().toEqualTypeOf<{
+      expected: string[];
+      actual: string;
+    }>();
+    expectTypeOf<ErrorParamsFor<"required">>().toEqualTypeOf<{ missing: string }>();
+    expectTypeOf<ErrorParamsFor<"allOf">>().toEqualTypeOf<{ total: number; failed: number }>();
+  });
+
+  it("demonstrates the read-side narrowing pattern", () => {
+    const err: ValidationError = createLeafError("required", ["body"], "missing", {
+      missing: "name",
+    });
+    if (err.code === "required") {
+      const p = err.params as ErrorParamsFor<"required">;
+      expect(p.missing).toBe("name");
+    }
   });
 });
 

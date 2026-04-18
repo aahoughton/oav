@@ -16,6 +16,146 @@
 export type PathSegment = string | number;
 
 /**
+ * Machine-readable `params` shape, per built-in error {@link ValidationError.code}.
+ *
+ * Acts as the single contract that consumers can type-narrow against:
+ *
+ * ```ts
+ * if (err.code === "type") {
+ *   const p = err.params as BuiltInErrorParams["type"];
+ *   console.log(p.expected); // typed as string[]
+ * }
+ * ```
+ *
+ * Extended via TypeScript interface declaration merging — a custom
+ * consumer (or, internally, a new keyword) can augment the map by
+ * re-declaring the interface in its own module:
+ *
+ * ```ts
+ * declare module "@oav/core" {
+ *   interface BuiltInErrorParams {
+ *     "my-custom": { reason: string };
+ *   }
+ * }
+ * ```
+ *
+ * When adding a new built-in keyword, extend this interface with the
+ * entry that describes its `params` shape. Contributors are asked to
+ * keep this list in sync — the compiler cannot verify it because
+ * errors are emitted from generated JS source.
+ *
+ * @public
+ */
+export interface BuiltInErrorParams {
+  // --- JSON Schema keywords ---
+  /** Schema-is-`false`: no data validates. */
+  false: Record<string, never>;
+  /** `type` mismatch. */
+  type: { expected: string[]; actual: string };
+  /** `const` mismatch. */
+  const: { expected: unknown; actual: unknown };
+  /** `enum` mismatch. */
+  enum: { allowed: unknown[]; actual: unknown };
+  /** `minimum` (optionally exclusive) violation. */
+  minimum: { minimum: number; exclusive: boolean; actual: number };
+  /** `maximum` (optionally exclusive) violation. */
+  maximum: { maximum: number; exclusive: boolean; actual: number };
+  /** `multipleOf` violation. */
+  multipleOf: { multipleOf: number; actual: number };
+  /** `minLength` violation. Length counted in code points. */
+  minLength: { minLength: number; actual: number };
+  /** `maxLength` violation. */
+  maxLength: { maxLength: number; actual: number };
+  /** `pattern` mismatch. */
+  pattern: { pattern: string; actual: string };
+  /** `format` assertion failure (requires format-assertion vocabulary). */
+  format: { format: string; actual: string };
+  /** `minItems` violation. */
+  minItems: { minItems: number; actual: number };
+  /** `maxItems` violation. */
+  maxItems: { maxItems: number; actual: number };
+  /** `uniqueItems` violation — indices of the first duplicate pair. */
+  uniqueItems: { duplicates: [number, number] };
+  /** `minProperties` violation. */
+  minProperties: { minProperties: number; actual: number };
+  /** `maxProperties` violation. */
+  maxProperties: { maxProperties: number; actual: number };
+  /** `required` — a required property is missing. */
+  required: { missing: string };
+  /** `items: false` — no items allowed past the prefix. */
+  items: Record<string, never>;
+  /** `contains` with `minContains` unmet. */
+  contains: { minContains: number; actual: number };
+  /** `contains` with `maxContains` exceeded. */
+  maxContains: { maxContains: number; actual: number };
+  /** `additionalProperties: false` — an unexpected property was found. */
+  additionalProperties: { unexpected: string };
+  /** `unevaluatedProperties` — a property isn't evaluated by the schema. */
+  unevaluatedProperties: { unexpected: string };
+  /** `unevaluatedItems` — an index isn't evaluated by the schema. */
+  unevaluatedItems: { index: number };
+  /** `not` — the schema matched when it shouldn't. */
+  not: Record<string, never>;
+  /** `allOf` branch — failing conjuncts listed in `children`. */
+  allOf: { total: number; failed: number };
+  /** `anyOf` branch — no branch matched. */
+  anyOf: { total: number };
+  /** `oneOf` branch — zero or >1 matched. */
+  oneOf: { total: number; matchCount: number };
+  /** Inline multi-keyword subschema wrapper — matches a compiled function's `wrapErrors` shape. */
+  schema: Record<string, never>;
+  /** `discriminator` — property absent/non-string, or value not in the mapping. */
+  discriminator: { propertyName: string; value?: string };
+  /** `dependentRequired` — a sibling required by the trigger key is missing. */
+  dependentRequired: { trigger: string; missing: string };
+  /** Draft-07 `dependencies` array form — same as dependentRequired. */
+  dependencies: { trigger: string; missing: string };
+
+  // --- HTTP-level wrappers (emitted by @oav/validator) ---
+  /** No route matched `method` + `path`. */
+  route: { method: string; path: string };
+  /** Request or response body. Branch when sub-errors bubble; leaf when the body is missing. */
+  body: Record<string, never>;
+  /** Request branch — children are parameter / body failures. */
+  request: Record<string, never>;
+  /** Response branch — children are status / content-type / header / body failures. */
+  response: { status: number };
+  /** Content-Type negotiation failed. */
+  "content-type": { contentType: string | undefined; accepted?: string[]; declared?: string[] };
+  /** No declared response matches the status. */
+  status: { status: number; declared?: string[] };
+  /** A required response header is missing. */
+  header: { name: string };
+  /** Parameter validation failures, scoped by `in`. */
+  "path-param": { name: string; in: "path" };
+  "query-param": { name: string; in: "query" };
+  "header-param": { name: string; in: "header" };
+  "cookie-param": { name: string; in: "cookie" };
+
+  /** Catch-all for custom / not-yet-documented codes. */
+  [code: string]: Record<string, unknown>;
+}
+
+/**
+ * Type helper that narrows `ValidationError.params` for a specific
+ * `code`. The generic parameter must be a key of
+ * {@link BuiltInErrorParams}.
+ *
+ * ```ts
+ * function describe(err: ValidationError): string {
+ *   if (err.code === "required") {
+ *     const p = err.params as ErrorParamsFor<"required">;
+ *     return `missing ${p.missing}`;
+ *   }
+ *   return err.message;
+ * }
+ * ```
+ *
+ * @public
+ */
+export type ErrorParamsFor<Code extends keyof BuiltInErrorParams> = BuiltInErrorParams[Code];
+
+/**
  * A single validation error, always a node in a {@link ValidationError} tree.
  *
  * Every error has a `children` array — leaf errors have `children: []`,
@@ -37,7 +177,11 @@ export interface ValidationError {
   path: PathSegment[];
   /** Human-readable description of the failure. */
   message: string;
-  /** Keyword-specific machine-readable details. */
+  /**
+   * Keyword-specific machine-readable details. The shape per `code` is
+   * documented in {@link BuiltInErrorParams}; consumers can use
+   * {@link ErrorParamsFor} to narrow.
+   */
   params: Record<string, unknown>;
   /** Child errors; always an array, empty for leaf errors. */
   children: ValidationError[];

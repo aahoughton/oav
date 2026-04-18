@@ -93,6 +93,11 @@ cli → validator → router
 4. Add a `test/keyword-<name>.test.ts` that compiles a schema, validates
    good + bad data, and asserts on `code` / `path` / `params` /
    `children` structure — never on generated code strings.
+5. Add an entry to `BuiltInErrorParams` in `packages/core/src/errors.ts`
+   describing the new error `code` and the shape of its `params`
+   object. The compiler can't check this (errors are emitted through
+   generated JS source), but it's the documented contract consumers
+   narrow against — drift here is a silent bug.
 
 ## How to add a new format
 

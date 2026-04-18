@@ -5,7 +5,9 @@ export {
   createLeafError,
   joinPath,
   walkErrors,
+  type BuiltInErrorParams,
   type CreateErrorParams,
+  type ErrorParamsFor,
   type PathSegment,
   type ValidationError,
 } from "./errors.js";
