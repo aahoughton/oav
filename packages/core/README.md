@@ -31,6 +31,23 @@ All four produce strings you can hand to stdout/stderr.
 
 ## Types
 
-Re-exports the shapes `@oav` needs from OpenAPI 3.1 and HTTP:
+Re-exports the shapes `@oav` needs from OpenAPI 3.0 / 3.1 / 3.2 and HTTP:
 `OpenAPIDocument`, `PathItem`, `OperationObject`, `ParameterObject`,
-`SchemaObject`, `SchemaOrBoolean`, `HttpRequest`, `HttpResponse`, etc.
+`ReferenceObject`, `SchemaObject`, `SchemaOrBoolean`, `HttpRequest`,
+`HttpResponse`, etc. `OperationObject.requestBody`,
+`OperationObject.responses[code]`, `parameters[i]`, and
+`ResponseObject.headers[name]` each widen to `T | ReferenceObject` so
+the types track the wire shape.
+
+## Version detection
+
+```ts
+import { detectOpenAPIVersion } from "@oav/core";
+
+detectOpenAPIVersion({ openapi: "3.0.3", info: {}, paths: {} }); // "3.0"
+detectOpenAPIVersion({ openapi: "3.2.0", info: {}, paths: {} }); // "3.2"
+detectOpenAPIVersion({ openapi: "99.0", info: {}, paths: {} }); // undefined
+```
+
+`@oav/validator` uses this at construction to pick a dialect — callers
+rarely need to invoke it directly.

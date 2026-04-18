@@ -32,26 +32,46 @@ Five built-in vocabularies compose into `defaultVocabularies`:
 - `unevaluatedVocabulary` — `unevaluatedProperties`, `unevaluatedItems`.
 - `formatVocabulary` — `format` (assertive by default).
 
-## Writing a custom keyword
+## Registering a custom keyword
+
+Pass a `keywords` record at compile time — the compiler wraps each
+validator into a `KeywordDefinition`, registers it alongside the
+built-ins, and dispatches via generated code on the hot path:
 
 ```ts
-import { type KeywordDefinition } from "@oav/schema";
+import { compileSchema, defaultVocabularies } from "@oav/schema";
 
-export const divisibleBy: KeywordDefinition = {
-  keyword: "divisibleBy",
-  vocabulary: "x-extensions",
-  compile(ctx) {
-    const divisor = ctx.schema as number;
-    ctx.gen.if(`typeof ${ctx.data} === "number" && ${ctx.data} % ${divisor} !== 0`, (g) =>
-      ctx.error({ code: "divisibleBy", message: `must be divisible by ${divisor}` }),
-    );
+const { validate } = compileSchema(
+  { type: "integer", divisibleBy: 7 },
+  {
+    vocabularies: defaultVocabularies,
+    keywords: {
+      divisibleBy: (data, schemaValue) =>
+        typeof data !== "number" || data % (schemaValue as number) === 0,
+    },
   },
-};
+);
 ```
 
-Keyword authors receive only what they need: `gen` (codegen handle),
-`data` / `path` / `errors` (JS expressions), `subschema()`,
-`resolveRef()`, `error()`. There is no `this` threading of the compiler.
+Return `true` for valid, `false` for a generic failure, or
+`{ message?, params? }` for a custom error leaf. Names that collide with
+a built-in keyword throw at construction.
+
+For lower-level extensions (applicator keywords, evaluation tracking,
+custom emit shapes), write a full `KeywordDefinition` and put it in your
+own `Vocabulary`. Keyword authors see only what they need: `gen`, `data`
+/ `path` / `errors`, `subschema()`, `resolveRef()`, `pushError()` /
+`liftError()`, and `emitSubschemaValidation()`.
+
+## Error-collection modes
+
+`compileSchema(schema, { maxErrors: N })` caps the tree at N leaves and
+short-circuits hot loops once the budget is exhausted. `maxErrors: 1` is
+classic fast-fail; larger values bound CPU/memory on huge invalid
+payloads. The returned `{ valid: false, error, truncated: true }` flags
+when the report was shortened. Omit the option for zero-overhead
+unlimited collection — codegen is specialised so uncapped callers emit
+plain `errors.push` with no budget checks.
 
 ## `$ref` and cycles
 

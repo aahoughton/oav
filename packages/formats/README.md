@@ -26,3 +26,29 @@ Formats:
 - **misc** — `regex`, `uuid`
 
 Each validator is a pure `(value: string) => boolean`.
+
+## Registering a custom format
+
+The validator and compiler both accept a `formats` option that merges on
+top of the built-ins:
+
+```ts
+import { createValidator } from "@oav/validator";
+
+const v = createValidator(spec, {
+  formats: {
+    "e164-phone": (s) => /^\+[1-9]\d{6,14}$/.test(s),
+  },
+});
+```
+
+In the spec, reference the format as you would any built-in:
+
+```yaml
+Phone:
+  type: string
+  format: e164-phone
+```
+
+See [`examples/custom-formats.ts`](../../examples/custom-formats.ts) for
+a runnable end-to-end.
