@@ -5,10 +5,11 @@ Generated against the upstream test suites listed in
 
 ## Summary
 
-| Source                            | Cases | Pass | Mismatch | Error | % pass |
-| --------------------------------- | ----- | ---- | -------- | ----- | ------ |
-| JSON Schema Test Suite (required) | 1290  | 1158 | 64       | 68    | 89.8%  |
-| OpenAPI `petstore` via `oav` CLI  | 14    | 14   | 0        | 0     | 100%   |
+| Source                              | Cases | Pass | Mismatch | Error | % pass |
+| ----------------------------------- | ----- | ---- | -------- | ----- | ------ |
+| JSON Schema Test Suite (required)   | 1290  | 1158 | 64       | 68    | 89.8%  |
+| JSON Schema Test Suite (+ optional) | 1452  | 1314 | 69       | 69    | 90.5%  |
+| OpenAPI `petstore` via `oav` CLI    | 14    | 14   | 0        | 0     | 100%   |
 
 "Mismatch" = our verdict differs from upstream; "error" = our compiler
 crashed (we couldn't produce a verdict at all).
@@ -67,6 +68,11 @@ validation, resolve `$dynamicRef` at call time.
   default and put the assertion keyword behind an opt-in vocabulary that
   `@oav/validator` enables. Commit `e182afb`.
 - JSON Pointer percent-decoding — 6 → 0 on `ref.json`. Same commit.
+- `dependencies` (draft-07 compat) — 14 → 0 on
+  `optional/dependencies-compatibility.json`. The keyword was split in
+  2020-12 into `dependentRequired`/`dependentSchemas`, but older schemas
+  continue to use the combined form; added a keyword that dispatches
+  per-entry on value shape. Commit `79af5a7`.
 
 ### 5. Remaining "single-case" failures — actually facets of #1–#3
 
@@ -85,6 +91,28 @@ above, and can't be fixed without the underlying work.
   inner entry clobbers the outer one. Correct handling requires scoping
   anchors by their enclosing `$id` URI — that's the same base-URI stack
   #1 needs.
+
+## Optional-suite breakdown
+
+Running with `--optional` widens to 1452 cases. The extra 162 cases
+live under `tests/draft2020-12/optional/`. Current state:
+
+| File                                                                                                 | Status                                                                                                                         |
+| ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `anchor.json`, `cross-draft.json`                                                                    | 3 errors — external-ref loading (same as category #1).                                                                         |
+| `dependencies-compatibility.json`                                                                    | **14 → 0** (fixed — commit `79af5a7`).                                                                                         |
+| `dynamicRef.json`                                                                                    | 2 failures — subset of category #3.                                                                                            |
+| `float-overflow.json`                                                                                | 1 failure — this is "optional overflow handling", explicitly flagged as implementation-optional in the test group description. |
+| `format-assertion.json`                                                                              | 2 failures — requires meta-schema loading via `$schema`, tied to category #1.                                                  |
+| `bignum.json`, `ecmascript-regex.json`                                                               | pass.                                                                                                                          |
+| `non-bmp-regex.json`, `id.json`, `no-schema.json`, `unknownKeyword.json`, `refOfUnknownKeyword.json` | pass.                                                                                                                          |
+
+The per-format subtree (`optional/format/*.json`) isn't traversed by
+our runner. Those tests target strict-format-assertion behaviour; by
+spec default and our default, format is annotation-only, so most tests
+there would vacuously pass. Enabling format-assertion and running them
+is a separate exercise — each format would bring its own tail of RFC
+edge cases that the suite tightens every few revisions.
 
 ## Behavioural parity notes
 
