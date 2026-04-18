@@ -13,12 +13,16 @@
  *   - a per-file breakdown with concrete mismatches listed
  *
  * Usage:
- *   pnpm tsx conformance/run-json-schema-suite.ts               # required suite
- *   pnpm tsx conformance/run-json-schema-suite.ts --optional    # + optional suite
- *   pnpm tsx conformance/run-json-schema-suite.ts --filter=type # only files matching "type"
+ *   pnpm tsx conformance/run-json-schema-suite.ts                 # required suite
+ *   pnpm tsx conformance/run-json-schema-suite.ts --optional      # + optional suite
+ *   pnpm tsx conformance/run-json-schema-suite.ts --filter=type   # only files matching "type"
+ *   pnpm tsx conformance/run-json-schema-suite.ts --check-baseline
+ *     # exits non-zero if the current run's pass count drops below
+ *     # the one recorded in the committed results file. Used in CI to
+ *     # catch regressions without failing on any single mismatch.
  */
 
-import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { resolve, join, basename } from "node:path";
 import { compileSchema, defaultVocabularies } from "../packages/schema/src/index.ts";
 import { builtInFormats } from "../packages/formats/src/index.ts";
@@ -55,6 +59,7 @@ const TESTS_DIR = join(SUITE_ROOT, "tests", "draft2020-12");
 
 const args = new Set(process.argv.slice(2));
 const includeOptional = args.has("--optional");
+const checkBaseline = args.has("--check-baseline");
 const filterArg = process.argv.slice(2).find((a) => a.startsWith("--filter="));
 const filterPattern = filterArg?.slice("--filter=".length);
 
@@ -188,5 +193,24 @@ const summaryPath = resolve(
   new URL(".", import.meta.url).pathname,
   `json-schema-results${includeOptional ? "-with-optional" : ""}.json`,
 );
-writeFileSync(summaryPath, JSON.stringify(results, null, 2));
-console.log(`\nPer-file mismatches written to ${summaryPath}`);
+if (checkBaseline) {
+  if (!existsSync(summaryPath)) {
+    console.error(`--check-baseline: no committed results at ${summaryPath}`);
+    process.exit(2);
+  }
+  const baseline = JSON.parse(readFileSync(summaryPath, "utf8")) as FileResult[];
+  const baselinePass = baseline.reduce((n, r) => n + r.pass, 0);
+  const baselineCases = baseline.reduce((n, r) => n + r.cases, 0);
+  console.log(`\nbaseline: ${baselinePass}/${baselineCases} pass`);
+  console.log(`current:  ${totalPass}/${totalCases} pass`);
+  if (totalPass < baselinePass) {
+    console.error(
+      `FAIL: pass count regressed (${totalPass} < baseline ${baselinePass}). Inspect mismatches in ${summaryPath}.`,
+    );
+    process.exit(1);
+  }
+  console.log("OK: pass count meets or exceeds baseline.");
+} else {
+  writeFileSync(summaryPath, JSON.stringify(results, null, 2));
+  console.log(`\nPer-file mismatches written to ${summaryPath}`);
+}

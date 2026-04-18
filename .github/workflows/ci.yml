@@ -4,6 +4,10 @@ on:
   pull_request:
   push:
     branches: [main]
+  schedule:
+    # Nightly (08:30 UTC) run of the upstream JSON Schema Test Suite.
+    - cron: "30 8 * * *"
+  workflow_dispatch:
 
 concurrency:
   # Cancel in-progress runs for the same ref when new commits land. Main
@@ -87,6 +91,33 @@ jobs:
       - name: OpenAPI conformance cases
         working-directory: conformance
         run: pnpm tsx run-openapi-cases.ts
+
+  json-schema-suite:
+    # Full upstream JSON Schema Test Suite. Runs nightly and on
+    # workflow_dispatch — not on every PR, because the suite is ~1300
+    # cases and its clone is ~15 MB. Fails only when the current pass
+    # count regresses below the committed baseline.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: install conformance deps
+        working-directory: conformance
+        run: pnpm install --frozen-lockfile
+      - name: clone upstream suite
+        working-directory: conformance
+        run: git clone --depth 1 https://github.com/json-schema-org/JSON-Schema-Test-Suite.git
+      - name: JSON Schema suite (required)
+        working-directory: conformance
+        run: pnpm tsx run-json-schema-suite.ts --check-baseline
 
   pack-smoke:
     # Catches `exports` map / `files` / bundler regressions that unit
