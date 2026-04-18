@@ -2,6 +2,10 @@ import type { SchemaObject, SchemaOrBoolean, ValidationError } from "@oav/core";
 import { CodeGen, NAMES, quoteString } from "../codegen/index.js";
 import type { KeywordDefinition, Vocabulary } from "../keywords/types.js";
 import { createKeywordContext } from "../keywords/context.js";
+import {
+  createCustomKeywordDefinition,
+  type CustomKeywordValidator,
+} from "../keywords/custom.js";
 import { createRefResolver, resolve, type RefResolver } from "../resolve/index.js";
 import { createDeps, type ValidatorDeps } from "./runtime.js";
 
@@ -70,6 +74,24 @@ export interface CompileOptions {
    * semantics, where siblings are honoured).
    */
   refSuppressesSiblings?: boolean;
+  /**
+   * User-registered keywords, keyed by keyword name. Each validator is
+   * invoked whenever its name appears as a property in a schema object.
+   * Custom names must not collide with a keyword already supplied by
+   * the configured {@link CompileOptions.vocabularies}.
+   *
+   * @example
+   * ```ts
+   * compileSchema(schema, {
+   *   vocabularies: [coreVocabulary, validationVocabulary],
+   *   keywords: {
+   *     divisibleBy: (data, schemaValue) =>
+   *       typeof data !== "number" || data % (schemaValue as number) === 0,
+   *   },
+   * });
+   * ```
+   */
+  keywords?: Record<string, CustomKeywordValidator>;
 }
 
 /** @internal */
@@ -124,6 +146,18 @@ export function compileSchema(schema: SchemaOrBoolean, options: CompileOptions):
       ordered.push(kw);
     }
   }
+  if (options.keywords) {
+    for (const name of Object.keys(options.keywords)) {
+      if (byKeyword.has(name)) {
+        throw new Error(
+          `custom keyword "${name}" conflicts with a built-in keyword from the configured vocabularies`,
+        );
+      }
+      const def = createCustomKeywordDefinition(name);
+      byKeyword.set(name, def);
+      ordered.push(def);
+    }
+  }
 
   const maxErrors = options.maxErrors ?? Number.POSITIVE_INFINITY;
   const deps = createDeps(maxErrors);
@@ -131,6 +165,12 @@ export function compileSchema(schema: SchemaOrBoolean, options: CompileOptions):
     for (const name of Object.keys(options.formats)) {
       const fn = options.formats[name];
       if (fn !== undefined) deps.formats.set(name, fn);
+    }
+  }
+  if (options.keywords) {
+    for (const name of Object.keys(options.keywords)) {
+      const fn = options.keywords[name];
+      if (fn !== undefined) deps.customKeywords.set(name, fn);
     }
   }
   if (options.extraDeps) Object.assign(deps, options.extraDeps);

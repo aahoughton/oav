@@ -1,4 +1,5 @@
 import { createBranchError, createError, createLeafError, type ValidationError } from "@oav/core";
+import type { CustomKeywordValidator } from "../keywords/custom.js";
 
 /**
  * Runtime helpers exposed to every generated validator through the `deps`
@@ -20,6 +21,8 @@ export interface ValidatorDeps {
   patterns: Map<string, RegExp>;
   formats: Map<string, (value: string) => boolean>;
   refs: Map<string, Validator>;
+  /** User-registered keyword validators, keyed by keyword name. */
+  customKeywords: Map<string, CustomKeywordValidator>;
   /**
    * The configured maximum number of leaf errors to collect, or
    * `Number.POSITIVE_INFINITY` when uncapped. Baked in at compile time;
@@ -168,6 +171,7 @@ export function createDeps(maxErrors: number = Number.POSITIVE_INFINITY): Valida
     patterns: new Map<string, RegExp>(),
     formats: new Map<string, (value: string) => boolean>(),
     refs: new Map<string, Validator>(),
+    customKeywords: new Map<string, CustomKeywordValidator>(),
     maxErrors,
     errorsRemaining: maxErrors,
     truncated: false,

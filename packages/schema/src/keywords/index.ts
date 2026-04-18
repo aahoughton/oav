@@ -1,4 +1,10 @@
 export { createKeywordContext, type KeywordContextInputs } from "./context.js";
+export {
+  createCustomKeywordDefinition,
+  customKeywordVocabulary,
+  type CustomKeywordFailure,
+  type CustomKeywordValidator,
+} from "./custom.js";
 export type {
   CompileRuntime,
   EmitErrorParams,

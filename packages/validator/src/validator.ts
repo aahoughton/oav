@@ -29,6 +29,7 @@ import {
   unevaluatedVocabulary,
   validationVocabulary,
   type CompiledSchema,
+  type CustomKeywordValidator,
   type RefResolver,
   type Vocabulary,
 } from "@oav/schema";
@@ -77,7 +78,7 @@ function prefixPath(err: ValidationError, prefix: (string | number)[]): Validati
   return {
     ...err,
     path: [...prefix, ...err.path],
-    children: err.children.map((c) => prefixPath(c, prefix)),
+    children: err.children.map((c: ValidationError) => prefixPath(c, prefix)),
   };
 }
 
@@ -125,6 +126,23 @@ export interface ValidatorOptions {
    * test-only overrides).
    */
   vocabularies?: Vocabulary[];
+  /**
+   * User-registered schema keywords. The record is keyed by keyword
+   * name; each validator is invoked whenever that name appears in a
+   * schema. Keys must not collide with built-in keywords. See
+   * {@link CustomKeywordValidator} for the function signature.
+   *
+   * @example
+   * ```ts
+   * createValidator(spec, {
+   *   keywords: {
+   *     divisibleBy: (data, schemaValue) =>
+   *       typeof data !== "number" || data % (schemaValue as number) === 0,
+   *   },
+   * });
+   * ```
+   */
+  keywords?: Record<string, CustomKeywordValidator>;
 }
 
 interface OperationCache {
@@ -201,6 +219,7 @@ export function createValidator(
       refResolver,
       maxErrors: options.maxErrors,
       refSuppressesSiblings: dialect.refSuppressesSiblings,
+      keywords: options.keywords,
     });
     compiledCache.set(schema, c);
     return c;
