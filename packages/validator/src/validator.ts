@@ -92,6 +92,13 @@ function prefixPath(err: ValidationError, prefix: (string | number)[]): Validati
 export interface OavValidator {
   validateRequest(req: HttpRequest): ValidationError | null;
   validateResponse(req: HttpRequest, res: HttpResponse): ValidationError | null;
+  /**
+   * The OpenAPI version detected from the spec's `openapi` field, or
+   * `undefined` when the field was missing/malformed and the validator
+   * fell back to its default dialect (see
+   * {@link ValidatorOptions.onUnknownVersion}).
+   */
+  readonly detectedVersion: OpenAPIVersion | undefined;
 }
 
 /**
@@ -143,6 +150,18 @@ export interface ValidatorOptions {
    * ```
    */
   keywords?: Record<string, CustomKeywordValidator>;
+  /**
+   * How to handle a spec whose `openapi` field is missing, malformed,
+   * or not one of the supported versions (3.0, 3.1, 3.2).
+   *
+   * - `"fallback31"` (default) — silently use the 3.1 dialect.
+   * - `"warn"` — write a message to `stderr` and use the 3.1 dialect.
+   * - `"throw"` — throw an `Error`.
+   *
+   * Regardless of the choice, `OavValidator.detectedVersion` is set to
+   * `undefined` so callers can introspect after the fact.
+   */
+  onUnknownVersion?: "fallback31" | "warn" | "throw";
 }
 
 interface OperationCache {
@@ -190,19 +209,26 @@ export function createValidator(
   // Version detection is pure compile-time: we bake the right
   // vocabularies into the compiled validator and never branch on
   // version per request.
+  const detectedVersion = detectOpenAPIVersion(spec);
   const dialect: DialectConfig = (() => {
     if (options.vocabularies !== undefined) {
       return { vocabularies: options.vocabularies, refSuppressesSiblings: false };
     }
-    const version = detectOpenAPIVersion(spec);
-    if (version === undefined) {
-      // Fall through to the 3.1 dialect by default. Missing/unknown
-      // `openapi` strings are common in test fixtures and hand-built
-      // documents; erroring out here would be more annoying than
-      // helpful.
+    if (detectedVersion === undefined) {
+      const policy = options.onUnknownVersion ?? "fallback31";
+      if (policy === "throw") {
+        throw new Error(
+          "createValidator: spec has a missing or unsupported `openapi` field; set onUnknownVersion to 'warn' or 'fallback31' to accept it",
+        );
+      }
+      if (policy === "warn") {
+        process.stderr.write(
+          "createValidator: spec has a missing or unsupported `openapi` field; falling back to the 3.1 dialect\n",
+        );
+      }
       return { vocabularies: openapi31Vocabularies, refSuppressesSiblings: false };
     }
-    return dialectFor(version);
+    return dialectFor(detectedVersion);
   })();
   const vocabularies = dialect.vocabularies;
 
@@ -472,7 +498,7 @@ export function createValidator(
     );
   };
 
-  return { validateRequest, validateResponse };
+  return { validateRequest, validateResponse, detectedVersion };
 }
 
 function validateParameter(

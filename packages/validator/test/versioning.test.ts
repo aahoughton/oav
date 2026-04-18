@@ -228,12 +228,46 @@ describe("3.0 support", () => {
 });
 
 describe("unknown version", () => {
-  it("falls through to the 3.1 dialect for missing `openapi` fields", () => {
-    const bare: OpenAPIDocument = {
+  function bareSpec(): OpenAPIDocument {
+    return {
       openapi: "" as unknown as string,
       info: { title: "bare", version: "1" },
       paths: {},
     };
-    expect(() => createValidator(bare)).not.toThrow();
+  }
+
+  it("falls through to the 3.1 dialect for missing `openapi` fields", () => {
+    expect(() => createValidator(bareSpec())).not.toThrow();
+  });
+
+  it("exposes detectedVersion=undefined when the field is missing", () => {
+    const v = createValidator(bareSpec());
+    expect(v.detectedVersion).toBeUndefined();
+  });
+
+  it("exposes detectedVersion when the field is present", () => {
+    const v = createValidator({ ...bareSpec(), openapi: "3.1.0" });
+    expect(v.detectedVersion).toBe("3.1");
+  });
+
+  it("throws when onUnknownVersion is 'throw'", () => {
+    expect(() => createValidator(bareSpec(), { onUnknownVersion: "throw" })).toThrow(
+      /missing or unsupported `openapi`/,
+    );
+  });
+
+  it("warns on stderr when onUnknownVersion is 'warn'", () => {
+    const chunks: string[] = [];
+    const original = process.stderr.write.bind(process.stderr);
+    process.stderr.write = ((chunk: unknown) => {
+      chunks.push(String(chunk));
+      return true;
+    }) as typeof process.stderr.write;
+    try {
+      createValidator(bareSpec(), { onUnknownVersion: "warn" });
+    } finally {
+      process.stderr.write = original;
+    }
+    expect(chunks.join("")).toMatch(/falling back to the 3.1 dialect/);
   });
 });
