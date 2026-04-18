@@ -98,6 +98,71 @@ const IGNORABLE_KEYS = new Set([
   "deprecated",
 ]);
 
+/**
+ * Keys that force us to the function-call path.
+ *
+ * - `$ref` / `$dynamicRef` need a named function for cycle handling;
+ *   bringing them into the inline body would lose the
+ *   compiled-for cache that breaks cycles.
+ * - `unevaluatedProperties` / `unevaluatedItems` require a per-function
+ *   evaluated-keys / evaluated-indices Set. That set is initialised
+ *   at function-body entry in the compiler; the inline path doesn't
+ *   own its own function body, so the inlined keyword would run with
+ *   no set to consult and silently no-op. Safer to compile as a
+ *   function so the setup happens naturally.
+ */
+const INLINE_DISQUALIFIERS = new Set([
+  "$ref",
+  "$dynamicRef",
+  "unevaluatedProperties",
+  "unevaluatedItems",
+]);
+
+/**
+ * Applicator keywords — when a multi-keyword subschema contains any of
+ * these, we prefer the function-call path over inlining. Two reasons:
+ *
+ * 1. The function's body is then hot-called N times from a loop, which
+ *    V8 monomorphises and JIT-specialises well. Inlining a long body
+ *    into the loop makes the loop body too large for the same
+ *    optimisations and measurably slows array-heavy workloads.
+ * 2. Applicators have their own inlining logic internally (for their
+ *    subschemas). We still inline those single-keyword property/item
+ *    schemas under the enclosing function.
+ */
+const APPLICATOR_KEYS = new Set([
+  "properties",
+  "patternProperties",
+  "additionalProperties",
+  "propertyNames",
+  "items",
+  "prefixItems",
+  "contains",
+  "allOf",
+  "anyOf",
+  "oneOf",
+  "not",
+  "if",
+  "then",
+  "else",
+  "dependentSchemas",
+  "discriminator",
+]);
+
+/**
+ * Ceiling on how deep a chain of multi-keyword inlinings we'll follow
+ * before falling back to function-call compilation. Protects against
+ * pathologically self-referential schemas and bounds code bloat.
+ */
+const MAX_INLINE_DEPTH = 6;
+
+/**
+ * Above this many non-informational keys, a subschema's contribution
+ * to the caller's inline body is judged too large; compile it as a
+ * function instead.
+ */
+const MAX_INLINE_KEYWORDS = 10;
+
 export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompileContext {
   const evaluatedPropertiesVar = inputs.evaluatedPropertiesVar ?? null;
   const evaluatedItemsVar = inputs.evaluatedItemsVar ?? null;
@@ -149,38 +214,122 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     inputs.gen.line(`${inputs.path}.pop();`);
   };
 
+  const inlineDepth = inputs.inlineDepth ?? 0;
+
+  /**
+   * Try to inline a subschema's keywords directly into the current
+   * function body. Returns `true` iff the inline path was taken;
+   * callers fall back to compiling a named function on `false`.
+   *
+   * Three classes of inline:
+   * - Empty / pure-metadata schema → no-op.
+   * - Single-keyword from the safe whitelist → one keyword's code
+   *   emitted directly. Tree shape preserved (keyword emits at most
+   *   one error).
+   * - Multi-keyword without $ref and under the size/depth ceilings →
+   *   emit every keyword's code, then (if >1 error actually fired)
+   *   wrap the new errors in a "schema" branch to match the tree
+   *   shape of the would-be function's `wrapErrors` return value.
+   */
   const tryInline = (schema: SchemaObject, dataExpr: string): boolean => {
     if (inputs.byKeyword === undefined) return false;
     const allKeys = Object.keys(schema);
-    let validationKey: string | undefined;
+    const validationKeys: string[] = [];
     for (const k of allKeys) {
       if (IGNORABLE_KEYS.has(k)) continue;
-      if (validationKey !== undefined) return false; // more than one validation key
-      validationKey = k;
+      if (INLINE_DISQUALIFIERS.has(k)) return false;
+      validationKeys.push(k);
     }
-    if (validationKey === undefined) return true; // empty-ish schema — nothing to emit
-    if (!INLINEABLE_SINGLE_KEYWORDS.has(validationKey)) return false;
-    const kw = inputs.byKeyword.get(validationKey);
-    if (kw === undefined) return false;
-    // Compile the single keyword inline with the caller's errors
-    // accumulator and overridden data expression. The path variable is
-    // shared: the surrounding withPathSegment() (if any) has already
-    // pushed the segment.
-    const innerCtx = createKeywordContext({
-      gen: inputs.gen,
-      schema: (schema as Record<string, unknown>)[validationKey],
-      parentSchema: schema,
-      data: dataExpr,
-      path: inputs.path,
-      errors: inputs.errors,
-      subschema: inputs.subschema,
-      resolveRef: inputs.resolveRef,
-      evaluatedPropertiesVar: null,
-      evaluatedItemsVar: null,
-      gated,
-      byKeyword: inputs.byKeyword,
+    if (validationKeys.length === 0) return true; // empty-ish schema — nothing to emit
+
+    // Single-keyword: simplest case — whitelist match, no wrapping needed.
+    if (validationKeys.length === 1) {
+      const k = validationKeys[0]!;
+      if (!INLINEABLE_SINGLE_KEYWORDS.has(k)) return false;
+      const kw = inputs.byKeyword.get(k);
+      if (kw === undefined) return false;
+      const innerCtx = createKeywordContext({
+        gen: inputs.gen,
+        schema: (schema as Record<string, unknown>)[k],
+        parentSchema: schema,
+        data: dataExpr,
+        path: inputs.path,
+        errors: inputs.errors,
+        subschema: inputs.subschema,
+        resolveRef: inputs.resolveRef,
+        evaluatedPropertiesVar: null,
+        evaluatedItemsVar: null,
+        gated,
+        byKeyword: inputs.byKeyword,
+        inlineDepth: inlineDepth + 1,
+      });
+      kw.compile(innerCtx);
+      return true;
+    }
+
+    // Multi-keyword inline is limited to pure-leaf combinations
+    // (type + required + bounds, etc.). Schemas that contain any
+    // applicator are left to the function-call path — the per-call
+    // dispatch pays for itself on hot loops because V8 monomorphises
+    // the function better than it can optimise a massive inlined
+    // loop body.
+    if (validationKeys.some((k) => APPLICATOR_KEYS.has(k))) return false;
+    if (validationKeys.length > MAX_INLINE_KEYWORDS) return false;
+    if (inlineDepth >= MAX_INLINE_DEPTH) return false;
+
+    // Snapshot the errors array length; if >1 new error fires, wrap
+    // the new ones in a "schema" branch so the tree shape matches a
+    // named function's `wrapErrors` output.
+    const startVar = inputs.gen.scope.name("_start");
+    inputs.gen.const(startVar, `${inputs.errors}.length`);
+
+    // Keyword ordering mirrors the compiler's top-level dispatch: run
+    // validation keywords first (leaf checks) in their defined vocab
+    // order, then applicators, then unevaluated — this matches what
+    // `compileSchemaKeywords` does for function-compiled subschemas.
+    const present = new Set(validationKeys);
+    const runOrder: string[] = [];
+    for (const [name] of inputs.byKeyword) {
+      if (present.has(name)) runOrder.push(name);
+    }
+
+    const seen = new Set<string>();
+    for (const kwName of runOrder) {
+      if (seen.has(kwName)) continue;
+      const kw = inputs.byKeyword.get(kwName);
+      if (kw === undefined) continue;
+      seen.add(kwName);
+      // Skip keywords this keyword implements, as the main compile loop does.
+      const kwDef = kw as { compile: (ctx: KeywordCompileContext) => void; implements?: string[] };
+      if (kwDef.implements) for (const impl of kwDef.implements) seen.add(impl);
+      const innerCtx = createKeywordContext({
+        gen: inputs.gen,
+        schema: (schema as Record<string, unknown>)[kwName],
+        parentSchema: schema,
+        data: dataExpr,
+        path: inputs.path,
+        errors: inputs.errors,
+        subschema: inputs.subschema,
+        resolveRef: inputs.resolveRef,
+        evaluatedPropertiesVar: null,
+        evaluatedItemsVar: null,
+        gated,
+        byKeyword: inputs.byKeyword,
+        inlineDepth: inlineDepth + 1,
+      });
+      kw.compile(innerCtx);
+    }
+
+    // Wrap if >1 new error actually fired.
+    const wrappedVar = inputs.gen.scope.name("_wrapped");
+    inputs.gen.if(`${inputs.errors}.length - ${startVar} > 1`, () => {
+      inputs.gen.const(wrappedVar, `${inputs.errors}.splice(${startVar})`);
+      inputs.gen.line(
+        `${inputs.errors}.push(${NAMES.DEPS}.createBranchError(` +
+          `"schema", ${inputs.path}, "schema validation failed", ${wrappedVar}));`,
+      );
     });
-    kw.compile(innerCtx);
+
     return true;
   };
 

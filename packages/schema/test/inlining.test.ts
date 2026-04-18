@@ -31,13 +31,39 @@ describe("subschema inlining", () => {
     expect(namedFnCount(v.source)).toBe(1);
   });
 
-  it("does NOT inline a multi-keyword subschema (falls back to a function)", () => {
+  it("inlines a multi-keyword subschema when it fits the budget", () => {
     const v = compile({
       type: "array",
       items: { type: "object", required: ["x"], properties: { x: { type: "number" } } },
     });
-    // Root + items-subschema function; the inner x-schema inlines under the items fn.
-    expect(namedFnCount(v.source)).toBe(2);
+    // Only the root validator — items' object schema is inlined (no
+    // $ref, few keywords, shallow).
+    expect(namedFnCount(v.source)).toBe(1);
+  });
+
+  it("falls back to a named function when the subschema contains $ref", () => {
+    const v = compile({
+      $defs: {
+        Pet: { type: "object", required: ["name"], properties: { name: { type: "string" } } },
+      },
+      type: "array",
+      items: { $ref: "#/$defs/Pet" },
+    });
+    // The Pet schema is compiled to a function so recursion would
+    // work if it referenced itself.
+    expect(namedFnCount(v.source)).toBeGreaterThanOrEqual(2);
+  });
+
+  it("falls back to a named function past the inline-depth ceiling", () => {
+    // 8 levels of nesting — exceeds MAX_INLINE_DEPTH=6.
+    let inner: unknown = { type: "number" };
+    for (let i = 0; i < 8; i += 1) {
+      inner = { type: "object", properties: { nested: inner } };
+    }
+    const v = compile(inner);
+    // At least one subschema had to be compiled as a function at some
+    // depth.
+    expect(namedFnCount(v.source)).toBeGreaterThanOrEqual(2);
   });
 
   it("inlining preserves validation behaviour — tree form", () => {
