@@ -1,5 +1,5 @@
 {
-  "name": "oav",
+  "name": "@aahoughton/oav",
   "version": "0.1.0",
   "description": "HTTP-aware OpenAPI 3.0 / 3.1 / 3.2 request & response validator with a JSON Schema 2020-12 codegen compiler.",
   "type": "module",
@@ -7,11 +7,11 @@
   "author": "Andrew Houghton <aah@roarmouse.org>",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/anthropics/oav.git"
+    "url": "git+https://github.com/aahoughton/oav.git"
   },
-  "homepage": "https://github.com/anthropics/oav#readme",
+  "homepage": "https://github.com/aahoughton/oav#readme",
   "bugs": {
-    "url": "https://github.com/anthropics/oav/issues"
+    "url": "https://github.com/aahoughton/oav/issues"
   },
   "keywords": [
     "openapi",
