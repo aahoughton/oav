@@ -17,3 +17,4 @@ export {
   type PathOverride,
   type SpecOverlay,
 } from "./overlay.js";
+export { loadSpec, type LoadSpecOptions } from "./load.js";

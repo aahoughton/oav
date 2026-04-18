@@ -1,12 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
-import type { JsonValue, OpenAPIDocument, ValidationError } from "@oav/core";
-import {
-  composeReaders,
-  createFileReader,
-  resolveSpec,
-  applyOverlays,
-  type SpecOverlay,
-} from "@oav/spec";
+import type { JsonValue, ValidationError } from "@oav/core";
+import { composeReaders, createFileReader, loadSpec, type SpecOverlay } from "@oav/spec";
 import { createValidator } from "@oav/validator";
 import { parseHttpFile } from "./http-parser.js";
 import { formatError, type OutputFormat } from "./format-output.js";
@@ -58,12 +52,11 @@ export async function resolveCommand(args: {
   options: CommandOptions;
 }): Promise<CommandResult> {
   const reader = composeReaders([createFileReader()]);
-  const { document } = await resolveSpec({ reader, entry: args.spec });
   const overlayDocs = await Promise.all(
     args.overlays.map(async (path) => JSON.parse(await readFile(path, "utf8")) as SpecOverlay),
   );
-  const finalDoc = overlayDocs.length === 0 ? document : applyOverlays(document, overlayDocs);
-  const out = JSON.stringify(finalDoc, null, 2);
+  const { document } = await loadSpec({ reader, entry: args.spec, overlays: overlayDocs });
+  const out = JSON.stringify(document, null, 2);
   if (args.options.output !== undefined) await writeFile(args.options.output, out + "\n");
   return { exitCode: 0, output: args.options.quiet ? undefined : out };
 }
@@ -84,13 +77,11 @@ export async function validateCommand(args: {
   options: CommandOptions;
 }): Promise<CommandResult> {
   const reader = composeReaders([createFileReader()]);
-  const { document } = await resolveSpec({ reader, entry: args.spec });
   const overlayDocs = await Promise.all(
     args.overlays.map(async (path) => JSON.parse(await readFile(path, "utf8")) as SpecOverlay),
   );
-  const finalDoc: OpenAPIDocument =
-    overlayDocs.length === 0 ? document : applyOverlays(document, overlayDocs);
-  const validator = createValidator(finalDoc);
+  const { document } = await loadSpec({ reader, entry: args.spec, overlays: overlayDocs });
+  const validator = createValidator(document);
 
   let err: ValidationError | null;
   if (args.mode.kind === "request") {
