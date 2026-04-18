@@ -25,21 +25,17 @@ export interface CompileRuntime {
 export type ErrorKind = "leaf" | "lift";
 
 /**
- * Parameters that describe an error a keyword wants to emit.
+ * Options for {@link KeywordCompileContext.validateSubschema}.
  *
  * @public
  */
-export interface EmitErrorParams {
-  /** Stable error identifier (e.g. `"type"`, `"required"`). */
-  code: string;
-  /** Template-literal source for the message (no backticks). */
-  message: string;
-  /** Optional map of `params` entries as JS expression source. */
-  params?: Record<string, string>;
-  /** Optional JS expression producing an override path (defaults to the keyword's current data path). */
-  pathExpr?: string;
-  /** Optional JS expression producing the children array (defaults to `[]`). */
-  childrenExpr?: string;
+export interface ValidateSubschemaOptions {
+  /**
+   * Extra path segment to push onto `path` for the duration of this
+   * subschema's traversal (e.g. an array index or property name).
+   * Pass a JS expression — literal strings must be quoted.
+   */
+  segment?: string;
 }
 
 /**
@@ -65,20 +61,21 @@ export interface KeywordCompileContext {
   /**
    * Compile a nested subschema to its own function and return the
    * function's identifier. The returned name is callable with
-   * `(data, path)` inside generated code.
+   * `(data, path)` inside generated code. Use this when a keyword
+   * needs the sub-validator's return value for its own logic —
+   * composition keywords (`allOf`, `anyOf`, `oneOf`, `if`/`then`/
+   * `else`) collect results per-branch to decide whether to emit a
+   * top-level error. For the common "validate this subschema against
+   * `dataExpr` and emit any errors" pattern, use
+   * {@link KeywordCompileContext.validateSubschema} — it's simpler
+   * and applies the subschema-inlining optimisation.
    */
-  subschema(schema: SchemaOrBoolean): string;
+  compileSubschema(schema: SchemaOrBoolean): string;
   /**
    * Resolve a `$ref` (absolute URI or fragment) to a compiled function
    * name. Used by `$ref` and `$dynamicRef` keywords.
    */
   resolveRef(ref: string): string;
-  /** Push a {@link EmitErrorParams | configured} error onto the accumulator. */
-  error(params: EmitErrorParams): void;
-  /** Mark a data property as evaluated (for `unevaluatedProperties`). */
-  markPropertyEvaluated(nameExpr: string): void;
-  /** Mark an array index range as evaluated (for `unevaluatedItems`). */
-  markItemEvaluated(indexExpr: string): void;
   /** JS expression for the Set tracking evaluated properties, or `null`. */
   readonly evaluatedPropertiesVar: string | null;
   /** JS expression for the Set tracking evaluated items, or `null`. */
@@ -130,7 +127,7 @@ export interface KeywordCompileContext {
   emitBudgetBreak(): void;
   /**
    * Emit validation for a subschema against `dataExpr`, writing any
-   * errors into the current scope's accumulator. When `segmentExpr` is
+   * errors into the current scope's accumulator. When `segment` is
    * provided, wraps the emission in a `path.push(seg) … path.pop()`
    * pair so the shared-mutable `path` array carries the extra segment
    * only for the duration of this subschema's traversal.
@@ -142,11 +139,18 @@ export interface KeywordCompileContext {
    * into a named function and emitting the usual call + lift. Either
    * way the path is reused, not re-allocated.
    *
-   * Use this instead of hand-rolling the sub-call pattern inside
-   * applicator keywords (items, properties, additionalProperties,
-   * patternProperties, propertyNames, unevaluatedProperties/Items).
+   * This is the right helper for the common "descend into a
+   * subschema and emit any errors" pattern — used by `properties`,
+   * `items`, `additionalProperties`, etc. Composition keywords that
+   * need the sub-validator's return value for their own logic
+   * (`allOf`, `anyOf`, `oneOf`, …) should call
+   * {@link KeywordCompileContext.compileSubschema} instead.
    */
-  emitSubschemaValidation(schema: SchemaOrBoolean, dataExpr: string, segmentExpr?: string): void;
+  validateSubschema(
+    schema: SchemaOrBoolean,
+    dataExpr: string,
+    options?: ValidateSubschemaOptions,
+  ): void;
   /**
    * Emit `path.push(segmentExpr); <body>; path.pop();` into the current
    * code generator. Use when a keyword needs to emit errors whose path

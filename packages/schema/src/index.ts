@@ -95,11 +95,11 @@ export {
   type CustomKeywordValidator,
   type Dialect,
   type DialectRules,
-  type EmitErrorParams,
   type ErrorKind,
   type KeywordCompileContext,
   type KeywordContextInputs,
   type KeywordDefinition,
+  type ValidateSubschemaOptions,
   type Vocabulary,
 } from "./keywords/index.js";
 export {

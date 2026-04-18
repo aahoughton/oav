@@ -19,7 +19,7 @@ export const prefixItemsKeyword: KeywordDefinition = {
     ctx.gen.if(`Array.isArray(${ctx.data})`, (g) => {
       schemas.forEach((sub, i) => {
         g.if(`${ctx.data}.length > ${i}`, (gi) => {
-          ctx.emitSubschemaValidation(sub, `${ctx.data}[${i}]`, String(i));
+          ctx.validateSubschema(sub, `${ctx.data}[${i}]`, { segment: String(i) });
           if (ctx.evaluatedItemsVar !== null) {
             gi.line(`${ctx.evaluatedItemsVar}.add(${i});`);
           }
@@ -62,7 +62,7 @@ export const itemsKeyword: KeywordDefinition = {
           );
         });
       } else {
-        ctx.emitSubschemaValidation(subSchema, `${ctx.data}[${i}]`, i);
+        ctx.validateSubschema(subSchema, `${ctx.data}[${i}]`, { segment: i });
         if (ctx.evaluatedItemsVar !== null) {
           g.line(`${ctx.evaluatedItemsVar}.add(${i});`);
         }
@@ -91,7 +91,7 @@ export const containsKeyword: KeywordDefinition = {
   implements: ["minContains", "maxContains"],
   compile(ctx: KeywordCompileContext): void {
     const subSchema = ctx.schema as SchemaOrBoolean;
-    const fn = ctx.subschema(subSchema);
+    const fn = ctx.compileSubschema(subSchema);
     const min = ctx.parentSchema.minContains ?? 1;
     const max = ctx.parentSchema.maxContains;
     ctx.gen.if(`Array.isArray(${ctx.data})`, (g) => {
@@ -102,9 +102,9 @@ export const containsKeyword: KeywordDefinition = {
       const i = g.scope.name("i");
       g.forRange(i, `${ctx.data}.length`, (gi) => {
         const errVar = gi.scope.name("e");
-        gi.line(`${ctx.path}.push(${i});`);
-        gi.const(errVar, `${fn}(${ctx.data}[${i}], ${ctx.path})`);
-        gi.line(`${ctx.path}.pop();`);
+        ctx.withPathSegment(i, () => {
+          gi.const(errVar, `${fn}(${ctx.data}[${i}], ${ctx.path})`);
+        });
         gi.if(`${errVar} === null`, (gii) => {
           gii.line(`${count} += 1;`);
           gii.line(`${matchedIdx}.push(${i});`);

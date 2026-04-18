@@ -19,7 +19,7 @@ export const allOfKeyword: KeywordDefinition = {
     const errsVar = ctx.gen.scope.name("allOfErrs");
     ctx.gen.const(errsVar, "[]");
     schemas.forEach((sub) => {
-      const fn = ctx.subschema(sub);
+      const fn = ctx.compileSubschema(sub);
       const errVar = ctx.gen.scope.name("e");
       ctx.gen.const(errVar, `${fn}(${ctx.data}, ${ctx.path})`);
       ctx.gen.if(`${errVar} !== null`, (g) => g.line(`${errsVar}.push(${errVar});`));
@@ -55,7 +55,7 @@ export const anyOfKeyword: KeywordDefinition = {
     ctx.gen.const(errsVar, "[]");
     ctx.gen.let(matched, "false");
     schemas.forEach((sub) => {
-      const fn = ctx.subschema(sub);
+      const fn = ctx.compileSubschema(sub);
       const errVar = ctx.gen.scope.name("e");
       ctx.gen.const(errVar, `${fn}(${ctx.data}, ${ctx.path})`);
       ctx.gen.if(
@@ -95,7 +95,7 @@ export const oneOfKeyword: KeywordDefinition = {
     ctx.gen.const(errsVar, "[]");
     ctx.gen.let(matchCount, "0");
     schemas.forEach((sub) => {
-      const fn = ctx.subschema(sub);
+      const fn = ctx.compileSubschema(sub);
       const errVar = ctx.gen.scope.name("e");
       ctx.gen.const(errVar, `${fn}(${ctx.data}, ${ctx.path})`);
       ctx.gen.if(
@@ -128,7 +128,7 @@ export const notKeyword: KeywordDefinition = {
   applicator: true,
   compile(ctx: KeywordCompileContext): void {
     const sub = ctx.schema as SchemaOrBoolean;
-    const fn = ctx.subschema(sub);
+    const fn = ctx.compileSubschema(sub);
     const errVar = ctx.gen.scope.name("notErr");
     ctx.gen.const(errVar, `${fn}(${ctx.data}, ${ctx.path})`);
     ctx.gen.if(`${errVar} === null`, () => {
@@ -158,14 +158,14 @@ export const ifThenElseKeyword: KeywordDefinition = {
     const ifSchema = ctx.schema as SchemaOrBoolean;
     const thenSchema = ctx.parentSchema.then;
     const elseSchema = ctx.parentSchema.else;
-    const ifFn = ctx.subschema(ifSchema);
+    const ifFn = ctx.compileSubschema(ifSchema);
     const ifErr = ctx.gen.scope.name("ifErr");
     ctx.gen.const(ifErr, `${ifFn}(${ctx.data}, ${ctx.path})`);
     ctx.gen.if(
       `${ifErr} === null`,
       (g) => {
         if (thenSchema !== undefined) {
-          const tFn = ctx.subschema(thenSchema);
+          const tFn = ctx.compileSubschema(thenSchema);
           const tErr = g.scope.name("thenErr");
           g.const(tErr, `${tFn}(${ctx.data}, ${ctx.path})`);
           g.if(`${tErr} !== null`, () => ctx.emitError("lift", tErr));
@@ -173,7 +173,7 @@ export const ifThenElseKeyword: KeywordDefinition = {
       },
       (g) => {
         if (elseSchema !== undefined) {
-          const eFn = ctx.subschema(elseSchema);
+          const eFn = ctx.compileSubschema(elseSchema);
           const eErr = g.scope.name("elseErr");
           g.const(eErr, `${eFn}(${ctx.data}, ${ctx.path})`);
           g.if(`${eErr} !== null`, () => ctx.emitError("lift", eErr));
@@ -201,7 +201,7 @@ export const dependentSchemasKeyword: KeywordDefinition = {
         for (const name of Object.keys(deps)) {
           const sub = deps[name];
           if (sub === undefined) continue;
-          const fn = ctx.subschema(sub);
+          const fn = ctx.compileSubschema(sub);
           const keyLit = quoteString(name);
           g.if(`Object.prototype.hasOwnProperty.call(${ctx.data}, ${keyLit})`, (gi) => {
             const errVar = gi.scope.name("e");
@@ -256,7 +256,7 @@ export const dependenciesKeyword: KeywordDefinition = {
             });
           } else {
             // Schema form → dependent-schema semantics.
-            const fn = ctx.subschema(entry);
+            const fn = ctx.compileSubschema(entry);
             g.if(`Object.prototype.hasOwnProperty.call(${ctx.data}, ${triggerLit})`, (gi) => {
               const errVar = gi.scope.name("e");
               gi.const(errVar, `${fn}(${ctx.data}, ${ctx.path})`);

@@ -307,7 +307,7 @@ function compileSchemaKeywords(
       data: NAMES.DATA,
       path: NAMES.PATH,
       errors: NAMES.ERRORS,
-      subschema: subCompiler,
+      compileSubschema: subCompiler,
       resolveRef: resolveRefToFunction,
       evaluatedPropertiesVar,
       evaluatedItemsVar,

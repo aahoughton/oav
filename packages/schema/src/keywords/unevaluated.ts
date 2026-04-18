@@ -52,7 +52,7 @@ export const unevaluatedPropertiesKeyword: KeywordDefinition = {
           ctx.emitBudgetBreak();
           return;
         }
-        ctx.emitSubschemaValidation(sub, `${ctx.data}[${key}]`, key);
+        ctx.validateSubschema(sub, `${ctx.data}[${key}]`, { segment: key });
         ctx.emitBudgetBreak();
       });
     });
@@ -98,7 +98,7 @@ export const unevaluatedItemsKeyword: KeywordDefinition = {
           ctx.emitBudgetBreak();
           return;
         }
-        ctx.emitSubschemaValidation(sub, `${ctx.data}[${i}]`, i);
+        ctx.validateSubschema(sub, `${ctx.data}[${i}]`, { segment: i });
         ctx.emitBudgetBreak();
       });
     });
@@ -158,7 +158,7 @@ export const discriminatorKeyword: KeywordDefinition = {
     for (const [value, index] of nameToIndex) {
       const branch = branches[index];
       if (branch === undefined) continue;
-      const fn = ctx.subschema(branch);
+      const fn = ctx.compileSubschema(branch);
       discFns.push({ value, fn });
     }
 
@@ -195,17 +195,17 @@ export const discriminatorKeyword: KeywordDefinition = {
             gi.line(`switch (${discVal}) {`);
             gi.line(switchLines);
             gi.line(`      default: {`);
-            gi.line(`        ${ctx.path}.push(${propLit});`);
-            gi.line(
-              `        ${ctx.errorStatement(
-                "leaf",
-                `${NAMES.DEPS}.createLeafError(` +
-                  `${quoteString("discriminator")}, ${ctx.path}, ` +
-                  `\`discriminator value "\${${discVal}}" does not match any branch\`, ` +
-                  `{ propertyName: ${propLit}, value: ${discVal} })`,
-              )}`,
-            );
-            gi.line(`        ${ctx.path}.pop();`);
+            ctx.withPathSegment(propLit, () => {
+              gi.line(
+                ctx.errorStatement(
+                  "leaf",
+                  `${NAMES.DEPS}.createLeafError(` +
+                    `${quoteString("discriminator")}, ${ctx.path}, ` +
+                    `\`discriminator value "\${${discVal}}" does not match any branch\`, ` +
+                    `{ propertyName: ${propLit}, value: ${discVal} })`,
+                ),
+              );
+            });
             gi.line(`      }`);
             gi.line(`    }`);
           },

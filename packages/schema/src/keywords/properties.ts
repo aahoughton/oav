@@ -25,7 +25,7 @@ export const propertiesKeyword: KeywordDefinition = {
         if (subSchema === undefined) continue;
         const keyLit = quoteString(name);
         g.if(`Object.prototype.hasOwnProperty.call(${ctx.data}, ${keyLit})`, (gi) => {
-          ctx.emitSubschemaValidation(subSchema, `${ctx.data}[${keyLit}]`, keyLit);
+          ctx.validateSubschema(subSchema, `${ctx.data}[${keyLit}]`, { segment: keyLit });
           if (ctx.evaluatedPropertiesVar !== null) {
             gi.line(`${ctx.evaluatedPropertiesVar}.add(${keyLit});`);
           }
@@ -69,7 +69,7 @@ export const patternPropertiesKeyword: KeywordDefinition = {
         for (const { regex, sub } of subs) {
           if (sub === undefined) continue;
           gi.if(`${regex}.test(${keyVar})`, (gii) => {
-            ctx.emitSubschemaValidation(sub, `${ctx.data}[${keyVar}]`, keyVar);
+            ctx.validateSubschema(sub, `${ctx.data}[${keyVar}]`, { segment: keyVar });
             if (ctx.evaluatedPropertiesVar !== null) {
               gii.line(`${ctx.evaluatedPropertiesVar}.add(${keyVar});`);
             }
@@ -135,7 +135,7 @@ export const additionalPropertiesKeyword: KeywordDefinition = {
           ctx.emitBudgetBreak();
           return;
         }
-        ctx.emitSubschemaValidation(subSchema, `${ctx.data}[${key}]`, key);
+        ctx.validateSubschema(subSchema, `${ctx.data}[${key}]`, { segment: key });
         if (ctx.evaluatedPropertiesVar !== null) {
           gi.line(`${ctx.evaluatedPropertiesVar}.add(${key});`);
         }
@@ -161,7 +161,7 @@ export const propertyNamesKeyword: KeywordDefinition = {
     ctx.gen.if(isObjectGuard(ctx.data), (g) => {
       const key = g.scope.name("key");
       g.forIn(key, ctx.data, () => {
-        ctx.emitSubschemaValidation(subSchema, key, key);
+        ctx.validateSubschema(subSchema, key, { segment: key });
         ctx.emitBudgetBreak();
       });
     });

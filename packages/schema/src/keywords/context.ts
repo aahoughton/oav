@@ -1,6 +1,6 @@
 import type { SchemaObject, SchemaOrBoolean } from "@oav/core";
-import { NAMES, quoteString, type CodeGen } from "../codegen/index.js";
-import type { EmitErrorParams, ErrorKind, KeywordCompileContext } from "./types.js";
+import { NAMES, type CodeGen } from "../codegen/index.js";
+import type { ErrorKind, KeywordCompileContext, ValidateSubschemaOptions } from "./types.js";
 
 /**
  * Inputs accepted by {@link createKeywordContext}. The compiler assembles
@@ -15,10 +15,8 @@ export interface KeywordContextInputs {
   data: string;
   path: string;
   errors: string;
-  subschema: (schema: SchemaOrBoolean) => string;
+  compileSubschema: (schema: SchemaOrBoolean) => string;
   resolveRef: (ref: string) => string;
-  markPropertyEvaluated?: (nameExpr: string) => void;
-  markItemEvaluated?: (indexExpr: string) => void;
   evaluatedPropertiesVar?: string | null;
   evaluatedItemsVar?: string | null;
   /**
@@ -29,7 +27,7 @@ export interface KeywordContextInputs {
   gated?: boolean;
   /**
    * The compiler's full keyword registry. Used by
-   * {@link KeywordCompileContext.emitSubschemaValidation} to inline a
+   * {@link KeywordCompileContext.validateSubschema} to inline a
    * subschema's single keyword directly instead of compiling it to a
    * fresh function. Optional: when omitted, subschema emission always
    * takes the function-call path.
@@ -38,9 +36,9 @@ export interface KeywordContextInputs {
   /**
    * Depth counter for recursive multi-keyword inlining. Callers never
    * set this directly — the context threads it through
-   * {@link KeywordCompileContext.emitSubschemaValidation} so deeply-
-   * nested inline chains eventually fall back to the function-call
-   * path rather than blowing up the compiled source.
+   * {@link KeywordCompileContext.validateSubschema} so deeply-nested
+   * inline chains eventually fall back to the function-call path
+   * rather than blowing up the compiled source.
    */
   inlineDepth?: number;
 }
@@ -175,20 +173,6 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
   const evaluatedPropertiesVar = inputs.evaluatedPropertiesVar ?? null;
   const evaluatedItemsVar = inputs.evaluatedItemsVar ?? null;
   const gated = inputs.gated ?? false;
-  const markPropertyEvaluated =
-    inputs.markPropertyEvaluated ??
-    ((nameExpr: string): void => {
-      if (evaluatedPropertiesVar !== null) {
-        inputs.gen.line(`${evaluatedPropertiesVar}.add(${nameExpr});`);
-      }
-    });
-  const markItemEvaluated =
-    inputs.markItemEvaluated ??
-    ((indexExpr: string): void => {
-      if (evaluatedItemsVar !== null) {
-        inputs.gen.line(`${evaluatedItemsVar}.add(${indexExpr});`);
-      }
-    });
 
   const errorStatement = (kind: ErrorKind, errExpr: string): string => {
     if (kind === "leaf") return emitPushStatement(inputs.errors, errExpr, gated);
@@ -260,7 +244,7 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
         data: dataExpr,
         path: inputs.path,
         errors: inputs.errors,
-        subschema: inputs.subschema,
+        compileSubschema: inputs.compileSubschema,
         resolveRef: inputs.resolveRef,
         evaluatedPropertiesVar: null,
         evaluatedItemsVar: null,
@@ -314,7 +298,7 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
         data: dataExpr,
         path: inputs.path,
         errors: inputs.errors,
-        subschema: inputs.subschema,
+        compileSubschema: inputs.compileSubschema,
         resolveRef: inputs.resolveRef,
         evaluatedPropertiesVar: null,
         evaluatedItemsVar: null,
@@ -338,10 +322,10 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     return true;
   };
 
-  const emitSubschemaValidation = (
+  const validateSubschema = (
     schema: SchemaOrBoolean,
     dataExpr: string,
-    segmentExpr?: string,
+    options?: ValidateSubschemaOptions,
   ): void => {
     const emitInner = (): void => {
       if (schema === true) return;
@@ -357,17 +341,18 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
       // with the SHARED path. The sub-function's error emissions
       // snapshot the path before committing it to ValidationError, so
       // the shared-array reuse is safe.
-      const fn = inputs.subschema(schema);
+      const fn = inputs.compileSubschema(schema);
       const errVar = inputs.gen.scope.name("e");
       inputs.gen.const(errVar, `${fn}(${dataExpr}, ${inputs.path})`);
       inputs.gen.if(`${errVar} !== null`, () => {
         emitError("lift", errVar);
       });
     };
-    if (segmentExpr === undefined) {
+    const segment = options?.segment;
+    if (segment === undefined) {
       emitInner();
     } else {
-      withPathSegment(segmentExpr, emitInner);
+      withPathSegment(segment, emitInner);
     }
   };
 
@@ -378,20 +363,17 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     data: inputs.data,
     path: inputs.path,
     errors: inputs.errors,
-    subschema: inputs.subschema,
+    compileSubschema: inputs.compileSubschema,
     resolveRef: inputs.resolveRef,
     evaluatedPropertiesVar,
     evaluatedItemsVar,
-    markPropertyEvaluated,
-    markItemEvaluated,
     gated,
     errorStatement,
     emitError,
     budgetBreakStatement,
     emitBudgetBreak,
     withPathSegment,
-    emitSubschemaValidation,
-    error: (params: EmitErrorParams) => emitStructuredError(inputs, params, gated),
+    validateSubschema,
   };
 }
 
@@ -409,36 +391,4 @@ export function emitPushStatement(errorsVar: string, errExpr: string, gated: boo
     `if (${NAMES.DEPS}.errorsRemaining > 0) { ${errorsVar}.push(${errExpr}); ${NAMES.DEPS}.errorsRemaining -= 1; }` +
     ` else { ${NAMES.DEPS}.truncated = true; }`
   );
-}
-
-function emitStructuredError(
-  inputs: KeywordContextInputs,
-  params: EmitErrorParams,
-  gated: boolean,
-): void {
-  const path = params.pathExpr ?? inputs.path;
-  const paramsObj = renderParamsLiteral(params.params);
-  const children = params.childrenExpr ?? "[]";
-  const message = renderMessage(params.message);
-  const codeLiteral = quoteString(params.code);
-  const errExpr =
-    `${NAMES.DEPS}.createError({ code: ${codeLiteral}, path: ${path}, message: ${message},` +
-    ` params: ${paramsObj}, children: ${children} })`;
-  inputs.gen.line(emitPushStatement(inputs.errors, errExpr, gated));
-}
-
-function renderMessage(message: string): string {
-  if (message.startsWith("`") && message.endsWith("`")) return message;
-  if (message.startsWith("'") || message.startsWith('"')) return message;
-  return `\`${message}\``;
-}
-
-function renderParamsLiteral(params: Record<string, string> | undefined): string {
-  if (!params) return "{}";
-  const entries = Object.keys(params).map((key) => {
-    const value = params[key] ?? "undefined";
-    const safeKey = /^[A-Za-z_$][\w$]*$/.test(key) ? key : quoteString(key);
-    return `${safeKey}: ${value}`;
-  });
-  return `{ ${entries.join(", ")} }`;
 }

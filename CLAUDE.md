@@ -69,9 +69,25 @@ cli → validator → router
 ## How to add a new keyword
 
 1. Create `packages/schema/src/keywords/<area>.ts` exporting a
-   `KeywordDefinition` with `keyword`, `vocabulary`, `compile(ctx)`. Use
-   `ctx.gen`, `ctx.data`, `ctx.path`, `ctx.errors` — nothing more (plus
-   `ctx.subschema` / `ctx.resolveRef` for composition).
+   `KeywordDefinition` with `keyword`, `vocabulary`, `compile(ctx)`.
+   The context (`KeywordCompileContext`) offers:
+   - `ctx.gen` — code emitter (see the `CodeEmitter` interface).
+   - `ctx.data`, `ctx.path`, `ctx.errors` — JS expressions for the
+     current data, path array, and error accumulator.
+   - `ctx.schema`, `ctx.parentSchema` — the keyword's value and the
+     surrounding schema object.
+   - `ctx.emitError(kind, expr)` / `ctx.errorStatement(kind, expr)` —
+     push an error expression (`"leaf"` = counts against `maxErrors`,
+     `"lift"` = propagating an already-counted sub-validator result).
+   - `ctx.withPathSegment(seg, body)` — scoped path push/pop.
+   - `ctx.validateSubschema(schema, dataExpr, { segment? })` — the
+     common "descend into a subschema" pattern (inlines when simple).
+   - `ctx.compileSubschema(schema) -> fnName` — lower-level; use when
+     a keyword needs the sub-validator's return value for its own
+     logic (composition keywords do this).
+   - `ctx.resolveRef(ref)`, `ctx.evaluatedPropertiesVar` /
+     `ctx.evaluatedItemsVar` — for `$ref` and unevaluated-tracking.
+   - `ctx.emitBudgetBreak()` at the tail of hot loops.
 2. Add it to the vocabulary's `keywords` array in `vocabulary.ts`.
 3. Re-export from `keywords/index.ts` and top-level `src/index.ts`.
 4. Add a `test/keyword-<name>.test.ts` that compiles a schema, validates

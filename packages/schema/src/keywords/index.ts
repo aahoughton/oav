@@ -9,10 +9,10 @@ export type {
   CompileRuntime,
   Dialect,
   DialectRules,
-  EmitErrorParams,
   ErrorKind,
   KeywordCompileContext,
   KeywordDefinition,
+  ValidateSubschemaOptions,
   Vocabulary,
 } from "./types.js";
 
