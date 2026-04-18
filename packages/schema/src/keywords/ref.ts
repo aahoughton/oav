@@ -6,9 +6,7 @@ function compileRefCall(ctx: KeywordCompileContext, ref: string): void {
   const fn = ctx.resolveRef(ref);
   const errVar = ctx.gen.scope.name("refErr");
   ctx.gen.const(errVar, `${fn}(${ctx.data}, ${ctx.path})`);
-  ctx.gen.if(`${errVar} !== null`, (g) => {
-    g.line(`${ctx.errors}.push(${errVar});`);
-  });
+  ctx.gen.if(`${errVar} !== null`, () => ctx.liftError(errVar));
 }
 
 /**

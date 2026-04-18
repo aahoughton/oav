@@ -67,6 +67,18 @@ export interface ValidatorOptions {
   formats?: Record<string, (value: string) => boolean>;
   /** When `true`, reject unknown query parameters (default: `false`). */
   strictQueryParameters?: boolean;
+  /**
+   * Cap on the number of leaf schema errors collected per
+   * `validateRequest` / `validateResponse` call. Defaults to uncapped.
+   *
+   * Set to `1` for fast-fail semantics, or to a small number (say 10)
+   * to bound CPU and memory on validation of very large payloads
+   * (e.g. a 10 MB array where every element has the same structural
+   * error). When the cap is hit, the returned error tree is marked
+   * with a `truncated: true` param on the root so consumers can tell
+   * the report was shortened.
+   */
+  maxErrors?: number;
 }
 
 interface OperationCache {
@@ -118,6 +130,7 @@ export function createValidator(
       vocabularies: openapiVocabularies,
       formats,
       refResolver,
+      maxErrors: options.maxErrors,
     });
     compiledCache.set(schema, c);
     return c;

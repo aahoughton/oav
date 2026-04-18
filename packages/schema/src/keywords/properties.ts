@@ -29,9 +29,7 @@ export const propertiesKeyword: KeywordDefinition = {
         g.if(`Object.prototype.hasOwnProperty.call(${ctx.data}, ${keyLit})`, (gi) => {
           const errVar = gi.scope.name("e");
           gi.const(errVar, `${subFn}(${ctx.data}[${keyLit}], [...${ctx.path}, ${keyLit}])`);
-          gi.if(`${errVar} !== null`, (gii) => {
-            gii.line(`${ctx.errors}.push(${errVar});`);
-          });
+          gi.if(`${errVar} !== null`, () => ctx.liftError(errVar));
           if (ctx.evaluatedPropertiesVar !== null) {
             gi.line(`${ctx.evaluatedPropertiesVar}.add(${keyLit});`);
           }
@@ -77,14 +75,13 @@ export const patternPropertiesKeyword: KeywordDefinition = {
           gi.if(`${regex}.test(${keyVar})`, (gii) => {
             const errVar = gii.scope.name("e");
             gii.const(errVar, `${fn}(${ctx.data}[${keyVar}], [...${ctx.path}, ${keyVar}])`);
-            gii.if(`${errVar} !== null`, (giii) => {
-              giii.line(`${ctx.errors}.push(${errVar});`);
-            });
+            gii.if(`${errVar} !== null`, () => ctx.liftError(errVar));
             if (ctx.evaluatedPropertiesVar !== null) {
               gii.line(`${ctx.evaluatedPropertiesVar}.add(${keyVar});`);
             }
           });
         }
+        ctx.emitBudgetBreak();
       });
     });
   },
@@ -132,21 +129,23 @@ export const additionalPropertiesKeyword: KeywordDefinition = {
           return;
         }
         if (subSchema === false) {
-          gi.line(
-            `${ctx.errors}.push(${NAMES.DEPS}.createLeafError(` +
+          ctx.pushError(
+            `${NAMES.DEPS}.createLeafError(` +
               `${quoteString("additionalProperties")}, [...${ctx.path}, ${key}], ` +
               `\`additional property "\${${key}}" is not allowed\`, ` +
-              `{ unexpected: ${key} }));`,
+              `{ unexpected: ${key} })`,
           );
+          ctx.emitBudgetBreak();
           return;
         }
         const fn = ctx.subschema(subSchema);
         const errVar = gi.scope.name("e");
         gi.const(errVar, `${fn}(${ctx.data}[${key}], [...${ctx.path}, ${key}])`);
-        gi.if(`${errVar} !== null`, (gii) => gii.line(`${ctx.errors}.push(${errVar});`));
+        gi.if(`${errVar} !== null`, () => ctx.liftError(errVar));
         if (ctx.evaluatedPropertiesVar !== null) {
           gi.line(`${ctx.evaluatedPropertiesVar}.add(${key});`);
         }
+        ctx.emitBudgetBreak();
       });
     });
   },
@@ -171,7 +170,8 @@ export const propertyNamesKeyword: KeywordDefinition = {
       g.forIn(key, ctx.data, (gi) => {
         const errVar = gi.scope.name("e");
         gi.const(errVar, `${fn}(${key}, [...${ctx.path}, ${key}])`);
-        gi.if(`${errVar} !== null`, (gii) => gii.line(`${ctx.errors}.push(${errVar});`));
+        gi.if(`${errVar} !== null`, () => ctx.liftError(errVar));
+        ctx.emitBudgetBreak();
       });
     });
   },

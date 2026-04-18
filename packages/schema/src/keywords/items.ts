@@ -23,7 +23,7 @@ export const prefixItemsKeyword: KeywordDefinition = {
         g.if(`${ctx.data}.length > ${i}`, (gi) => {
           const errVar = gi.scope.name("e");
           gi.const(errVar, `${fn}(${ctx.data}[${i}], [...${ctx.path}, ${i}])`);
-          gi.if(`${errVar} !== null`, (gii) => gii.line(`${ctx.errors}.push(${errVar});`));
+          gi.if(`${errVar} !== null`, () => ctx.liftError(errVar));
           if (ctx.evaluatedItemsVar !== null) {
             gi.line(`${ctx.evaluatedItemsVar}.add(${i});`);
           }
@@ -57,20 +57,21 @@ export const itemsKeyword: KeywordDefinition = {
           g.line(`${ctx.evaluatedItemsVar}.add(${i});`);
         }
       } else if (subSchema === false) {
-        g.line(
-          `${ctx.errors}.push(${NAMES.DEPS}.createLeafError(` +
+        ctx.pushError(
+          `${NAMES.DEPS}.createLeafError(` +
             `${quoteString("items")}, [...${ctx.path}, ${i}], ` +
-            `"no additional items allowed", {}));`,
+            `"no additional items allowed", {})`,
         );
       } else {
         const fn = ctx.subschema(subSchema);
         const errVar = g.scope.name("e");
         g.const(errVar, `${fn}(${ctx.data}[${i}], [...${ctx.path}, ${i}])`);
-        g.if(`${errVar} !== null`, (gi) => gi.line(`${ctx.errors}.push(${errVar});`));
+        g.if(`${errVar} !== null`, () => ctx.liftError(errVar));
         if (ctx.evaluatedItemsVar !== null) {
           g.line(`${ctx.evaluatedItemsVar}.add(${i});`);
         }
       }
+      ctx.emitBudgetBreak();
       g.dedent();
       g.line(`}`);
     });
@@ -115,22 +116,22 @@ export const containsKeyword: KeywordDefinition = {
         });
       });
       if (min > 0) {
-        g.if(`${count} < ${min}`, (gi) => {
-          gi.line(
-            `${ctx.errors}.push(${NAMES.DEPS}.createLeafError(` +
+        g.if(`${count} < ${min}`, () => {
+          ctx.pushError(
+            `${NAMES.DEPS}.createLeafError(` +
               `${quoteString("contains")}, ${ctx.path}, ` +
               `\`must contain at least ${min} matching item(s) (found \${${count}})\`, ` +
-              `{ minContains: ${min}, actual: ${count} }));`,
+              `{ minContains: ${min}, actual: ${count} })`,
           );
         });
       }
       if (max !== undefined) {
-        g.if(`${count} > ${max}`, (gi) => {
-          gi.line(
-            `${ctx.errors}.push(${NAMES.DEPS}.createLeafError(` +
+        g.if(`${count} > ${max}`, () => {
+          ctx.pushError(
+            `${NAMES.DEPS}.createLeafError(` +
               `${quoteString("maxContains")}, ${ctx.path}, ` +
               `\`must contain at most ${max} matching item(s) (found \${${count}})\`, ` +
-              `{ maxContains: ${max}, actual: ${count} }));`,
+              `{ maxContains: ${max}, actual: ${count} })`,
           );
         });
       }

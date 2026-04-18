@@ -26,12 +26,12 @@ export const enumKeyword: KeywordDefinition = {
         gi.line("break;");
       });
     });
-    ctx.gen.if(`!${matched}`, (g) => {
-      g.line(
-        `${ctx.errors}.push(${NAMES.DEPS}.createLeafError(` +
+    ctx.gen.if(`!${matched}`, () => {
+      ctx.pushError(
+        `${NAMES.DEPS}.createLeafError(` +
           `${quoteString("enum")}, ${ctx.path}, ` +
           `"must be one of the allowed values", ` +
-          `{ allowed: ${valuesLit}, actual: ${ctx.data} }));`,
+          `{ allowed: ${valuesLit}, actual: ${ctx.data} })`,
       );
     });
   },
@@ -49,12 +49,12 @@ export const constKeyword: KeywordDefinition = {
   compile(ctx: KeywordCompileContext): void {
     const value = ctx.schema as JsonValue;
     const valueLit = JSON.stringify(value);
-    ctx.gen.if(`!${NAMES.DEPS}.deepEqual(${ctx.data}, ${valueLit})`, (g) => {
-      g.line(
-        `${ctx.errors}.push(${NAMES.DEPS}.createLeafError(` +
+    ctx.gen.if(`!${NAMES.DEPS}.deepEqual(${ctx.data}, ${valueLit})`, () => {
+      ctx.pushError(
+        `${NAMES.DEPS}.createLeafError(` +
           `${quoteString("const")}, ${ctx.path}, ` +
           `"must equal the expected constant", ` +
-          `{ expected: ${valueLit}, actual: ${ctx.data} }));`,
+          `{ expected: ${valueLit}, actual: ${ctx.data} })`,
       );
     });
   },

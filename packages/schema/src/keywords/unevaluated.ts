@@ -42,18 +42,20 @@ export const unevaluatedPropertiesKeyword: KeywordDefinition = {
           return;
         }
         if (sub === false) {
-          gi.line(
-            `${ctx.errors}.push(${NAMES.DEPS}.createLeafError(` +
+          ctx.pushError(
+            `${NAMES.DEPS}.createLeafError(` +
               `${quoteString("unevaluatedProperties")}, [...${ctx.path}, ${key}], ` +
               `\`property "\${${key}}" is not evaluated by the schema\`, ` +
-              `{ unexpected: ${key} }));`,
+              `{ unexpected: ${key} })`,
           );
+          ctx.emitBudgetBreak();
           return;
         }
         const fn = ctx.subschema(sub);
         const errVar = gi.scope.name("e");
         gi.const(errVar, `${fn}(${ctx.data}[${key}], [...${ctx.path}, ${key}])`);
-        gi.if(`${errVar} !== null`, (gii) => gii.line(`${ctx.errors}.push(${errVar});`));
+        gi.if(`${errVar} !== null`, () => ctx.liftError(errVar));
+        ctx.emitBudgetBreak();
       });
     });
   },
@@ -86,18 +88,20 @@ export const unevaluatedItemsKeyword: KeywordDefinition = {
           return;
         }
         if (sub === false) {
-          gi.line(
-            `${ctx.errors}.push(${NAMES.DEPS}.createLeafError(` +
+          ctx.pushError(
+            `${NAMES.DEPS}.createLeafError(` +
               `${quoteString("unevaluatedItems")}, [...${ctx.path}, ${i}], ` +
               `"item is not evaluated by the schema", ` +
-              `{ index: ${i} }));`,
+              `{ index: ${i} })`,
           );
+          ctx.emitBudgetBreak();
           return;
         }
         const fn = ctx.subschema(sub);
         const errVar = gi.scope.name("e");
         gi.const(errVar, `${fn}(${ctx.data}[${i}], [...${ctx.path}, ${i}])`);
-        gi.if(`${errVar} !== null`, (gii) => gii.line(`${ctx.errors}.push(${errVar});`));
+        gi.if(`${errVar} !== null`, () => ctx.liftError(errVar));
+        ctx.emitBudgetBreak();
       });
     });
   },
@@ -168,28 +172,34 @@ export const discriminatorKeyword: KeywordDefinition = {
         g.const(discVal, `${ctx.data}[${propLit}]`);
         g.if(
           `typeof ${discVal} !== "string"`,
-          (gi) => {
-            gi.line(
-              `${ctx.errors}.push(${NAMES.DEPS}.createLeafError(` +
+          () => {
+            ctx.pushError(
+              `${NAMES.DEPS}.createLeafError(` +
                 `${quoteString("discriminator")}, [...${ctx.path}, ${propLit}], ` +
                 `\`discriminator property "${propertyName}" must be a string\`, ` +
-                `{ propertyName: ${propLit} }));`,
+                `{ propertyName: ${propLit} })`,
             );
           },
           (gi) => {
+            // Discriminator routes to ONE branch. If it returns an error,
+            // that's already a counted leaf from the sub-validator — lift
+            // it (don't re-count). If the discriminator value matches no
+            // branch, THAT error is a fresh leaf — gate it.
             const switchLines = discFns
               .map(
                 ({ value, fn }) =>
-                  `      case ${quoteString(value)}: { const e = ${fn}(${ctx.data}, ${ctx.path}); if (e !== null) ${ctx.errors}.push(e); break; }`,
+                  `      case ${quoteString(value)}: { const e = ${fn}(${ctx.data}, ${ctx.path}); if (e !== null) ${ctx.liftErrorStmt("e")} break; }`,
               )
               .join("\n");
             gi.line(`switch (${discVal}) {`);
             gi.line(switchLines);
             gi.line(
-              `      default: ${ctx.errors}.push(${NAMES.DEPS}.createLeafError(` +
-                `${quoteString("discriminator")}, [...${ctx.path}, ${propLit}], ` +
-                `\`discriminator value "\${${discVal}}" does not match any branch\`, ` +
-                `{ propertyName: ${propLit}, value: ${discVal} }));`,
+              `      default: ${ctx.pushErrorStmt(
+                `${NAMES.DEPS}.createLeafError(` +
+                  `${quoteString("discriminator")}, [...${ctx.path}, ${propLit}], ` +
+                  `\`discriminator value "\${${discVal}}" does not match any branch\`, ` +
+                  `{ propertyName: ${propLit}, value: ${discVal} })`,
+              )}`,
             );
             gi.line(`    }`);
           },

@@ -72,6 +72,61 @@ export interface KeywordCompileContext {
   readonly evaluatedPropertiesVar: string | null;
   /** JS expression for the Set tracking evaluated items, or `null`. */
   readonly evaluatedItemsVar: string | null;
+  /**
+   * `true` when a finite `maxErrors` cap was configured. Keyword
+   * authors usually don't need to read this directly — prefer
+   * {@link KeywordCompileContext.pushErrorStmt} and
+   * {@link KeywordCompileContext.budgetBreakStmt} which inspect it.
+   */
+  readonly gated: boolean;
+  /**
+   * Build a JS statement that pushes a single error expression into the
+   * errors accumulator. Honours the configured `maxErrors` cap when
+   * {@link KeywordCompileContext.gated} is `true`; a plain
+   * `errors.push(...)` otherwise.
+   *
+   * Use for freshly-minted **leaf** errors. Each counts against the
+   * per-call budget. For lifting already-counted sub-validator results
+   * or wrapping them in a branch, use
+   * {@link KeywordCompileContext.liftError} / `liftErrorStmt` instead.
+   */
+  pushErrorStmt(errExpr: string): string;
+  /**
+   * Emit the statement from {@link KeywordCompileContext.pushErrorStmt}
+   * directly into the current code generator. The one-stop replacement
+   * for `ctx.gen.line(\`\${ctx.errors}.push(...)\`)` when the error
+   * expression is a fresh leaf.
+   */
+  pushError(errExpr: string): void;
+  /**
+   * Build a plain `errors.push(...)` statement — always unconditional,
+   * regardless of `maxErrors`. Use for:
+   *
+   * 1. Sub-validator return values being lifted up the error tree
+   *    (those leaves were already counted when the sub-validator
+   *    pushed them into its local accumulator).
+   * 2. Branch wrappers (`createBranchError` with already-counted
+   *    children) so the tree stays structurally complete even after
+   *    the budget runs out.
+   */
+  liftErrorStmt(errExpr: string): string;
+  /**
+   * Emit {@link KeywordCompileContext.liftErrorStmt} directly into the
+   * current code generator.
+   */
+  liftError(errExpr: string): void;
+  /**
+   * Build a budget-guarded `break;` statement for use at the bottom of
+   * hot loops (array items / property keys / applicator branches).
+   * Returns `""` when uncapped so callers can emit it unconditionally.
+   */
+  budgetBreakStmt(): string;
+  /**
+   * Emit the statement from {@link KeywordCompileContext.budgetBreakStmt}
+   * directly into the current code generator. Useful at the tail of
+   * loops so they short-circuit once the error cap is hit.
+   */
+  emitBudgetBreak(): void;
 }
 
 /**

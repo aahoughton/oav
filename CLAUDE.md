@@ -93,6 +93,30 @@ cli → validator → router
 3. Add a branch to `formatError()`.
 4. Add a test in `packages/cli/test/format-output.test.ts`.
 
+## Error-collection modes
+
+By default the compiler collects every error into a tree. For very
+large payloads (think "10 MB JSON array where every element is wrong
+the same way") that's wasted CPU and memory. `compileSchema(schema,
+{ maxErrors: N })` — also exposed on `@oav/validator`'s
+`createValidator` — caps the tree at N leaves and short-circuits the
+hot loops once the budget is exhausted. `maxErrors: 1` is the classic
+fast-fail mode; the returned `{ valid: false, error, truncated: true }`
+tells consumers their report is partial. Codegen is specialised: when
+`maxErrors` is left unset, the generated source is identical to before
+(no budget checks, no `truncated` tracking) — zero overhead for
+callers who don't opt in.
+
+Two push helpers on the keyword-compile context reflect this:
+
+- `ctx.pushError(expr)` — a **fresh leaf error**; counts against the
+  budget.
+- `ctx.liftError(expr)` — a **lift**: propagating a sub-validator's
+  already-counted error up the tree, or wrapping already-counted
+  children in a `createBranchError`. Always unconditional.
+
+Using the wrong one double-counts errors against the budget.
+
 ## Known limitations
 
 - `unevaluatedProperties` / `unevaluatedItems` do not propagate evaluation
@@ -102,4 +126,3 @@ cli → validator → router
 - `$dynamicRef` currently behaves like `$ref` with an anchor lookup — no
   runtime dynamic-scope traversal. Good enough for schemas that don't
   actually rewire the extension point at runtime.
-- `format` is assertive by default; unregistered formats pass.

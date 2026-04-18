@@ -15,6 +15,11 @@ import { createDeps, type ValidatorDeps } from "./runtime.js";
 export interface ValidationResult {
   valid: boolean;
   error?: ValidationError;
+  /**
+   * `true` when at least one error was dropped because the configured
+   * `maxErrors` cap was hit. Only ever set on `{ valid: false }` results.
+   */
+  truncated?: boolean;
 }
 
 /**
@@ -45,6 +50,20 @@ export interface CompileOptions {
   extraDeps?: Partial<ValidatorDeps>;
   /** Custom ref resolver — overrides the default (which resolves fragments within the root). */
   refResolver?: RefResolver;
+  /**
+   * Cap on the number of leaf errors collected per `validate()` call.
+   * Defaults to `Number.POSITIVE_INFINITY` (collect everything).
+   *
+   * When set to a finite value:
+   * - Once the cap is reached, further errors are dropped and
+   *   {@link ValidationResult.truncated} is set on the returned result.
+   * - Hot loops (array items, object properties, `allOf`/`anyOf`
+   *   branches) short-circuit as soon as the budget is exhausted, so
+   *   the CPU and memory cost of validating a huge payload is bounded.
+   *
+   * `maxErrors: 1` is the classic fast-fail mode.
+   */
+  maxErrors?: number;
 }
 
 /** @internal */
@@ -57,6 +76,12 @@ export interface CompileState {
   readonly deps: ValidatorDeps;
   readonly refResolver: RefResolver;
   readonly compileValidator: (schema: SchemaOrBoolean) => string;
+  /**
+   * `true` when a finite `maxErrors` was configured. Codegen uses this
+   * to emit the extra budget checks — when errors are uncapped we emit
+   * plain `errors.push` with no runtime overhead.
+   */
+  readonly gated: boolean;
   nextFn: number;
 }
 
@@ -89,7 +114,8 @@ export function compileSchema(schema: SchemaOrBoolean, options: CompileOptions):
     }
   }
 
-  const deps = createDeps();
+  const maxErrors = options.maxErrors ?? Number.POSITIVE_INFINITY;
+  const deps = createDeps(maxErrors);
   if (options.formats) {
     for (const name of Object.keys(options.formats)) {
       const fn = options.formats[name];
@@ -115,6 +141,7 @@ export function compileSchema(schema: SchemaOrBoolean, options: CompileOptions):
     deps,
     refResolver,
     nextFn: 0,
+    gated: Number.isFinite(maxErrors),
     compileValidator(sub) {
       return compileValidator(sub, state);
     },
@@ -157,9 +184,8 @@ function buildFunctionBody(
   if (schema === true) {
     // no-op; always valid
   } else if (schema === false) {
-    gen.line(
-      `${NAMES.ERRORS}.push(${NAMES.DEPS}.createLeafError("false", ${NAMES.PATH}, "schema is false, nothing is valid"));`,
-    );
+    const falseErr = `${NAMES.DEPS}.createLeafError("false", ${NAMES.PATH}, "schema is false, nothing is valid")`;
+    gen.line(emitPush(state, NAMES.ERRORS, falseErr));
   } else {
     const hasUnevaluatedProps = "unevaluatedProperties" in schema;
     const hasUnevaluatedItems = "unevaluatedItems" in schema;
@@ -213,6 +239,7 @@ function compileSchemaKeywords(
       resolveRef: resolveRefToFunction,
       evaluatedPropertiesVar,
       evaluatedItemsVar,
+      gated: state.gated,
     });
     kw.compile(ctx);
     seen.add(kw.keyword);
@@ -221,6 +248,34 @@ function compileSchemaKeywords(
 }
 
 const UNEVALUATED_LAST = new Set(["unevaluatedProperties", "unevaluatedItems"]);
+
+/**
+ * Emit a statement that pushes a {@link ValidationError} expression into
+ * the errors accumulator, respecting any configured `maxErrors` cap.
+ * When uncapped, this is a plain `errors.push(expr);` — zero extra work.
+ *
+ * @internal
+ */
+export function emitPush(state: CompileState, errorsVar: string, exprSrc: string): string {
+  if (!state.gated) return `${errorsVar}.push(${exprSrc});`;
+  return (
+    `if (${NAMES.DEPS}.errorsRemaining > 0) { ${errorsVar}.push(${exprSrc}); ${NAMES.DEPS}.errorsRemaining -= 1; }` +
+    ` else { ${NAMES.DEPS}.truncated = true; }`
+  );
+}
+
+/**
+ * Emit a `break` when the error budget is exhausted. Used inside hot
+ * loops (array items, property keys, applicator branches) so the
+ * validator doesn't iterate millions of array items after the cap is
+ * already hit. A no-op when the budget is uncapped.
+ *
+ * @internal
+ */
+export function emitBudgetBreak(state: CompileState): string {
+  if (!state.gated) return "";
+  return `if (${NAMES.DEPS}.errorsRemaining <= 0) { ${NAMES.DEPS}.truncated = true; break; }`;
+}
 
 function orderKeywordsForSchema(schema: SchemaObject, state: CompileState): KeywordDefinition[] {
   const present = state.ordered.filter((kw) => kw.keyword in schema);
@@ -236,8 +291,19 @@ function assembleSource(state: CompileState, rootName: string): string {
   parts.push(...state.functionBodies);
   parts.push("");
   parts.push(`function validate(${NAMES.DATA}) {`);
+  if (state.gated) {
+    // Reset the per-call budget and truncation flag so consecutive
+    // validate() calls are independent.
+    parts.push(`  ${NAMES.DEPS}.errorsRemaining = ${NAMES.DEPS}.maxErrors;`);
+    parts.push(`  ${NAMES.DEPS}.truncated = false;`);
+  }
   parts.push(`  const err = ${rootName}(${NAMES.DATA}, []);`);
   parts.push(`  if (err === null) return { valid: true };`);
+  if (state.gated) {
+    parts.push(
+      `  if (${NAMES.DEPS}.truncated) return { valid: false, error: err, truncated: true };`,
+    );
+  }
   parts.push(`  return { valid: false, error: err };`);
   parts.push(`}`);
   parts.push("return { validate };");

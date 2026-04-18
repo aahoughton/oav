@@ -24,12 +24,12 @@ export const maxPropertiesKeyword: KeywordDefinition = {
     const count = ctx.gen.scope.name("count");
     ctx.gen.if(isObjectGuard(ctx.data), (g) => {
       g.const(count, keyCountExpr(ctx.data));
-      g.if(`${count} > ${limit}`, (gi) => {
-        gi.line(
-          `${ctx.errors}.push(${NAMES.DEPS}.createLeafError(` +
+      g.if(`${count} > ${limit}`, () => {
+        ctx.pushError(
+          `${NAMES.DEPS}.createLeafError(` +
             `${quoteString("maxProperties")}, ${ctx.path}, ` +
             `\`must have at most ${limit} properties\`, ` +
-            `{ maxProperties: ${limit}, actual: ${count} }));`,
+            `{ maxProperties: ${limit}, actual: ${count} })`,
         );
       });
     });
@@ -49,12 +49,12 @@ export const minPropertiesKeyword: KeywordDefinition = {
     const count = ctx.gen.scope.name("count");
     ctx.gen.if(isObjectGuard(ctx.data), (g) => {
       g.const(count, keyCountExpr(ctx.data));
-      g.if(`${count} < ${limit}`, (gi) => {
-        gi.line(
-          `${ctx.errors}.push(${NAMES.DEPS}.createLeafError(` +
+      g.if(`${count} < ${limit}`, () => {
+        ctx.pushError(
+          `${NAMES.DEPS}.createLeafError(` +
             `${quoteString("minProperties")}, ${ctx.path}, ` +
             `\`must have at least ${limit} properties\`, ` +
-            `{ minProperties: ${limit}, actual: ${count} }));`,
+            `{ minProperties: ${limit}, actual: ${count} })`,
         );
       });
     });
@@ -84,13 +84,14 @@ export const requiredKeyword: KeywordDefinition = {
         });
       });
       g.if(`${missingVar}.length > 0`, (gi) => {
-        gi.forOf("_m", missingVar, (gii) => {
-          gii.line(
-            `${ctx.errors}.push(${NAMES.DEPS}.createLeafError(` +
+        gi.forOf("_m", missingVar, () => {
+          ctx.pushError(
+            `${NAMES.DEPS}.createLeafError(` +
               `${quoteString("required")}, [...${ctx.path}, _m], ` +
               `\`must have required property "\${_m}"\`, ` +
-              `{ missing: _m }));`,
+              `{ missing: _m })`,
           );
+          ctx.emitBudgetBreak();
         });
       });
     });

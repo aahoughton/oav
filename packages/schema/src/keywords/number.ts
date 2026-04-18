@@ -13,9 +13,9 @@ function emitNumericError(
   message: string,
   paramsObj: string,
 ): void {
-  ctx.gen.line(
-    `${ctx.errors}.push(${NAMES.DEPS}.createLeafError(` +
-      `${quoteString(code)}, ${ctx.path}, ${message}, ${paramsObj}));`,
+  ctx.pushError(
+    `${NAMES.DEPS}.createLeafError(` +
+      `${quoteString(code)}, ${ctx.path}, ${message}, ${paramsObj})`,
   );
 }
 
@@ -30,12 +30,12 @@ export const multipleOfKeyword: KeywordDefinition = {
   vocabulary: CORE_VOCAB,
   compile(ctx: KeywordCompileContext): void {
     const divisor = ctx.schema as number;
-    ctx.gen.if(`${numberGuard(ctx.data)} && (${ctx.data} / ${divisor}) % 1 !== 0`, (g) => {
-      g.line(
-        `${ctx.errors}.push(${NAMES.DEPS}.createLeafError(` +
+    ctx.gen.if(`${numberGuard(ctx.data)} && (${ctx.data} / ${divisor}) % 1 !== 0`, () => {
+      ctx.pushError(
+        `${NAMES.DEPS}.createLeafError(` +
           `${quoteString("multipleOf")}, ${ctx.path}, ` +
           `\`must be a multiple of ${divisor}\`, ` +
-          `{ multipleOf: ${divisor}, actual: ${ctx.data} }));`,
+          `{ multipleOf: ${divisor}, actual: ${ctx.data} })`,
       );
     });
   },
@@ -51,9 +51,9 @@ export const maximumKeyword: KeywordDefinition = {
   vocabulary: CORE_VOCAB,
   compile(ctx: KeywordCompileContext): void {
     const limit = ctx.schema as number;
-    ctx.gen.if(`${numberGuard(ctx.data)} && ${ctx.data} > ${limit}`, (g) => {
+    ctx.gen.if(`${numberGuard(ctx.data)} && ${ctx.data} > ${limit}`, () => {
       emitNumericError(
-        { ...ctx, gen: g },
+        ctx,
         "maximum",
         `\`must be <= ${limit}\``,
         `{ maximum: ${limit}, actual: ${ctx.data} }`,
@@ -72,9 +72,9 @@ export const exclusiveMaximumKeyword: KeywordDefinition = {
   vocabulary: CORE_VOCAB,
   compile(ctx: KeywordCompileContext): void {
     const limit = ctx.schema as number;
-    ctx.gen.if(`${numberGuard(ctx.data)} && ${ctx.data} >= ${limit}`, (g) => {
+    ctx.gen.if(`${numberGuard(ctx.data)} && ${ctx.data} >= ${limit}`, () => {
       emitNumericError(
-        { ...ctx, gen: g },
+        ctx,
         "exclusiveMaximum",
         `\`must be < ${limit}\``,
         `{ exclusiveMaximum: ${limit}, actual: ${ctx.data} }`,
@@ -93,9 +93,9 @@ export const minimumKeyword: KeywordDefinition = {
   vocabulary: CORE_VOCAB,
   compile(ctx: KeywordCompileContext): void {
     const limit = ctx.schema as number;
-    ctx.gen.if(`${numberGuard(ctx.data)} && ${ctx.data} < ${limit}`, (g) => {
+    ctx.gen.if(`${numberGuard(ctx.data)} && ${ctx.data} < ${limit}`, () => {
       emitNumericError(
-        { ...ctx, gen: g },
+        ctx,
         "minimum",
         `\`must be >= ${limit}\``,
         `{ minimum: ${limit}, actual: ${ctx.data} }`,
@@ -114,9 +114,9 @@ export const exclusiveMinimumKeyword: KeywordDefinition = {
   vocabulary: CORE_VOCAB,
   compile(ctx: KeywordCompileContext): void {
     const limit = ctx.schema as number;
-    ctx.gen.if(`${numberGuard(ctx.data)} && ${ctx.data} <= ${limit}`, (g) => {
+    ctx.gen.if(`${numberGuard(ctx.data)} && ${ctx.data} <= ${limit}`, () => {
       emitNumericError(
-        { ...ctx, gen: g },
+        ctx,
         "exclusiveMinimum",
         `\`must be > ${limit}\``,
         `{ exclusiveMinimum: ${limit}, actual: ${ctx.data} }`,

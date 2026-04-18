@@ -26,12 +26,12 @@ export const allOfKeyword: KeywordDefinition = {
       ctx.gen.if(`${errVar} !== null`, (g) => g.line(`${errsVar}.push(${errVar});`));
     });
     const n = schemas.length;
-    ctx.gen.if(`${errsVar}.length > 0`, (g) => {
-      g.line(
-        `${ctx.errors}.push(${NAMES.DEPS}.createBranchError(` +
+    ctx.gen.if(`${errsVar}.length > 0`, () => {
+      ctx.liftError(
+        `${NAMES.DEPS}.createBranchError(` +
           `${quoteString("allOf")}, ${ctx.path}, ` +
           `\`must satisfy all ${n} schemas (\${${errsVar}.length} failed)\`, ` +
-          `${errsVar}, { total: ${n}, failed: ${errsVar}.length }));`,
+          `${errsVar}, { total: ${n}, failed: ${errsVar}.length })`,
       );
     });
   },
@@ -65,12 +65,12 @@ export const anyOfKeyword: KeywordDefinition = {
       );
     });
     const n = schemas.length;
-    ctx.gen.if(`!${matched}`, (g) => {
-      g.line(
-        `${ctx.errors}.push(${NAMES.DEPS}.createBranchError(` +
+    ctx.gen.if(`!${matched}`, () => {
+      ctx.liftError(
+        `${NAMES.DEPS}.createBranchError(` +
           `${quoteString("anyOf")}, ${ctx.path}, ` +
           `\`must match at least one of ${n} schemas\`, ` +
-          `${errsVar}, { total: ${n} }));`,
+          `${errsVar}, { total: ${n} })`,
       );
     });
   },
@@ -104,12 +104,12 @@ export const oneOfKeyword: KeywordDefinition = {
       );
     });
     const n = schemas.length;
-    ctx.gen.if(`${matchCount} !== 1`, (g) => {
-      g.line(
-        `${ctx.errors}.push(${NAMES.DEPS}.createBranchError(` +
+    ctx.gen.if(`${matchCount} !== 1`, () => {
+      ctx.liftError(
+        `${NAMES.DEPS}.createBranchError(` +
           `${quoteString("oneOf")}, ${ctx.path}, ` +
           `\`must match exactly one of ${n} schemas (matched \${${matchCount}})\`, ` +
-          `${errsVar}, { total: ${n}, matchCount: ${matchCount} }));`,
+          `${errsVar}, { total: ${n}, matchCount: ${matchCount} })`,
       );
     });
   },
@@ -129,11 +129,11 @@ export const notKeyword: KeywordDefinition = {
     const fn = ctx.subschema(sub);
     const errVar = ctx.gen.scope.name("notErr");
     ctx.gen.const(errVar, `${fn}(${ctx.data}, ${ctx.path})`);
-    ctx.gen.if(`${errVar} === null`, (g) => {
-      g.line(
-        `${ctx.errors}.push(${NAMES.DEPS}.createLeafError(` +
+    ctx.gen.if(`${errVar} === null`, () => {
+      ctx.pushError(
+        `${NAMES.DEPS}.createLeafError(` +
           `${quoteString("not")}, ${ctx.path}, ` +
-          `"must NOT match the schema", {}));`,
+          `"must NOT match the schema", {})`,
       );
     });
   },
@@ -165,7 +165,7 @@ export const ifThenElseKeyword: KeywordDefinition = {
           const tFn = ctx.subschema(thenSchema);
           const tErr = g.scope.name("thenErr");
           g.const(tErr, `${tFn}(${ctx.data}, ${ctx.path})`);
-          g.if(`${tErr} !== null`, (gi) => gi.line(`${ctx.errors}.push(${tErr});`));
+          g.if(`${tErr} !== null`, () => ctx.liftError(tErr));
         }
       },
       (g) => {
@@ -173,7 +173,7 @@ export const ifThenElseKeyword: KeywordDefinition = {
           const eFn = ctx.subschema(elseSchema);
           const eErr = g.scope.name("elseErr");
           g.const(eErr, `${eFn}(${ctx.data}, ${ctx.path})`);
-          g.if(`${eErr} !== null`, (gi) => gi.line(`${ctx.errors}.push(${eErr});`));
+          g.if(`${eErr} !== null`, () => ctx.liftError(eErr));
         }
       },
     );
@@ -203,7 +203,7 @@ export const dependentSchemasKeyword: KeywordDefinition = {
           g.if(`Object.prototype.hasOwnProperty.call(${ctx.data}, ${keyLit})`, (gi) => {
             const errVar = gi.scope.name("e");
             gi.const(errVar, `${fn}(${ctx.data}, ${ctx.path})`);
-            gi.if(`${errVar} !== null`, (gii) => gii.line(`${ctx.errors}.push(${errVar});`));
+            gi.if(`${errVar} !== null`, () => ctx.liftError(errVar));
           });
         }
       },
@@ -232,12 +232,12 @@ export const dependentRequiredKeyword: KeywordDefinition = {
           g.if(`Object.prototype.hasOwnProperty.call(${ctx.data}, ${triggerLit})`, (gi) => {
             for (const prop of required) {
               const propLit = quoteString(prop);
-              gi.if(`!Object.prototype.hasOwnProperty.call(${ctx.data}, ${propLit})`, (gii) => {
-                gii.line(
-                  `${ctx.errors}.push(${NAMES.DEPS}.createLeafError(` +
+              gi.if(`!Object.prototype.hasOwnProperty.call(${ctx.data}, ${propLit})`, () => {
+                ctx.pushError(
+                  `${NAMES.DEPS}.createLeafError(` +
                     `${quoteString("dependentRequired")}, [...${ctx.path}, ${propLit}], ` +
                     `\`property "${prop}" is required when "${trigger}" is present\`, ` +
-                    `{ trigger: ${triggerLit}, missing: ${propLit} }));`,
+                    `{ trigger: ${triggerLit}, missing: ${propLit} })`,
                 );
               });
             }

@@ -17,12 +17,12 @@ export const maxLengthKeyword: KeywordDefinition = {
   compile(ctx: KeywordCompileContext): void {
     const limit = ctx.schema as number;
     const lenExpr = codeUnitLengthExpr(ctx.data);
-    ctx.gen.if(`typeof ${ctx.data} === "string" && ${lenExpr} > ${limit}`, (g) => {
-      g.line(
-        `${ctx.errors}.push(${NAMES.DEPS}.createLeafError(` +
+    ctx.gen.if(`typeof ${ctx.data} === "string" && ${lenExpr} > ${limit}`, () => {
+      ctx.pushError(
+        `${NAMES.DEPS}.createLeafError(` +
           `${quoteString("maxLength")}, ${ctx.path}, ` +
           `\`must have at most ${limit} characters\`, ` +
-          `{ maxLength: ${limit}, actual: ${lenExpr} }));`,
+          `{ maxLength: ${limit}, actual: ${lenExpr} })`,
       );
     });
   },
@@ -40,12 +40,12 @@ export const minLengthKeyword: KeywordDefinition = {
   compile(ctx: KeywordCompileContext): void {
     const limit = ctx.schema as number;
     const lenExpr = codeUnitLengthExpr(ctx.data);
-    ctx.gen.if(`typeof ${ctx.data} === "string" && ${lenExpr} < ${limit}`, (g) => {
-      g.line(
-        `${ctx.errors}.push(${NAMES.DEPS}.createLeafError(` +
+    ctx.gen.if(`typeof ${ctx.data} === "string" && ${lenExpr} < ${limit}`, () => {
+      ctx.pushError(
+        `${NAMES.DEPS}.createLeafError(` +
           `${quoteString("minLength")}, ${ctx.path}, ` +
           `\`must have at least ${limit} characters\`, ` +
-          `{ minLength: ${limit}, actual: ${lenExpr} }));`,
+          `{ minLength: ${limit}, actual: ${lenExpr} })`,
       );
     });
   },
@@ -68,12 +68,12 @@ export const patternKeyword: KeywordDefinition = {
       `let ${patternVar} = ${NAMES.DEPS}.patterns.get(${patternLit});` +
         ` if (${patternVar} === undefined) { ${patternVar} = new RegExp(${patternLit}, "u"); ${NAMES.DEPS}.patterns.set(${patternLit}, ${patternVar}); }`,
     );
-    ctx.gen.if(`typeof ${ctx.data} === "string" && !${patternVar}.test(${ctx.data})`, (g) => {
-      g.line(
-        `${ctx.errors}.push(${NAMES.DEPS}.createLeafError(` +
+    ctx.gen.if(`typeof ${ctx.data} === "string" && !${patternVar}.test(${ctx.data})`, () => {
+      ctx.pushError(
+        `${NAMES.DEPS}.createLeafError(` +
           `${quoteString("pattern")}, ${ctx.path}, ` +
           `\`must match pattern ${escapeMessage(source)}\`, ` +
-          `{ pattern: ${patternLit}, actual: ${ctx.data} }));`,
+          `{ pattern: ${patternLit}, actual: ${ctx.data} })`,
       );
     });
   },
@@ -113,12 +113,12 @@ export const formatAssertionKeyword: KeywordDefinition = {
     ctx.gen.const(fnVar, `${NAMES.DEPS}.formats.get(${formatLit})`);
     ctx.gen.if(
       `typeof ${ctx.data} === "string" && ${fnVar} !== undefined && !${fnVar}(${ctx.data})`,
-      (g) => {
-        g.line(
-          `${ctx.errors}.push(${NAMES.DEPS}.createLeafError(` +
+      () => {
+        ctx.pushError(
+          `${NAMES.DEPS}.createLeafError(` +
             `${quoteString("format")}, ${ctx.path}, ` +
             `\`must match format ${escapeMessage(formatName)}\`, ` +
-            `{ format: ${formatLit}, actual: ${ctx.data} }));`,
+            `{ format: ${formatLit}, actual: ${ctx.data} })`,
         );
       },
     );

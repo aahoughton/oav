@@ -15,14 +15,14 @@ export const typeKeyword: KeywordDefinition = {
   compile(ctx: KeywordCompileContext): void {
     const expected = Array.isArray(ctx.schema) ? (ctx.schema as string[]) : [ctx.schema as string];
     const condition = buildTypeMismatchCondition(ctx.data, expected);
-    ctx.gen.if(condition, (g) => {
+    ctx.gen.if(condition, () => {
       const expectedLit = JSON.stringify(expected);
       const actualExpr = `${NAMES.DEPS}.typeOf(${ctx.data})`;
-      g.line(
-        `${ctx.errors}.push(${NAMES.DEPS}.createLeafError(` +
+      ctx.pushError(
+        `${NAMES.DEPS}.createLeafError(` +
           `${quoteString("type")}, ${ctx.path}, ` +
           `"must be " + ${JSON.stringify(formatTypeList(expected))}, ` +
-          `{ expected: ${expectedLit}, actual: ${actualExpr} }));`,
+          `{ expected: ${expectedLit}, actual: ${actualExpr} })`,
       );
     });
   },

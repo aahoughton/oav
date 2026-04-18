@@ -20,6 +20,24 @@ export interface ValidatorDeps {
   patterns: Map<string, RegExp>;
   formats: Map<string, (value: string) => boolean>;
   refs: Map<string, Validator>;
+  /**
+   * The configured maximum number of leaf errors to collect, or
+   * `Number.POSITIVE_INFINITY` when uncapped. Baked in at compile time;
+   * not mutated after construction.
+   */
+  maxErrors: number;
+  /**
+   * Runtime counter, reset to `maxErrors` at the top of each top-level
+   * `validate()` call. Every push decrements by one; when it reaches 0
+   * further pushes are skipped and {@link ValidatorDeps.truncated} is set.
+   */
+  errorsRemaining: number;
+  /**
+   * Set to `true` by the runtime when at least one error was dropped
+   * because the `maxErrors` budget had been exhausted. Cleared at the
+   * top of each top-level `validate()` call.
+   */
+  truncated: boolean;
 }
 
 /**
@@ -133,11 +151,13 @@ export function wrapErrors(
 /**
  * Build a {@link ValidatorDeps} bundle with fresh mutable caches.
  *
+ * @param maxErrors - Cap on leaf errors collected per `validate()` call.
+ *                    Defaults to `Number.POSITIVE_INFINITY` (uncapped).
  * @returns A new deps object wired with the default runtime helpers.
  *
  * @public
  */
-export function createDeps(): ValidatorDeps {
+export function createDeps(maxErrors: number = Number.POSITIVE_INFINITY): ValidatorDeps {
   return {
     createError,
     createLeafError,
@@ -148,5 +168,8 @@ export function createDeps(): ValidatorDeps {
     patterns: new Map<string, RegExp>(),
     formats: new Map<string, (value: string) => boolean>(),
     refs: new Map<string, Validator>(),
+    maxErrors,
+    errorsRemaining: maxErrors,
+    truncated: false,
   };
 }

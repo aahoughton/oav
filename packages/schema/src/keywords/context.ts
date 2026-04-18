@@ -21,6 +21,12 @@ export interface KeywordContextInputs {
   markItemEvaluated?: (indexExpr: string) => void;
   evaluatedPropertiesVar?: string | null;
   evaluatedItemsVar?: string | null;
+  /**
+   * When `true`, a finite `maxErrors` was configured and push / loop
+   * sites should emit the extra budget checks. When `false`, emit plain
+   * `errors.push(x)` / unchecked loops — zero runtime overhead.
+   */
+  gated?: boolean;
 }
 
 /**
@@ -40,6 +46,7 @@ export interface KeywordContextInputs {
 export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompileContext {
   const evaluatedPropertiesVar = inputs.evaluatedPropertiesVar ?? null;
   const evaluatedItemsVar = inputs.evaluatedItemsVar ?? null;
+  const gated = inputs.gated ?? false;
   const markPropertyEvaluated =
     inputs.markPropertyEvaluated ??
     ((nameExpr: string): void => {
@@ -55,6 +62,28 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
       }
     });
 
+  // Gated push — for freshly-minted leaf errors. Counts against the budget.
+  const pushErrorStmt = (errExpr: string): string =>
+    emitPushStatement(inputs.errors, errExpr, gated);
+  const pushError = (errExpr: string): void => {
+    inputs.gen.line(pushErrorStmt(errExpr));
+  };
+  // Unconditional push — for errors already counted elsewhere: sub-validator
+  // results being propagated up the tree, and branch wrappers that just
+  // contain already-counted children.
+  const liftErrorStmt = (errExpr: string): string => `${inputs.errors}.push(${errExpr});`;
+  const liftError = (errExpr: string): void => {
+    inputs.gen.line(liftErrorStmt(errExpr));
+  };
+  const budgetBreakStmt = (): string =>
+    gated
+      ? `if (${NAMES.DEPS}.errorsRemaining <= 0) { ${NAMES.DEPS}.truncated = true; break; }`
+      : "";
+  const emitBudgetBreak = (): void => {
+    const stmt = budgetBreakStmt();
+    if (stmt !== "") inputs.gen.line(stmt);
+  };
+
   return {
     gen: inputs.gen,
     schema: inputs.schema,
@@ -68,22 +97,43 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     evaluatedItemsVar,
     markPropertyEvaluated,
     markItemEvaluated,
-    error: (params: EmitErrorParams) => emitError(inputs, params),
+    gated,
+    pushErrorStmt,
+    pushError,
+    liftErrorStmt,
+    liftError,
+    budgetBreakStmt,
+    emitBudgetBreak,
+    error: (params: EmitErrorParams) => emitError(inputs, params, gated),
   };
 }
 
-function emitError(inputs: KeywordContextInputs, params: EmitErrorParams): void {
+/**
+ * Build a JS statement that pushes a single {@link ValidationError}
+ * expression into the errors accumulator, optionally honouring the
+ * `maxErrors` budget when `gated` is `true`. Callers of this helper
+ * pass it to {@link CodeGen.line} or embed it into a generated block.
+ *
+ * @internal
+ */
+export function emitPushStatement(errorsVar: string, errExpr: string, gated: boolean): string {
+  if (!gated) return `${errorsVar}.push(${errExpr});`;
+  return (
+    `if (${NAMES.DEPS}.errorsRemaining > 0) { ${errorsVar}.push(${errExpr}); ${NAMES.DEPS}.errorsRemaining -= 1; }` +
+    ` else { ${NAMES.DEPS}.truncated = true; }`
+  );
+}
+
+function emitError(inputs: KeywordContextInputs, params: EmitErrorParams, gated: boolean): void {
   const path = params.pathExpr ?? inputs.path;
   const paramsObj = renderParamsLiteral(params.params);
   const children = params.childrenExpr ?? "[]";
   const message = renderMessage(params.message);
   const codeLiteral = quoteString(params.code);
-  const call =
-    `${inputs.errors}.push(` +
+  const errExpr =
     `${NAMES.DEPS}.createError({ code: ${codeLiteral}, path: ${path}, message: ${message},` +
-    ` params: ${paramsObj}, children: ${children} })` +
-    `);`;
-  inputs.gen.line(call);
+    ` params: ${paramsObj}, children: ${children} })`;
+  inputs.gen.line(emitPushStatement(inputs.errors, errExpr, gated));
 }
 
 function renderMessage(message: string): string {
