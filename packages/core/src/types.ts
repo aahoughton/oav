@@ -227,7 +227,7 @@ export interface PathItem {
   trace?: OperationObject;
   /** 3.2+: HTTP QUERY method. */
   query?: OperationObject;
-  parameters?: ParameterObject[];
+  parameters?: (ParameterObject | ReferenceObject)[];
 }
 
 /**
@@ -259,9 +259,9 @@ export interface OperationObject {
   summary?: string;
   description?: string;
   tags?: string[];
-  parameters?: ParameterObject[];
-  requestBody?: RequestBodyObject;
-  responses?: Record<string, ResponseObject>;
+  parameters?: (ParameterObject | ReferenceObject)[];
+  requestBody?: RequestBodyObject | ReferenceObject;
+  responses?: Record<string, ResponseObject | ReferenceObject>;
   deprecated?: boolean;
 }
 
@@ -324,7 +324,7 @@ export interface RequestBodyObject {
  */
 export interface ResponseObject {
   description?: string;
-  headers?: Record<string, HeaderObject>;
+  headers?: Record<string, HeaderObject | ReferenceObject>;
   content?: Record<string, MediaTypeObject>;
 }
 

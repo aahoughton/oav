@@ -148,7 +148,13 @@ function applyOperationOverride(op: OperationObject, override: OperationOverride
   if (override.addParameters) {
     const existing = [...(op.parameters ?? [])];
     for (const newParam of override.addParameters) {
-      const idx = existing.findIndex((p) => p.name === newParam.name && p.in === newParam.in);
+      // Reference-object entries (`{ $ref: … }`) can't be matched by
+      // (name, in) without resolving them; overlays apply pre-resolve
+      // so we just skip matching against refs and append / overwrite
+      // against concrete entries.
+      const idx = existing.findIndex(
+        (p) => "name" in p && p.name === newParam.name && p.in === newParam.in,
+      );
       if (idx >= 0) existing[idx] = newParam;
       else existing.push(newParam);
     }

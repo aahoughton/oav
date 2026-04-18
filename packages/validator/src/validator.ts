@@ -2,12 +2,16 @@ import {
   createBranchError,
   createLeafError,
   detectOpenAPIVersion,
+  type HeaderObject,
   type HttpRequest,
   type HttpResponse,
   type OpenAPIDocument,
   type OpenAPIVersion,
   type OperationObject,
   type ParameterObject,
+  type ReferenceObject,
+  type RequestBodyObject,
+  type ResponseObject,
   type SchemaOrBoolean,
   type ValidationError,
 } from "@oav/core";
@@ -28,6 +32,7 @@ import {
   type RefResolver,
   type Vocabulary,
 } from "@oav/schema";
+import { resolveJsonPointer } from "@oav/spec";
 
 // OpenAPI semantics: `format` is assertive. Place the assertion vocabulary
 // ahead of the annotation vocabulary so the assertive keyword wins.
@@ -128,11 +133,15 @@ interface OperationCache {
   headerParamValidators: Map<string, CompiledSchema>;
   cookieParamValidators: Map<string, CompiledSchema>;
   parameters: ParameterObject[];
+  requestBody: RequestBodyObject | undefined;
   bodyValidators: Map<string, CompiledSchema>;
-  responseValidators: Map<string, ResponseCompiled>;
+  responses: Map<string, ResponseCompiled>;
 }
 
 interface ResponseCompiled {
+  object: ResponseObject;
+  /** Keyed by lowercased header name; value preserves the spec-cased name. */
+  headers: Map<string, { name: string; object: HeaderObject }>;
   bodyValidators: Map<string, CompiledSchema>;
   headerValidators: Map<string, CompiledSchema>;
 }
@@ -197,15 +206,44 @@ export function createValidator(
     return c;
   };
 
+  // Resolve an operation-level $ref (requestBody, response, parameter,
+  // header) against the spec. Returns the target object with any
+  // siblings on the reference itself dropped — per OAS, siblings of a
+  // Reference are ignored. Follows ref chains with a depth guard.
+  // External refs must be inlined upstream by @oav/spec.resolveSpec().
+  const resolveRef = <T>(value: T | ReferenceObject | undefined): T | undefined => {
+    let current: unknown = value;
+    for (let hops = 0; hops < 32; hops++) {
+      if (current === undefined || current === null || typeof current !== "object") {
+        return current as T | undefined;
+      }
+      const ref = (current as ReferenceObject).$ref;
+      if (typeof ref !== "string") return current as T;
+      if (!ref.startsWith("#")) {
+        throw new Error(
+          `external ref "${ref}" not resolved; run @oav/spec's resolveSpec() over the document before passing it to createValidator()`,
+        );
+      }
+      current = resolveJsonPointer(spec, ref.slice(1));
+    }
+    throw new Error(`$ref chain exceeded 32 hops (possible cycle)`);
+  };
+
   const operationCache = new WeakMap<OperationObject, OperationCache>();
 
   const cacheFor = (pathMatch: RouteMatch): OperationCache => {
     const existing = operationCache.get(pathMatch.operation);
     if (existing !== undefined) return existing;
-    const parameters: ParameterObject[] = [
+
+    const rawParams: (ParameterObject | ReferenceObject)[] = [
       ...(pathMatch.pathItem.parameters ?? []),
       ...(pathMatch.operation.parameters ?? []),
     ];
+    const parameters: ParameterObject[] = [];
+    for (const p of rawParams) {
+      const resolved = resolveRef<ParameterObject>(p);
+      if (resolved !== undefined) parameters.push(resolved);
+    }
 
     const pathParamValidators = new Map<string, CompiledSchema>();
     const queryParamValidators = new Map<string, CompiledSchema>();
@@ -228,25 +266,37 @@ export function createValidator(
     }
 
     const bodyValidators = new Map<string, CompiledSchema>();
-    const body = pathMatch.operation.requestBody;
-    if (body) {
-      for (const [mt, mto] of Object.entries(body.content)) {
+    const requestBody = resolveRef<RequestBodyObject>(pathMatch.operation.requestBody);
+    if (requestBody?.content) {
+      for (const [mt, mto] of Object.entries(requestBody.content)) {
         if (mto.schema) bodyValidators.set(mt, compile(mto.schema));
       }
     }
 
-    const responseValidators = new Map<string, ResponseCompiled>();
-    const responses = pathMatch.operation.responses ?? {};
-    for (const [status, response] of Object.entries(responses)) {
+    const responses = new Map<string, ResponseCompiled>();
+    const rawResponses = pathMatch.operation.responses ?? {};
+    for (const [status, rawResponse] of Object.entries(rawResponses)) {
+      const response = resolveRef<ResponseObject>(rawResponse);
+      if (response === undefined) continue;
       const bodyVs = new Map<string, CompiledSchema>();
       const headerVs = new Map<string, CompiledSchema>();
+      const headersResolved = new Map<string, { name: string; object: HeaderObject }>();
       for (const [mt, mto] of Object.entries(response.content ?? {})) {
         if (mto.schema) bodyVs.set(mt, compile(mto.schema));
       }
-      for (const [name, hdr] of Object.entries(response.headers ?? {})) {
-        if (hdr.schema) headerVs.set(name.toLowerCase(), compile(hdr.schema));
+      for (const [name, rawHdr] of Object.entries(response.headers ?? {})) {
+        const hdr = resolveRef<HeaderObject>(rawHdr);
+        if (hdr === undefined) continue;
+        const lower = name.toLowerCase();
+        headersResolved.set(lower, { name, object: hdr });
+        if (hdr.schema) headerVs.set(lower, compile(hdr.schema));
       }
-      responseValidators.set(status, { bodyValidators: bodyVs, headerValidators: headerVs });
+      responses.set(status, {
+        object: response,
+        headers: headersResolved,
+        bodyValidators: bodyVs,
+        headerValidators: headerVs,
+      });
     }
 
     const cache: OperationCache = {
@@ -255,8 +305,9 @@ export function createValidator(
       queryParamValidators,
       headerParamValidators,
       cookieParamValidators,
+      requestBody,
       bodyValidators,
-      responseValidators,
+      responses,
     };
     operationCache.set(pathMatch.operation, cache);
     return cache;
@@ -280,11 +331,9 @@ export function createValidator(
       if (err !== null) children.push(err);
     }
 
-    if (cache.bodyValidators.size > 0) {
-      const err = validateBody(req, cache, match.operation);
+    if (cache.requestBody !== undefined) {
+      const err = validateBody(req, cache);
       if (err !== null) children.push(err);
-    } else if (req.body !== undefined && match.operation.requestBody === undefined) {
-      // body present but operation accepts none; not strictly an error by default
     }
 
     if (options.strictQueryParameters && req.query) {
@@ -323,7 +372,7 @@ export function createValidator(
     const cache = cacheFor(match);
     const children: ValidationError[] = [];
 
-    const statusKey = matchResponseKey(res.status, Object.fromEntries(cache.responseValidators));
+    const statusKey = matchResponseKey(res.status, Object.fromEntries(cache.responses));
     if (statusKey === undefined) {
       children.push(
         createLeafError("status", ["response"], `no response defined for status ${res.status}`, {
@@ -331,12 +380,12 @@ export function createValidator(
         }),
       );
     } else {
-      const responseCompiled = cache.responseValidators.get(statusKey);
+      const responseCompiled = cache.responses.get(statusKey);
       if (responseCompiled !== undefined) {
-        const responseObj = (match.operation.responses ?? {})[statusKey];
-        if (res.headers && responseObj?.headers) {
-          for (const [name, hdr] of Object.entries(responseObj.headers)) {
-            const lowered = name.toLowerCase();
+        if (res.headers && responseCompiled.headers.size > 0) {
+          for (const [lowered, entry] of responseCompiled.headers) {
+            const hdr = entry.object;
+            const name = entry.name;
             const validator = responseCompiled.headerValidators.get(lowered);
             const raw = res.headers[lowered] ?? res.headers[name];
             if (hdr.required && (raw === undefined || raw === "")) {
@@ -462,12 +511,8 @@ function validateParameter(
   return prefixPath(r.error, pathPrefix);
 }
 
-function validateBody(
-  req: HttpRequest,
-  cache: OperationCache,
-  operation: OperationObject,
-): ValidationError | null {
-  const body = operation.requestBody;
+function validateBody(req: HttpRequest, cache: OperationCache): ValidationError | null {
+  const body = cache.requestBody;
   if (body === undefined) return null;
   const hasBody = req.body !== undefined && req.body !== null;
   if (!hasBody) {
@@ -476,6 +521,7 @@ function validateBody(
     }
     return null;
   }
+  if (cache.bodyValidators.size === 0) return null;
   const mt = matchMediaType(req.contentType, cache.bodyValidators.keys());
   if (mt === undefined) {
     return createLeafError(
