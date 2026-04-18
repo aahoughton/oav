@@ -24,6 +24,22 @@ export interface ValidationResult {
 }
 
 /**
+ * Compile-time statistics about the generated validator. Exposed so
+ * tests can assert on compiler behaviour (e.g. "did subschema inlining
+ * fire?") without grepping the generated source.
+ *
+ * @public
+ */
+export interface CompileStats {
+  /**
+   * Number of named `validate_N` helper functions emitted. A schema
+   * that gets fully inlined compiles to one function (`validate_0`);
+   * subschemas that stay as functions each add one.
+   */
+  functionCount: number;
+}
+
+/**
  * The function returned by {@link compileSchema}. Call it with any JSON value
  * to validate against the original schema. An optional `startPath`
  * is prepended to every error's `path` — useful when the compiled
@@ -37,6 +53,8 @@ export type CompiledSchema = {
   validate: (data: unknown, startPath?: readonly PathSegment[]) => ValidationResult;
   /** The generated source. Exposed for debugging/snapshot testing only. */
   source: string;
+  /** Compile-time stats about the generated validator. */
+  stats: CompileStats;
 };
 
 /**
@@ -205,7 +223,7 @@ export function compileSchema(schema: SchemaOrBoolean, options: CompileOptions):
   const wholeSource = assembleSource(state, rootName);
   const factory = new Function(NAMES.DEPS, wholeSource) as (deps: ValidatorDeps) => CompiledFactory;
   const { validate } = factory(deps);
-  return { validate, source: wholeSource };
+  return { validate, source: wholeSource, stats: { functionCount: state.nextFn } };
 }
 
 interface CompiledFactory {

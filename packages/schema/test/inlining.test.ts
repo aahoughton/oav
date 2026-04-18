@@ -1,9 +1,8 @@
 /**
- * Behavioural tests for the subschema-inlining optimisation. We don't
- * assert on the generated source directly — instead we compile schemas
- * that SHOULD be inlined, run them, and spot-check the generated
- * source for a telltale "was a named function called?" pattern so a
- * regression that accidentally stopped inlining would fail loudly.
+ * Behavioural tests for the subschema-inlining optimisation. We assert
+ * on `v.stats.functionCount` — the compiler's own tally of
+ * `validate_N` helper functions emitted — so the shape of the
+ * generated source can change without breaking these tests.
  */
 
 import { describe, expect, it } from "vitest";
@@ -14,21 +13,16 @@ function compile(schema: unknown): ReturnType<typeof compileSchema> {
   return compileSchema(schema as never, { vocabularies: defaultVocabularies });
 }
 
-/** How many named validator helper functions does the generated source define? */
-function namedFnCount(source: string): number {
-  return (source.match(/\bfunction validate_\d+\b/g) ?? []).length;
-}
-
 describe("subschema inlining", () => {
   it("inlines a single-keyword items subschema (no extra function generated)", () => {
     const v = compile({ type: "array", items: { type: "number" } });
     // Only the root validator; items subschema lives inline.
-    expect(namedFnCount(v.source)).toBe(1);
+    expect(v.stats.functionCount).toBe(1);
   });
 
   it("inlines a single-keyword properties subschema", () => {
     const v = compile({ type: "object", properties: { name: { type: "string" } } });
-    expect(namedFnCount(v.source)).toBe(1);
+    expect(v.stats.functionCount).toBe(1);
   });
 
   it("inlines a pure-leaf multi-keyword subschema", () => {
@@ -38,7 +32,7 @@ describe("subschema inlining", () => {
     });
     // Only the root validator — items' schema has three leaf keywords
     // (no applicators), so it inlines.
-    expect(namedFnCount(v.source)).toBe(1);
+    expect(v.stats.functionCount).toBe(1);
   });
 
   it("compiles an applicator-containing subschema as a function (hot-loop friendly)", () => {
@@ -49,7 +43,7 @@ describe("subschema inlining", () => {
     // items' schema has `properties` (applicator), so it stays a
     // function — V8 monomorphises the hot-loop call better that way
     // than inlining would.
-    expect(namedFnCount(v.source)).toBe(2);
+    expect(v.stats.functionCount).toBe(2);
   });
 
   it("falls back to a named function when the subschema contains $ref", () => {
@@ -62,7 +56,7 @@ describe("subschema inlining", () => {
     });
     // The Pet schema is compiled to a function so recursion would
     // work if it referenced itself.
-    expect(namedFnCount(v.source)).toBeGreaterThanOrEqual(2);
+    expect(v.stats.functionCount).toBeGreaterThanOrEqual(2);
   });
 
   it("falls back to a named function past the inline-depth ceiling", () => {
@@ -74,7 +68,7 @@ describe("subschema inlining", () => {
     const v = compile(inner);
     // At least one subschema had to be compiled as a function at some
     // depth.
-    expect(namedFnCount(v.source)).toBeGreaterThanOrEqual(2);
+    expect(v.stats.functionCount).toBeGreaterThanOrEqual(2);
   });
 
   it("inlining preserves validation behaviour — tree form", () => {

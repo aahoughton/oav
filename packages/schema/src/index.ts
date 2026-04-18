@@ -7,6 +7,7 @@ export {
   typeOf,
   wrapErrors,
   type CompileOptions,
+  type CompileStats,
   type CompiledSchema,
   type Validator,
   type ValidatorDeps,

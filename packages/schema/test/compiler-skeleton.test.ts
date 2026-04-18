@@ -33,10 +33,9 @@ describe("compileSchema", () => {
     expect(() => new Function(v.source)).not.toThrow();
   });
 
-  it("emits a function-per-schema name pattern in the source", () => {
+  it("emits exactly one named helper function for a trivial schema", () => {
     const v = compileSchema({}, { vocabularies: [emptyVocab] });
-    expect(v.source).toMatch(/function validate_0\(data, path\)/);
-    expect(v.source).toMatch(/function validate\(data, startPath\) \{/);
+    expect(v.stats.functionCount).toBe(1);
   });
 
   it("builds a path array at the root", () => {

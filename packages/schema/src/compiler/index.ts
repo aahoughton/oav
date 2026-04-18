@@ -1,6 +1,7 @@
 export {
   compileSchema,
   type CompileOptions,
+  type CompileStats,
   type CompiledSchema,
   type ValidationResult,
 } from "./compiler.js";
