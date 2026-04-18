@@ -123,41 +123,53 @@ parity.
 ## Reading the results
 
 - If your workload compiles schemas hot (per-request, per-tenant, etc.),
-  oav is the clear win — ~90-460× faster than ajv, ~7-18× faster than
+  oav is the clear win — ~90–460× faster than ajv, ~7–18× faster than
   hyperjump.
 - If your workload is steady-state validation of the same compiled
   schema over many payloads (the most common production case), ajv
-  wins. The gap is small on trivial shapes (~1×), modest on real
-  objects and trees (~1.5-3×), and sizeable on composition and large
-  arrays (4-15×).
+  wins. The gap is tight on trivial / tree shapes (~1–1.3×), moderate
+  on real objects (~3×), and largest on composition and big nested
+  arrays (4–9×).
 - Hyperjump is the reference implementation for spec correctness, not
-  the speed king — expect 5-200× slower validate than ajv depending on
+  the speed king — expect 5–200× slower validate than ajv depending on
   schema shape.
+- For very large payloads where every item fails the same way,
+  `maxErrors` (or `maxErrors: 1` for fast-fail) turns an O(n) scan
+  into O(cap). Measured: 100k bad items in a 10-MB array goes from
+  ~64 ms uncapped to ~0.1 ms with `maxErrors: 10`.
 
-## Where oav's validate overhead comes from
+## Where oav's remaining validate overhead comes from
 
-Main two causes:
+Two structural reasons ajv still wins on validate:
 
-1. **Function-per-schema compilation.** Every subschema (every
-   `properties[k]`, every `items`, every `oneOf` branch) is its own
-   generated function. That's clean and makes `$ref` cycles free, but
-   each call is a closure dispatch + array allocation for `path` /
-   `errors`. Ajv inlines all of that into one function per top-level
-   schema.
-2. **Always-all-errors.** We never short-circuit on the first failure;
-   the prompt requires complete error trees for HTTP validation. Ajv
-   defaults to `allErrors: false` — I set `allErrors: true` in the
-   bench (for parity) but even so its codegen was designed for early
-   exit.
+1. **Function-per-schema for non-trivial subschemas.** Single-keyword
+   subschemas now inline into the enclosing function (see the changes
+   section above), but multi-keyword subschemas and every `$ref`
+   target still compile to their own function. That's clean and
+   makes cycles free, but costs a call + a `[...path, seg]` alloc
+   per dispatch. Ajv inlines everything under one top-level schema.
+2. **Always-all-errors by default.** oav collects complete error
+   trees out of the box; ajv defaults to `allErrors: false` (first
+   error wins). The bench sets `allErrors: true` on ajv for parity,
+   but even then ajv's codegen is shaped for early-exit. oav's
+   new `maxErrors` opt-in closes this gap when the caller can
+   tolerate partial reports — `maxErrors: 1` is apples-to-apples
+   with ajv's default mode.
 
-There are two levers we could pull to close the gap without giving up
-the tree structure:
+Further levers we haven't pulled:
 
-- **Inline simple leaf keywords** (type/minimum/maxLength/pattern) into
-  the enclosing function instead of emitting a subschema call. Would
-  mostly help petstore/array-heavy.
-- **Reuse the same path array** across sibling validations in an
-  applicator rather than allocating `[...path, i]` per item. Mostly
-  helps array-heavy.
+- **Inline multi-keyword subschemas** by tracking an inner
+  errors-array-length delta and wrapping only when >1 error actually
+  fires. Preserves the tree shape; eliminates the function-call
+  path for most of what's still dispatched. Biggest expected win on
+  petstore and array-heavy.
+- **Share one path array across siblings** in an applicator
+  (`path.push(i); ...; path.pop();` rather than `[...path, i]` per
+  call). Takes care around edge cases where an error handler retains
+  the path array past the pop. Biggest expected win on array-heavy.
+- **Specialise loops for `items: { type: T }`** (and similar) so the
+  type predicate is a single compare against a pre-materialised
+  constant, not a string literal re-evaluated per item.
 
-Neither are needed for correctness.
+None are required for correctness; each is a tractable localised
+refactor.
