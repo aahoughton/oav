@@ -1,0 +1,83 @@
+[
+  {
+    "name": "3.0 GET /pets — valid",
+    "kind": "request",
+    "method": "GET",
+    "path": "/pets",
+    "expect": "valid"
+  },
+  {
+    "name": "3.0 POST /pets — valid body with nullable tag = null",
+    "kind": "request",
+    "method": "POST",
+    "path": "/pets",
+    "contentType": "application/json",
+    "body": { "name": "Fido", "tag": null },
+    "expect": "valid"
+  },
+  {
+    "name": "3.0 POST /pets — valid body with tag string",
+    "kind": "request",
+    "method": "POST",
+    "path": "/pets",
+    "contentType": "application/json",
+    "body": { "name": "Fido", "tag": "dog" },
+    "expect": "valid"
+  },
+  {
+    "name": "3.0 POST /pets — name = null is rejected (no nullable)",
+    "kind": "request",
+    "method": "POST",
+    "path": "/pets",
+    "contentType": "application/json",
+    "body": { "name": null },
+    "expect": "invalid",
+    "expectCodes": ["type"]
+  },
+  {
+    "name": "3.0 POST /pets — missing name",
+    "kind": "request",
+    "method": "POST",
+    "path": "/pets",
+    "contentType": "application/json",
+    "body": {},
+    "expect": "invalid",
+    "expectCodes": ["required"]
+  },
+  {
+    "name": "3.0 GET /pets/1 — petId = 1 passes exclusiveMinimum",
+    "kind": "request",
+    "method": "GET",
+    "path": "/pets/1",
+    "expect": "valid"
+  },
+  {
+    "name": "3.0 GET /pets/0 — petId = 0 violates boolean exclusiveMinimum",
+    "kind": "request",
+    "method": "GET",
+    "path": "/pets/0",
+    "expect": "invalid",
+    "expectCodes": ["minimum"]
+  },
+  {
+    "name": "3.0 response GET /pets 200 — item with nullable tag null is valid",
+    "kind": "response",
+    "method": "GET",
+    "path": "/pets",
+    "status": 200,
+    "contentType": "application/json",
+    "body": [{ "id": 1, "name": "Fido", "tag": null }],
+    "expect": "valid"
+  },
+  {
+    "name": "3.0 response GET /pets 200 — item missing id",
+    "kind": "response",
+    "method": "GET",
+    "path": "/pets",
+    "status": 200,
+    "contentType": "application/json",
+    "body": [{ "name": "Fido" }],
+    "expect": "invalid",
+    "expectCodes": ["required"]
+  }
+]

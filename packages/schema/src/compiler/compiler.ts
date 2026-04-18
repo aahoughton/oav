@@ -64,6 +64,12 @@ export interface CompileOptions {
    * `maxErrors: 1` is the classic fast-fail mode.
    */
   maxErrors?: number;
+  /**
+   * OpenAPI 3.0 semantics: when a schema has `$ref`, every sibling
+   * keyword is ignored. Defaults to `false` (2020-12 / OpenAPI 3.1+
+   * semantics, where siblings are honoured).
+   */
+  refSuppressesSiblings?: boolean;
 }
 
 /** @internal */
@@ -82,6 +88,11 @@ export interface CompileState {
    * plain `errors.push` with no runtime overhead.
    */
   readonly gated: boolean;
+  /**
+   * OpenAPI 3.0 semantics. When `true`, schemas containing `$ref`
+   * dispatch only `$ref` and ignore every other keyword.
+   */
+  readonly refSuppressesSiblings: boolean;
   nextFn: number;
 }
 
@@ -142,6 +153,7 @@ export function compileSchema(schema: SchemaOrBoolean, options: CompileOptions):
     refResolver,
     nextFn: 0,
     gated: Number.isFinite(maxErrors),
+    refSuppressesSiblings: options.refSuppressesSiblings ?? false,
     compileValidator(sub) {
       return compileValidator(sub, state);
     },
@@ -223,10 +235,13 @@ function compileSchemaKeywords(
   };
 
   const runOrder = orderKeywordsForSchema(schema, state);
+  // OAS 3.0: when `$ref` is present, every sibling keyword is ignored.
+  const refOnly = state.refSuppressesSiblings && "$ref" in schema;
   const seen = new Set<string>();
   for (const kw of runOrder) {
     if (seen.has(kw.keyword)) continue;
     if (!(kw.keyword in schema)) continue;
+    if (refOnly && kw.keyword !== "$ref") continue;
     const schemaValue = (schema as Record<string, unknown>)[kw.keyword];
     const ctx = createKeywordContext({
       gen,

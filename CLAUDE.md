@@ -120,39 +120,55 @@ Using the wrong one double-counts errors against the budget.
 ## Version support
 
 `@oav/validator` buckets the spec's `openapi` string at validator
-construction time via `detectOpenAPIVersion`:
+construction time via `detectOpenAPIVersion` and picks a dialect:
 
-| Spec version | Status          | Dialect                         |
-| ------------ | --------------- | ------------------------------- |
-| 3.0.x        | NOT implemented | draft-Wright-00 (OAS 3.0 flavour) |
-| 3.1.x        | Supported       | JSON Schema 2020-12             |
-| 3.2.x        | Supported       | JSON Schema 2020-12 + QUERY method |
+| Spec version | Status    | Dialect                            |
+| ------------ | --------- | ---------------------------------- |
+| 3.0.x        | Supported | OAS 3.0 Schema Object flavour      |
+| 3.1.x        | Supported | JSON Schema 2020-12                |
+| 3.2.x        | Supported | JSON Schema 2020-12 + QUERY method |
 
-The dispatch is a one-liner inside `createValidator` —
-`vocabulariesFor(version)`. The version check runs once at
-construction; there is no per-request branching, so supporting more
-versions adds zero runtime cost.
+Dispatch is a one-liner inside `createValidator` — `dialectFor(version)`.
+The check runs once at construction; there's no per-request branching,
+so adding more versions adds zero runtime cost.
 
-**Adding OpenAPI 3.0.x in the future**:
+### What differs in the 3.0 dialect
 
-1. Write `packages/schema/src/keywords/oas30/*.ts` with the 3.0
-   flavours of `type` (string-only, no arrays), `nullable`,
-   `exclusiveMaximum`/`Minimum` (booleans on the bounds), and `$ref`
-   (siblings ignored).
-2. Export an `oas30Vocabulary` from `@oav/schema` that composes them
-   with the existing `validationVocabulary` / `applicatorVocabulary`
-   minus 2020-12-only keywords (`const`, `if`/`then`/`else`,
-   `contains`, `patternProperties`, `unevaluatedProperties`,
-   `unevaluatedItems`).
-3. Update `vocabulariesFor("3.0")` in
-   `packages/validator/src/validator.ts` to return those vocabularies.
-4. Add `packages/validator/test/versioning.test.ts` cases for 3.0.
-5. Add `conformance/openapi-cases/petstore-30/` — parallels the 3.1
-   and 3.2 petstores.
+Only three things vary from 2020-12; everything else (numeric / string
+/ array / object bounds, `enum`, `required`, `allOf`/`anyOf`/`oneOf`,
+`not`, `format`, discriminator, etc.) is shared.
 
-Most of the validation vocabulary (numeric/string bounds, `enum`,
-`maxLength`, `minLength`, `required`, `allOf`/`anyOf`/`oneOf`, `not`,
-`format`, `maxItems`, `minItems`, etc.) can be reused as-is.
+1. **`type` is string-only** (no arrays). `oas30TypeKeyword` enforces
+   this at compile time and adds `"null"` to the acceptable types when
+   the sibling `nullable: true` is set.
+2. **`exclusiveMaximum` / `exclusiveMinimum` are booleans**. They
+   modify the sibling `maximum` / `minimum` rather than standing alone
+   as numeric bounds. `oas30MaximumKeyword` / `oas30MinimumKeyword`
+   read the boolean and emit `>=` vs `>` (or `<=` vs `<`) accordingly.
+3. **`$ref` siblings are ignored**. `compileSchema`'s
+   `refSuppressesSiblings` option (set by the 3.0 dialect config)
+   makes the keyword dispatcher skip every non-`$ref` keyword in a
+   schema that declares `$ref`.
+
+Keywords not present in 3.0 (`const`, `if`/`then`/`else`, `contains`,
+`patternProperties`, `propertyNames`, `unevaluatedProperties`/`Items`,
+`prefixItems`, `$defs`, `$id`, anchors, `$dynamicRef`) are simply not
+in the 3.0 vocabulary stack — schemas that use them are treated as
+having an unknown field, which 2020-12 allows in every dialect.
+
+### Running tests per version
+
+- **Schema-level tests** (`packages/schema/test/*`) are
+  dialect-agnostic — they compile schemas with the default 2020-12
+  vocab and assert on 2020-12 semantics. Dialect-specific keyword
+  tests sit next to their keyword files where sensible.
+- **HTTP-level conformance** lives in
+  `conformance/openapi-cases/petstore-{30,31,32}/` — one petstore per
+  version, each exercising the version's distinctive features (3.0:
+  `nullable`, boolean `exclusiveMinimum`; 3.2: QUERY method).
+- **Validator integration tests** in
+  `packages/validator/test/versioning.test.ts` cover dispatch,
+  dialect-specific keyword behaviour, and the `vocabularies` override.
 
 ## Known limitations
 

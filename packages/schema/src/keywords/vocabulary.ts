@@ -45,6 +45,14 @@ import {
   unevaluatedPropertiesKeyword,
 } from "./unevaluated.js";
 import {
+  oas30ExclusiveMaximumKeyword,
+  oas30ExclusiveMinimumKeyword,
+  oas30MaximumKeyword,
+  oas30MinimumKeyword,
+  oas30NullableKeyword,
+  oas30TypeKeyword,
+} from "./oas30.js";
+import {
   formatAssertionKeyword,
   formatKeyword,
   maxLengthKeyword,
@@ -223,5 +231,53 @@ export const defaultVocabularies: Vocabulary[] = [
   validationVocabulary,
   applicatorVocabulary,
   unevaluatedVocabulary,
+  formatVocabulary,
+];
+
+/**
+ * URI of the OpenAPI 3.0 schema vocabulary. Not a JSON-Schema-spec
+ * URI; used only to group the 3.0 keyword set.
+ *
+ * @public
+ */
+export const OAS30_VOCAB = "https://spec.openapis.org/oas/3.0/vocab/schema";
+
+/**
+ * The OpenAPI 3.0 vocabulary overrides.
+ *
+ * Placed AHEAD of the standard validation + applicator vocabularies
+ * in a 3.0 compile so its flavours of `type`, `maximum`, `minimum`,
+ * and the modifier keywords (`nullable`, `exclusiveMaximum`,
+ * `exclusiveMinimum`) win keyword dispatch over the 2020-12 variants.
+ *
+ * @public
+ */
+export const oas30Vocabulary: Vocabulary = {
+  uri: OAS30_VOCAB,
+  keywords: [
+    oas30TypeKeyword,
+    oas30NullableKeyword,
+    oas30MaximumKeyword,
+    oas30MinimumKeyword,
+    oas30ExclusiveMaximumKeyword,
+    oas30ExclusiveMinimumKeyword,
+  ],
+};
+
+/**
+ * The full OpenAPI 3.0 vocabulary stack. Reuses most of the 2020-12
+ * vocabularies — `oas30Vocabulary` comes first so the 3.0 variants
+ * shadow the shared keywords, and `unevaluatedVocabulary` is omitted
+ * because `unevaluatedProperties` / `unevaluatedItems` don't exist in
+ * 3.0.
+ *
+ * @public
+ */
+export const oas30Vocabularies: Vocabulary[] = [
+  coreVocabulary,
+  oas30Vocabulary,
+  validationVocabulary,
+  applicatorVocabulary,
+  formatAssertionVocabulary,
   formatVocabulary,
 ];

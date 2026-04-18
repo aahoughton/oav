@@ -55,9 +55,24 @@ export interface SchemaObject {
 
   multipleOf?: number;
   maximum?: number;
-  exclusiveMaximum?: number;
+  /**
+   * In JSON Schema 2020-12 (OpenAPI 3.1/3.2): a number, and stands alone.
+   * In OpenAPI 3.0: a boolean that modifies the sibling {@link SchemaObject.maximum}.
+   * The dialect the compiler runs under decides which semantics apply.
+   */
+  exclusiveMaximum?: number | boolean;
   minimum?: number;
-  exclusiveMinimum?: number;
+  /**
+   * In JSON Schema 2020-12 (OpenAPI 3.1/3.2): a number, and stands alone.
+   * In OpenAPI 3.0: a boolean that modifies the sibling {@link SchemaObject.minimum}.
+   */
+  exclusiveMinimum?: number | boolean;
+  /**
+   * OpenAPI 3.0 only. Combined with `type`, means "type OR null".
+   * In 3.1+ use `type: ["…", "null"]` instead. Ignored outside the
+   * 3.0 dialect.
+   */
+  nullable?: boolean;
 
   maxLength?: number;
   minLength?: number;

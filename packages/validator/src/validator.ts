@@ -20,6 +20,7 @@ import {
   createRefResolver,
   formatAssertionVocabulary,
   formatVocabulary,
+  oas30Vocabularies,
   resolve,
   unevaluatedVocabulary,
   validationVocabulary,
@@ -40,27 +41,28 @@ const openapi31Vocabularies: Vocabulary[] = [
   formatVocabulary,
 ];
 
+interface DialectConfig {
+  vocabularies: Vocabulary[];
+  /** OAS 3.0: when `$ref` is present in a schema, sibling keywords are ignored. */
+  refSuppressesSiblings: boolean;
+}
+
 /**
- * Pick the right vocabulary set for a given OpenAPI version. 3.1 and
- * 3.2 share the 2020-12 dialect; 3.0's draft-Wright-00 dialect is not
- * yet implemented and reports a clear error up-front at validator
- * construction rather than silently miscompiling schemas.
+ * Pick the right vocabulary set + compile-time flags for a given
+ * OpenAPI version. 3.1 and 3.2 share the 2020-12 dialect; 3.0 uses
+ * the OAS 3.0 Schema Object flavour (string-only `type`, `nullable`,
+ * boolean `exclusiveMaximum` / `exclusiveMinimum`, `$ref` siblings
+ * ignored).
  *
  * @internal
  */
-function vocabulariesFor(version: OpenAPIVersion): Vocabulary[] {
+function dialectFor(version: OpenAPIVersion): DialectConfig {
   switch (version) {
     case "3.1":
     case "3.2":
-      return openapi31Vocabularies;
+      return { vocabularies: openapi31Vocabularies, refSuppressesSiblings: false };
     case "3.0":
-      throw new Error(
-        "OpenAPI 3.0.x is not yet supported by @oav/validator — its schema " +
-          "dialect is not JSON Schema 2020-12. See CLAUDE.md 'Version support' " +
-          "for the architectural hook. Targeted support is planned; for now, " +
-          "migrate to 3.1 or pass an explicit `vocabularies` option if you " +
-          "have your own dialect.",
-      );
+      return { vocabularies: oas30Vocabularies, refSuppressesSiblings: true };
   }
 }
 
@@ -161,19 +163,21 @@ export function createValidator(
   // Version detection is pure compile-time: we bake the right
   // vocabularies into the compiled validator and never branch on
   // version per request.
-  const vocabularies =
-    options.vocabularies ??
-    (() => {
-      const version = detectOpenAPIVersion(spec);
-      if (version === undefined) {
-        // Fall through to the 3.1 dialect by default. Missing/unknown
-        // `openapi` strings are common in test fixtures and hand-built
-        // documents; erroring out here would be more annoying than
-        // helpful.
-        return openapi31Vocabularies;
-      }
-      return vocabulariesFor(version);
-    })();
+  const dialect: DialectConfig = (() => {
+    if (options.vocabularies !== undefined) {
+      return { vocabularies: options.vocabularies, refSuppressesSiblings: false };
+    }
+    const version = detectOpenAPIVersion(spec);
+    if (version === undefined) {
+      // Fall through to the 3.1 dialect by default. Missing/unknown
+      // `openapi` strings are common in test fixtures and hand-built
+      // documents; erroring out here would be more annoying than
+      // helpful.
+      return { vocabularies: openapi31Vocabularies, refSuppressesSiblings: false };
+    }
+    return dialectFor(version);
+  })();
+  const vocabularies = dialect.vocabularies;
 
   const graph = resolve(spec as unknown as SchemaOrBoolean);
   const refResolver: RefResolver = createRefResolver(graph);
@@ -187,6 +191,7 @@ export function createValidator(
       formats,
       refResolver,
       maxErrors: options.maxErrors,
+      refSuppressesSiblings: dialect.refSuppressesSiblings,
     });
     compiledCache.set(schema, c);
     return c;

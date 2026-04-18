@@ -62,15 +62,26 @@ export {
   CORE_VOCAB,
   FORMAT_ASSERTION_VOCAB,
   FORMAT_VOCAB,
+  OAS30_VOCAB,
   UNEVALUATED_VOCAB,
   applicatorVocabulary,
   coreVocabulary,
   defaultVocabularies,
   formatAssertionVocabulary,
   formatVocabulary,
+  oas30Vocabularies,
+  oas30Vocabulary,
   unevaluatedVocabulary,
   validationVocabulary,
 } from "./vocabulary.js";
+export {
+  oas30ExclusiveMaximumKeyword,
+  oas30ExclusiveMinimumKeyword,
+  oas30MaximumKeyword,
+  oas30MinimumKeyword,
+  oas30NullableKeyword,
+  oas30TypeKeyword,
+} from "./oas30.js";
 export {
   discriminatorKeyword,
   unevaluatedItemsKeyword,
