@@ -1,25 +1,19 @@
 {
   "name": "@oav/spec",
   "version": "0.0.0",
-  "description": "OpenAPI 3.1 spec loader, multi-file resolver, and overlay merger for @oav.",
-  "files": [
-    "dist",
-    "src"
-  ],
+  "private": true,
+  "description": "Internal: OpenAPI spec loader, $ref resolver, overlay merger for oav. Not published — consume via `oav/spec`.",
   "type": "module",
   "sideEffects": false,
-  "main": "./dist/index.cjs",
-  "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts --format esm,cjs --dts --clean --tsconfig tsconfig.build.json",
     "test": "vitest run"
   },
   "dependencies": {
@@ -28,7 +22,6 @@
     "yaml": "^2.6.1"
   },
   "devDependencies": {
-    "tsup": "^8.3.5",
     "typescript": "^5.7.3",
     "vitest": "^2.1.9"
   },

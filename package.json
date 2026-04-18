@@ -1,25 +1,93 @@
 {
   "name": "oav",
-  "version": "0.0.0",
-  "private": true,
-  "description": "OpenAPI 3.1 HTTP request/response validator",
+  "version": "0.1.0",
+  "description": "HTTP-aware OpenAPI 3.0 / 3.1 / 3.2 request & response validator with a JSON Schema 2020-12 codegen compiler.",
   "type": "module",
+  "license": "MIT",
+  "author": "Andrew Houghton <aah@roarmouse.org>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/anthropics/oav.git"
+  },
+  "homepage": "https://github.com/anthropics/oav#readme",
+  "bugs": {
+    "url": "https://github.com/anthropics/oav/issues"
+  },
+  "keywords": [
+    "openapi",
+    "openapi3",
+    "openapi-3.0",
+    "openapi-3.1",
+    "openapi-3.2",
+    "validator",
+    "validation",
+    "json-schema",
+    "json-schema-2020-12",
+    "http",
+    "schema",
+    "cli"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./schema": {
+      "types": "./dist/schema.d.ts",
+      "import": "./dist/schema.js",
+      "require": "./dist/schema.cjs"
+    },
+    "./spec": {
+      "types": "./dist/spec.d.ts",
+      "import": "./dist/spec.js",
+      "require": "./dist/spec.cjs"
+    },
+    "./formats": {
+      "types": "./dist/formats.d.ts",
+      "import": "./dist/formats.js",
+      "require": "./dist/formats.cjs"
+    },
+    "./core": {
+      "types": "./dist/core.d.ts",
+      "import": "./dist/core.js",
+      "require": "./dist/core.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "oav": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
-    "build": "pnpm -r --filter \"./packages/**\" run build",
+    "build": "tsup",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint && oxfmt --check .",
     "fmt": "oxfmt --write .",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "prepublishOnly": "pnpm build && pnpm test"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "yaml": "^2.6.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
     "tsup": "^8.3.5",
     "typescript": "^5.7.3",
     "vitest": "^2.1.9"
-  },
-  "engines": {
-    "node": ">=20"
   },
   "packageManager": "pnpm@10.33.0"
 }

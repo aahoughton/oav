@@ -14,7 +14,7 @@ cd conformance
 pnpm install
 pnpm setup        # clones JSON-Schema-Test-Suite (gitignored; ~12k cases)
 cd ..
-pnpm build        # the OpenAPI runner shells out to packages/cli/dist/bin/oav.js
+pnpm build        # the OpenAPI runner shells out to dist/cli.js
 ```
 
 ## Commands

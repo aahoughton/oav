@@ -5,8 +5,18 @@
     "incremental": false,
     "declaration": true,
     "declarationMap": false,
-    "sourceMap": true
+    "sourceMap": true,
+    "baseUrl": ".",
+    "paths": {
+      "@oav/core": ["./packages/core/src/index.ts"],
+      "@oav/schema": ["./packages/schema/src/index.ts"],
+      "@oav/formats": ["./packages/formats/src/index.ts"],
+      "@oav/spec": ["./packages/spec/src/index.ts"],
+      "@oav/router": ["./packages/router/src/index.ts"],
+      "@oav/validator": ["./packages/validator/src/index.ts"],
+      "@oav/cli": ["./packages/cli/src/index.ts"]
+    }
   },
-  "include": ["packages/*/src/**/*"],
+  "include": ["src/**/*", "packages/*/src/**/*"],
   "exclude": ["**/dist", "**/node_modules", "**/*.test.ts"]
 }

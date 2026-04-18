@@ -5,7 +5,7 @@
  *   spec.yaml      — the OpenAPI document
  *   cases.json     — an array of {name, kind, method, path, ..., expect, expectCodes}
  *
- * Cases run via the oav CLI (invokes the built binary in packages/cli/dist/bin/oav.js)
+ * Cases run via the oav CLI (invokes the built binary at dist/cli.js)
  * and compare exit code + emitted leaf error codes against expectations.
  *
  * Usage:
@@ -42,7 +42,7 @@ interface CaseOutcome {
   note?: string;
 }
 
-const CLI = resolve(dirname(fileURLToPath(import.meta.url)), "../packages/cli/dist/bin/oav.js");
+const CLI = resolve(dirname(fileURLToPath(import.meta.url)), "../dist/cli.js");
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "openapi-cases");
 
 if (!existsSync(CLI)) {
