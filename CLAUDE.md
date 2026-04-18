@@ -117,6 +117,43 @@ Two push helpers on the keyword-compile context reflect this:
 
 Using the wrong one double-counts errors against the budget.
 
+## Version support
+
+`@oav/validator` buckets the spec's `openapi` string at validator
+construction time via `detectOpenAPIVersion`:
+
+| Spec version | Status          | Dialect                         |
+| ------------ | --------------- | ------------------------------- |
+| 3.0.x        | NOT implemented | draft-Wright-00 (OAS 3.0 flavour) |
+| 3.1.x        | Supported       | JSON Schema 2020-12             |
+| 3.2.x        | Supported       | JSON Schema 2020-12 + QUERY method |
+
+The dispatch is a one-liner inside `createValidator` —
+`vocabulariesFor(version)`. The version check runs once at
+construction; there is no per-request branching, so supporting more
+versions adds zero runtime cost.
+
+**Adding OpenAPI 3.0.x in the future**:
+
+1. Write `packages/schema/src/keywords/oas30/*.ts` with the 3.0
+   flavours of `type` (string-only, no arrays), `nullable`,
+   `exclusiveMaximum`/`Minimum` (booleans on the bounds), and `$ref`
+   (siblings ignored).
+2. Export an `oas30Vocabulary` from `@oav/schema` that composes them
+   with the existing `validationVocabulary` / `applicatorVocabulary`
+   minus 2020-12-only keywords (`const`, `if`/`then`/`else`,
+   `contains`, `patternProperties`, `unevaluatedProperties`,
+   `unevaluatedItems`).
+3. Update `vocabulariesFor("3.0")` in
+   `packages/validator/src/validator.ts` to return those vocabularies.
+4. Add `packages/validator/test/versioning.test.ts` cases for 3.0.
+5. Add `conformance/openapi-cases/petstore-30/` — parallels the 3.1
+   and 3.2 petstores.
+
+Most of the validation vocabulary (numeric/string bounds, `enum`,
+`maxLength`, `minLength`, `required`, `allOf`/`anyOf`/`oneOf`, `not`,
+`format`, `maxItems`, `minItems`, etc.) can be reused as-is.
+
 ## Known limitations
 
 - `unevaluatedProperties` / `unevaluatedItems` do not propagate evaluation

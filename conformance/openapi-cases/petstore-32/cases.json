@@ -1,0 +1,87 @@
+[
+  {
+    "name": "3.2 GET /pets — still works",
+    "kind": "request",
+    "method": "GET",
+    "path": "/pets",
+    "expect": "valid"
+  },
+  {
+    "name": "3.2 QUERY /pets/search — valid body",
+    "kind": "request",
+    "method": "QUERY",
+    "path": "/pets/search",
+    "contentType": "application/json",
+    "body": { "filter": "cats" },
+    "expect": "valid"
+  },
+  {
+    "name": "3.2 QUERY /pets/search — valid with optional field",
+    "kind": "request",
+    "method": "QUERY",
+    "path": "/pets/search",
+    "contentType": "application/json",
+    "body": { "filter": "cats", "maxResults": 10 },
+    "expect": "valid"
+  },
+  {
+    "name": "3.2 QUERY /pets/search — missing required filter",
+    "kind": "request",
+    "method": "QUERY",
+    "path": "/pets/search",
+    "contentType": "application/json",
+    "body": {},
+    "expect": "invalid",
+    "expectCodes": ["required"]
+  },
+  {
+    "name": "3.2 QUERY /pets/search — empty filter violates minLength",
+    "kind": "request",
+    "method": "QUERY",
+    "path": "/pets/search",
+    "contentType": "application/json",
+    "body": { "filter": "" },
+    "expect": "invalid",
+    "expectCodes": ["minLength"]
+  },
+  {
+    "name": "3.2 QUERY /pets/search — maxResults over cap",
+    "kind": "request",
+    "method": "QUERY",
+    "path": "/pets/search",
+    "contentType": "application/json",
+    "body": { "filter": "cats", "maxResults": 5000 },
+    "expect": "invalid",
+    "expectCodes": ["maximum"]
+  },
+  {
+    "name": "3.2 QUERY /pets/search — missing required body",
+    "kind": "request",
+    "method": "QUERY",
+    "path": "/pets/search",
+    "contentType": "application/json",
+    "expect": "invalid",
+    "expectCodes": ["body"]
+  },
+  {
+    "name": "3.2 response QUERY /pets/search 200 — valid",
+    "kind": "response",
+    "method": "QUERY",
+    "path": "/pets/search",
+    "status": 200,
+    "contentType": "application/json",
+    "body": [{ "id": 1, "name": "Fido" }],
+    "expect": "valid"
+  },
+  {
+    "name": "3.2 response QUERY /pets/search 200 — item missing id",
+    "kind": "response",
+    "method": "QUERY",
+    "path": "/pets/search",
+    "status": 200,
+    "contentType": "application/json",
+    "body": [{ "name": "Fido" }],
+    "expect": "invalid",
+    "expectCodes": ["required"]
+  }
+]

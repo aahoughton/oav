@@ -35,6 +35,14 @@ export interface KeywordContextInputs {
    * takes the function-call path.
    */
   byKeyword?: ReadonlyMap<string, { compile: (ctx: KeywordCompileContext) => void }>;
+  /**
+   * Depth counter for recursive multi-keyword inlining. Callers never
+   * set this directly — the context threads it through
+   * {@link KeywordCompileContext.emitSubschemaValidation} so deeply-
+   * nested inline chains eventually fall back to the function-call
+   * path rather than blowing up the compiled source.
+   */
+  inlineDepth?: number;
 }
 
 /**

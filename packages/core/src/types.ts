@@ -125,8 +125,11 @@ export interface DiscriminatorObject {
 }
 
 /**
- * Top-level OpenAPI 3.1 document shape. Only the fields @oav consumes are
- * typed explicitly; everything else is captured under index access.
+ * Top-level OpenAPI document shape. Loose enough to accept 3.0, 3.1,
+ * and 3.2: fields only present on newer versions (`webhooks`,
+ * `jsonSchemaDialect`) are optional; the `openapi` string discriminates
+ * at validator-construction time via
+ * {@link detectOpenAPIVersion | detectOpenAPIVersion}.
  *
  * @public
  */
@@ -137,7 +140,10 @@ export interface OpenAPIDocument {
   paths?: Record<string, PathItem>;
   components?: ComponentsObject;
   tags?: TagObject[];
+  /** 3.1+: declared webhooks. Absent in 3.0. */
   webhooks?: Record<string, PathItem | ReferenceObject>;
+  /** 3.1+: overrides the default schema dialect URI. Absent in 3.0. */
+  jsonSchemaDialect?: string;
   [extension: `x-${string}`]: JsonValue | undefined;
 }
 
@@ -188,6 +194,8 @@ export interface ComponentsObject {
 
 /**
  * OpenAPI `pathItem`: the collection of operations available at a path.
+ * `query` is new in 3.2 (the HTTP QUERY method for read-side requests
+ * with a body). Older specs just don't set it.
  *
  * @public
  */
@@ -202,15 +210,29 @@ export interface PathItem {
   head?: OperationObject;
   patch?: OperationObject;
   trace?: OperationObject;
+  /** 3.2+: HTTP QUERY method. */
+  query?: OperationObject;
   parameters?: ParameterObject[];
 }
 
 /**
- * The HTTP method names that can appear on a {@link PathItem}.
+ * The HTTP method names that can appear on a {@link PathItem}. `query`
+ * is added in OpenAPI 3.2; earlier documents may not use it. Routing
+ * is case-insensitive — validators lower-case the request's method
+ * before lookup.
  *
  * @public
  */
-export type HttpMethod = "get" | "put" | "post" | "delete" | "options" | "head" | "patch" | "trace";
+export type HttpMethod =
+  | "get"
+  | "put"
+  | "post"
+  | "delete"
+  | "options"
+  | "head"
+  | "patch"
+  | "trace"
+  | "query";
 
 /**
  * OpenAPI `operationObject` (a single method on a path).

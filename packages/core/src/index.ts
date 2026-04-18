@@ -19,6 +19,12 @@ export {
   type FormatOptions,
 } from "./format.js";
 
+export {
+  detectOpenAPIVersion,
+  type OpenAPIVersion,
+  type VersionSupport,
+} from "./version.js";
+
 export type {
   ComponentsObject,
   DiscriminatorObject,

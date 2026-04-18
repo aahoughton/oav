@@ -1,9 +1,11 @@
 import {
   createBranchError,
   createLeafError,
+  detectOpenAPIVersion,
   type HttpRequest,
   type HttpResponse,
   type OpenAPIDocument,
+  type OpenAPIVersion,
   type OperationObject,
   type ParameterObject,
   type SchemaOrBoolean,
@@ -23,11 +25,13 @@ import {
   validationVocabulary,
   type CompiledSchema,
   type RefResolver,
+  type Vocabulary,
 } from "@oav/schema";
 
 // OpenAPI semantics: `format` is assertive. Place the assertion vocabulary
 // ahead of the annotation vocabulary so the assertive keyword wins.
-const openapiVocabularies = [
+// Shared by 3.1 and 3.2 (both use JSON Schema 2020-12).
+const openapi31Vocabularies: Vocabulary[] = [
   coreVocabulary,
   validationVocabulary,
   applicatorVocabulary,
@@ -35,6 +39,31 @@ const openapiVocabularies = [
   formatAssertionVocabulary,
   formatVocabulary,
 ];
+
+/**
+ * Pick the right vocabulary set for a given OpenAPI version. 3.1 and
+ * 3.2 share the 2020-12 dialect; 3.0's draft-Wright-00 dialect is not
+ * yet implemented and reports a clear error up-front at validator
+ * construction rather than silently miscompiling schemas.
+ *
+ * @internal
+ */
+function vocabulariesFor(version: OpenAPIVersion): Vocabulary[] {
+  switch (version) {
+    case "3.1":
+    case "3.2":
+      return openapi31Vocabularies;
+    case "3.0":
+      throw new Error(
+        "OpenAPI 3.0.x is not yet supported by @oav/validator — its schema " +
+          "dialect is not JSON Schema 2020-12. See CLAUDE.md 'Version support' " +
+          "for the architectural hook. Targeted support is planned; for now, " +
+          "migrate to 3.1 or pass an explicit `vocabularies` option if you " +
+          "have your own dialect.",
+      );
+  }
+}
+
 import { deserialize, matchMediaType, matchResponseKey } from "./deserialize.js";
 
 function prefixPath(err: ValidationError, prefix: (string | number)[]): ValidationError {
@@ -79,6 +108,16 @@ export interface ValidatorOptions {
    * the report was shortened.
    */
   maxErrors?: number;
+  /**
+   * Override the schema-dialect vocabularies used to compile the
+   * spec's schemas. By default the validator reads the spec's
+   * `openapi` version and picks a matching vocabulary set — 3.1 and
+   * 3.2 get the JSON Schema 2020-12 dialect; 3.0 throws because its
+   * dialect isn't implemented yet. Pass this option to plug in your
+   * own dialect (e.g. when the future 3.0 vocabulary ships, or for
+   * test-only overrides).
+   */
+  vocabularies?: Vocabulary[];
 }
 
 interface OperationCache {
@@ -119,6 +158,23 @@ export function createValidator(
   const router: Router = createRouter(paths);
   const formats = { ...builtInFormats, ...options.formats };
 
+  // Version detection is pure compile-time: we bake the right
+  // vocabularies into the compiled validator and never branch on
+  // version per request.
+  const vocabularies =
+    options.vocabularies ??
+    (() => {
+      const version = detectOpenAPIVersion(spec);
+      if (version === undefined) {
+        // Fall through to the 3.1 dialect by default. Missing/unknown
+        // `openapi` strings are common in test fixtures and hand-built
+        // documents; erroring out here would be more annoying than
+        // helpful.
+        return openapi31Vocabularies;
+      }
+      return vocabulariesFor(version);
+    })();
+
   const graph = resolve(spec as unknown as SchemaOrBoolean);
   const refResolver: RefResolver = createRefResolver(graph);
 
@@ -127,7 +183,7 @@ export function createValidator(
     const cached = compiledCache.get(schema);
     if (cached !== undefined) return cached;
     const c = compileSchema(schema, {
-      vocabularies: openapiVocabularies,
+      vocabularies,
       formats,
       refResolver,
       maxErrors: options.maxErrors,
