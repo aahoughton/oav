@@ -24,12 +24,13 @@ export const propertiesKeyword: KeywordDefinition = {
       for (const name of Object.keys(props)) {
         const subSchema = props[name];
         if (subSchema === undefined) continue;
-        const subFn = ctx.subschema(subSchema);
         const keyLit = quoteString(name);
         g.if(`Object.prototype.hasOwnProperty.call(${ctx.data}, ${keyLit})`, (gi) => {
-          const errVar = gi.scope.name("e");
-          gi.const(errVar, `${subFn}(${ctx.data}[${keyLit}], [...${ctx.path}, ${keyLit}])`);
-          gi.if(`${errVar} !== null`, () => ctx.liftError(errVar));
+          ctx.emitSubschemaValidation(
+            subSchema,
+            `${ctx.data}[${keyLit}]`,
+            `[...${ctx.path}, ${keyLit}]`,
+          );
           if (ctx.evaluatedPropertiesVar !== null) {
             gi.line(`${ctx.evaluatedPropertiesVar}.add(${keyLit});`);
           }
@@ -56,26 +57,28 @@ export const patternPropertiesKeyword: KeywordDefinition = {
     const entries = Object.keys(patterns);
     if (entries.length === 0) return;
     ctx.gen.if(isObjectGuard(ctx.data), (g) => {
-      const subs: Array<{ regex: string; fn: string }> = entries.map((pattern) => {
-        const subSchema = patterns[pattern];
-        if (subSchema === undefined) return { regex: quoteString(pattern), fn: "" };
-        const fn = ctx.subschema(subSchema);
-        const patternLit = quoteString(pattern);
-        const regexVar = g.scope.name("re");
-        g.line(
-          `let ${regexVar} = ${NAMES.DEPS}.patterns.get(${patternLit}); ` +
-            `if (${regexVar} === undefined) { ${regexVar} = new RegExp(${patternLit}, "u"); ${NAMES.DEPS}.patterns.set(${patternLit}, ${regexVar}); }`,
-        );
-        return { regex: regexVar, fn };
-      });
+      const subs: Array<{ regex: string; sub: SchemaOrBoolean | undefined }> = entries.map(
+        (pattern) => {
+          const subSchema = patterns[pattern];
+          const patternLit = quoteString(pattern);
+          const regexVar = g.scope.name("re");
+          g.line(
+            `let ${regexVar} = ${NAMES.DEPS}.patterns.get(${patternLit}); ` +
+              `if (${regexVar} === undefined) { ${regexVar} = new RegExp(${patternLit}, "u"); ${NAMES.DEPS}.patterns.set(${patternLit}, ${regexVar}); }`,
+          );
+          return { regex: regexVar, sub: subSchema };
+        },
+      );
       const keyVar = g.scope.name("key");
       g.forIn(keyVar, ctx.data, (gi) => {
-        for (const { regex, fn } of subs) {
-          if (fn === "") continue;
+        for (const { regex, sub } of subs) {
+          if (sub === undefined) continue;
           gi.if(`${regex}.test(${keyVar})`, (gii) => {
-            const errVar = gii.scope.name("e");
-            gii.const(errVar, `${fn}(${ctx.data}[${keyVar}], [...${ctx.path}, ${keyVar}])`);
-            gii.if(`${errVar} !== null`, () => ctx.liftError(errVar));
+            ctx.emitSubschemaValidation(
+              sub,
+              `${ctx.data}[${keyVar}]`,
+              `[...${ctx.path}, ${keyVar}]`,
+            );
             if (ctx.evaluatedPropertiesVar !== null) {
               gii.line(`${ctx.evaluatedPropertiesVar}.add(${keyVar});`);
             }
@@ -138,10 +141,7 @@ export const additionalPropertiesKeyword: KeywordDefinition = {
           ctx.emitBudgetBreak();
           return;
         }
-        const fn = ctx.subschema(subSchema);
-        const errVar = gi.scope.name("e");
-        gi.const(errVar, `${fn}(${ctx.data}[${key}], [...${ctx.path}, ${key}])`);
-        gi.if(`${errVar} !== null`, () => ctx.liftError(errVar));
+        ctx.emitSubschemaValidation(subSchema, `${ctx.data}[${key}]`, `[...${ctx.path}, ${key}]`);
         if (ctx.evaluatedPropertiesVar !== null) {
           gi.line(`${ctx.evaluatedPropertiesVar}.add(${key});`);
         }
@@ -164,13 +164,10 @@ export const propertyNamesKeyword: KeywordDefinition = {
   applicator: true,
   compile(ctx: KeywordCompileContext): void {
     const subSchema = ctx.schema as SchemaOrBoolean;
-    const fn = ctx.subschema(subSchema);
     ctx.gen.if(isObjectGuard(ctx.data), (g) => {
       const key = g.scope.name("key");
-      g.forIn(key, ctx.data, (gi) => {
-        const errVar = gi.scope.name("e");
-        gi.const(errVar, `${fn}(${key}, [...${ctx.path}, ${key}])`);
-        gi.if(`${errVar} !== null`, () => ctx.liftError(errVar));
+      g.forIn(key, ctx.data, () => {
+        ctx.emitSubschemaValidation(subSchema, key, `[...${ctx.path}, ${key}]`);
         ctx.emitBudgetBreak();
       });
     });

@@ -127,6 +127,22 @@ export interface KeywordCompileContext {
    * loops so they short-circuit once the error cap is hit.
    */
   emitBudgetBreak(): void;
+  /**
+   * Emit validation for a subschema against `dataExpr` with `pathExpr`,
+   * writing any errors into the current scope's accumulator.
+   *
+   * When the subschema is simple enough — a boolean, or a single
+   * validation keyword from a safe whitelist — the keyword's code is
+   * inlined directly, avoiding the per-call function dispatch and the
+   * eager path-array allocation that a function boundary forces. For
+   * anything more complex, it falls back to compiling the subschema
+   * into a named function and emitting the usual call + lift.
+   *
+   * Use this instead of hand-rolling the sub-call pattern inside
+   * applicator keywords (items, properties, additionalProperties,
+   * patternProperties, propertyNames, unevaluatedProperties/Items).
+   */
+  emitSubschemaValidation(schema: SchemaOrBoolean, dataExpr: string, pathExpr: string): void;
 }
 
 /**

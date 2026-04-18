@@ -19,11 +19,8 @@ export const prefixItemsKeyword: KeywordDefinition = {
     if (schemas.length === 0) return;
     ctx.gen.if(`Array.isArray(${ctx.data})`, (g) => {
       schemas.forEach((sub, i) => {
-        const fn = ctx.subschema(sub);
         g.if(`${ctx.data}.length > ${i}`, (gi) => {
-          const errVar = gi.scope.name("e");
-          gi.const(errVar, `${fn}(${ctx.data}[${i}], [...${ctx.path}, ${i}])`);
-          gi.if(`${errVar} !== null`, () => ctx.liftError(errVar));
+          ctx.emitSubschemaValidation(sub, `${ctx.data}[${i}]`, `[...${ctx.path}, ${i}]`);
           if (ctx.evaluatedItemsVar !== null) {
             gi.line(`${ctx.evaluatedItemsVar}.add(${i});`);
           }
@@ -63,10 +60,7 @@ export const itemsKeyword: KeywordDefinition = {
             `"no additional items allowed", {})`,
         );
       } else {
-        const fn = ctx.subschema(subSchema);
-        const errVar = g.scope.name("e");
-        g.const(errVar, `${fn}(${ctx.data}[${i}], [...${ctx.path}, ${i}])`);
-        g.if(`${errVar} !== null`, () => ctx.liftError(errVar));
+        ctx.emitSubschemaValidation(subSchema, `${ctx.data}[${i}]`, `[...${ctx.path}, ${i}]`);
         if (ctx.evaluatedItemsVar !== null) {
           g.line(`${ctx.evaluatedItemsVar}.add(${i});`);
         }

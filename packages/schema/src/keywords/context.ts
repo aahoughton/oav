@@ -27,6 +27,14 @@ export interface KeywordContextInputs {
    * `errors.push(x)` / unchecked loops — zero runtime overhead.
    */
   gated?: boolean;
+  /**
+   * The compiler's full keyword registry. Used by
+   * {@link KeywordCompileContext.emitSubschemaValidation} to inline a
+   * subschema's single keyword directly instead of compiling it to a
+   * fresh function. Optional: when omitted, subschema emission always
+   * takes the function-call path.
+   */
+  byKeyword?: ReadonlyMap<string, { compile: (ctx: KeywordCompileContext) => void }>;
 }
 
 /**
@@ -43,6 +51,53 @@ export interface KeywordContextInputs {
  *
  * @public
  */
+/**
+ * Keywords that produce at most one error per application and have no
+ * nested subschemas. When a subschema contains exactly one of these
+ * keywords and nothing else that can emit errors, we can emit its
+ * validation code inline in the enclosing function instead of
+ * compiling it to a separate function — saving the per-call dispatch
+ * cost and, more importantly, the eager `[...path, seg]` allocation
+ * that function boundaries force.
+ *
+ * @internal
+ */
+const INLINEABLE_SINGLE_KEYWORDS = new Set([
+  "type",
+  "const",
+  "enum",
+  "minimum",
+  "maximum",
+  "exclusiveMinimum",
+  "exclusiveMaximum",
+  "multipleOf",
+  "minLength",
+  "maxLength",
+  "pattern",
+  "format",
+  "minItems",
+  "maxItems",
+  "uniqueItems",
+  "minProperties",
+  "maxProperties",
+]);
+
+/**
+ * Schema keys that are purely informational / metadata and can coexist
+ * with an inlineable keyword without disqualifying the schema.
+ */
+const IGNORABLE_KEYS = new Set([
+  "$comment",
+  "$schema",
+  "title",
+  "description",
+  "default",
+  "examples",
+  "readOnly",
+  "writeOnly",
+  "deprecated",
+]);
+
 export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompileContext {
   const evaluatedPropertiesVar = inputs.evaluatedPropertiesVar ?? null;
   const evaluatedItemsVar = inputs.evaluatedItemsVar ?? null;
@@ -84,6 +139,62 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     if (stmt !== "") inputs.gen.line(stmt);
   };
 
+  const tryInline = (schema: SchemaObject, dataExpr: string, pathExpr: string): boolean => {
+    if (inputs.byKeyword === undefined) return false;
+    const allKeys = Object.keys(schema);
+    let validationKey: string | undefined;
+    for (const k of allKeys) {
+      if (IGNORABLE_KEYS.has(k)) continue;
+      if (validationKey !== undefined) return false; // more than one validation key
+      validationKey = k;
+    }
+    if (validationKey === undefined) return true; // empty-ish schema — nothing to emit
+    if (!INLINEABLE_SINGLE_KEYWORDS.has(validationKey)) return false;
+    const kw = inputs.byKeyword.get(validationKey);
+    if (kw === undefined) return false;
+    // Compile the single keyword inline with the caller's errors accumulator
+    // and overridden data/path expressions.
+    const innerCtx = createKeywordContext({
+      gen: inputs.gen,
+      schema: (schema as Record<string, unknown>)[validationKey],
+      parentSchema: schema,
+      data: dataExpr,
+      path: pathExpr,
+      errors: inputs.errors,
+      subschema: inputs.subschema,
+      resolveRef: inputs.resolveRef,
+      evaluatedPropertiesVar: null,
+      evaluatedItemsVar: null,
+      gated,
+      byKeyword: inputs.byKeyword,
+    });
+    kw.compile(innerCtx);
+    return true;
+  };
+
+  const emitSubschemaValidation = (
+    schema: SchemaOrBoolean,
+    dataExpr: string,
+    pathExpr: string,
+  ): void => {
+    if (schema === true) return;
+    if (schema === false) {
+      const falseErr =
+        `${NAMES.DEPS}.createLeafError("false", ${pathExpr}, ` +
+        `"schema is false, nothing is valid")`;
+      inputs.gen.line(emitPushStatement(inputs.errors, falseErr, gated));
+      return;
+    }
+    if (tryInline(schema, dataExpr, pathExpr)) return;
+    // Fall back: compile subschema to a named function and call it.
+    const fn = inputs.subschema(schema);
+    const errVar = inputs.gen.scope.name("e");
+    inputs.gen.const(errVar, `${fn}(${dataExpr}, ${pathExpr})`);
+    inputs.gen.if(`${errVar} !== null`, () => {
+      inputs.gen.line(`${inputs.errors}.push(${errVar});`);
+    });
+  };
+
   return {
     gen: inputs.gen,
     schema: inputs.schema,
@@ -104,6 +215,7 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     liftError,
     budgetBreakStmt,
     emitBudgetBreak,
+    emitSubschemaValidation,
     error: (params: EmitErrorParams) => emitError(inputs, params, gated),
   };
 }

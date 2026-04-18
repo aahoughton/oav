@@ -40,35 +40,62 @@ milliseconds on every compile.
 
 | schema      | ajv    | hyperjump | oav     |
 | ----------- | ------ | --------- | ------- |
-| tiny        | 2.97ms | 37.47µs   | 6.68µs  |
-| petstore    | 2.98ms | 204.46µs  | 33.47µs |
-| tree        | 2.94ms | 170.57µs  | 26.37µs |
-| composition | 3.43ms | 434.86µs  | 62.84µs |
-| array-heavy | 2.88ms | 163.39µs  | 28.18µs |
+| tiny        | 2.97ms | 37.47µs   | 10.21µs |
+| petstore    | 2.98ms | 204.46µs  | 49.78µs |
+| tree        | 2.94ms | 170.57µs  | 35.54µs |
+| composition | 3.43ms | 434.86µs  | 80.54µs |
+| array-heavy | 2.88ms | 163.39µs  | 38.36µs |
 
 Validate (happy path — pre-compiled validator, one valid input per
 iteration, no per-iteration setup):
 
-| schema      | ajv    | hyperjump | oav     |
-| ----------- | ------ | --------- | ------- |
-| tiny        | 24.3ns | 226.3ns   | 25.0ns  |
-| petstore    | 62.9ns | 1.05µs    | 193.1ns |
-| tree        | 50.2ns | 631.3ns   | 77.3ns  |
-| composition | 69.7ns | 2.38µs    | 322.2ns |
-| array-heavy | 1.08µs | 240.35µs  | 16.12µs |
+| schema      | ajv    | hyperjump | oav    |
+| ----------- | ------ | --------- | ------ |
+| tiny        | 24.3ns | 226.3ns   | 24.5ns |
+| petstore    | 62.9ns | 1.05µs    | 189ns  |
+| tree        | 50.2ns | 631.3ns   | 63ns   |
+| composition | 69.7ns | 2.38µs    | 321ns  |
+| array-heavy | 1.08µs | 240.35µs  | 9.32µs |
 
 Validate (failure path — pre-compiled validator, one invalid input per
 iteration):
 
-| schema      | ajv    | hyperjump | oav     |
-| ----------- | ------ | --------- | ------- |
-| tiny        | 35.1ns | 191.3ns   | 49.9ns  |
-| petstore    | 82.9ns | 798.0ns   | 253.6ns |
-| tree        | 78.2ns | 620.0ns   | 115.3ns |
-| composition | 89.3ns | 2.02µs    | 408.9ns |
-| array-heavy | 1.14µs | 244.84µs  | 16.04µs |
+| schema      | ajv    | hyperjump | oav    |
+| ----------- | ------ | --------- | ------ |
+| tiny        | 35.1ns | 191.3ns   | 49.8ns |
+| petstore    | 82.9ns | 798.0ns   | 243ns  |
+| tree        | 78.2ns | 620.0ns   | 83ns   |
+| composition | 89.3ns | 2.02µs    | 413ns  |
+| array-heavy | 1.14µs | 244.84µs  | 8.81µs |
 
 (Numbers drift run-to-run; use `results.json` for the raw series.)
+
+## Changes since the first measurement
+
+Single-keyword subschema inlining: when an applicator (items,
+properties, additionalProperties, patternProperties, propertyNames,
+unevaluatedProperties/Items) would otherwise call a subschema
+function, and that subschema contains exactly one of a safe whitelist
+of leaf keywords (type, const, enum, numeric/string bounds, pattern,
+format, item/property counts, uniqueItems), the keyword's code is
+emitted directly into the enclosing function. Avoids per-call function
+dispatch and — more impactfully — the eager `[...path, seg]` path
+array allocation that function boundaries otherwise force.
+
+Numbers moved:
+
+- **tree**: 77 → 63 ns (19% faster; recursive value/label get inlined,
+  children still goes through a function for cycle handling).
+- **array-heavy**: 16.12 → 9.32 µs (42% faster; the inner
+  `tags: { type: "array", items: { type: "string" } }` gets its
+  per-string validator inlined).
+- tiny / petstore / composition essentially unchanged — those
+  schemas either have no nested subschemas, or all subschemas have
+  multiple keywords.
+
+Compile got slightly slower (30–50% more time) because the context
+now threads the keyword registry through every subschema compilation.
+Still 50–300× faster than ajv to compile.
 
 ## Methodology notes
 

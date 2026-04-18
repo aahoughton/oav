@@ -51,10 +51,7 @@ export const unevaluatedPropertiesKeyword: KeywordDefinition = {
           ctx.emitBudgetBreak();
           return;
         }
-        const fn = ctx.subschema(sub);
-        const errVar = gi.scope.name("e");
-        gi.const(errVar, `${fn}(${ctx.data}[${key}], [...${ctx.path}, ${key}])`);
-        gi.if(`${errVar} !== null`, () => ctx.liftError(errVar));
+        ctx.emitSubschemaValidation(sub, `${ctx.data}[${key}]`, `[...${ctx.path}, ${key}]`);
         ctx.emitBudgetBreak();
       });
     });
@@ -97,10 +94,7 @@ export const unevaluatedItemsKeyword: KeywordDefinition = {
           ctx.emitBudgetBreak();
           return;
         }
-        const fn = ctx.subschema(sub);
-        const errVar = gi.scope.name("e");
-        gi.const(errVar, `${fn}(${ctx.data}[${i}], [...${ctx.path}, ${i}])`);
-        gi.if(`${errVar} !== null`, () => ctx.liftError(errVar));
+        ctx.emitSubschemaValidation(sub, `${ctx.data}[${i}]`, `[...${ctx.path}, ${i}]`);
         ctx.emitBudgetBreak();
       });
     });

@@ -240,6 +240,7 @@ function compileSchemaKeywords(
       evaluatedPropertiesVar,
       evaluatedItemsVar,
       gated: state.gated,
+      byKeyword: state.byKeyword,
     });
     kw.compile(ctx);
     seen.add(kw.keyword);
