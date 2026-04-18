@@ -31,14 +31,25 @@ describe("subschema inlining", () => {
     expect(namedFnCount(v.source)).toBe(1);
   });
 
-  it("inlines a multi-keyword subschema when it fits the budget", () => {
+  it("inlines a pure-leaf multi-keyword subschema", () => {
+    const v = compile({
+      type: "array",
+      items: { type: "integer", minimum: 1, maximum: 100 },
+    });
+    // Only the root validator — items' schema has three leaf keywords
+    // (no applicators), so it inlines.
+    expect(namedFnCount(v.source)).toBe(1);
+  });
+
+  it("compiles an applicator-containing subschema as a function (hot-loop friendly)", () => {
     const v = compile({
       type: "array",
       items: { type: "object", required: ["x"], properties: { x: { type: "number" } } },
     });
-    // Only the root validator — items' object schema is inlined (no
-    // $ref, few keywords, shallow).
-    expect(namedFnCount(v.source)).toBe(1);
+    // items' schema has `properties` (applicator), so it stays a
+    // function — V8 monomorphises the hot-loop call better that way
+    // than inlining would.
+    expect(namedFnCount(v.source)).toBe(2);
   });
 
   it("falls back to a named function when the subschema contains $ref", () => {
