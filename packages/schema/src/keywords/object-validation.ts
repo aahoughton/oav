@@ -24,7 +24,8 @@ export const maxPropertiesKeyword: KeywordDefinition = {
     ctx.gen.if(isObjectGuard(ctx.data), (g) => {
       g.const(count, keyCountExpr(ctx.data));
       g.if(`${count} > ${limit}`, () => {
-        ctx.pushError(
+        ctx.emitError(
+          "leaf",
           `${NAMES.DEPS}.createLeafError(` +
             `${quoteString("maxProperties")}, ${ctx.path}, ` +
             `\`must have at most ${limit} properties\`, ` +
@@ -49,7 +50,8 @@ export const minPropertiesKeyword: KeywordDefinition = {
     ctx.gen.if(isObjectGuard(ctx.data), (g) => {
       g.const(count, keyCountExpr(ctx.data));
       g.if(`${count} < ${limit}`, () => {
-        ctx.pushError(
+        ctx.emitError(
+          "leaf",
           `${NAMES.DEPS}.createLeafError(` +
             `${quoteString("minProperties")}, ${ctx.path}, ` +
             `\`must have at least ${limit} properties\`, ` +
@@ -85,7 +87,8 @@ export const requiredKeyword: KeywordDefinition = {
       g.if(`${missingVar}.length > 0`, (gi) => {
         gi.forOf("_m", missingVar, () => {
           ctx.withPathSegment("_m", () => {
-            ctx.pushError(
+            ctx.emitError(
+              "leaf",
               `${NAMES.DEPS}.createLeafError(` +
                 `${quoteString("required")}, ${ctx.path}, ` +
                 `\`must have required property "\${_m}"\`, ` +

@@ -26,7 +26,8 @@ export const enumKeyword: KeywordDefinition = {
       });
     });
     ctx.gen.if(`!${matched}`, () => {
-      ctx.pushError(
+      ctx.emitError(
+        "leaf",
         `${NAMES.DEPS}.createLeafError(` +
           `${quoteString("enum")}, ${ctx.path}, ` +
           `"must be one of the allowed values", ` +
@@ -49,7 +50,8 @@ export const constKeyword: KeywordDefinition = {
     const value = ctx.schema as JsonValue;
     const valueLit = JSON.stringify(value);
     ctx.gen.if(`!${NAMES.DEPS}.deepEqual(${ctx.data}, ${valueLit})`, () => {
-      ctx.pushError(
+      ctx.emitError(
+        "leaf",
         `${NAMES.DEPS}.createLeafError(` +
           `${quoteString("const")}, ${ctx.path}, ` +
           `"must equal the expected constant", ` +

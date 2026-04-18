@@ -96,6 +96,7 @@ export {
   type Dialect,
   type DialectRules,
   type EmitErrorParams,
+  type ErrorKind,
   type KeywordCompileContext,
   type KeywordContextInputs,
   type KeywordDefinition,

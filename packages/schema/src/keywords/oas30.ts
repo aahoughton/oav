@@ -50,7 +50,8 @@ export const oas30TypeKeyword: KeywordDefinition = {
     ctx.gen.if(condition, () => {
       const expectedLit = JSON.stringify(types);
       const actualExpr = `${NAMES.DEPS}.typeOf(${ctx.data})`;
-      ctx.pushError(
+      ctx.emitError(
+        "leaf",
         `${NAMES.DEPS}.createLeafError(` +
           `${quoteString("type")}, ${ctx.path}, ` +
           `"must be " + ${JSON.stringify(nullable ? `${declared} or null` : declared)}, ` +
@@ -93,7 +94,8 @@ export const oas30MaximumKeyword: KeywordDefinition = {
     ctx.gen.if(
       `typeof ${ctx.data} === "number" && Number.isFinite(${ctx.data}) && ${ctx.data} ${op} ${limit}`,
       () => {
-        ctx.pushError(
+        ctx.emitError(
+          "leaf",
           `${NAMES.DEPS}.createLeafError(` +
             `${quoteString("maximum")}, ${ctx.path}, ` +
             `\`must be ${exclusive ? "<" : "<="} ${limit}\`, ` +
@@ -120,7 +122,8 @@ export const oas30MinimumKeyword: KeywordDefinition = {
     ctx.gen.if(
       `typeof ${ctx.data} === "number" && Number.isFinite(${ctx.data}) && ${ctx.data} ${op} ${limit}`,
       () => {
-        ctx.pushError(
+        ctx.emitError(
+          "leaf",
           `${NAMES.DEPS}.createLeafError(` +
             `${quoteString("minimum")}, ${ctx.path}, ` +
             `\`must be ${exclusive ? ">" : ">="} ${limit}\`, ` +

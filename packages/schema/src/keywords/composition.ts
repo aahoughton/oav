@@ -26,7 +26,8 @@ export const allOfKeyword: KeywordDefinition = {
     });
     const n = schemas.length;
     ctx.gen.if(`${errsVar}.length > 0`, () => {
-      ctx.liftError(
+      ctx.emitError(
+        "lift",
         `${NAMES.DEPS}.createBranchError(` +
           `${quoteString("allOf")}, ${ctx.path}, ` +
           `\`must satisfy all ${n} schemas (\${${errsVar}.length} failed)\`, ` +
@@ -65,7 +66,8 @@ export const anyOfKeyword: KeywordDefinition = {
     });
     const n = schemas.length;
     ctx.gen.if(`!${matched}`, () => {
-      ctx.liftError(
+      ctx.emitError(
+        "lift",
         `${NAMES.DEPS}.createBranchError(` +
           `${quoteString("anyOf")}, ${ctx.path}, ` +
           `\`must match at least one of ${n} schemas\`, ` +
@@ -104,7 +106,8 @@ export const oneOfKeyword: KeywordDefinition = {
     });
     const n = schemas.length;
     ctx.gen.if(`${matchCount} !== 1`, () => {
-      ctx.liftError(
+      ctx.emitError(
+        "lift",
         `${NAMES.DEPS}.createBranchError(` +
           `${quoteString("oneOf")}, ${ctx.path}, ` +
           `\`must match exactly one of ${n} schemas (matched \${${matchCount}})\`, ` +
@@ -129,7 +132,8 @@ export const notKeyword: KeywordDefinition = {
     const errVar = ctx.gen.scope.name("notErr");
     ctx.gen.const(errVar, `${fn}(${ctx.data}, ${ctx.path})`);
     ctx.gen.if(`${errVar} === null`, () => {
-      ctx.pushError(
+      ctx.emitError(
+        "leaf",
         `${NAMES.DEPS}.createLeafError(` +
           `${quoteString("not")}, ${ctx.path}, ` +
           `"must NOT match the schema", {})`,
@@ -164,7 +168,7 @@ export const ifThenElseKeyword: KeywordDefinition = {
           const tFn = ctx.subschema(thenSchema);
           const tErr = g.scope.name("thenErr");
           g.const(tErr, `${tFn}(${ctx.data}, ${ctx.path})`);
-          g.if(`${tErr} !== null`, () => ctx.liftError(tErr));
+          g.if(`${tErr} !== null`, () => ctx.emitError("lift", tErr));
         }
       },
       (g) => {
@@ -172,7 +176,7 @@ export const ifThenElseKeyword: KeywordDefinition = {
           const eFn = ctx.subschema(elseSchema);
           const eErr = g.scope.name("elseErr");
           g.const(eErr, `${eFn}(${ctx.data}, ${ctx.path})`);
-          g.if(`${eErr} !== null`, () => ctx.liftError(eErr));
+          g.if(`${eErr} !== null`, () => ctx.emitError("lift", eErr));
         }
       },
     );
@@ -202,7 +206,7 @@ export const dependentSchemasKeyword: KeywordDefinition = {
           g.if(`Object.prototype.hasOwnProperty.call(${ctx.data}, ${keyLit})`, (gi) => {
             const errVar = gi.scope.name("e");
             gi.const(errVar, `${fn}(${ctx.data}, ${ctx.path})`);
-            gi.if(`${errVar} !== null`, () => ctx.liftError(errVar));
+            gi.if(`${errVar} !== null`, () => ctx.emitError("lift", errVar));
           });
         }
       },
@@ -239,7 +243,8 @@ export const dependenciesKeyword: KeywordDefinition = {
                 const propLit = quoteString(prop);
                 gi.if(`!Object.prototype.hasOwnProperty.call(${ctx.data}, ${propLit})`, () => {
                   ctx.withPathSegment(propLit, () => {
-                    ctx.pushError(
+                    ctx.emitError(
+                      "leaf",
                       `${NAMES.DEPS}.createLeafError(` +
                         `${quoteString("dependencies")}, ${ctx.path}, ` +
                         `\`property "${prop}" is required when "${trigger}" is present\`, ` +
@@ -255,7 +260,7 @@ export const dependenciesKeyword: KeywordDefinition = {
             g.if(`Object.prototype.hasOwnProperty.call(${ctx.data}, ${triggerLit})`, (gi) => {
               const errVar = gi.scope.name("e");
               gi.const(errVar, `${fn}(${ctx.data}, ${ctx.path})`);
-              gi.if(`${errVar} !== null`, () => ctx.liftError(errVar));
+              gi.if(`${errVar} !== null`, () => ctx.emitError("lift", errVar));
             });
           }
         }
@@ -287,7 +292,8 @@ export const dependentRequiredKeyword: KeywordDefinition = {
               const propLit = quoteString(prop);
               gi.if(`!Object.prototype.hasOwnProperty.call(${ctx.data}, ${propLit})`, () => {
                 ctx.withPathSegment(propLit, () => {
-                  ctx.pushError(
+                  ctx.emitError(
+                    "leaf",
                     `${NAMES.DEPS}.createLeafError(` +
                       `${quoteString("dependentRequired")}, ${ctx.path}, ` +
                       `\`property "${prop}" is required when "${trigger}" is present\`, ` +

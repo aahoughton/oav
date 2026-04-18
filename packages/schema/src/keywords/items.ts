@@ -54,7 +54,8 @@ export const itemsKeyword: KeywordDefinition = {
         }
       } else if (subSchema === false) {
         ctx.withPathSegment(i, () => {
-          ctx.pushError(
+          ctx.emitError(
+            "leaf",
             `${NAMES.DEPS}.createLeafError(` +
               `${quoteString("items")}, ${ctx.path}, ` +
               `"no additional items allowed", {})`,
@@ -114,7 +115,8 @@ export const containsKeyword: KeywordDefinition = {
       });
       if (min > 0) {
         g.if(`${count} < ${min}`, () => {
-          ctx.pushError(
+          ctx.emitError(
+            "leaf",
             `${NAMES.DEPS}.createLeafError(` +
               `${quoteString("contains")}, ${ctx.path}, ` +
               `\`must contain at least ${min} matching item(s) (found \${${count}})\`, ` +
@@ -124,7 +126,8 @@ export const containsKeyword: KeywordDefinition = {
       }
       if (max !== undefined) {
         g.if(`${count} > ${max}`, () => {
-          ctx.pushError(
+          ctx.emitError(
+            "leaf",
             `${NAMES.DEPS}.createLeafError(` +
               `${quoteString("maxContains")}, ${ctx.path}, ` +
               `\`must contain at most ${max} matching item(s) (found \${${count}})\`, ` +

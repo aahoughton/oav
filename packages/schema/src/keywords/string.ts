@@ -15,7 +15,8 @@ export const maxLengthKeyword: KeywordDefinition = {
     const limit = ctx.schema as number;
     const lenExpr = codeUnitLengthExpr(ctx.data);
     ctx.gen.if(`typeof ${ctx.data} === "string" && ${lenExpr} > ${limit}`, () => {
-      ctx.pushError(
+      ctx.emitError(
+        "leaf",
         `${NAMES.DEPS}.createLeafError(` +
           `${quoteString("maxLength")}, ${ctx.path}, ` +
           `\`must have at most ${limit} characters\`, ` +
@@ -38,7 +39,8 @@ export const minLengthKeyword: KeywordDefinition = {
     const limit = ctx.schema as number;
     const lenExpr = codeUnitLengthExpr(ctx.data);
     ctx.gen.if(`typeof ${ctx.data} === "string" && ${lenExpr} < ${limit}`, () => {
-      ctx.pushError(
+      ctx.emitError(
+        "leaf",
         `${NAMES.DEPS}.createLeafError(` +
           `${quoteString("minLength")}, ${ctx.path}, ` +
           `\`must have at least ${limit} characters\`, ` +
@@ -66,7 +68,8 @@ export const patternKeyword: KeywordDefinition = {
         ` if (${patternVar} === undefined) { ${patternVar} = new RegExp(${patternLit}, "u"); ${NAMES.DEPS}.patterns.set(${patternLit}, ${patternVar}); }`,
     );
     ctx.gen.if(`typeof ${ctx.data} === "string" && !${patternVar}.test(${ctx.data})`, () => {
-      ctx.pushError(
+      ctx.emitError(
+        "leaf",
         `${NAMES.DEPS}.createLeafError(` +
           `${quoteString("pattern")}, ${ctx.path}, ` +
           `\`must match pattern ${escapeMessage(source)}\`, ` +
@@ -111,7 +114,8 @@ export const formatAssertionKeyword: KeywordDefinition = {
     ctx.gen.if(
       `typeof ${ctx.data} === "string" && ${fnVar} !== undefined && !${fnVar}(${ctx.data})`,
       () => {
-        ctx.pushError(
+        ctx.emitError(
+          "leaf",
           `${NAMES.DEPS}.createLeafError(` +
             `${quoteString("format")}, ${ctx.path}, ` +
             `\`must match format ${escapeMessage(formatName)}\`, ` +

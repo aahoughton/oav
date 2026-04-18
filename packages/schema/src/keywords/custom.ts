@@ -75,7 +75,8 @@ export function createCustomKeywordDefinition(keyword: string): KeywordDefinitio
         ctx.gen.line(
           `const ${paramsVar} = (${resultVar} && typeof ${resultVar} === "object" && ${resultVar}.params && typeof ${resultVar}.params === "object") ? ${resultVar}.params : {};`,
         );
-        ctx.pushError(
+        ctx.emitError(
+          "leaf",
           `${NAMES.DEPS}.createLeafError(${keywordLit}, ${ctx.path}, ${messageVar}, ${paramsVar})`,
         );
       });

@@ -12,7 +12,8 @@ function emitNumericError(
   message: string,
   paramsObj: string,
 ): void {
-  ctx.pushError(
+  ctx.emitError(
+    "leaf",
     `${NAMES.DEPS}.createLeafError(` +
       `${quoteString(code)}, ${ctx.path}, ${message}, ${paramsObj})`,
   );
@@ -30,7 +31,8 @@ export const multipleOfKeyword: KeywordDefinition = {
   compile(ctx: KeywordCompileContext): void {
     const divisor = ctx.schema as number;
     ctx.gen.if(`${numberGuard(ctx.data)} && (${ctx.data} / ${divisor}) % 1 !== 0`, () => {
-      ctx.pushError(
+      ctx.emitError(
+        "leaf",
         `${NAMES.DEPS}.createLeafError(` +
           `${quoteString("multipleOf")}, ${ctx.path}, ` +
           `\`must be a multiple of ${divisor}\`, ` +

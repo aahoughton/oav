@@ -14,6 +14,17 @@ export interface CompileRuntime {
 }
 
 /**
+ * Which budget semantics to apply when pushing an error expression
+ * onto the errors accumulator. See {@link KeywordCompileContext.emitError}.
+ *
+ * - `"leaf"` — fresh leaf error, counts against `maxErrors`.
+ * - `"lift"` — already-counted error being propagated (unconditional push).
+ *
+ * @public
+ */
+export type ErrorKind = "leaf" | "lift";
+
+/**
  * Parameters that describe an error a keyword wants to emit.
  *
  * @public
@@ -75,56 +86,46 @@ export interface KeywordCompileContext {
   /**
    * `true` when a finite `maxErrors` cap was configured. Keyword
    * authors usually don't need to read this directly — prefer
-   * {@link KeywordCompileContext.pushErrorStmt} and
-   * {@link KeywordCompileContext.budgetBreakStmt} which inspect it.
+   * {@link KeywordCompileContext.emitError} /
+   * {@link KeywordCompileContext.emitBudgetBreak} which inspect it.
    */
   readonly gated: boolean;
   /**
-   * Build a JS statement that pushes a single error expression into the
-   * errors accumulator. Honours the configured `maxErrors` cap when
-   * {@link KeywordCompileContext.gated} is `true`; a plain
-   * `errors.push(...)` otherwise.
+   * Emit an error-push statement directly into the current code
+   * generator. Pick the right `kind` based on where the error
+   * expression came from:
    *
-   * Use for freshly-minted **leaf** errors. Each counts against the
-   * per-call budget. For lifting already-counted sub-validator results
-   * or wrapping them in a branch, use
-   * {@link KeywordCompileContext.liftError} / `liftErrorStmt` instead.
-   */
-  pushErrorStmt(errExpr: string): string;
-  /**
-   * Emit the statement from {@link KeywordCompileContext.pushErrorStmt}
-   * directly into the current code generator. The one-stop replacement
-   * for `ctx.gen.line(\`\${ctx.errors}.push(...)\`)` when the error
-   * expression is a fresh leaf.
-   */
-  pushError(errExpr: string): void;
-  /**
-   * Build a plain `errors.push(...)` statement — always unconditional,
-   * regardless of `maxErrors`. Use for:
+   * - `"leaf"` — freshly-minted leaf error, created in this call.
+   *   Counts against the `maxErrors` budget when one is configured;
+   *   short-circuits cleanly when the cap has been hit.
+   * - `"lift"` — an already-counted error being propagated up the
+   *   tree (a sub-validator's return value) or a branch wrapper
+   *   around already-counted children (`createBranchError`). Always
+   *   unconditional — never touches the budget counter.
    *
-   * 1. Sub-validator return values being lifted up the error tree
-   *    (those leaves were already counted when the sub-validator
-   *    pushed them into its local accumulator).
-   * 2. Branch wrappers (`createBranchError` with already-counted
-   *    children) so the tree stays structurally complete even after
-   *    the budget runs out.
+   * Using the wrong kind silently miscounts errors against the
+   * budget, so think about it each time. TypeScript enforces that you
+   * supply one of the two names; the intent of the choice is on you.
    */
-  liftErrorStmt(errExpr: string): string;
+  emitError(kind: ErrorKind, errExpr: string): void;
   /**
-   * Emit {@link KeywordCompileContext.liftErrorStmt} directly into the
-   * current code generator.
+   * String form of {@link KeywordCompileContext.emitError} — returns
+   * the statement instead of emitting it. Useful inside compound
+   * source like a `switch` body, where the push appears inline in a
+   * larger `gen.line(...)` call.
    */
-  liftError(errExpr: string): void;
+  errorStatement(kind: ErrorKind, errExpr: string): string;
   /**
    * Build a budget-guarded `break;` statement for use at the bottom of
    * hot loops (array items / property keys / applicator branches).
    * Returns `""` when uncapped so callers can emit it unconditionally.
    */
-  budgetBreakStmt(): string;
+  budgetBreakStatement(): string;
   /**
-   * Emit the statement from {@link KeywordCompileContext.budgetBreakStmt}
-   * directly into the current code generator. Useful at the tail of
-   * loops so they short-circuit once the error cap is hit.
+   * Emit the statement from
+   * {@link KeywordCompileContext.budgetBreakStatement} directly into
+   * the current code generator. Useful at the tail of loops so they
+   * short-circuit once the error cap is hit.
    */
   emitBudgetBreak(): void;
   /**

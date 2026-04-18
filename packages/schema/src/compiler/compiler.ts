@@ -1,7 +1,7 @@
 import type { PathSegment, SchemaObject, SchemaOrBoolean, ValidationError } from "@oav/core";
 import { CodeGen, NAMES, quoteString } from "../codegen/index.js";
 import type { Dialect, KeywordDefinition } from "../keywords/types.js";
-import { createKeywordContext } from "../keywords/context.js";
+import { createKeywordContext, emitPushStatement } from "../keywords/context.js";
 import { createCustomKeywordDefinition, type CustomKeywordValidator } from "../keywords/custom.js";
 import { createRefResolver, resolve, type RefResolver } from "../resolve/index.js";
 import { createDeps, type ValidatorDeps } from "./runtime.js";
@@ -254,7 +254,7 @@ function buildFunctionBody(
     // no-op; always valid
   } else if (schema === false) {
     const falseErr = `${NAMES.DEPS}.createLeafError("false", ${NAMES.PATH}, "schema is false, nothing is valid")`;
-    gen.line(emitPush(state, NAMES.ERRORS, falseErr));
+    gen.line(emitPushStatement(NAMES.ERRORS, falseErr, state.gated));
   } else {
     const hasUnevaluatedProps = "unevaluatedProperties" in schema;
     const hasUnevaluatedItems = "unevaluatedItems" in schema;
@@ -321,34 +321,6 @@ function compileSchemaKeywords(
 }
 
 const UNEVALUATED_LAST = new Set(["unevaluatedProperties", "unevaluatedItems"]);
-
-/**
- * Emit a statement that pushes a {@link ValidationError} expression into
- * the errors accumulator, respecting any configured `maxErrors` cap.
- * When uncapped, this is a plain `errors.push(expr);` — zero extra work.
- *
- * @internal
- */
-export function emitPush(state: CompileState, errorsVar: string, exprSrc: string): string {
-  if (!state.gated) return `${errorsVar}.push(${exprSrc});`;
-  return (
-    `if (${NAMES.DEPS}.errorsRemaining > 0) { ${errorsVar}.push(${exprSrc}); ${NAMES.DEPS}.errorsRemaining -= 1; }` +
-    ` else { ${NAMES.DEPS}.truncated = true; }`
-  );
-}
-
-/**
- * Emit a `break` when the error budget is exhausted. Used inside hot
- * loops (array items, property keys, applicator branches) so the
- * validator doesn't iterate millions of array items after the cap is
- * already hit. A no-op when the budget is uncapped.
- *
- * @internal
- */
-export function emitBudgetBreak(state: CompileState): string {
-  if (!state.gated) return "";
-  return `if (${NAMES.DEPS}.errorsRemaining <= 0) { ${NAMES.DEPS}.truncated = true; break; }`;
-}
 
 function orderKeywordsForSchema(schema: SchemaObject, state: CompileState): KeywordDefinition[] {
   const present = state.ordered.filter((kw) => kw.keyword in schema);

@@ -17,7 +17,8 @@ export const typeKeyword: KeywordDefinition = {
     ctx.gen.if(condition, () => {
       const expectedLit = JSON.stringify(expected);
       const actualExpr = `${NAMES.DEPS}.typeOf(${ctx.data})`;
-      ctx.pushError(
+      ctx.emitError(
+        "leaf",
         `${NAMES.DEPS}.createLeafError(` +
           `${quoteString("type")}, ${ctx.path}, ` +
           `"must be " + ${JSON.stringify(formatTypeList(expected))}, ` +

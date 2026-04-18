@@ -1,6 +1,6 @@
 import type { SchemaObject, SchemaOrBoolean } from "@oav/core";
 import { NAMES, quoteString, type CodeGen } from "../codegen/index.js";
-import type { EmitErrorParams, KeywordCompileContext } from "./types.js";
+import type { EmitErrorParams, ErrorKind, KeywordCompileContext } from "./types.js";
 
 /**
  * Inputs accepted by {@link createKeywordContext}. The compiler assembles
@@ -190,25 +190,22 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
       }
     });
 
-  // Gated push — for freshly-minted leaf errors. Counts against the budget.
-  const pushErrorStmt = (errExpr: string): string =>
-    emitPushStatement(inputs.errors, errExpr, gated);
-  const pushError = (errExpr: string): void => {
-    inputs.gen.line(pushErrorStmt(errExpr));
+  const errorStatement = (kind: ErrorKind, errExpr: string): string => {
+    if (kind === "leaf") return emitPushStatement(inputs.errors, errExpr, gated);
+    // kind === "lift": already-counted sub-validator result being
+    // propagated, or a branch wrapper around already-counted children.
+    // Never interacts with the budget.
+    return `${inputs.errors}.push(${errExpr});`;
   };
-  // Unconditional push — for errors already counted elsewhere: sub-validator
-  // results being propagated up the tree, and branch wrappers that just
-  // contain already-counted children.
-  const liftErrorStmt = (errExpr: string): string => `${inputs.errors}.push(${errExpr});`;
-  const liftError = (errExpr: string): void => {
-    inputs.gen.line(liftErrorStmt(errExpr));
+  const emitError = (kind: ErrorKind, errExpr: string): void => {
+    inputs.gen.line(errorStatement(kind, errExpr));
   };
-  const budgetBreakStmt = (): string =>
+  const budgetBreakStatement = (): string =>
     gated
       ? `if (${NAMES.DEPS}.errorsRemaining <= 0) { ${NAMES.DEPS}.truncated = true; break; }`
       : "";
   const emitBudgetBreak = (): void => {
-    const stmt = budgetBreakStmt();
+    const stmt = budgetBreakStatement();
     if (stmt !== "") inputs.gen.line(stmt);
   };
 
@@ -352,7 +349,7 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
         const falseErr =
           `${NAMES.DEPS}.createLeafError("false", ${inputs.path}, ` +
           `"schema is false, nothing is valid")`;
-        inputs.gen.line(emitPushStatement(inputs.errors, falseErr, gated));
+        emitError("leaf", falseErr);
         return;
       }
       if (tryInline(schema, dataExpr)) return;
@@ -364,7 +361,7 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
       const errVar = inputs.gen.scope.name("e");
       inputs.gen.const(errVar, `${fn}(${dataExpr}, ${inputs.path})`);
       inputs.gen.if(`${errVar} !== null`, () => {
-        inputs.gen.line(`${inputs.errors}.push(${errVar});`);
+        emitError("lift", errVar);
       });
     };
     if (segmentExpr === undefined) {
@@ -388,15 +385,13 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     markPropertyEvaluated,
     markItemEvaluated,
     gated,
-    pushErrorStmt,
-    pushError,
-    liftErrorStmt,
-    liftError,
-    budgetBreakStmt,
+    errorStatement,
+    emitError,
+    budgetBreakStatement,
     emitBudgetBreak,
     withPathSegment,
     emitSubschemaValidation,
-    error: (params: EmitErrorParams) => emitError(inputs, params, gated),
+    error: (params: EmitErrorParams) => emitStructuredError(inputs, params, gated),
   };
 }
 
@@ -416,7 +411,11 @@ export function emitPushStatement(errorsVar: string, errExpr: string, gated: boo
   );
 }
 
-function emitError(inputs: KeywordContextInputs, params: EmitErrorParams, gated: boolean): void {
+function emitStructuredError(
+  inputs: KeywordContextInputs,
+  params: EmitErrorParams,
+  gated: boolean,
+): void {
   const path = params.pathExpr ?? inputs.path;
   const paramsObj = renderParamsLiteral(params.params);
   const children = params.childrenExpr ?? "[]";

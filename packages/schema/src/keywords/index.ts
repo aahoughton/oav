@@ -10,6 +10,7 @@ export type {
   Dialect,
   DialectRules,
   EmitErrorParams,
+  ErrorKind,
   KeywordCompileContext,
   KeywordDefinition,
   Vocabulary,

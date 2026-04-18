@@ -124,7 +124,8 @@ export const additionalPropertiesKeyword: KeywordDefinition = {
         }
         if (subSchema === false) {
           ctx.withPathSegment(key, () => {
-            ctx.pushError(
+            ctx.emitError(
+              "leaf",
               `${NAMES.DEPS}.createLeafError(` +
                 `${quoteString("additionalProperties")}, ${ctx.path}, ` +
                 `\`additional property "\${${key}}" is not allowed\`, ` +

@@ -13,7 +13,8 @@ export const maxItemsKeyword: KeywordDefinition = {
   compile(ctx: KeywordCompileContext): void {
     const limit = ctx.schema as number;
     ctx.gen.if(`Array.isArray(${ctx.data}) && ${ctx.data}.length > ${limit}`, () => {
-      ctx.pushError(
+      ctx.emitError(
+        "leaf",
         `${NAMES.DEPS}.createLeafError(` +
           `${quoteString("maxItems")}, ${ctx.path}, ` +
           `\`must have at most ${limit} items\`, ` +
@@ -34,7 +35,8 @@ export const minItemsKeyword: KeywordDefinition = {
   compile(ctx: KeywordCompileContext): void {
     const limit = ctx.schema as number;
     ctx.gen.if(`Array.isArray(${ctx.data}) && ${ctx.data}.length < ${limit}`, () => {
-      ctx.pushError(
+      ctx.emitError(
+        "leaf",
         `${NAMES.DEPS}.createLeafError(` +
           `${quoteString("minItems")}, ${ctx.path}, ` +
           `\`must have at least ${limit} items\`, ` +
@@ -73,7 +75,8 @@ export const uniqueItemsKeyword: KeywordDefinition = {
       g.dedent();
       g.line(`}`);
       g.if(`${dup} !== null`, () => {
-        ctx.pushError(
+        ctx.emitError(
+          "leaf",
           `${NAMES.DEPS}.createLeafError(` +
             `${quoteString("uniqueItems")}, ${ctx.path}, ` +
             `\`must have unique items (indices \${${dup}.a} and \${${dup}.b} are equal)\`, ` +

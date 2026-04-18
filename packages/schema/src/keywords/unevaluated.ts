@@ -41,7 +41,8 @@ export const unevaluatedPropertiesKeyword: KeywordDefinition = {
         }
         if (sub === false) {
           ctx.withPathSegment(key, () => {
-            ctx.pushError(
+            ctx.emitError(
+              "leaf",
               `${NAMES.DEPS}.createLeafError(` +
                 `${quoteString("unevaluatedProperties")}, ${ctx.path}, ` +
                 `\`property "\${${key}}" is not evaluated by the schema\`, ` +
@@ -86,7 +87,8 @@ export const unevaluatedItemsKeyword: KeywordDefinition = {
         }
         if (sub === false) {
           ctx.withPathSegment(i, () => {
-            ctx.pushError(
+            ctx.emitError(
+              "leaf",
               `${NAMES.DEPS}.createLeafError(` +
                 `${quoteString("unevaluatedItems")}, ${ctx.path}, ` +
                 `"item is not evaluated by the schema", ` +
@@ -170,7 +172,8 @@ export const discriminatorKeyword: KeywordDefinition = {
           `typeof ${discVal} !== "string"`,
           () => {
             ctx.withPathSegment(propLit, () => {
-              ctx.pushError(
+              ctx.emitError(
+                "leaf",
                 `${NAMES.DEPS}.createLeafError(` +
                   `${quoteString("discriminator")}, ${ctx.path}, ` +
                   `\`discriminator property "${propertyName}" must be a string\`, ` +
@@ -186,7 +189,7 @@ export const discriminatorKeyword: KeywordDefinition = {
             const switchLines = discFns
               .map(
                 ({ value, fn }) =>
-                  `      case ${quoteString(value)}: { const e = ${fn}(${ctx.data}, ${ctx.path}); if (e !== null) ${ctx.liftErrorStmt("e")} break; }`,
+                  `      case ${quoteString(value)}: { const e = ${fn}(${ctx.data}, ${ctx.path}); if (e !== null) ${ctx.errorStatement("lift", "e")} break; }`,
               )
               .join("\n");
             gi.line(`switch (${discVal}) {`);
@@ -194,7 +197,8 @@ export const discriminatorKeyword: KeywordDefinition = {
             gi.line(`      default: {`);
             gi.line(`        ${ctx.path}.push(${propLit});`);
             gi.line(
-              `        ${ctx.pushErrorStmt(
+              `        ${ctx.errorStatement(
+                "leaf",
                 `${NAMES.DEPS}.createLeafError(` +
                   `${quoteString("discriminator")}, ${ctx.path}, ` +
                   `\`discriminator value "\${${discVal}}" does not match any branch\`, ` +
