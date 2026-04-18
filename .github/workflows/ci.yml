@@ -1,0 +1,137 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  # Cancel in-progress runs for the same ref when new commits land. Main
+  # always runs to completion so release-please sees the final state.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+  conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: install conformance deps
+        working-directory: conformance
+        run: pnpm install --frozen-lockfile
+      - name: OpenAPI conformance cases
+        working-directory: conformance
+        run: pnpm tsx run-openapi-cases.ts
+
+  pack-smoke:
+    # Catches `exports` map / `files` / bundler regressions that unit
+    # tests don't surface. Packs the publish tarball, installs it into
+    # a fresh sandbox, and imports each documented subpath.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm pack
+      - name: smoke-import the packed tarball
+        run: |
+          set -euo pipefail
+          TARBALL="$(ls aahoughton-oav-*.tgz | head -n1)"
+          mkdir -p /tmp/smoke && cd /tmp/smoke
+          npm init -y > /dev/null
+          npm install "$GITHUB_WORKSPACE/$TARBALL"
+          cat > smoke.mjs <<'EOF'
+          import { createValidator } from "@aahoughton/oav";
+          import { compileSchema, defaultVocabularies } from "@aahoughton/oav/schema";
+          const v = createValidator({
+            openapi: "3.1.0",
+            info: { title: "t", version: "1" },
+            paths: {
+              "/x": {
+                post: {
+                  requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["a"] } } } },
+                  responses: { "200": { description: "ok" } },
+                },
+              },
+            },
+          });
+          if (v.validateRequest({ method: "POST", path: "/x", contentType: "application/json", body: {} }) === null) {
+            throw new Error("expected invalid");
+          }
+          const { validate } = compileSchema({ type: "integer" }, { vocabularies: defaultVocabularies });
+          if (!validate(42).valid) throw new Error("expected valid");
+          console.log("smoke ok");
+          EOF
+          node smoke.mjs
