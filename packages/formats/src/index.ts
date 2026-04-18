@@ -37,7 +37,7 @@ import {
  *
  * @example
  * ```ts
- * compileSchema(mySchema, { vocabularies, formats: builtInFormats });
+ * compileSchema(mySchema, { dialect: jsonSchemaDialect, formats: builtInFormats });
  * ```
  */
 export const builtInFormats: Record<string, (value: string) => boolean> = {

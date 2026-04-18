@@ -1,9 +1,11 @@
-# @oav/validator
+# @aahoughton/oav (validator)
 
-HTTP request/response validator for OpenAPI 3.0, 3.1, and 3.2.
+HTTP request/response validator for OpenAPI 3.0, 3.1, and 3.2. This is
+the headline surface of the package — `createValidator` is re-exported
+from the package root.
 
 ```ts
-import { createValidator } from "@oav/validator";
+import { createValidator } from "@aahoughton/oav";
 
 const validator = createValidator(resolvedSpec);
 
@@ -23,44 +25,51 @@ const responseErr = validator.validateResponse(
 ```
 
 Both methods return `null` on success or a `ValidationError` tree on
-failure. The tree groups errors by HTTP location (`body`, `query`,
-`header`, `path`, `cookie`, `response.*`).
+failure. Errors are rooted at the HTTP frame (`["body", …]`,
+`["query", name, …]`, `["response", "headers", name, …]`, etc.) so
+downstream code can group by location.
+
+`validator.detectedVersion` reflects the `openapi` string that was
+detected on construction (or `undefined` if the field was missing or
+unsupported and a fallback was used — see `onUnknownVersion` below).
 
 ## Features
 
-- Pre-compiles every operation's schemas on construction (cached by schema
-  identity).
-- Version-aware: reads the spec's `openapi` string once and picks a
-  dialect — OAS 3.0 Schema Object for 3.0.x, JSON Schema 2020-12 for
-  3.1.x / 3.2.x. The 3.2 `QUERY` method routes like any other method.
-- Resolves `$ref` at operation level (`requestBody`, `responses[code]`,
-  `parameters[i]`, `response.headers[name]`), so specs that reuse
-  `#/components/*` work without preprocessing.
-- Deserializes parameters per OpenAPI `style` + `explode` (`simple`,
-  `form`, `label`, `matrix`, `deepObject`, `spaceDelimited`,
-  `pipeDelimited`).
-- Content-type negotiation against request's `Content-Type`, including
-  wildcards (`application/*`, `*/*`).
-- Response status matching: exact → `NXX` class → `default`.
-- Built-in format validators from `@oav/formats`; merge extras via
-  `createValidator(spec, { formats })`.
+- **Compile at construction**: every operation's schemas get compiled
+  once on `createValidator`, keyed by schema identity. Repeated
+  requests reuse the compiled functions.
+- **Version-aware**: `openapi` is read once and mapped to one of three
+  built-in dialects (OAS 3.0, OpenAPI 3.1, OpenAPI 3.2). No
+  per-request branching.
+- **`$ref` resolved lazily**: operation-level references (`requestBody`,
+  `responses[code]`, `parameters[i]`, `response.headers[name]`) are
+  resolved against the spec as needed, so `#/components/*` reuse works
+  without preprocessing.
+- **Parameter deserialisation**: `simple`, `form`, `label`, `matrix`,
+  `deepObject`, `spaceDelimited`, `pipeDelimited` with `explode`.
+- **Content-type negotiation**: against the request / response
+  `Content-Type`, including wildcards (`application/*`, `*/*`).
+- **Response status matching**: exact → `NXX` class → `default`.
+- **Format validators**: the `@aahoughton/oav/formats` built-ins merged
+  with any extras passed via `options.formats`.
 
 ## Options
 
-| Option                   | Effect                                                     |
-| ------------------------ | ---------------------------------------------------------- |
-| `formats`                | Extra string format validators merged with `@oav/formats`. |
-| `keywords`               | User-registered schema keywords (see below).               |
-| `maxErrors`              | Cap on leaf errors; `1` is fast-fail. Default: uncapped.   |
-| `strictQueryParameters`  | Reject undeclared query parameters. Default: `false`.      |
-| `vocabularies`           | Override the dialect entirely (skips version dispatch).    |
+| Option                  | Effect                                                                |
+| ----------------------- | --------------------------------------------------------------------- |
+| `dialect`               | Force a specific {@link Dialect}, bypassing version detection.        |
+| `formats`               | Extra string format validators merged with `@aahoughton/oav/formats`. |
+| `keywords`              | User-registered schema keywords (see below).                          |
+| `maxErrors`             | Cap on leaf errors; `1` is fast-fail. Default: uncapped.              |
+| `strictQueryParameters` | Reject undeclared query parameters. Default `false`.                  |
+| `onUnknownVersion`      | `"fallback31"` \| `"warn"` \| `"throw"` when `openapi` is missing.    |
 
 ## Custom keywords
 
 ```ts
-const v = createValidator(spec, {
+const validator = createValidator(spec, {
   keywords: {
-    activeTenant: (data, _schemaValue) =>
+    activeTenant: (data) =>
       typeof data !== "string" || tenantCache.isActive(data)
         ? true
         : { message: `tenant "${data}" is not active` },
@@ -68,7 +77,7 @@ const v = createValidator(spec, {
 });
 ```
 
-In the spec, flag schemas with the keyword:
+Flag schemas that should be checked:
 
 ```yaml
 TenantId:
@@ -77,20 +86,33 @@ TenantId:
   activeTenant: true
 ```
 
-The validator's error tree includes the custom leaf alongside regular
-schema errors, prefixed with the HTTP location (`body.tenantId`, etc.).
-See [`examples/custom-keywords.ts`](../../examples/custom-keywords.ts)
-for a runnable end-to-end.
+Custom-keyword errors appear in the tree alongside regular schema
+errors, prefixed with the HTTP location (`body.tenantId`, etc.). See
+[`examples/custom-keywords.ts`](../../examples/custom-keywords.ts) for
+an end-to-end.
 
 ## Fast-fail / bounded error collection
 
 ```ts
-const v = createValidator(spec, { maxErrors: 1 }); // stop after first leaf
-// or: { maxErrors: 10 } — bound CPU/memory on huge invalid payloads.
+createValidator(spec, { maxErrors: 1 });   // stop after first leaf
+createValidator(spec, { maxErrors: 10 });  // cap while still getting useful feedback
 ```
 
 Hot loops (array items, object properties, `allOf` / `anyOf` branches)
-short-circuit once the budget is exhausted, so a 10 MB array with
-per-element structural errors doesn't cost proportional CPU or memory.
-The returned error tree may be shorter than the exhaustive one would
-have been.
+short-circuit once the budget is exhausted, so a 10 MB invalid payload
+doesn't cost proportional CPU or memory. Results carry `truncated:
+true` when the tree was capped.
+
+## Handling unknown `openapi` versions
+
+Specs in the wild sometimes omit the `openapi` field or declare an
+unsupported value. The default — `onUnknownVersion: "fallback31"` —
+silently uses the 3.1 dialect. For stricter environments:
+
+```ts
+createValidator(spec, { onUnknownVersion: "throw" });  // refuse to build
+createValidator(spec, { onUnknownVersion: "warn" });   // stderr message, use 3.1
+```
+
+`validator.detectedVersion` is `undefined` in the fallback cases so
+callers can introspect what dialect they actually got.

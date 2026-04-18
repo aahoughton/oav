@@ -130,15 +130,21 @@ tells consumers their report is partial. Codegen is specialised: when
 (no budget checks, no `truncated` tracking) — zero overhead for
 callers who don't opt in.
 
-Two push helpers on the keyword-compile context reflect this:
+The budget semantics show up at the keyword-authoring level through
+the `kind` argument on `ctx.emitError` / `ctx.errorStatement`:
 
-- `ctx.pushError(expr)` — a **fresh leaf error**; counts against the
-  budget.
-- `ctx.liftError(expr)` — a **lift**: propagating a sub-validator's
-  already-counted error up the tree, or wrapping already-counted
-  children in a `createBranchError`. Always unconditional.
+- `ctx.emitError("leaf", expr)` — a **fresh leaf error**; counts
+  against the budget. Use when the keyword itself is constructing a
+  `createLeafError(...)` expression.
+- `ctx.emitError("lift", expr)` — a **lift**: propagating a
+  sub-validator's already-counted error up the tree, or wrapping
+  already-counted children in a `createBranchError`. Always
+  unconditional.
 
-Using the wrong one double-counts errors against the budget.
+Using the wrong kind silently miscounts errors against the budget.
+The `kind` is a required argument — TypeScript enforces that a choice
+is made at every call site; the correctness of the choice is on the
+author.
 
 ## Version support
 

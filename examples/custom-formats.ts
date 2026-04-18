@@ -1,8 +1,8 @@
 /**
  * Custom formats: register a string format (here, E.164 phone numbers)
  * and have it enforced alongside the built-ins. A format is any
- * `(value: string) => boolean`; merged on top of `@oav/formats`'
- * defaults at validator-construction time.
+ * `(value: string) => boolean`; merged on top of
+ * `@aahoughton/oav/formats`' defaults at validator-construction time.
  *
  * Run from the repo root:
  *   pnpm tsx examples/custom-formats.ts

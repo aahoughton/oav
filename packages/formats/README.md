@@ -1,10 +1,12 @@
-# @oav/formats
+# @aahoughton/oav/formats
 
-Built-in string format validators for `@oav/schema`'s `format` keyword.
+Built-in string format validators for the `format` keyword. Each is a
+pure `(value: string) => boolean`; `builtInFormats` is the keyed map
+passed to `createValidator({ formats })` or `compileSchema({ formats })`.
 
 ```ts
-import { builtInFormats, validateUuid } from "@oav/formats";
-import { compileSchema, jsonSchemaDialect } from "@oav/schema";
+import { builtInFormats, validateUuid } from "@aahoughton/oav/formats";
+import { compileSchema, jsonSchemaDialect } from "@aahoughton/oav/schema";
 
 const { validate } = compileSchema(
   { type: "string", format: "uuid" },
@@ -12,28 +14,30 @@ const { validate } = compileSchema(
 );
 
 validate("550e8400-e29b-41d4-a716-446655440000"); // { valid: true }
-validateUuid("not a uuid"); // false
+validateUuid("not a uuid");                       // false
 ```
 
-Formats:
+When the validator package is used via `createValidator`, the built-in
+formats are already included — pass `formats` to extend them, not
+replace them.
 
-- **date / time** — `date-time`, `date`, `time`, `duration` (RFC 3339)
-- **email** — `email` (ASCII), `idn-email` (RFC 6531)
-- **hostname** — `hostname`, `idn-hostname`
-- **ip** — `ipv4`, `ipv6`
-- **uri** — `uri`, `uri-reference`, `iri`, `iri-reference`, `uri-template`
-- **json pointer** — `json-pointer`, `relative-json-pointer`
-- **misc** — `regex`, `uuid`
+## Formats
 
-Each validator is a pure `(value: string) => boolean`.
+- **Date / time** — `date-time`, `date`, `time`, `duration` (RFC 3339)
+- **Email** — `email` (ASCII), `idn-email` (RFC 6531)
+- **Hostname** — `hostname`, `idn-hostname`
+- **IP** — `ipv4`, `ipv6`
+- **URI** — `uri`, `uri-reference`, `iri`, `iri-reference`, `uri-template`
+- **JSON Pointer** — `json-pointer`, `relative-json-pointer`
+- **Misc** — `regex`, `uuid`
 
 ## Registering a custom format
 
-The validator and compiler both accept a `formats` option that merges on
-top of the built-ins:
+The validator and compiler both accept a `formats` option that merges
+on top of the built-ins:
 
 ```ts
-import { createValidator } from "@oav/validator";
+import { createValidator } from "@aahoughton/oav";
 
 const v = createValidator(spec, {
   formats: {
@@ -50,5 +54,15 @@ Phone:
   format: e164-phone
 ```
 
-See [`examples/custom-formats.ts`](../../examples/custom-formats.ts) for
-a runnable end-to-end.
+See [`examples/custom-formats.ts`](../../examples/custom-formats.ts)
+for a runnable end-to-end.
+
+## Assertive vs annotation-only
+
+In JSON Schema 2020-12, `format` is advisory by default — a validator
+recognises the name but doesn't reject malformed values. OpenAPI 3.0 /
+3.1 / 3.2 treat `format` as assertive; the validator wires up the
+corresponding vocabulary so `format: email` actually rejects non-emails.
+When compiling directly via `@aahoughton/oav/schema`, use
+`openapi31Dialect` (or the assertive vocabulary explicitly) to get
+assertive semantics.

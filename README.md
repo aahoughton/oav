@@ -1,28 +1,37 @@
-# oav — OpenAPI validator
+# oav
 
-`oav` is an HTTP-aware validation toolkit for OpenAPI **3.0.x**, **3.1.x**,
-and **3.2.x** (including the new `QUERY` method). It compiles JSON Schema
-2020-12 — plus the OpenAPI 3.0 Schema Object flavour and OpenAPI extensions
-like `discriminator` — to JavaScript via code generation, and produces
-structured error **trees** so callers can decide how to present failures.
+Codegen-based HTTP validator for OpenAPI **3.0**, **3.1**, and **3.2**.
+Compiles every operation's schemas to JavaScript at construction time,
+then checks live requests and responses against the resulting functions
+and returns a **tree of structural errors** you can format, filter, or
+walk programmatically.
+
+- One validator call checks method + path + parameters + body + content
+  type + status + headers against the spec — not just the JSON body.
+- Structured error trees (not flat arrays), so downstream code can
+  distinguish a missing `required` property from a `oneOf` branch
+  failure from an unsupported `Content-Type`.
+- Real 3.0 support (`nullable`, boolean `exclusiveMaximum`,
+  `$ref`-suppresses-siblings), not "3.1 and hope".
+- Codegen-compiled at construction, cached by schema identity, zero
+  per-request version branching. Handles recursive `$ref`, multi-file
+  specs, overlays, and custom keywords / formats.
+
+## Install
+
+```bash
+npm install @aahoughton/oav
+# or: pnpm add @aahoughton/oav
+```
 
 ## Quick start
 
-```bash
-pnpm install
-pnpm build
-pnpm test
-```
-
-Programmatic:
-
 ```ts
-import { composeReaders, createFileReader, resolveSpec } from "@oav/spec";
-import { createValidator } from "@oav/validator";
-import { formatText } from "@oav/core";
+import { createValidator, formatText } from "@aahoughton/oav";
+import { composeReaders, createFileReader, loadSpec } from "@aahoughton/oav/spec";
 
 const reader = composeReaders([createFileReader()]);
-const { document } = await resolveSpec({ reader, entry: "openapi.yaml" });
+const { document } = await loadSpec({ reader, entry: "openapi.yaml" });
 const validator = createValidator(document);
 
 const err = validator.validateRequest({
@@ -36,7 +45,14 @@ const err = validator.validateRequest({
 if (err !== null) console.error(formatText(err));
 ```
 
-CLI:
+`validateRequest` / `validateResponse` return `null` on success or a
+`ValidationError` tree on failure. Every error carries a stable `code`
+(e.g. `"type"`, `"required"`, `"content-type"`, `"oneOf"`), a `path`
+rooted at the HTTP frame (e.g. `["body", "pets", 3, "name"]`), a
+human-readable `message`, and a machine-readable `params` object whose
+shape per code is documented in `BuiltInErrorParams`.
+
+## CLI
 
 ```bash
 oav resolve openapi.yaml
@@ -45,74 +61,109 @@ oav validate openapi.yaml --path "POST /pets" --body payload.json
 oav validate openapi.yaml --path "GET /pets" --response --status 200 --body resp.json
 ```
 
-`--format text|json|flat|github` controls error rendering. `--depth n`
-truncates deeply-nested trees. `--overlay file.json` applies spec overlays.
+Flags: `--format text|json|flat|github`, `--depth n`, `--overlay file`
+(repeatable), `-o file`, `--quiet`. See
+[packages/cli/README.md](./packages/cli/README.md) for the full surface
+and the `.http` file format.
 
 ## Versions
 
 `createValidator` reads the spec's `openapi` string once at construction
-and dispatches to the matching dialect — zero per-request branching.
+and picks the matching dialect. No per-request branching.
 
-| Spec version | Status    | Dialect                            |
-| ------------ | --------- | ---------------------------------- |
-| 3.0.x        | Supported | OAS 3.0 Schema Object flavour      |
-| 3.1.x        | Supported | JSON Schema 2020-12                |
-| 3.2.x        | Supported | JSON Schema 2020-12 + QUERY method |
+| Spec   | Dialect               | Notes                                          |
+| ------ | --------------------- | ---------------------------------------------- |
+| 3.0.x  | OAS 3.0 Schema Object | `nullable`, boolean `exclusiveMin/Max`, sibling-`$ref` drop |
+| 3.1.x  | JSON Schema 2020-12   | Assertive `format`                             |
+| 3.2.x  | JSON Schema 2020-12   | Same as 3.1 + the `QUERY` HTTP method          |
 
-The 3.0 dialect handles string-only `type`, `nullable: true`, boolean
-`exclusiveMaximum` / `exclusiveMinimum`, and `$ref`-suppresses-siblings.
-`ReferenceObject`s at `requestBody`, `responses[code]`, `parameters[i]`,
-and `response.headers[name]` are resolved against the spec at construction
-time, so real-world specs that reuse components work out of the box.
+Override via `createValidator(spec, { dialect })` to force or customise
+one of the built-in dialects (`jsonSchemaDialect`, `openapi31Dialect`,
+`oas30Dialect`). Unknown / missing `openapi` strings fall back to the
+3.1 dialect by default; configure with
+`onUnknownVersion: "throw" | "warn" | "fallback31"`.
 
-## Noteworthy options
+## Configuring the validator
 
-- **`maxErrors`** — cap on leaf errors collected per validation. Default is
-  uncapped; `1` gives classic fast-fail; a small number (say 10) bounds
-  CPU/memory on large payloads. When the cap is hit, results carry
-  `truncated: true`.
-- **`keywords`** — register user-defined schema keywords that plug into
-  generated code alongside the built-ins. Good for rules too dynamic for
-  the spec (active-tenant check, Luhn, tick-size multiples, …).
-- **`formats`** — extra string format validators merged on top of
-  `@oav/formats`' built-ins.
-- **`vocabularies`** — override the dialect entirely for advanced use.
+| Option                  | Effect                                                           |
+| ----------------------- | ---------------------------------------------------------------- |
+| `dialect`               | Force a specific schema dialect, bypassing version detection.    |
+| `formats`               | Extra string format validators merged on top of the built-ins.   |
+| `keywords`              | Register user-defined schema keywords (see below).               |
+| `maxErrors`             | Cap on leaf errors; `1` is fast-fail, default is uncapped.       |
+| `strictQueryParameters` | Reject undeclared query parameters. Default `false`.             |
+| `onUnknownVersion`      | Policy for specs with missing/unsupported `openapi`.             |
+
+### Custom keywords
+
+```ts
+const validator = createValidator(spec, {
+  keywords: {
+    activeTenant: (data) =>
+      typeof data !== "string" || tenantCache.has(data)
+        ? true
+        : { message: `tenant "${data}" is not active` },
+  },
+});
+```
+
+Custom keywords plug into generated code alongside the built-ins. See
+[examples/custom-keywords.ts](./examples/custom-keywords.ts).
+
+### Bounded error collection
+
+```ts
+createValidator(spec, { maxErrors: 1 });   // fast-fail
+createValidator(spec, { maxErrors: 10 });  // bound CPU/memory on huge payloads
+```
+
+Hot loops (array items, object properties, `allOf`/`anyOf` branches)
+short-circuit once the budget is exhausted. Results carry
+`truncated: true` so callers know the tree was capped.
+
+## Modules
+
+The package publishes a small root and four subpath entrypoints:
+
+| Import                          | Surface                                                |
+| ------------------------------- | ------------------------------------------------------ |
+| `@aahoughton/oav`               | `createValidator`, error helpers, formatters, types    |
+| `@aahoughton/oav/schema`        | `compileSchema`, dialects, vocabularies, custom keywords |
+| `@aahoughton/oav/spec`          | `loadSpec`, `resolveSpec`, `applyOverlays`, readers    |
+| `@aahoughton/oav/formats`       | Built-in string format validators                      |
+| `@aahoughton/oav/core`          | Error tree model, shared OpenAPI / HTTP types          |
+
+The `oav` CLI is installed as a `bin` by the same package.
 
 ## Examples
 
-Runnable, self-contained TypeScript examples live in
+Runnable, self-contained TypeScript examples in
 [`examples/`](./examples/README.md):
 
-- `basic-validation.ts` — spec → validator → request & response
-- `custom-formats.ts` — register a string format
-- `custom-keywords.ts` — register a schema keyword
-- `max-errors.ts` — fast-fail and bounded error collection
-- `versions.ts` — 3.0, 3.1, and 3.2 side by side
-- `overlay.ts` — apply an overlay before validating
+| File                    | Shows                                                    |
+| ----------------------- | -------------------------------------------------------- |
+| `basic-validation.ts`   | Inline spec → validator → request & response checks     |
+| `custom-formats.ts`     | Register a string format                                 |
+| `custom-keywords.ts`    | Register a schema keyword with dynamic runtime state    |
+| `max-errors.ts`         | Fast-fail and bounded error collection                   |
+| `versions.ts`           | 3.0 / 3.1 / 3.2 side by side                            |
+| `overlay.ts`            | Apply a spec overlay before validating                   |
 
-## Packages
+## Known limitations
 
-| Package          | Purpose                                              |
-| ---------------- | ---------------------------------------------------- |
-| `@oav/core`      | Error tree model + formatters + shared OpenAPI types |
-| `@oav/schema`    | JSON Schema 2020-12 compiler (codegen → JS)          |
-| `@oav/formats`   | Built-in string formats (RFC 3339 / 5321 / 3986 / …) |
-| `@oav/spec`      | Multi-file spec loader, resolver, overlay merger     |
-| `@oav/router`    | Trie-based OpenAPI path matcher                      |
-| `@oav/validator` | HTTP request/response orchestrator                   |
-| `@oav/cli`       | `oav` binary                                         |
+- `unevaluatedProperties` / `unevaluatedItems` do not propagate
+  evaluation sets across `allOf` / `anyOf` / `oneOf`. Covers the common
+  case; may produce false positives under composition.
+- `$dynamicRef` behaves like `$ref` with anchor lookup — no runtime
+  dynamic-scope traversal.
 
-See each package's README for API reference.
+## Contributing
 
-## Dev sub-packages
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for branch / PR / release flow.
+Development workflow (lint / typecheck / test / build) and the
+conformance and performance sub-packages are described there and in
+[CLAUDE.md](./CLAUDE.md).
 
-Two standalone packages in the repo root (own `package.json`, own
-install, not part of the main workspace):
+## License
 
-- [`conformance/`](./conformance/README.md) — runs the canonical
-  JSON Schema Test Suite and OpenAPI scenarios through `@oav/schema`
-  and the CLI. See `conformance/REPORT.md` for the latest
-  divergence analysis.
-- [`performance/`](./performance/README.md) — benchmarks against
-  [ajv](https://github.com/ajv-validator/ajv) and
-  [@hyperjump/json-schema](https://github.com/hyperjump-io/json-schema).
+MIT — see [LICENSE](./LICENSE).
