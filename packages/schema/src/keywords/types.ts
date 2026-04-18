@@ -194,3 +194,36 @@ export interface Vocabulary {
   /** Ordered list of keyword definitions. */
   keywords: KeywordDefinition[];
 }
+
+/**
+ * Keyword-dispatcher rules that vary between dialects. Fields go here
+ * when a dialect difference can't be expressed as a keyword override
+ * (i.e. it operates above the vocabulary level).
+ *
+ * @public
+ */
+export interface DialectRules {
+  /**
+   * OpenAPI 3.0 semantics: when a schema has `$ref`, every sibling
+   * keyword is ignored. Default `false` (JSON Schema 2020-12 and
+   * OpenAPI 3.1+ semantics, where siblings are honoured).
+   */
+  refSuppressesSiblings: boolean;
+}
+
+/**
+ * A compile-time dialect: a vocabulary stack plus the dispatcher rules
+ * that make it coherent. Every call to `compileSchema` picks exactly
+ * one dialect. The built-in dialects are {@link jsonSchemaDialect},
+ * {@link openapi31Dialect}, and {@link oas30Dialect}.
+ *
+ * @public
+ */
+export interface Dialect {
+  /** Short identifier for debugging / introspection (e.g. `"oas3.0"`). */
+  readonly id: string;
+  /** Vocabularies whose keywords are available during compile. */
+  readonly vocabularies: readonly Vocabulary[];
+  /** Keyword-dispatcher rules (currently just `refSuppressesSiblings`). */
+  readonly rules: DialectRules;
+}

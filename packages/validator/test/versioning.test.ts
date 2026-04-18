@@ -215,15 +215,16 @@ describe("3.0 support", () => {
     ).toBeNull();
   });
 
-  it("an explicit `vocabularies` option overrides the version dispatch", () => {
-    // The override path skips version detection entirely and just
-    // uses whatever vocabularies the caller provides.
+  it("an explicit `dialect` option overrides the version dispatch", async () => {
+    // The override path skips version detection entirely and uses the
+    // caller's dialect even if the spec declares a different version.
+    const { jsonSchemaDialect } = await import("@oav/schema");
     const spec: OpenAPIDocument = {
       openapi: "3.0.3",
       info: { title: "Old", version: "1" },
       paths: {},
     };
-    expect(() => createValidator(spec, { vocabularies: [] })).not.toThrow();
+    expect(() => createValidator(spec, { dialect: jsonSchemaDialect })).not.toThrow();
   });
 });
 

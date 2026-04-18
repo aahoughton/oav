@@ -1,7 +1,6 @@
 import { NAMES, quoteString } from "../codegen/index.js";
 import type { KeywordCompileContext, KeywordDefinition } from "./types.js";
-
-const CORE_VOCAB = "https://json-schema.org/draft/2020-12/vocab/validation";
+import { CORE_VALIDATION_VOCAB } from "./vocabulary-uris.js";
 
 /**
  * The JSON Schema 2020-12 `type` keyword. Accepts a single type name or an
@@ -11,7 +10,7 @@ const CORE_VOCAB = "https://json-schema.org/draft/2020-12/vocab/validation";
  */
 export const typeKeyword: KeywordDefinition = {
   keyword: "type",
-  vocabulary: CORE_VOCAB,
+  vocabulary: CORE_VALIDATION_VOCAB,
   compile(ctx: KeywordCompileContext): void {
     const expected = Array.isArray(ctx.schema) ? (ctx.schema as string[]) : [ctx.schema as string];
     const condition = buildTypeMismatchCondition(ctx.data, expected);

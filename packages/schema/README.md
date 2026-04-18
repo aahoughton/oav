@@ -8,20 +8,30 @@ tree.
 ## Quick start
 
 ```ts
-import { compileSchema, defaultVocabularies } from "@oav/schema";
+import { compileSchema, jsonSchemaDialect } from "@oav/schema";
 
 const { validate } = compileSchema(
   { type: "object", required: ["name"], properties: { name: { type: "string" } } },
-  { vocabularies: defaultVocabularies },
+  { dialect: jsonSchemaDialect },
 );
 
 validate({ name: "Fido" }); // { valid: true }
 validate({}); // { valid: false, error: { code: "required", ... } }
 ```
 
-## Vocabularies
+## Dialects
 
-Five built-in vocabularies compose into `defaultVocabularies`:
+Every compile picks exactly one `Dialect` — a vocabulary stack plus the
+keyword-dispatcher rules that make it coherent. Three built-ins:
+
+- `jsonSchemaDialect` — JSON Schema 2020-12, `format` as annotation.
+- `openapi31Dialect` — OpenAPI 3.1 / 3.2, `format` as assertion.
+- `oas30Dialect` — OpenAPI 3.0 flavour (string-only `type`, `nullable`,
+  boolean `exclusiveMaximum` / `exclusiveMinimum`, `$ref` siblings
+  ignored).
+
+Each dialect's `vocabularies` field is the underlying keyword stack.
+Five built-in vocabularies are available to compose custom dialects:
 
 - `coreVocabulary` — `$ref`, `$dynamicRef`, `$id`, `$defs`, anchors.
 - `validationVocabulary` — `type`, `enum`, `const`, numeric / string /
@@ -30,7 +40,8 @@ Five built-in vocabularies compose into `defaultVocabularies`:
   nested schemas (`properties`, `items`, …), `if`/`then`/`else`, and
   OpenAPI's `discriminator`.
 - `unevaluatedVocabulary` — `unevaluatedProperties`, `unevaluatedItems`.
-- `formatVocabulary` — `format` (assertive by default).
+- `formatVocabulary` / `formatAssertionVocabulary` — `format` as
+  annotation / assertion.
 
 ## Registering a custom keyword
 
@@ -39,12 +50,12 @@ validator into a `KeywordDefinition`, registers it alongside the
 built-ins, and dispatches via generated code on the hot path:
 
 ```ts
-import { compileSchema, defaultVocabularies } from "@oav/schema";
+import { compileSchema, jsonSchemaDialect } from "@oav/schema";
 
 const { validate } = compileSchema(
   { type: "integer", divisibleBy: 7 },
   {
-    vocabularies: defaultVocabularies,
+    dialect: jsonSchemaDialect,
     keywords: {
       divisibleBy: (data, schemaValue) =>
         typeof data !== "number" || data % (schemaValue as number) === 0,

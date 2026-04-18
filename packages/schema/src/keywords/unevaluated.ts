@@ -1,9 +1,7 @@
 import { NAMES, quoteString } from "../codegen/index.js";
 import type { SchemaOrBoolean } from "@oav/core";
 import type { KeywordCompileContext, KeywordDefinition } from "./types.js";
-
-const APPLICATOR_VOCAB = "https://json-schema.org/draft/2020-12/vocab/applicator";
-const UNEVALUATED_VOCAB = "https://json-schema.org/draft/2020-12/vocab/unevaluated";
+import { APPLICATOR_VOCAB, UNEVALUATED_VOCAB } from "./vocabulary-uris.js";
 
 function isObjectGuard(dataExpr: string): string {
   return `typeof ${dataExpr} === "object" && ${dataExpr} !== null && !Array.isArray(${dataExpr})`;

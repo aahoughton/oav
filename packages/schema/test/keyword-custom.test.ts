@@ -11,9 +11,13 @@ import {
   coreVocabulary,
   validationVocabulary,
 } from "../src/index.js";
-import type { CustomKeywordValidator } from "../src/index.js";
+import type { CustomKeywordValidator, Dialect } from "../src/index.js";
 
-const baseVocab = [coreVocabulary, validationVocabulary, applicatorVocabulary];
+const baseDialect: Dialect = {
+  id: "test-base",
+  vocabularies: [coreVocabulary, validationVocabulary, applicatorVocabulary],
+  rules: { refSuppressesSiblings: false },
+};
 
 describe("custom keywords", () => {
   it("registers a simple boolean validator", () => {
@@ -21,7 +25,7 @@ describe("custom keywords", () => {
       typeof data !== "number" || data % (schemaValue as number) === 0;
     const compiled = compileSchema(
       { type: "integer", divisibleBy: 7 } as unknown as Record<string, unknown>,
-      { vocabularies: baseVocab, keywords: { divisibleBy } },
+      { dialect: baseDialect, keywords: { divisibleBy } },
     );
     expect(compiled.validate(14).valid).toBe(true);
     expect(compiled.validate(21).valid).toBe(true);
@@ -49,7 +53,7 @@ describe("custom keywords", () => {
           b: { type: "string", myKw: { check: "b" } },
         },
       } as unknown as Record<string, unknown>,
-      { vocabularies: baseVocab, keywords: { myKw: recorder } },
+      { dialect: baseDialect, keywords: { myKw: recorder } },
     );
     compiled.validate({ a: "x", b: "y" });
     expect(received).toHaveLength(2);
@@ -68,7 +72,7 @@ describe("custom keywords", () => {
     };
     const compiled = compileSchema(
       { type: "string", noSpaces: true } as unknown as Record<string, unknown>,
-      { vocabularies: baseVocab, keywords: { noSpaces: fn } },
+      { dialect: baseDialect, keywords: { noSpaces: fn } },
     );
     expect(compiled.validate("ok").valid).toBe(true);
     const bad = compiled.validate("has spaces");
@@ -82,7 +86,7 @@ describe("custom keywords", () => {
       compileSchema(
         { type: "string" },
         {
-          vocabularies: baseVocab,
+          dialect: baseDialect,
           keywords: { type: (() => true) as CustomKeywordValidator },
         },
       ),
@@ -96,7 +100,7 @@ describe("custom keywords", () => {
         type: "array",
         items: { type: "string", alwaysBad: true },
       } as unknown as Record<string, unknown>,
-      { vocabularies: baseVocab, keywords: { alwaysBad: always }, maxErrors: 2 },
+      { dialect: baseDialect, keywords: { alwaysBad: always }, maxErrors: 2 },
     );
     const res = compiled.validate(["a", "b", "c", "d", "e"]);
     expect(res.valid).toBe(false);
@@ -111,7 +115,7 @@ describe("custom keywords", () => {
   });
 
   it("is optional — omitting keywords has zero impact", () => {
-    const compiled = compileSchema({ type: "number" }, { vocabularies: baseVocab });
+    const compiled = compileSchema({ type: "number" }, { dialect: baseDialect });
     expect(compiled.validate(1).valid).toBe(true);
     expect(compiled.validate("x").valid).toBe(false);
   });

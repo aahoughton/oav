@@ -7,6 +7,8 @@ export {
 } from "./custom.js";
 export type {
   CompileRuntime,
+  Dialect,
+  DialectRules,
   EmitErrorParams,
   KeywordCompileContext,
   KeywordDefinition,
@@ -75,8 +77,10 @@ export {
   defaultVocabularies,
   formatAssertionVocabulary,
   formatVocabulary,
-  oas30Vocabularies,
+  jsonSchemaDialect,
+  oas30Dialect,
   oas30Vocabulary,
+  openapi31Dialect,
   unevaluatedVocabulary,
   validationVocabulary,
 } from "./vocabulary.js";

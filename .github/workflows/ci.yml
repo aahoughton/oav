@@ -145,7 +145,7 @@ jobs:
           npm install "$GITHUB_WORKSPACE/$TARBALL"
           cat > smoke.mjs <<'EOF'
           import { createValidator } from "@aahoughton/oav";
-          import { compileSchema, defaultVocabularies } from "@aahoughton/oav/schema";
+          import { compileSchema, jsonSchemaDialect } from "@aahoughton/oav/schema";
           const v = createValidator({
             openapi: "3.1.0",
             info: { title: "t", version: "1" },
@@ -161,7 +161,7 @@ jobs:
           if (v.validateRequest({ method: "POST", path: "/x", contentType: "application/json", body: {} }) === null) {
             throw new Error("expected invalid");
           }
-          const { validate } = compileSchema({ type: "integer" }, { vocabularies: defaultVocabularies });
+          const { validate } = compileSchema({ type: "integer" }, { dialect: jsonSchemaDialect });
           if (!validate(42).valid) throw new Error("expected valid");
           console.log("smoke ok");
           EOF

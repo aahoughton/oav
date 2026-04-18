@@ -16,10 +16,10 @@
 
 import { describe, expect, it } from "vitest";
 import { compileSchema } from "../src/compiler/compiler.js";
-import { defaultVocabularies } from "../src/keywords/vocabulary.js";
+import { jsonSchemaDialect } from "../src/keywords/vocabulary.js";
 
 function compile(schema: unknown) {
-  return compileSchema(schema as never, { vocabularies: defaultVocabularies });
+  return compileSchema(schema as never, { dialect: jsonSchemaDialect });
 }
 
 describe("path sharing: correctness under stress", () => {
@@ -170,7 +170,7 @@ describe("path sharing: correctness under stress", () => {
     // Even when a loop short-circuits on budget, the paths of errors
     // that DID get pushed must still be correct.
     const v = compileSchema({ type: "array", items: { type: "number" } } as never, {
-      vocabularies: defaultVocabularies,
+      dialect: jsonSchemaDialect,
       maxErrors: 3,
     });
     const r = v.validate(["a", "b", "c", "d", "e"]);

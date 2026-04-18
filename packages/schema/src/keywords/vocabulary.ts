@@ -60,52 +60,26 @@ import {
   patternKeyword,
 } from "./string.js";
 import { typeKeyword } from "./type.js";
-import type { Vocabulary } from "./types.js";
-
-/**
- * URI of the JSON Schema 2020-12 core vocabulary.
- *
- * @public
- */
-export const CORE_VOCAB = "https://json-schema.org/draft/2020-12/vocab/core";
-
-/**
- * URI of the core JSON Schema 2020-12 validation vocabulary.
- *
- * @public
- */
-export const CORE_VALIDATION_VOCAB = "https://json-schema.org/draft/2020-12/vocab/validation";
-
-/**
- * URI of the core JSON Schema 2020-12 applicator vocabulary.
- *
- * @public
- */
-export const APPLICATOR_VOCAB = "https://json-schema.org/draft/2020-12/vocab/applicator";
-
-/**
- * URI of the JSON Schema 2020-12 unevaluated vocabulary.
- *
- * @public
- */
-export const UNEVALUATED_VOCAB = "https://json-schema.org/draft/2020-12/vocab/unevaluated";
-
-/**
- * URI of the JSON Schema 2020-12 format-annotation vocabulary.
- *
- * @public
- */
-export const FORMAT_VOCAB = "https://json-schema.org/draft/2020-12/vocab/format-annotation";
-
-/**
- * URI of the JSON Schema 2020-12 format-assertion vocabulary. Opt-in:
- * when placed before {@link FORMAT_VOCAB} in the vocabularies list,
- * `format` becomes an assertion instead of an annotation.
- *
- * @public
- */
-export const FORMAT_ASSERTION_VOCAB =
-  "https://json-schema.org/draft/2020-12/vocab/format-assertion";
+import type { Dialect, Vocabulary } from "./types.js";
+export type { Dialect, DialectRules } from "./types.js";
+export {
+  APPLICATOR_VOCAB,
+  CORE_VALIDATION_VOCAB,
+  CORE_VOCAB,
+  FORMAT_ASSERTION_VOCAB,
+  FORMAT_VOCAB,
+  OAS30_VOCAB,
+  UNEVALUATED_VOCAB,
+} from "./vocabulary-uris.js";
+import {
+  APPLICATOR_VOCAB,
+  CORE_VALIDATION_VOCAB,
+  CORE_VOCAB,
+  FORMAT_ASSERTION_VOCAB,
+  FORMAT_VOCAB,
+  OAS30_VOCAB,
+  UNEVALUATED_VOCAB,
+} from "./vocabulary-uris.js";
 
 /**
  * The JSON Schema 2020-12 core vocabulary: `$ref`, `$dynamicRef`, `$id`,
@@ -221,8 +195,11 @@ export const formatAssertionVocabulary: Vocabulary = {
 };
 
 /**
- * Convenience: the three default vocabularies (validation + applicator +
- * format-annotation) in the order the compiler expects.
+ * The three default vocabularies (validation + applicator +
+ * format-annotation) in the order the compiler expects. Consumers
+ * normally pick a full {@link Dialect} instead — see
+ * {@link jsonSchemaDialect}, {@link openapi31Dialect}, and
+ * {@link oas30Dialect}.
  *
  * @public
  */
@@ -233,14 +210,6 @@ export const defaultVocabularies: Vocabulary[] = [
   unevaluatedVocabulary,
   formatVocabulary,
 ];
-
-/**
- * URI of the OpenAPI 3.0 schema vocabulary. Not a JSON-Schema-spec
- * URI; used only to group the 3.0 keyword set.
- *
- * @public
- */
-export const OAS30_VOCAB = "https://spec.openapis.org/oas/3.0/vocab/schema";
 
 /**
  * The OpenAPI 3.0 vocabulary overrides.
@@ -265,19 +234,54 @@ export const oas30Vocabulary: Vocabulary = {
 };
 
 /**
- * The full OpenAPI 3.0 vocabulary stack. Reuses most of the 2020-12
- * vocabularies — `oas30Vocabulary` comes first so the 3.0 variants
- * shadow the shared keywords, and `unevaluatedVocabulary` is omitted
- * because `unevaluatedProperties` / `unevaluatedItems` don't exist in
- * 3.0.
+ * JSON Schema 2020-12 dialect. `format` is treated as an annotation
+ * (non-assertive) per the spec default.
  *
  * @public
  */
-export const oas30Vocabularies: Vocabulary[] = [
-  coreVocabulary,
-  oas30Vocabulary,
-  validationVocabulary,
-  applicatorVocabulary,
-  formatAssertionVocabulary,
-  formatVocabulary,
-];
+export const jsonSchemaDialect: Dialect = {
+  id: "jsonSchema2020-12",
+  vocabularies: defaultVocabularies,
+  rules: { refSuppressesSiblings: false },
+};
+
+/**
+ * OpenAPI 3.1 / 3.2 dialect. Uses the 2020-12 vocabulary stack with
+ * `format` promoted to assertion (OpenAPI semantics).
+ *
+ * @public
+ */
+export const openapi31Dialect: Dialect = {
+  id: "openapi3.1",
+  vocabularies: [
+    coreVocabulary,
+    validationVocabulary,
+    applicatorVocabulary,
+    unevaluatedVocabulary,
+    formatAssertionVocabulary,
+    formatVocabulary,
+  ],
+  rules: { refSuppressesSiblings: false },
+};
+
+/**
+ * OpenAPI 3.0 dialect. Uses the OAS 3.0 keyword flavours (string-only
+ * `type` with sibling `nullable`, boolean `exclusiveMaximum` /
+ * `exclusiveMinimum`) and the `$ref`-suppresses-siblings rule.
+ * `unevaluatedProperties` / `unevaluatedItems` are not present in 3.0
+ * so the unevaluated vocabulary is omitted.
+ *
+ * @public
+ */
+export const oas30Dialect: Dialect = {
+  id: "oas3.0",
+  vocabularies: [
+    coreVocabulary,
+    oas30Vocabulary,
+    validationVocabulary,
+    applicatorVocabulary,
+    formatAssertionVocabulary,
+    formatVocabulary,
+  ],
+  rules: { refSuppressesSiblings: true },
+};

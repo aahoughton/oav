@@ -1,8 +1,7 @@
 import { NAMES, quoteString } from "../codegen/index.js";
 import type { JsonValue } from "@oav/core";
 import type { KeywordCompileContext, KeywordDefinition } from "./types.js";
-
-const CORE_VOCAB = "https://json-schema.org/draft/2020-12/vocab/validation";
+import { CORE_VALIDATION_VOCAB } from "./vocabulary-uris.js";
 
 /**
  * The JSON Schema 2020-12 `enum` keyword. Data must be deep-equal to one of
@@ -12,7 +11,7 @@ const CORE_VOCAB = "https://json-schema.org/draft/2020-12/vocab/validation";
  */
 export const enumKeyword: KeywordDefinition = {
   keyword: "enum",
-  vocabulary: CORE_VOCAB,
+  vocabulary: CORE_VALIDATION_VOCAB,
   compile(ctx: KeywordCompileContext): void {
     const values = ctx.schema as JsonValue[];
     const valuesLit = JSON.stringify(values);
@@ -45,7 +44,7 @@ export const enumKeyword: KeywordDefinition = {
  */
 export const constKeyword: KeywordDefinition = {
   keyword: "const",
-  vocabulary: CORE_VOCAB,
+  vocabulary: CORE_VALIDATION_VOCAB,
   compile(ctx: KeywordCompileContext): void {
     const value = ctx.schema as JsonValue;
     const valueLit = JSON.stringify(value);

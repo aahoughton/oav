@@ -147,10 +147,11 @@ Only three things vary from 2020-12; everything else (numeric / string
    modify the sibling `maximum` / `minimum` rather than standing alone
    as numeric bounds. `oas30MaximumKeyword` / `oas30MinimumKeyword`
    read the boolean and emit `>=` vs `>` (or `<=` vs `<`) accordingly.
-3. **`$ref` siblings are ignored**. `compileSchema`'s
-   `refSuppressesSiblings` option (set by the 3.0 dialect config)
-   makes the keyword dispatcher skip every non-`$ref` keyword in a
-   schema that declares `$ref`.
+3. **`$ref` siblings are ignored**. The dialect's
+   `rules.refSuppressesSiblings` flag makes the keyword dispatcher
+   skip every non-`$ref` keyword in a schema that declares `$ref`.
+   `oas30Dialect` sets it to `true`; every other built-in dialect
+   sets it to `false`.
 
 Keywords not present in 3.0 (`const`, `if`/`then`/`else`, `contains`,
 `patternProperties`, `propertyNames`, `unevaluatedProperties`/`Items`,
@@ -170,7 +171,7 @@ having an unknown field, which 2020-12 allows in every dialect.
   `nullable`, boolean `exclusiveMinimum`; 3.2: QUERY method).
 - **Validator integration tests** in
   `packages/validator/test/versioning.test.ts` cover dispatch,
-  dialect-specific keyword behaviour, and the `vocabularies` override.
+  dialect-specific keyword behaviour, and the `dialect` override.
 
 ## Known limitations
 

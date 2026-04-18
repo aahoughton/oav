@@ -4,11 +4,11 @@ Built-in string format validators for `@oav/schema`'s `format` keyword.
 
 ```ts
 import { builtInFormats, validateUuid } from "@oav/formats";
-import { compileSchema, defaultVocabularies } from "@oav/schema";
+import { compileSchema, jsonSchemaDialect } from "@oav/schema";
 
 const { validate } = compileSchema(
   { type: "string", format: "uuid" },
-  { vocabularies: defaultVocabularies, formats: builtInFormats },
+  { dialect: jsonSchemaDialect, formats: builtInFormats },
 );
 
 validate("550e8400-e29b-41d4-a716-446655440000"); // { valid: true }

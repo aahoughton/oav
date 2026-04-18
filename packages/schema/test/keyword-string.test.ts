@@ -32,25 +32,20 @@ describe("string keywords", () => {
     expect(v.validate("not an email").valid).toBe(true);
   });
 
-  it("format asserts when the format-assertion vocabulary is enabled", async () => {
+  it("format asserts when the openapi31 dialect is used", async () => {
     const schema = await import("../src/index.js");
-    const vocabularies = [
-      schema.coreVocabulary,
-      schema.validationVocabulary,
-      schema.applicatorVocabulary,
-      schema.unevaluatedVocabulary,
-      schema.formatAssertionVocabulary,
-      schema.formatVocabulary,
-    ];
     const v = schema.compileSchema(
       { format: "email" },
-      { vocabularies, formats: { email: (s) => /@/.test(s) } },
+      { dialect: schema.openapi31Dialect, formats: { email: (s) => /@/.test(s) } },
     );
     expect(v.validate("x@y").valid).toBe(true);
     expect(v.validate("nope").valid).toBe(false);
     expect(v.validate("nope").error?.code).toBe("format");
 
-    const noValidator = schema.compileSchema({ format: "whatever" }, { vocabularies });
+    const noValidator = schema.compileSchema(
+      { format: "whatever" },
+      { dialect: schema.openapi31Dialect },
+    );
     expect(noValidator.validate("anything").valid).toBe(true);
   });
 });

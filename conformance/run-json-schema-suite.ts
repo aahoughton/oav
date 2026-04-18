@@ -24,7 +24,7 @@
 
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { resolve, join, basename } from "node:path";
-import { compileSchema, defaultVocabularies } from "../packages/schema/src/index.ts";
+import { compileSchema, jsonSchemaDialect } from "../packages/schema/src/index.ts";
 import { builtInFormats } from "../packages/formats/src/index.ts";
 
 interface Case {
@@ -88,7 +88,7 @@ function runFile(path: string): FileResult {
     let validate: ((data: unknown) => { valid: boolean }) | undefined;
     try {
       const compiled = compileSchema(group.schema as never, {
-        vocabularies: defaultVocabularies,
+        dialect: jsonSchemaDialect,
         formats: builtInFormats,
       });
       validate = compiled.validate;

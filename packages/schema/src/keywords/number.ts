@@ -1,7 +1,6 @@
 import { NAMES, quoteString } from "../codegen/index.js";
 import type { KeywordCompileContext, KeywordDefinition } from "./types.js";
-
-const CORE_VOCAB = "https://json-schema.org/draft/2020-12/vocab/validation";
+import { CORE_VALIDATION_VOCAB } from "./vocabulary-uris.js";
 
 function numberGuard(dataExpr: string): string {
   return `typeof ${dataExpr} === "number" && Number.isFinite(${dataExpr})`;
@@ -27,7 +26,7 @@ function emitNumericError(
  */
 export const multipleOfKeyword: KeywordDefinition = {
   keyword: "multipleOf",
-  vocabulary: CORE_VOCAB,
+  vocabulary: CORE_VALIDATION_VOCAB,
   compile(ctx: KeywordCompileContext): void {
     const divisor = ctx.schema as number;
     ctx.gen.if(`${numberGuard(ctx.data)} && (${ctx.data} / ${divisor}) % 1 !== 0`, () => {
@@ -48,7 +47,7 @@ export const multipleOfKeyword: KeywordDefinition = {
  */
 export const maximumKeyword: KeywordDefinition = {
   keyword: "maximum",
-  vocabulary: CORE_VOCAB,
+  vocabulary: CORE_VALIDATION_VOCAB,
   compile(ctx: KeywordCompileContext): void {
     const limit = ctx.schema as number;
     ctx.gen.if(`${numberGuard(ctx.data)} && ${ctx.data} > ${limit}`, () => {
@@ -69,7 +68,7 @@ export const maximumKeyword: KeywordDefinition = {
  */
 export const exclusiveMaximumKeyword: KeywordDefinition = {
   keyword: "exclusiveMaximum",
-  vocabulary: CORE_VOCAB,
+  vocabulary: CORE_VALIDATION_VOCAB,
   compile(ctx: KeywordCompileContext): void {
     const limit = ctx.schema as number;
     ctx.gen.if(`${numberGuard(ctx.data)} && ${ctx.data} >= ${limit}`, () => {
@@ -90,7 +89,7 @@ export const exclusiveMaximumKeyword: KeywordDefinition = {
  */
 export const minimumKeyword: KeywordDefinition = {
   keyword: "minimum",
-  vocabulary: CORE_VOCAB,
+  vocabulary: CORE_VALIDATION_VOCAB,
   compile(ctx: KeywordCompileContext): void {
     const limit = ctx.schema as number;
     ctx.gen.if(`${numberGuard(ctx.data)} && ${ctx.data} < ${limit}`, () => {
@@ -111,7 +110,7 @@ export const minimumKeyword: KeywordDefinition = {
  */
 export const exclusiveMinimumKeyword: KeywordDefinition = {
   keyword: "exclusiveMinimum",
-  vocabulary: CORE_VOCAB,
+  vocabulary: CORE_VALIDATION_VOCAB,
   compile(ctx: KeywordCompileContext): void {
     const limit = ctx.schema as number;
     ctx.gen.if(`${numberGuard(ctx.data)} && ${ctx.data} <= ${limit}`, () => {

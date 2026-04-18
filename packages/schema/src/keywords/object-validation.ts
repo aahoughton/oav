@@ -1,7 +1,6 @@
 import { NAMES, quoteString } from "../codegen/index.js";
 import type { KeywordCompileContext, KeywordDefinition } from "./types.js";
-
-const CORE_VOCAB = "https://json-schema.org/draft/2020-12/vocab/validation";
+import { CORE_VALIDATION_VOCAB } from "./vocabulary-uris.js";
 
 function isObjectGuard(dataExpr: string): string {
   return `typeof ${dataExpr} === "object" && ${dataExpr} !== null && !Array.isArray(${dataExpr})`;
@@ -18,7 +17,7 @@ function keyCountExpr(dataExpr: string): string {
  */
 export const maxPropertiesKeyword: KeywordDefinition = {
   keyword: "maxProperties",
-  vocabulary: CORE_VOCAB,
+  vocabulary: CORE_VALIDATION_VOCAB,
   compile(ctx: KeywordCompileContext): void {
     const limit = ctx.schema as number;
     const count = ctx.gen.scope.name("count");
@@ -43,7 +42,7 @@ export const maxPropertiesKeyword: KeywordDefinition = {
  */
 export const minPropertiesKeyword: KeywordDefinition = {
   keyword: "minProperties",
-  vocabulary: CORE_VOCAB,
+  vocabulary: CORE_VALIDATION_VOCAB,
   compile(ctx: KeywordCompileContext): void {
     const limit = ctx.schema as number;
     const count = ctx.gen.scope.name("count");
@@ -70,7 +69,7 @@ export const minPropertiesKeyword: KeywordDefinition = {
  */
 export const requiredKeyword: KeywordDefinition = {
   keyword: "required",
-  vocabulary: CORE_VOCAB,
+  vocabulary: CORE_VALIDATION_VOCAB,
   compile(ctx: KeywordCompileContext): void {
     const required = ctx.schema as string[];
     if (required.length === 0) return;

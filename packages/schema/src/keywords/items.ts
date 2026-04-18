@@ -1,8 +1,7 @@
 import { NAMES, quoteString } from "../codegen/index.js";
 import type { SchemaOrBoolean } from "@oav/core";
 import type { KeywordCompileContext, KeywordDefinition } from "./types.js";
-
-const APPLICATOR_VOCAB = "https://json-schema.org/draft/2020-12/vocab/applicator";
+import { APPLICATOR_VOCAB } from "./vocabulary-uris.js";
 
 /**
  * The `prefixItems` keyword. Validates the first N items of an array against

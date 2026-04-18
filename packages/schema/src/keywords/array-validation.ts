@@ -1,7 +1,6 @@
 import { NAMES, quoteString } from "../codegen/index.js";
 import type { KeywordCompileContext, KeywordDefinition } from "./types.js";
-
-const CORE_VOCAB = "https://json-schema.org/draft/2020-12/vocab/validation";
+import { CORE_VALIDATION_VOCAB } from "./vocabulary-uris.js";
 
 /**
  * The JSON Schema `maxItems` keyword. Array data must have at most N items.
@@ -10,7 +9,7 @@ const CORE_VOCAB = "https://json-schema.org/draft/2020-12/vocab/validation";
  */
 export const maxItemsKeyword: KeywordDefinition = {
   keyword: "maxItems",
-  vocabulary: CORE_VOCAB,
+  vocabulary: CORE_VALIDATION_VOCAB,
   compile(ctx: KeywordCompileContext): void {
     const limit = ctx.schema as number;
     ctx.gen.if(`Array.isArray(${ctx.data}) && ${ctx.data}.length > ${limit}`, () => {
@@ -31,7 +30,7 @@ export const maxItemsKeyword: KeywordDefinition = {
  */
 export const minItemsKeyword: KeywordDefinition = {
   keyword: "minItems",
-  vocabulary: CORE_VOCAB,
+  vocabulary: CORE_VALIDATION_VOCAB,
   compile(ctx: KeywordCompileContext): void {
     const limit = ctx.schema as number;
     ctx.gen.if(`Array.isArray(${ctx.data}) && ${ctx.data}.length < ${limit}`, () => {
@@ -53,7 +52,7 @@ export const minItemsKeyword: KeywordDefinition = {
  */
 export const uniqueItemsKeyword: KeywordDefinition = {
   keyword: "uniqueItems",
-  vocabulary: CORE_VOCAB,
+  vocabulary: CORE_VALIDATION_VOCAB,
   compile(ctx: KeywordCompileContext): void {
     if (ctx.schema !== true) return;
     const i = ctx.gen.scope.name("i");

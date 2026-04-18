@@ -1,9 +1,6 @@
 import { NAMES, quoteString } from "../codegen/index.js";
 import type { KeywordCompileContext, KeywordDefinition } from "./types.js";
-
-const CORE_VOCAB = "https://json-schema.org/draft/2020-12/vocab/validation";
-const FORMAT_ANNOTATION_VOCAB = "https://json-schema.org/draft/2020-12/vocab/format-annotation";
-const FORMAT_ASSERTION_VOCAB = "https://json-schema.org/draft/2020-12/vocab/format-assertion";
+import { CORE_VALIDATION_VOCAB, FORMAT_ASSERTION_VOCAB, FORMAT_VOCAB } from "./vocabulary-uris.js";
 
 /**
  * The JSON Schema `maxLength` keyword. String data must have at most N
@@ -13,7 +10,7 @@ const FORMAT_ASSERTION_VOCAB = "https://json-schema.org/draft/2020-12/vocab/form
  */
 export const maxLengthKeyword: KeywordDefinition = {
   keyword: "maxLength",
-  vocabulary: CORE_VOCAB,
+  vocabulary: CORE_VALIDATION_VOCAB,
   compile(ctx: KeywordCompileContext): void {
     const limit = ctx.schema as number;
     const lenExpr = codeUnitLengthExpr(ctx.data);
@@ -36,7 +33,7 @@ export const maxLengthKeyword: KeywordDefinition = {
  */
 export const minLengthKeyword: KeywordDefinition = {
   keyword: "minLength",
-  vocabulary: CORE_VOCAB,
+  vocabulary: CORE_VALIDATION_VOCAB,
   compile(ctx: KeywordCompileContext): void {
     const limit = ctx.schema as number;
     const lenExpr = codeUnitLengthExpr(ctx.data);
@@ -59,7 +56,7 @@ export const minLengthKeyword: KeywordDefinition = {
  */
 export const patternKeyword: KeywordDefinition = {
   keyword: "pattern",
-  vocabulary: CORE_VOCAB,
+  vocabulary: CORE_VALIDATION_VOCAB,
   compile(ctx: KeywordCompileContext): void {
     const source = ctx.schema as string;
     const patternVar = ctx.gen.scope.name("pattern");
@@ -89,7 +86,7 @@ export const patternKeyword: KeywordDefinition = {
  */
 export const formatKeyword: KeywordDefinition = {
   keyword: "format",
-  vocabulary: FORMAT_ANNOTATION_VOCAB,
+  vocabulary: FORMAT_VOCAB,
   compile(): void {
     // format-annotation mode: emit no runtime check.
   },

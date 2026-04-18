@@ -10,3 +10,4 @@ tmp/
 oav-*.tgz
 aahoughton-oav-*.tgz
 MIGRATION-NOTES.md
+.claude/

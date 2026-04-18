@@ -23,8 +23,7 @@
 
 import { NAMES, quoteString } from "../codegen/index.js";
 import type { KeywordCompileContext, KeywordDefinition } from "./types.js";
-
-const OAS30_VOCAB = "https://spec.openapis.org/oas/3.0/vocab/schema";
+import { OAS30_VOCAB } from "./vocabulary-uris.js";
 
 /**
  * The `type` keyword in OAS 3.0: MUST be a single string. If the

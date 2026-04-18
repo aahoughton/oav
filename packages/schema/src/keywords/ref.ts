@@ -1,6 +1,5 @@
 import type { KeywordCompileContext, KeywordDefinition } from "./types.js";
-
-const CORE_VOCAB = "https://json-schema.org/draft/2020-12/vocab/core";
+import { CORE_VOCAB } from "./vocabulary-uris.js";
 
 function compileRefCall(ctx: KeywordCompileContext, ref: string): void {
   const fn = ctx.resolveRef(ref);

@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { collectLeaves } from "@oav/core";
 import { compileSchema } from "../src/compiler/compiler.js";
-import { defaultVocabularies } from "../src/keywords/vocabulary.js";
+import { jsonSchemaDialect } from "../src/keywords/vocabulary.js";
 
 function compile(schema: unknown, maxErrors?: number): ReturnType<typeof compileSchema> {
-  return compileSchema(schema as never, { vocabularies: defaultVocabularies, maxErrors });
+  return compileSchema(schema as never, { dialect: jsonSchemaDialect, maxErrors });
 }
 
 describe("maxErrors option", () => {

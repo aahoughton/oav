@@ -1,6 +1,6 @@
 import type { PathSegment, SchemaObject, SchemaOrBoolean, ValidationError } from "@oav/core";
 import { CodeGen, NAMES, quoteString } from "../codegen/index.js";
-import type { KeywordDefinition, Vocabulary } from "../keywords/types.js";
+import type { Dialect, KeywordDefinition } from "../keywords/types.js";
 import { createKeywordContext } from "../keywords/context.js";
 import { createCustomKeywordDefinition, type CustomKeywordValidator } from "../keywords/custom.js";
 import { createRefResolver, resolve, type RefResolver } from "../resolve/index.js";
@@ -63,8 +63,12 @@ export type CompiledSchema = {
  * @public
  */
 export interface CompileOptions {
-  /** The set of vocabularies whose keywords are available. */
-  vocabularies: Vocabulary[];
+  /**
+   * The dialect to compile against. Pick one of the built-ins
+   * (`jsonSchemaDialect`, `openapi31Dialect`, `oas30Dialect`) or
+   * construct a custom {@link Dialect}.
+   */
+  dialect: Dialect;
   /** Additional external named schemas that `$ref` can resolve to. */
   external?: Map<string, SchemaOrBoolean>;
   /** Pre-registered format validators, keyed by format name. */
@@ -88,21 +92,15 @@ export interface CompileOptions {
    */
   maxErrors?: number;
   /**
-   * OpenAPI 3.0 semantics: when a schema has `$ref`, every sibling
-   * keyword is ignored. Defaults to `false` (2020-12 / OpenAPI 3.1+
-   * semantics, where siblings are honoured).
-   */
-  refSuppressesSiblings?: boolean;
-  /**
    * User-registered keywords, keyed by keyword name. Each validator is
    * invoked whenever its name appears as a property in a schema object.
    * Custom names must not collide with a keyword already supplied by
-   * the configured {@link CompileOptions.vocabularies}.
+   * the configured dialect.
    *
    * @example
    * ```ts
    * compileSchema(schema, {
-   *   vocabularies: [coreVocabulary, validationVocabulary],
+   *   dialect: jsonSchemaDialect,
    *   keywords: {
    *     divisibleBy: (data, schemaValue) =>
    *       typeof data !== "number" || data % (schemaValue as number) === 0,
@@ -148,7 +146,7 @@ type WrapperCode = "schema" | "not" | "ref";
  *
  * @example
  * ```ts
- * const v = compileSchema({ type: "number" }, { vocabularies: [core] });
+ * const v = compileSchema({ type: "number" }, { dialect: jsonSchemaDialect });
  * v.validate(1.5); // { valid: true }
  * v.validate("x"); // { valid: false, error: { code: "type", ... } }
  * ```
@@ -158,7 +156,7 @@ type WrapperCode = "schema" | "not" | "ref";
 export function compileSchema(schema: SchemaOrBoolean, options: CompileOptions): CompiledSchema {
   const byKeyword = new Map<string, KeywordDefinition>();
   const ordered: KeywordDefinition[] = [];
-  for (const vocab of options.vocabularies) {
+  for (const vocab of options.dialect.vocabularies) {
     for (const kw of vocab.keywords) {
       if (byKeyword.has(kw.keyword)) continue;
       byKeyword.set(kw.keyword, kw);
@@ -212,7 +210,7 @@ export function compileSchema(schema: SchemaOrBoolean, options: CompileOptions):
     refResolver,
     nextFn: 0,
     gated: Number.isFinite(maxErrors),
-    refSuppressesSiblings: options.refSuppressesSiblings ?? false,
+    refSuppressesSiblings: options.dialect.rules.refSuppressesSiblings,
     compileValidator(sub) {
       return compileValidator(sub, state);
     },
