@@ -59,15 +59,3 @@ export function detectOpenAPIVersion(spec: unknown): OpenAPIVersion | undefined 
   if (minor === "2") return "3.2";
   return undefined;
 }
-
-/**
- * Result of checking whether a detected version is supported by the
- * currently-loaded validator dialect table.
- *
- * @public
- */
-export interface VersionSupport {
-  version: OpenAPIVersion | undefined;
-  supported: boolean;
-  reason?: string;
-}
