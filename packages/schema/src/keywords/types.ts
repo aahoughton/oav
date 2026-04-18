@@ -1,5 +1,5 @@
 import type { SchemaObject, SchemaOrBoolean } from "@oav/core";
-import type { CodeGen } from "../codegen/index.js";
+import type { CodeEmitter } from "../codegen/index.js";
 
 /**
  * Runtime inputs exposed to generated validator source. Keyword authors
@@ -40,7 +40,7 @@ export interface EmitErrorParams {
  */
 export interface KeywordCompileContext {
   /** Handle for emitting source into the current validator function. */
-  readonly gen: CodeGen;
+  readonly gen: CodeEmitter;
   /** The keyword's own schema value (e.g. `"number"` for `type`). */
   readonly schema: unknown;
   /** The whole surrounding schema object (so cross-keyword peeks are possible). */

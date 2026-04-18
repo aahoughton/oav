@@ -1,5 +1,10 @@
-export { CodeGen, NAMES, Scope, pathJoinExpr, quoteString, rawExpr } from "./codegen/index.js";
-export type { PathSegmentLike, RawExpression } from "./codegen/index.js";
+export { NAMES, pathJoinExpr, quoteString, rawExpr } from "./codegen/index.js";
+export type {
+  CodeEmitter,
+  NameGenerator,
+  PathSegmentLike,
+  RawExpression,
+} from "./codegen/index.js";
 export {
   compileSchema,
   createDeps,

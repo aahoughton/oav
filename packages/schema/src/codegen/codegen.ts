@@ -1,17 +1,61 @@
 import { Scope } from "./scope.js";
 
 /**
- * String-builder for generated JavaScript source. Each call appends a line (or
- * opens/closes a block) with automatic indentation.
- *
- * @remarks
- * This class is an internal implementation detail of the schema compiler and
- * is exported for advanced extensibility (custom keyword authors). Most users
- * should interact with the compiler instead.
+ * Fresh-identifier generator surface. The only member custom-keyword
+ * authors call on `ctx.gen.scope`.
  *
  * @public
  */
-export class CodeGen {
+export interface NameGenerator {
+  /** Mint a fresh identifier of the form `<prefix>N`, monotonically increasing per prefix. */
+  name(prefix: string): string;
+}
+
+/**
+ * The narrow code-emission surface a custom-keyword author sees via
+ * {@link KeywordCompileContext.gen}. Defines the minimum API needed to
+ * emit validator source without exposing the whole {@link CodeGen}
+ * implementation.
+ *
+ * If you find yourself wanting a method that isn't here (e.g. `forIn`,
+ * `forRange`), open an issue — the interface is intentionally small so
+ * it's stable.
+ *
+ * @public
+ */
+export interface CodeEmitter {
+  /** Shared name generator. */
+  readonly scope: NameGenerator;
+  /** Append a single line of source at the current indent level. */
+  line(code: string): this;
+  /** Emit an `if (cond) { then } else { else }` block. */
+  if(cond: string, thenBody: (g: CodeEmitter) => void, elseBody?: (g: CodeEmitter) => void): this;
+  /** Emit a `for (const name of expr) { ... }` loop. */
+  forOf(name: string, expr: string, body: (g: CodeEmitter) => void): this;
+  /** Emit a `for (const name in expr) { ... }` loop with a `hasOwn` guard. */
+  forIn(name: string, expr: string, body: (g: CodeEmitter) => void): this;
+  /** Emit a `for (let name = 0; name < limit; name += 1) { ... }` loop. */
+  forRange(name: string, limit: string, body: (g: CodeEmitter) => void): this;
+  /** Emit a `const name = expr;` declaration. */
+  const(name: string, expr: string): this;
+  /** Emit a `let name = expr;` declaration. */
+  let(name: string, expr: string): this;
+  /** Open an indentation level without emitting a brace pair. */
+  indent(): this;
+  /** Close an indentation level opened by {@link CodeEmitter.indent}. */
+  dedent(): this;
+}
+
+/**
+ * String-builder for generated JavaScript source. Each call appends a line (or
+ * opens/closes a block) with automatic indentation.
+ *
+ * Used internally by the compiler. Custom-keyword authors interact with
+ * the narrower {@link CodeEmitter} interface via `ctx.gen`.
+ *
+ * @internal
+ */
+export class CodeGen implements CodeEmitter {
   private readonly lines: string[] = [];
   private indentLevel = 0;
   /** Shared name generator. Keyword authors can request fresh identifiers here. */
