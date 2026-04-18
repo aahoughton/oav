@@ -36,12 +36,26 @@ describe("compileSchema", () => {
   it("emits a function-per-schema name pattern in the source", () => {
     const v = compileSchema({}, { vocabularies: [emptyVocab] });
     expect(v.source).toMatch(/function validate_0\(data, path\)/);
-    expect(v.source).toMatch(/function validate\(data\) \{/);
+    expect(v.source).toMatch(/function validate\(data, startPath\) \{/);
   });
 
   it("builds a path array at the root", () => {
     const result = compileSchema(false, { vocabularies: [emptyVocab] }).validate(1);
     expect(result.valid).toBe(false);
     expect(result.error?.path).toEqual([]);
+  });
+
+  it("prepends startPath to every error path", () => {
+    const v = compileSchema(false, { vocabularies: [emptyVocab] });
+    const result = v.validate(1, ["body"]);
+    expect(result.valid).toBe(false);
+    expect(result.error?.path).toEqual(["body"]);
+  });
+
+  it("does not mutate the caller's startPath", () => {
+    const v = compileSchema(false, { vocabularies: [emptyVocab] });
+    const prefix: (string | number)[] = ["body"];
+    v.validate(1, prefix);
+    expect(prefix).toEqual(["body"]);
   });
 });

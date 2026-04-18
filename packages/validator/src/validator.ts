@@ -74,14 +74,6 @@ function dialectFor(version: OpenAPIVersion): DialectConfig {
 
 import { deserialize, matchMediaType, matchResponseKey } from "./deserialize.js";
 
-function prefixPath(err: ValidationError, prefix: (string | number)[]): ValidationError {
-  return {
-    ...err,
-    path: [...prefix, ...err.path],
-    children: err.children.map((c: ValidationError) => prefixPath(c, prefix)),
-  };
-}
-
 /**
  * The HTTP validator: after being built from a (resolved) OpenAPI document,
  * `validateRequest` / `validateResponse` each return a full
@@ -454,9 +446,9 @@ export function createValidator(
               style: hdr.style,
               explode: hdr.explode,
             });
-            const r = validator.validate(value);
+            const r = validator.validate(value, ["response", "headers", name]);
             if (!r.valid && r.error !== undefined) {
-              children.push(prefixPath(r.error, ["response", "headers", name]));
+              children.push(r.error);
             }
           }
         }
@@ -478,9 +470,9 @@ export function createValidator(
           } else {
             const validator = responseCompiled.bodyValidators.get(mt);
             if (validator !== undefined) {
-              const r = validator.validate(res.body);
+              const r = validator.validate(res.body, ["response", "body"]);
               if (!r.valid && r.error !== undefined) {
-                children.push(prefixPath(r.error, ["response", "body"]));
+                children.push(r.error);
               }
             }
           }
@@ -551,9 +543,9 @@ function validateParameter(
   if (validator === undefined) return null;
 
   const value = deserialize(raw, p);
-  const r = validator.validate(value);
+  const r = validator.validate(value, pathPrefix);
   if (r.valid || r.error === undefined) return null;
-  return prefixPath(r.error, pathPrefix);
+  return r.error;
 }
 
 function validateBody(req: HttpRequest, cache: OperationCache): ValidationError | null {
@@ -578,7 +570,7 @@ function validateBody(req: HttpRequest, cache: OperationCache): ValidationError 
   }
   const validator = cache.bodyValidators.get(mt);
   if (validator === undefined) return null;
-  const r = validator.validate(req.body);
+  const r = validator.validate(req.body, ["body"]);
   if (r.valid || r.error === undefined) return null;
-  return prefixPath(r.error, ["body"]);
+  return r.error;
 }

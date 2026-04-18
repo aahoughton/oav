@@ -1,11 +1,8 @@
-import type { SchemaObject, SchemaOrBoolean, ValidationError } from "@oav/core";
+import type { PathSegment, SchemaObject, SchemaOrBoolean, ValidationError } from "@oav/core";
 import { CodeGen, NAMES, quoteString } from "../codegen/index.js";
 import type { KeywordDefinition, Vocabulary } from "../keywords/types.js";
 import { createKeywordContext } from "../keywords/context.js";
-import {
-  createCustomKeywordDefinition,
-  type CustomKeywordValidator,
-} from "../keywords/custom.js";
+import { createCustomKeywordDefinition, type CustomKeywordValidator } from "../keywords/custom.js";
 import { createRefResolver, resolve, type RefResolver } from "../resolve/index.js";
 import { createDeps, type ValidatorDeps } from "./runtime.js";
 
@@ -28,12 +25,16 @@ export interface ValidationResult {
 
 /**
  * The function returned by {@link compileSchema}. Call it with any JSON value
- * to validate against the original schema.
+ * to validate against the original schema. An optional `startPath`
+ * is prepended to every error's `path` — useful when the compiled
+ * validator is embedded inside a larger traversal (e.g. the HTTP
+ * validator prepends `["body"]`, `["query", name]`, etc.). The array
+ * is cloned before use and never mutated.
  *
  * @public
  */
 export type CompiledSchema = {
-  validate: (data: unknown) => ValidationResult;
+  validate: (data: unknown, startPath?: readonly PathSegment[]) => ValidationResult;
   /** The generated source. Exposed for debugging/snapshot testing only. */
   source: string;
 };
@@ -208,7 +209,7 @@ export function compileSchema(schema: SchemaOrBoolean, options: CompileOptions):
 }
 
 interface CompiledFactory {
-  validate: (data: unknown) => ValidationResult;
+  validate: (data: unknown, startPath?: readonly PathSegment[]) => ValidationResult;
 }
 
 function compileValidator(schema: SchemaOrBoolean, state: CompileState): string {
@@ -346,14 +347,16 @@ function assembleSource(state: CompileState, rootName: string): string {
   parts.push("");
   parts.push(...state.functionBodies);
   parts.push("");
-  parts.push(`function validate(${NAMES.DATA}) {`);
+  parts.push(`function validate(${NAMES.DATA}, startPath) {`);
   if (state.gated) {
     // Reset the per-call budget and truncation flag so consecutive
     // validate() calls are independent.
     parts.push(`  ${NAMES.DEPS}.errorsRemaining = ${NAMES.DEPS}.maxErrors;`);
     parts.push(`  ${NAMES.DEPS}.truncated = false;`);
   }
-  parts.push(`  const err = ${rootName}(${NAMES.DATA}, []);`);
+  parts.push(
+    `  const err = ${rootName}(${NAMES.DATA}, startPath !== undefined ? [...startPath] : []);`,
+  );
   parts.push(`  if (err === null) return { valid: true };`);
   if (state.gated) {
     parts.push(
