@@ -1,6 +1,12 @@
 import { readFile, writeFile } from "node:fs/promises";
 import type { JsonValue, ValidationError } from "@oav/core";
-import { composeReaders, createFileReader, loadSpec, type SpecOverlay } from "@oav/spec";
+import {
+  composeReaders,
+  createFileReader,
+  loadSpec,
+  type DocumentReader,
+  type SpecOverlay,
+} from "@oav/spec";
 import { createValidator } from "@oav/validator";
 import { parseHttpFile } from "./http-parser.js";
 import { formatError, type OutputFormat } from "./format-output.js";
@@ -27,15 +33,41 @@ export interface CommandResult {
   output?: string;
 }
 
+/**
+ * I/O substrate the commands talk to. Defaults to the local
+ * filesystem + stdin; tests can pass an in-memory substitute.
+ *
+ * @public
+ */
+export interface CommandIo {
+  reader: DocumentReader;
+  readText(pathOrDash: string): Promise<string>;
+  writeText(path: string, content: string): Promise<void>;
+}
+
 async function readAllStdin(): Promise<string> {
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
   return Buffer.concat(chunks).toString("utf8");
 }
 
-async function readInput(pathOrDash: string): Promise<string> {
-  if (pathOrDash === "-") return readAllStdin();
-  return readFile(pathOrDash, "utf8");
+/**
+ * The real-filesystem {@link CommandIo}, used when callers don't
+ * supply one of their own.
+ *
+ * @public
+ */
+export function defaultCommandIo(): CommandIo {
+  return {
+    reader: composeReaders([createFileReader()]),
+    async readText(pathOrDash: string) {
+      if (pathOrDash === "-") return readAllStdin();
+      return readFile(pathOrDash, "utf8");
+    },
+    async writeText(path: string, content: string) {
+      await writeFile(path, content);
+    },
+  };
 }
 
 /**
@@ -46,18 +78,24 @@ async function readInput(pathOrDash: string): Promise<string> {
  *
  * @public
  */
-export async function resolveCommand(args: {
-  spec: string;
-  overlays: string[];
-  options: CommandOptions;
-}): Promise<CommandResult> {
-  const reader = composeReaders([createFileReader()]);
+export async function resolveCommand(
+  args: {
+    spec: string;
+    overlays: string[];
+    options: CommandOptions;
+  },
+  io: CommandIo = defaultCommandIo(),
+): Promise<CommandResult> {
   const overlayDocs = await Promise.all(
-    args.overlays.map(async (path) => JSON.parse(await readFile(path, "utf8")) as SpecOverlay),
+    args.overlays.map(async (path) => (await io.reader.read(path)) as SpecOverlay),
   );
-  const { document } = await loadSpec({ reader, entry: args.spec, overlays: overlayDocs });
+  const { document } = await loadSpec({
+    reader: io.reader,
+    entry: args.spec,
+    overlays: overlayDocs,
+  });
   const out = JSON.stringify(document, null, 2);
-  if (args.options.output !== undefined) await writeFile(args.options.output, out + "\n");
+  if (args.options.output !== undefined) await io.writeText(args.options.output, out + "\n");
   return { exitCode: 0, output: args.options.quiet ? undefined : out };
 }
 
@@ -70,26 +108,32 @@ export async function resolveCommand(args: {
  *
  * @public
  */
-export async function validateCommand(args: {
-  spec: string;
-  overlays: string[];
-  mode: ValidateMode;
-  options: CommandOptions;
-}): Promise<CommandResult> {
-  const reader = composeReaders([createFileReader()]);
+export async function validateCommand(
+  args: {
+    spec: string;
+    overlays: string[];
+    mode: ValidateMode;
+    options: CommandOptions;
+  },
+  io: CommandIo = defaultCommandIo(),
+): Promise<CommandResult> {
   const overlayDocs = await Promise.all(
-    args.overlays.map(async (path) => JSON.parse(await readFile(path, "utf8")) as SpecOverlay),
+    args.overlays.map(async (path) => (await io.reader.read(path)) as SpecOverlay),
   );
-  const { document } = await loadSpec({ reader, entry: args.spec, overlays: overlayDocs });
+  const { document } = await loadSpec({
+    reader: io.reader,
+    entry: args.spec,
+    overlays: overlayDocs,
+  });
   const validator = createValidator(document);
 
   let err: ValidationError | null;
   if (args.mode.kind === "request") {
-    const raw = await readInput(args.mode.file);
+    const raw = await io.readText(args.mode.file);
     const req = parseHttpFile(raw);
     err = validator.validateRequest(req);
   } else if (args.mode.kind === "bodyForPath") {
-    const rawBody = await readInput(args.mode.body);
+    const rawBody = await io.readText(args.mode.body);
     const body = tryJson(rawBody) as JsonValue | undefined;
     err = validator.validateRequest({
       method: args.mode.method,
@@ -98,7 +142,7 @@ export async function validateCommand(args: {
       body,
     });
   } else if (args.mode.kind === "responseForPath") {
-    const rawBody = await readInput(args.mode.body);
+    const rawBody = await io.readText(args.mode.body);
     const body = tryJson(rawBody) as JsonValue | undefined;
     err = validator.validateResponse(
       { method: args.mode.method, path: args.mode.path },
@@ -110,7 +154,7 @@ export async function validateCommand(args: {
 
   if (err === null) return { exitCode: 0, output: args.options.quiet ? undefined : "" };
   const rendered = formatError(err, args.options.format, args.options.depth);
-  if (args.options.output !== undefined) await writeFile(args.options.output, rendered + "\n");
+  if (args.options.output !== undefined) await io.writeText(args.options.output, rendered + "\n");
   return { exitCode: 1, output: args.options.quiet ? undefined : rendered };
 }
 
