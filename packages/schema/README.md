@@ -21,7 +21,7 @@ const { validate } = compileSchema(
 );
 
 validate({ name: "Fido" }); // { valid: true }
-validate({});               // { valid: false, error: { code: "required", ... } }
+validate({}); // { valid: false, error: { code: "required", ... } }
 ```
 
 `compileSchema` returns `{ validate, source, stats }`. `validate(data,
@@ -35,11 +35,11 @@ to every error's `path` (used by the HTTP validator to prefix `"body"`,
 Every compile picks exactly one `Dialect` — a vocabulary stack plus
 the keyword-dispatcher rules that make it coherent. Three built-ins:
 
-| Dialect              | Spec                 | `format`    | Extras                                    |
-| -------------------- | -------------------- | ----------- | ----------------------------------------- |
-| `jsonSchemaDialect`  | JSON Schema 2020-12  | annotation  | —                                         |
-| `openapi31Dialect`   | OpenAPI 3.1 / 3.2    | assertion   | Adds `formatAssertionVocabulary`          |
-| `oas30Dialect`       | OpenAPI 3.0          | assertion   | `nullable`, boolean `exclusive{Min,Max}`, `$ref`-suppresses-siblings |
+| Dialect             | Spec                | `format`   | Extras                                                               |
+| ------------------- | ------------------- | ---------- | -------------------------------------------------------------------- |
+| `jsonSchemaDialect` | JSON Schema 2020-12 | annotation | —                                                                    |
+| `openapi31Dialect`  | OpenAPI 3.1 / 3.2   | assertion  | Adds `formatAssertionVocabulary`                                     |
+| `oas30Dialect`      | OpenAPI 3.0         | assertion  | `nullable`, boolean `exclusive{Min,Max}`, `$ref`-suppresses-siblings |
 
 ### Building a custom dialect
 
@@ -102,19 +102,19 @@ Write a full `KeywordDefinition` for applicator keywords, evaluation
 tracking, or custom emit shapes. The `compile(ctx)` function receives a
 `KeywordCompileContext` with a deliberately narrow surface:
 
-| Member                                            | Purpose                                               |
-| ------------------------------------------------- | ----------------------------------------------------- |
-| `ctx.gen`                                         | Code emitter (`CodeEmitter` interface).               |
-| `ctx.schema`, `ctx.parentSchema`                  | The keyword's value and the surrounding object.       |
-| `ctx.data`, `ctx.path`, `ctx.errors`              | JS expressions for the data / path / errors accumulator. |
-| `ctx.emitError(kind, expr)`                       | Push a `ValidationError` expression. `kind`: `"leaf"` (counts toward `maxErrors`) or `"lift"` (already-counted, unconditional). |
-| `ctx.errorStatement(kind, expr)`                  | String form of `emitError` for inline source composition. |
-| `ctx.validateSubschema(schema, dataExpr, { segment? })` | Descend into a subschema and emit any errors. Inlines when simple. |
-| `ctx.compileSubschema(schema)`                    | Lower-level: returns a function name. Use when the caller needs the sub-validator's return value (composition keywords). |
-| `ctx.withPathSegment(seg, () => …)`               | Scoped path push/pop — errors emitted in the body get the extended path. |
-| `ctx.resolveRef(ref)`                             | Resolve a `$ref` to a compiled function name.         |
-| `ctx.evaluatedPropertiesVar` / `evaluatedItemsVar` | Raw variable names (or `null`) for `unevaluated*` tracking. |
-| `ctx.emitBudgetBreak()`                           | Short-circuit hot loops once `maxErrors` is exhausted. |
+| Member                                                  | Purpose                                                                                                                         |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `ctx.gen`                                               | Code emitter (`CodeEmitter` interface).                                                                                         |
+| `ctx.schema`, `ctx.parentSchema`                        | The keyword's value and the surrounding object.                                                                                 |
+| `ctx.data`, `ctx.path`, `ctx.errors`                    | JS expressions for the data / path / errors accumulator.                                                                        |
+| `ctx.emitError(kind, expr)`                             | Push a `ValidationError` expression. `kind`: `"leaf"` (counts toward `maxErrors`) or `"lift"` (already-counted, unconditional). |
+| `ctx.errorStatement(kind, expr)`                        | String form of `emitError` for inline source composition.                                                                       |
+| `ctx.validateSubschema(schema, dataExpr, { segment? })` | Descend into a subschema and emit any errors. Inlines when simple.                                                              |
+| `ctx.compileSubschema(schema)`                          | Lower-level: returns a function name. Use when the caller needs the sub-validator's return value (composition keywords).        |
+| `ctx.withPathSegment(seg, () => …)`                     | Scoped path push/pop — errors emitted in the body get the extended path.                                                        |
+| `ctx.resolveRef(ref)`                                   | Resolve a `$ref` to a compiled function name.                                                                                   |
+| `ctx.evaluatedPropertiesVar` / `evaluatedItemsVar`      | Raw variable names (or `null`) for `unevaluated*` tracking.                                                                     |
+| `ctx.emitBudgetBreak()`                                 | Short-circuit hot loops once `maxErrors` is exhausted.                                                                          |
 
 When adding a new built-in keyword, also add an entry to
 `BuiltInErrorParams` in `@aahoughton/oav/core` documenting the shape of

@@ -82,7 +82,7 @@ Flag schemas that should be checked:
 ```yaml
 TenantId:
   type: string
-  pattern: '^t_[a-z0-9]+$'
+  pattern: "^t_[a-z0-9]+$"
   activeTenant: true
 ```
 
@@ -94,8 +94,8 @@ an end-to-end.
 ## Fast-fail / bounded error collection
 
 ```ts
-createValidator(spec, { maxErrors: 1 });   // stop after first leaf
-createValidator(spec, { maxErrors: 10 });  // cap while still getting useful feedback
+createValidator(spec, { maxErrors: 1 }); // stop after first leaf
+createValidator(spec, { maxErrors: 10 }); // cap while still getting useful feedback
 ```
 
 Hot loops (array items, object properties, `allOf` / `anyOf` branches)
@@ -110,8 +110,8 @@ unsupported value. The default — `onUnknownVersion: "fallback31"` —
 silently uses the 3.1 dialect. For stricter environments:
 
 ```ts
-createValidator(spec, { onUnknownVersion: "throw" });  // refuse to build
-createValidator(spec, { onUnknownVersion: "warn" });   // stderr message, use 3.1
+createValidator(spec, { onUnknownVersion: "throw" }); // refuse to build
+createValidator(spec, { onUnknownVersion: "warn" }); // stderr message, use 3.1
 ```
 
 `validator.detectedVersion` is `undefined` in the fallback cases so

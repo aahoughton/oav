@@ -24,7 +24,11 @@ const spec: OpenAPIDocument = {
             "application/json": {
               schema: {
                 type: "array",
-                items: { type: "object", required: ["id"], properties: { id: { type: "integer" } } },
+                items: {
+                  type: "object",
+                  required: ["id"],
+                  properties: { id: { type: "integer" } },
+                },
               },
             },
           },

@@ -71,11 +71,11 @@ and the `.http` file format.
 `createValidator` reads the spec's `openapi` string once at construction
 and picks the matching dialect. No per-request branching.
 
-| Spec   | Dialect               | Notes                                          |
-| ------ | --------------------- | ---------------------------------------------- |
-| 3.0.x  | OAS 3.0 Schema Object | `nullable`, boolean `exclusiveMin/Max`, sibling-`$ref` drop |
-| 3.1.x  | JSON Schema 2020-12   | Assertive `format`                             |
-| 3.2.x  | JSON Schema 2020-12   | Same as 3.1 + the `QUERY` HTTP method          |
+| Spec  | Dialect               | Notes                                                       |
+| ----- | --------------------- | ----------------------------------------------------------- |
+| 3.0.x | OAS 3.0 Schema Object | `nullable`, boolean `exclusiveMin/Max`, sibling-`$ref` drop |
+| 3.1.x | JSON Schema 2020-12   | Assertive `format`                                          |
+| 3.2.x | JSON Schema 2020-12   | Same as 3.1 + the `QUERY` HTTP method                       |
 
 Override via `createValidator(spec, { dialect })` to force or customise
 one of the built-in dialects (`jsonSchemaDialect`, `openapi31Dialect`,
@@ -85,14 +85,14 @@ one of the built-in dialects (`jsonSchemaDialect`, `openapi31Dialect`,
 
 ## Configuring the validator
 
-| Option                  | Effect                                                           |
-| ----------------------- | ---------------------------------------------------------------- |
-| `dialect`               | Force a specific schema dialect, bypassing version detection.    |
-| `formats`               | Extra string format validators merged on top of the built-ins.   |
-| `keywords`              | Register user-defined schema keywords (see below).               |
-| `maxErrors`             | Cap on leaf errors; `1` is fast-fail, default is uncapped.       |
-| `strictQueryParameters` | Reject undeclared query parameters. Default `false`.             |
-| `onUnknownVersion`      | Policy for specs with missing/unsupported `openapi`.             |
+| Option                  | Effect                                                         |
+| ----------------------- | -------------------------------------------------------------- |
+| `dialect`               | Force a specific schema dialect, bypassing version detection.  |
+| `formats`               | Extra string format validators merged on top of the built-ins. |
+| `keywords`              | Register user-defined schema keywords (see below).             |
+| `maxErrors`             | Cap on leaf errors; `1` is fast-fail, default is uncapped.     |
+| `strictQueryParameters` | Reject undeclared query parameters. Default `false`.           |
+| `onUnknownVersion`      | Policy for specs with missing/unsupported `openapi`.           |
 
 ### Custom keywords
 
@@ -113,8 +113,8 @@ Custom keywords plug into generated code alongside the built-ins. See
 ### Bounded error collection
 
 ```ts
-createValidator(spec, { maxErrors: 1 });   // fast-fail
-createValidator(spec, { maxErrors: 10 });  // bound CPU/memory on huge payloads
+createValidator(spec, { maxErrors: 1 }); // fast-fail
+createValidator(spec, { maxErrors: 10 }); // bound CPU/memory on huge payloads
 ```
 
 Hot loops (array items, object properties, `allOf`/`anyOf` branches)
@@ -139,12 +139,12 @@ fields from the framework's own request object:
 
 ```ts
 interface HttpRequest {
-  method: string;                                    // uppercase verb
-  path: string;                                      // pathname only
-  query?: Record<string, string | string[]>;         // parsed query params
-  headers?: Record<string, string | string[]>;       // lowercased header names
-  contentType?: string;                              // may include "; charset=utf-8"
-  body?: unknown;                                    // already-parsed (object / FormData / string)
+  method: string; // uppercase verb
+  path: string; // pathname only
+  query?: Record<string, string | string[]>; // parsed query params
+  headers?: Record<string, string | string[]>; // lowercased header names
+  contentType?: string; // may include "; charset=utf-8"
+  body?: unknown; // already-parsed (object / FormData / string)
   cookies?: Record<string, string>;
 }
 ```
@@ -244,9 +244,7 @@ import { toProblemDetails } from "@aahoughton/oav";
 export async function POST(request: Request) {
   const url = new URL(request.url);
   const contentType = request.headers.get("content-type") ?? undefined;
-  const body = contentType?.includes("json")
-    ? await request.json()
-    : await request.text();
+  const body = contentType?.includes("json") ? await request.json() : await request.text();
 
   const err = validator.validateRequest({
     method: request.method,
@@ -285,13 +283,13 @@ Web Standards `Request` / `Response`.
 
 The package publishes a small root and four subpath entrypoints:
 
-| Import                          | Surface                                                |
-| ------------------------------- | ------------------------------------------------------ |
-| `@aahoughton/oav`               | `createValidator`, error helpers, formatters, types    |
-| `@aahoughton/oav/schema`        | `compileSchema`, dialects, vocabularies, custom keywords |
-| `@aahoughton/oav/spec`          | `loadSpec`, `resolveSpec`, `applyOverlays`, readers    |
-| `@aahoughton/oav/formats`       | Built-in string format validators                      |
-| `@aahoughton/oav/core`          | Error tree model, shared OpenAPI / HTTP types          |
+| Import                    | Surface                                                  |
+| ------------------------- | -------------------------------------------------------- |
+| `@aahoughton/oav`         | `createValidator`, error helpers, formatters, types      |
+| `@aahoughton/oav/schema`  | `compileSchema`, dialects, vocabularies, custom keywords |
+| `@aahoughton/oav/spec`    | `loadSpec`, `resolveSpec`, `applyOverlays`, readers      |
+| `@aahoughton/oav/formats` | Built-in string format validators                        |
+| `@aahoughton/oav/core`    | Error tree model, shared OpenAPI / HTTP types            |
 
 The `oav` CLI is installed as a `bin` by the same package.
 
@@ -300,14 +298,14 @@ The `oav` CLI is installed as a `bin` by the same package.
 Runnable, self-contained TypeScript examples in
 [`examples/`](./examples/README.md):
 
-| File                    | Shows                                                    |
-| ----------------------- | -------------------------------------------------------- |
-| `basic-validation.ts`   | Inline spec → validator → request & response checks     |
-| `custom-formats.ts`     | Register a string format                                 |
-| `custom-keywords.ts`    | Register a schema keyword with dynamic runtime state    |
-| `max-errors.ts`         | Fast-fail and bounded error collection                   |
-| `versions.ts`           | 3.0 / 3.1 / 3.2 side by side                            |
-| `overlay.ts`            | Apply a spec overlay before validating                   |
+| File                  | Shows                                                |
+| --------------------- | ---------------------------------------------------- |
+| `basic-validation.ts` | Inline spec → validator → request & response checks  |
+| `custom-formats.ts`   | Register a string format                             |
+| `custom-keywords.ts`  | Register a schema keyword with dynamic runtime state |
+| `max-errors.ts`       | Fast-fail and bounded error collection               |
+| `versions.ts`         | 3.0 / 3.1 / 3.2 side by side                         |
+| `overlay.ts`          | Apply a spec overlay before validating               |
 
 ## Known limitations
 

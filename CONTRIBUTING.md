@@ -85,7 +85,7 @@ Some things can't live in-repo:
 
 - **Branch protection on `main`**: require PR, require status checks
   (`ci / lint`, `ci / typecheck`, `ci / test`, `ci / build`, `ci /
-  conformance`, `ci / pack-smoke`, `pr-title / lint`), require
+conformance`, `ci / pack-smoke`, `pr-title / lint`), require
   branches up-to-date, disallow force-push, linear history.
 - **Secret**: `NPM_TOKEN` — an automation token from
   `npmjs.com/settings/<you>/tokens` with publish scope for

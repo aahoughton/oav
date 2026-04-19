@@ -18,11 +18,11 @@ import {
 
 ```ts
 interface ValidationError {
-  code: string;                    // "type", "required", "oneOf", "content-type", ...
-  path: PathSegment[];             // (string | number)[] — rooted at the HTTP frame
-  message: string;                 // human-readable
+  code: string; // "type", "required", "oneOf", "content-type", ...
+  path: PathSegment[]; // (string | number)[] — rooted at the HTTP frame
+  message: string; // human-readable
   params: Record<string, unknown>; // machine-readable; shape per code in BuiltInErrorParams
-  children: ValidationError[];     // always an array; [] for leaves
+  children: ValidationError[]; // always an array; [] for leaves
 }
 ```
 
@@ -74,8 +74,8 @@ For rendering validation failures as an HTTP response body:
 
 - `toProblemDetails(err, { type?, title?, status?, instance? })` — RFC
   9457 `application/problem+json` envelope with a typed `issues` array
-  as an extension member. Defaults are `about:blank` / `"Validation
-  failed"` / `400`.
+  as an extension member. Defaults: `about:blank` type,
+  `"Validation failed"` title, status `400`.
 - `collectIssues(err)` — just the flat leaf list (with
   `path` segments + RFC 6901 `pointer` strings), if you're rolling
   your own response shape.
@@ -102,9 +102,9 @@ spec (e.g. overlays, custom tooling) handle them explicitly.
 ```ts
 import { detectOpenAPIVersion } from "@aahoughton/oav/core";
 
-detectOpenAPIVersion({ openapi: "3.0.3", info: {}, paths: {} });  // "3.0"
-detectOpenAPIVersion({ openapi: "3.2.0", info: {}, paths: {} });  // "3.2"
-detectOpenAPIVersion({ openapi: "99.0",  info: {}, paths: {} });  // undefined
+detectOpenAPIVersion({ openapi: "3.0.3", info: {}, paths: {} }); // "3.0"
+detectOpenAPIVersion({ openapi: "3.2.0", info: {}, paths: {} }); // "3.2"
+detectOpenAPIVersion({ openapi: "99.0", info: {}, paths: {} }); // undefined
 ```
 
 `createValidator` uses this at construction time to pick a dialect;

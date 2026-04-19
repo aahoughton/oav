@@ -14,7 +14,7 @@ const { validate } = compileSchema(
 );
 
 validate("550e8400-e29b-41d4-a716-446655440000"); // { valid: true }
-validateUuid("not a uuid");                       // false
+validateUuid("not a uuid"); // false
 ```
 
 When the validator package is used via `createValidator`, the built-in
