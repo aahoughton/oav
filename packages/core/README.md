@@ -68,6 +68,21 @@ All four produce strings suitable for stdout / logs.
 
 `countErrors(err)` returns the total number of nodes in the tree.
 
+## HTTP response helpers
+
+For rendering validation failures as an HTTP response body:
+
+- `toProblemDetails(err, { type?, title?, status?, instance? })` — RFC
+  9457 `application/problem+json` envelope with a typed `issues` array
+  as an extension member. Defaults are `about:blank` / `"Validation
+  failed"` / `400`.
+- `collectIssues(err)` — just the flat leaf list (with
+  `path` segments + RFC 6901 `pointer` strings), if you're rolling
+  your own response shape.
+
+See the [Framework integration](../../README.md#framework-integration)
+section of the root README for Express / Fastify / Next.js snippets.
+
 ## OpenAPI / HTTP types
 
 Re-exports the shapes the rest of the package needs from OpenAPI 3.0 /

@@ -21,6 +21,14 @@ export {
   type FormatOptions,
 } from "./format.js";
 
+export {
+  collectIssues,
+  toProblemDetails,
+  type ProblemDetails,
+  type ProblemDetailsOptions,
+  type ValidationIssue,
+} from "./problem-details.js";
+
 export { detectOpenAPIVersion, type OpenAPIVersion } from "./version.js";
 
 export type {
