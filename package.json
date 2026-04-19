@@ -1,6 +1,6 @@
 {
   "name": "@aahoughton/oav",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "HTTP-aware OpenAPI request/response validator with a JSON Schema codegen compiler.",
   "keywords": [
     "cli",
