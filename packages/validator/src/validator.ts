@@ -49,6 +49,7 @@ function dialectFor(version: OpenAPIVersion): Dialect {
 }
 
 import { deserialize, matchMediaType, matchResponseKey } from "./deserialize.js";
+import { transformBodySchemaForDirection, type BodyDirection } from "./direction.js";
 
 /**
  * The HTTP validator: after being built from a (resolved) OpenAPI document,
@@ -224,18 +225,40 @@ export function createValidator(
     return c;
   };
 
+  // Per-direction transform caches: readOnly/writeOnly are direction-
+  // sensitive, so the same schema object produces two differently-clipped
+  // clones (one with readOnly properties forbidden, one with writeOnly).
+  // Keyed by the original schema identity; reused across operations.
+  const directionTransformCache = {
+    request: new Map<SchemaOrBoolean, SchemaOrBoolean>(),
+    response: new Map<SchemaOrBoolean, SchemaOrBoolean>(),
+  };
+  const compileForDirection = (schema: SchemaOrBoolean, direction: BodyDirection): CompiledSchema =>
+    compile(
+      transformBodySchemaForDirection(
+        schema,
+        direction,
+        refResolver,
+        directionTransformCache[direction],
+      ),
+    );
+
   // Look up a response-side validator, compiling on first access and
   // memoizing into the passed cache. Shared by body and header paths.
+  // `direction` controls readOnly/writeOnly enforcement: response bodies
+  // get the "response" transform (writeOnly properties forbidden);
+  // response headers are direction-agnostic.
   const getResponseValidator = (
     cache: Map<string, CompiledSchema>,
     schemas: Map<string, SchemaOrBoolean>,
     key: string,
+    direction?: BodyDirection,
   ): CompiledSchema | undefined => {
     const hit = cache.get(key);
     if (hit !== undefined) return hit;
     const schema = schemas.get(key);
     if (schema === undefined) return undefined;
-    const c = compile(schema);
+    const c = direction === undefined ? compile(schema) : compileForDirection(schema, direction);
     cache.set(key, c);
     return c;
   };
@@ -304,7 +327,7 @@ export function createValidator(
     const requestBody = resolveRef<RequestBodyObject>(pathMatch.operation.requestBody);
     if (requestBody?.content) {
       for (const [mt, mto] of Object.entries(requestBody.content)) {
-        if (mto.schema) bodyValidators.set(mt, compile(mto.schema));
+        if (mto.schema) bodyValidators.set(mt, compileForDirection(mto.schema, "request"));
       }
     }
 
@@ -477,6 +500,7 @@ export function createValidator(
               responseCompiled.bodyValidators,
               responseCompiled.bodySchemas,
               mt,
+              "response",
             );
             if (validator !== undefined) {
               const r = validator.validate(res.body, ["response", "body"]);

@@ -195,6 +195,146 @@ describe("validateRequest", () => {
     expect(leafCodes(err)).toContain("minLength");
   });
 
+  it("readOnly properties are rejected in request bodies", () => {
+    const spec: OpenAPIDocument = {
+      openapi: "3.1.0",
+      info: { title: "t", version: "1" },
+      paths: {
+        "/users": {
+          post: {
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["id", "name"],
+                    properties: {
+                      id: { type: "string", readOnly: true },
+                      name: { type: "string" },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "201": { description: "ok" } },
+          },
+        },
+      },
+    };
+    const sv = createValidator(spec);
+
+    // Client sends readOnly id → rejected.
+    const err = sv.validateRequest({
+      method: "POST",
+      path: "/users",
+      contentType: "application/json",
+      body: { id: "x", name: "n" },
+    });
+    expect(leafAt(err, "body.id")).toBeDefined();
+
+    // Client omits readOnly id → passes (not required on the request side).
+    expect(
+      sv.validateRequest({
+        method: "POST",
+        path: "/users",
+        contentType: "application/json",
+        body: { name: "n" },
+      }),
+    ).toBeNull();
+  });
+
+  it("writeOnly properties are rejected in response bodies", () => {
+    const spec: OpenAPIDocument = {
+      openapi: "3.1.0",
+      info: { title: "t", version: "1" },
+      paths: {
+        "/users": {
+          get: {
+            responses: {
+              "200": {
+                description: "ok",
+                content: {
+                  "application/json": {
+                    schema: {
+                      type: "object",
+                      required: ["id", "password"],
+                      properties: {
+                        id: { type: "string" },
+                        password: { type: "string", writeOnly: true },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    };
+    const sv = createValidator(spec);
+
+    // Server returns writeOnly password → rejected.
+    const err = sv.validateResponse(
+      { method: "GET", path: "/users" },
+      {
+        status: 200,
+        contentType: "application/json",
+        body: { id: "u1", password: "secret" },
+      },
+    );
+    expect(leafAt(err, "response.body.password")).toBeDefined();
+
+    // Server omits writeOnly password → passes (not required on the response side).
+    expect(
+      sv.validateResponse(
+        { method: "GET", path: "/users" },
+        { status: 200, contentType: "application/json", body: { id: "u1" } },
+      ),
+    ).toBeNull();
+  });
+
+  it("readOnly via $ref is still enforced on request bodies", () => {
+    const spec: OpenAPIDocument = {
+      openapi: "3.1.0",
+      info: { title: "t", version: "1" },
+      components: {
+        schemas: {
+          ServerId: { type: "string", readOnly: true },
+          User: {
+            type: "object",
+            required: ["id", "name"],
+            properties: {
+              id: { $ref: "#/components/schemas/ServerId" },
+              name: { type: "string" },
+            },
+          },
+        },
+      },
+      paths: {
+        "/users": {
+          post: {
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": { schema: { $ref: "#/components/schemas/User" } },
+              },
+            },
+            responses: { "201": { description: "ok" } },
+          },
+        },
+      },
+    };
+    const sv = createValidator(spec);
+    const err = sv.validateRequest({
+      method: "POST",
+      path: "/users",
+      contentType: "application/json",
+      body: { id: "x", name: "n" },
+    });
+    expect(leafAt(err, "body.id")).toBeDefined();
+  });
+
   it("parameter.content parses JSON and validates its schema", () => {
     // OpenAPI 3.1 §4.8.12.1 lets a parameter carry `content` instead of
     // `schema` — standard pattern for structured-JSON query params.

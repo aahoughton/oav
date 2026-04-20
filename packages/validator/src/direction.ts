@@ -1,0 +1,181 @@
+import type { SchemaOrBoolean } from "@oav/core";
+import type { RefResolver } from "@oav/schema";
+
+/**
+ * Which leg of the HTTP exchange a schema is being validated against.
+ *
+ * @internal
+ */
+export type BodyDirection = "request" | "response";
+
+/**
+ * Produce a direction-aware copy of a body schema.
+ *
+ * OpenAPI `readOnly` / `writeOnly` constrain the direction of travel for
+ * a property:
+ * - `readOnly: true` — server-generated; clients MUST NOT include it in
+ *   request bodies, and it's exempt from `required` on the request side.
+ * - `writeOnly: true` — client-only; servers MUST NOT include it in
+ *   response bodies, and it's exempt from `required` on the response side.
+ *
+ * The JSON Schema compiler is direction-agnostic, so we pre-transform
+ * the body schema per direction: properties the direction forbids are
+ * replaced with `false` (rejecting their presence) and stripped from
+ * `required` (exempting their absence).
+ *
+ * Scope: `$ref` at the root of the passed schema is unwrapped so body
+ * schemas of the form `{ $ref: "#/components/schemas/User" }` see the
+ * real target. Inside the tree, `$ref` nodes are preserved (inlining
+ * eagerly would synthesise object-identity cycles on self-recursive
+ * schemas). Detection of `readOnly` / `writeOnly` on a property's
+ * schema does follow a single `$ref` hop and direct `allOf` children,
+ * so specs that split a field's constraints across a reference still
+ * trigger the rejection.
+ *
+ * @internal
+ */
+export function transformBodySchemaForDirection(
+  schema: SchemaOrBoolean,
+  direction: BodyDirection,
+  refResolver: RefResolver,
+  cache: Map<SchemaOrBoolean, SchemaOrBoolean>,
+): SchemaOrBoolean {
+  const unwrapped = unwrapRootRef(schema, refResolver);
+  return transformInner(unwrapped, direction, refResolver, cache);
+}
+
+/**
+ * Follow `$ref` chains at the schema root so e.g.
+ * `{ $ref: "#/components/schemas/User" }` resolves to the concrete
+ * `User` object schema, which is what the direction transform needs
+ * to walk. Cycles are guarded by a visited set.
+ */
+function unwrapRootRef(schema: SchemaOrBoolean, refResolver: RefResolver): SchemaOrBoolean {
+  const visited = new Set<SchemaOrBoolean>();
+  let current = schema;
+  while (
+    typeof current === "object" &&
+    current !== null &&
+    !Array.isArray(current) &&
+    typeof (current as { $ref?: unknown }).$ref === "string"
+  ) {
+    if (visited.has(current)) return current;
+    visited.add(current);
+    try {
+      current = refResolver.resolve((current as { $ref: string }).$ref);
+    } catch {
+      return current;
+    }
+  }
+  return current;
+}
+
+function transformInner(
+  schema: SchemaOrBoolean,
+  direction: BodyDirection,
+  refResolver: RefResolver,
+  cache: Map<SchemaOrBoolean, SchemaOrBoolean>,
+): SchemaOrBoolean {
+  if (typeof schema !== "object" || schema === null || Array.isArray(schema)) return schema;
+  const cached = cache.get(schema);
+  if (cached !== undefined) return cached;
+
+  const clone: Record<string, unknown> = { ...schema };
+  cache.set(schema, clone as unknown as SchemaOrBoolean);
+
+  const rejectAttr = direction === "request" ? "readOnly" : "writeOnly";
+
+  const props = clone.properties;
+  if (typeof props === "object" && props !== null && !Array.isArray(props)) {
+    const newProps: Record<string, SchemaOrBoolean> = {};
+    const rejected = new Set<string>();
+    for (const [name, propSchema] of Object.entries(props as Record<string, SchemaOrBoolean>)) {
+      if (hasDirectionalFlag(propSchema, rejectAttr, refResolver, new Set())) {
+        newProps[name] = false;
+        rejected.add(name);
+      } else {
+        newProps[name] = transformInner(propSchema, direction, refResolver, cache);
+      }
+    }
+    clone.properties = newProps;
+    if (Array.isArray(clone.required)) {
+      clone.required = (clone.required as string[]).filter((r) => !rejected.has(r));
+    }
+  }
+
+  for (const k of SUBSCHEMA_SINGLE_POSITIONS) {
+    const v = clone[k];
+    if (v !== undefined) {
+      clone[k] = transformInner(v as SchemaOrBoolean, direction, refResolver, cache);
+    }
+  }
+  for (const k of SUBSCHEMA_ARRAY_POSITIONS) {
+    const v = clone[k];
+    if (Array.isArray(v)) {
+      clone[k] = (v as SchemaOrBoolean[]).map((s) =>
+        transformInner(s, direction, refResolver, cache),
+      );
+    }
+  }
+  for (const k of SUBSCHEMA_MAP_POSITIONS) {
+    const v = clone[k];
+    if (v !== null && typeof v === "object" && !Array.isArray(v)) {
+      const m: Record<string, SchemaOrBoolean> = {};
+      for (const [kk, vv] of Object.entries(v as Record<string, SchemaOrBoolean>)) {
+        m[kk] = transformInner(vv, direction, refResolver, cache);
+      }
+      clone[k] = m;
+    }
+  }
+
+  return clone as unknown as SchemaOrBoolean;
+}
+
+const SUBSCHEMA_SINGLE_POSITIONS = [
+  "additionalProperties",
+  "items",
+  "propertyNames",
+  "contains",
+  "not",
+  "if",
+  "then",
+  "else",
+  "unevaluatedProperties",
+  "unevaluatedItems",
+] as const;
+
+const SUBSCHEMA_ARRAY_POSITIONS = ["allOf", "anyOf", "oneOf", "prefixItems"] as const;
+
+const SUBSCHEMA_MAP_POSITIONS = [
+  "patternProperties",
+  "dependentSchemas",
+  "$defs",
+  "definitions",
+] as const;
+
+function hasDirectionalFlag(
+  schema: SchemaOrBoolean,
+  attr: "readOnly" | "writeOnly",
+  refResolver: RefResolver,
+  visited: Set<SchemaOrBoolean>,
+): boolean {
+  if (typeof schema !== "object" || schema === null || Array.isArray(schema)) return false;
+  if (visited.has(schema)) return false;
+  visited.add(schema);
+  const s = schema as Record<string, unknown>;
+  if (s[attr] === true) return true;
+  if (typeof s.$ref === "string") {
+    try {
+      const t = refResolver.resolve(s.$ref);
+      if (hasDirectionalFlag(t, attr, refResolver, visited)) return true;
+    } catch {
+      // ignore unresolved refs
+    }
+  }
+  if (Array.isArray(s.allOf)) {
+    for (const child of s.allOf as SchemaOrBoolean[]) {
+      if (hasDirectionalFlag(child, attr, refResolver, visited)) return true;
+    }
+  }
+  return false;
+}
