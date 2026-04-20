@@ -18,6 +18,47 @@
 import type { HttpRequest, HttpResponse } from "@oav/core";
 
 /**
+ * Options shared by the `validateFetchRequest` family and
+ * {@link httpRequestFromFetch}. Currently just the `readBody`
+ * override.
+ *
+ * @public
+ */
+export interface FetchRequestOptions {
+  /**
+   * Replace the default body reader with a user-supplied function.
+   * Useful for streaming large uploads to disk without buffering, for
+   * plugging in a streaming multipart parser (busboy, formidable,
+   * `@mjackson/multipart-parser`), or for handling a content type the
+   * default dispatcher doesn't know about.
+   *
+   * The callback receives the original `Request` with its body stream
+   * intact. Return whatever shape the spec's `requestBody` schema
+   * expects — `format: "binary"` fields pass through the validator
+   * unchanged, so opaque placeholders (a temp-file path, a Buffer
+   * handle, etc.) are valid.
+   *
+   * If you want default behaviour for most content types and custom
+   * behaviour for one or two, import {@link readBodyFromFetch} and
+   * delegate to it from inside your callback.
+   *
+   * @example
+   * ```ts
+   * await validator.validateFetchRequest(request, {
+   *   readBody: async (req) => {
+   *     if (req.headers.get("content-type")?.startsWith("multipart/")) {
+   *       const fields = await streamMultipartToDisk(req); // your parser
+   *       return { file: fields.file.path, caption: fields.caption };
+   *     }
+   *     return readBodyFromFetch(req);
+   *   },
+   * });
+   * ```
+   */
+  readBody?: (request: Request) => Promise<unknown>;
+}
+
+/**
  * Read and parse a Web Standards `Request` into the
  * framework-agnostic {@link HttpRequest} shape the validator expects,
  * plus the parsed body for the caller to consume.
@@ -28,7 +69,10 @@ import type { HttpRequest, HttpResponse } from "@oav/core";
  *
  * @public
  */
-export async function httpRequestFromFetch(request: Request): Promise<{
+export async function httpRequestFromFetch(
+  request: Request,
+  options?: FetchRequestOptions,
+): Promise<{
   httpRequest: HttpRequest;
   body: unknown;
 }> {
@@ -37,7 +81,10 @@ export async function httpRequestFromFetch(request: Request): Promise<{
   const contentType = request.headers.get("content-type") ?? undefined;
   const query = objectFromSearchParams(url.searchParams);
   const method = request.method.toUpperCase();
-  const body = await readBody(request, contentType, method);
+  const body =
+    options?.readBody !== undefined
+      ? await options.readBody(request)
+      : await readBody(request, contentType, method);
 
   const httpRequest: HttpRequest = {
     method,
@@ -48,6 +95,25 @@ export async function httpRequestFromFetch(request: Request): Promise<{
     ...(body !== undefined && { body }),
   };
   return { httpRequest, body };
+}
+
+/**
+ * The default content-type-driven body reader exposed for composition.
+ * Call this from inside a {@link FetchRequestOptions.readBody} callback
+ * when you want to handle some content types yourself and delegate the
+ * rest to the built-in behaviour. Recognises JSON, `*+json`,
+ * URL-encoded forms, `multipart/form-data`, and `text/*`; anything
+ * else comes through as a `Uint8Array`.
+ *
+ * Consumes `request.body`. GET / HEAD requests return `undefined`
+ * without reading.
+ *
+ * @public
+ */
+export async function readBodyFromFetch(request: Request): Promise<unknown> {
+  const contentType = request.headers.get("content-type") ?? undefined;
+  const method = request.method.toUpperCase();
+  return readBody(request, contentType, method);
 }
 
 /**

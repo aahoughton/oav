@@ -54,7 +54,11 @@ import {
   transformBodySchemaForDirection,
   type BodyDirection,
 } from "./body-schema-transform.js";
-import { httpRequestFromFetch, httpResponseFromFetch } from "./from-fetch.js";
+import {
+  httpRequestFromFetch,
+  httpResponseFromFetch,
+  type FetchRequestOptions,
+} from "./from-fetch.js";
 import { assembleObjectQueryParam } from "./query-assembly.js";
 
 /**
@@ -83,9 +87,12 @@ export interface OavValidator {
    * `application/x-www-form-urlencoded`, `multipart/form-data`
    * (file fields come through as `Uint8Array`), and `text/*`. Any
    * other content type is read as raw bytes; the spec's
-   * `format: "binary"` opaque-body bypass accepts it.
+   * `format: "binary"` opaque-body bypass accepts it. Override the
+   * default reader per-call via {@link FetchRequestOptions.readBody}
+   * for streaming, multer-style parsing, or other bespoke handling.
    *
    * @param request - The incoming Web Standards request.
+   * @param options - Optional body-reader override.
    * @typeParam T - Declared shape of the parsed body on success.
    *
    * @example
@@ -99,6 +106,7 @@ export interface OavValidator {
    */
   validateFetchRequest<T = unknown>(
     request: Request,
+    options?: FetchRequestOptions,
   ): Promise<{ ok: true; body: T } | { ok: false; error: ValidationError }>;
   /**
    * Validate a Web Standards {@link Response} against the operation
@@ -614,8 +622,9 @@ export function createValidator(
 
   const validateFetchRequest = async <T>(
     request: Request,
+    options?: FetchRequestOptions,
   ): Promise<{ ok: true; body: T } | { ok: false; error: ValidationError }> => {
-    const { httpRequest, body } = await httpRequestFromFetch(request);
+    const { httpRequest, body } = await httpRequestFromFetch(request, options);
     const error = validateRequest(httpRequest);
     if (error === null) return { ok: true, body: body as T };
     return { ok: false, error };

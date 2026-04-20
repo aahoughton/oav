@@ -323,6 +323,73 @@ rewritten to an "accept anything" schema before compile, so a Buffer
 or Uint8Array passes without a string-type error. `format: "byte"`
 (base64) still validates as a string.
 
+### Streaming bodies, large uploads, and the `readBody` override
+
+The built-in `validateFetchRequest` reads the entire request body into
+memory to parse it. That's appropriate for typical JSON / form payloads
+but wrong for large uploads or streams you want to process incrementally.
+Two escape hatches cover every case without the validator trying to be
+a body-parsing library itself.
+
+**Escape hatch 1: `readBody` option.** Pass a callback that consumes
+the `Request` stream however you want and returns the body shape your
+schema declares:
+
+```ts
+import { readBodyFromFetch } from "@aahoughton/oav";
+import { parseMultipart } from "@mjackson/multipart-parser"; // or busboy, formidable, etc.
+
+export async function POST(request: Request) {
+  const result = await validator.validateFetchRequest<UploadBody>(request, {
+    readBody: async (req) => {
+      const ct = req.headers.get("content-type") ?? "";
+      if (ct.startsWith("multipart/form-data")) {
+        // Stream the multipart body field-by-field; write file fields
+        // to disk without buffering; return placeholders (paths) that
+        // the spec's `format: binary` bypass accepts.
+        const fields = await streamMultipartToDisk(req);
+        return { caption: fields.caption, file: fields.file.tempPath };
+      }
+      // For every other content type, fall through to the default parser.
+      return readBodyFromFetch(req);
+    },
+  });
+  // ...
+}
+```
+
+The callback owns the stream. The validator does not read
+`request.body` when `readBody` is provided, so there is no
+double-consumption.
+
+**Escape hatch 2: assemble the `HttpRequest` yourself.** For
+routes where `validateFetchRequest`'s convenience isn't worth even
+passing through the helper, call `validator.validateRequest` directly
+with whatever body shape you've already built:
+
+```ts
+const body = await myCustomStreamingPipeline(request);
+const err = validator.validateRequest({
+  method: request.method,
+  path: new URL(request.url).pathname,
+  contentType: request.headers.get("content-type") ?? undefined,
+  body,
+});
+```
+
+**What the validator won't do.** For schemas that declare structural
+constraints on the body (object shape, required fields, array bounds,
+`oneOf`), validation fundamentally requires the whole value — you can
+always feed a buffered-to-memory 10 GB document through `validateRequest`
+and it will work, but the memory cost is on you. For spec-level opt-out,
+declare the body as `format: binary` and let the opaque-body bypass
+wave it through.
+
+**What we won't do.** Ship a streaming multipart parser ourselves —
+`busboy`, `formidable`, and `@mjackson/multipart-parser` each have
+their own tradeoffs and picking one forces every user onto that pick.
+`readBody` is the plug point; bring whichever parser fits your stack.
+
 ### Response validation (no monkey-patching)
 
 `express-openapi-validator` wraps `res.json` and `res.send` so it can

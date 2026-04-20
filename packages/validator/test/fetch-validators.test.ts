@@ -1,6 +1,10 @@
 import type { OpenAPIDocument } from "@oav/core";
 import { describe, expect, it } from "vitest";
-import { httpRequestFromFetch, httpResponseFromFetch } from "../src/from-fetch.js";
+import {
+  httpRequestFromFetch,
+  httpResponseFromFetch,
+  readBodyFromFetch,
+} from "../src/from-fetch.js";
 import { createValidator } from "../src/validator.js";
 
 /**
@@ -257,6 +261,105 @@ describe("validator.validateFetchRequest", () => {
     const req = new Request("https://example.com/upload", { method: "POST", body: form });
     const result = await u.validateFetchRequest(req);
     expect(result.ok).toBe(true);
+  });
+
+  describe("readBody override", () => {
+    it("uses the caller's body reader instead of the default dispatch", async () => {
+      const req = new Request("https://example.com/pets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // Body on the wire that the default reader would accept…
+        body: JSON.stringify({ name: "FromWire", age: 1 }),
+      });
+      // …but the override returns a different body shape instead. The
+      // Request stream isn't consumed by our default parser — the
+      // callback owns it.
+      const result = await v.validateFetchRequest<{ name: string; age: number }>(req, {
+        readBody: async () => ({ name: "FromOverride", age: 2 }),
+      });
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.body).toEqual({ name: "FromOverride", age: 2 });
+    });
+
+    it("surfaces validation failures on the overridden body like any other", async () => {
+      const req = new Request("https://example.com/pets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Fido", age: 3 }),
+      });
+      const result = await v.validateFetchRequest(req, {
+        // Override returns something that fails the schema (missing required "name").
+        readBody: async () => ({ age: 5 }),
+      });
+      expect(result.ok).toBe(false);
+    });
+
+    it("lets the callback delegate to the default reader via readBodyFromFetch", async () => {
+      const req = new Request("https://example.com/pets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Fido", age: 3 }),
+      });
+      let calledDefault = false;
+      const result = await v.validateFetchRequest(req, {
+        readBody: async (r) => {
+          calledDefault = true;
+          return readBodyFromFetch(r);
+        },
+      });
+      expect(calledDefault).toBe(true);
+      expect(result.ok).toBe(true);
+    });
+
+    it("works with a multer-equivalent multipart streaming pattern", async () => {
+      // The sureify / puddle-rest-proxy shape: a multipart endpoint
+      // declared in the spec as `{ documents: string, format: binary }`
+      // (or an array of same). A user's streaming parser pulls bytes off
+      // the request and assembles whatever body the spec expects —
+      // placeholders for file fields (paths, buffer handles) pass through
+      // the validator's format:binary bypass.
+      const spec: OpenAPIDocument = {
+        openapi: "3.0.3",
+        info: { title: "Uploads", version: "1" },
+        paths: {
+          "/documents": {
+            post: {
+              requestBody: {
+                required: true,
+                content: {
+                  "multipart/form-data": {
+                    schema: {
+                      type: "object",
+                      required: ["documents"],
+                      properties: {
+                        documents: { type: "string", format: "binary" },
+                      },
+                    },
+                  },
+                },
+              },
+              responses: { "201": { description: "ok" } },
+            },
+          },
+        },
+      };
+      const u = createValidator(spec);
+
+      // Simulate a streaming parser that writes to disk and returns a path.
+      async function myStreamingParser(_req: Request): Promise<{ documents: string }> {
+        // In real usage: pipe req.body through a multipart parser into a
+        // temp file. Here we just pretend we did and ignore the body.
+        return { documents: "/tmp/fake-123.bin" };
+      }
+
+      const req = new Request("https://example.com/documents", {
+        method: "POST",
+        headers: { "Content-Type": "multipart/form-data; boundary=x" },
+        body: "placeholder",
+      });
+      const result = await u.validateFetchRequest(req, { readBody: myStreamingParser });
+      expect(result.ok).toBe(true);
+    });
   });
 });
 
