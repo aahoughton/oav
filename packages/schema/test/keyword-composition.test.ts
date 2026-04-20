@@ -97,6 +97,27 @@ describe("if/then/else keyword", () => {
     expect(v.validate(1).valid).toBe(true); // else branch omitted
     expect(v.validate("ab").valid).toBe(false);
   });
+
+  it("an `if` whose property is missing is vacuously true (applies `then`)", () => {
+    // ajv #2439 / #2299. A `properties` subschema is vacuously satisfied
+    // when the named key isn't present in the data, so the `if` passes
+    // and `then` fires — distinct from the case where the key IS present
+    // but fails the constraint.
+    const schema = {
+      type: "object",
+      if: { properties: { kind: { const: "Pet" } } },
+      then: { required: ["name"] },
+    } as const;
+    const v = compile(schema);
+    // Property missing → if passes → then fires → requires `name`.
+    expect(v.validate({}).valid).toBe(false);
+    expect(v.validate({}).error?.code).toBe("required");
+    // Property present with matching const → if passes → then fires.
+    expect(v.validate({ kind: "Pet" }).valid).toBe(false);
+    expect(v.validate({ kind: "Pet", name: "Fido" }).valid).toBe(true);
+    // Property present but failing the const → if fails → then skipped.
+    expect(v.validate({ kind: "Other" }).valid).toBe(true);
+  });
 });
 
 describe("dependent keywords", () => {

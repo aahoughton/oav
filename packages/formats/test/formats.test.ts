@@ -6,6 +6,7 @@ import {
   validateDuration,
   validateEmail,
   validateHostname,
+  validateIdnEmail,
   validateIpv4,
   validateIpv6,
   validateJsonPointer,
@@ -63,6 +64,18 @@ describe("email / hostname", () => {
     expect(validateHostname("sub.example.com.")).toBe(true);
     expect(validateHostname("-bad.example.com")).toBe(false);
     expect(validateHostname("")).toBe(false);
+  });
+
+  it("accepts internationalized email (RFC 6531)", () => {
+    // ajv-formats #66: idn-email should accept non-ASCII local part and
+    // IDN domains. Samples from the Wikipedia internationalized-email
+    // article.
+    expect(validateIdnEmail("用户@例子.广告")).toBe(true);
+    expect(validateIdnEmail("чебурашка@ящик-с-апельсинами.рф")).toBe(true);
+    expect(validateIdnEmail("Dörte@Sörensen.example.com")).toBe(true);
+    // Still needs an @ and a non-empty local/domain.
+    expect(validateIdnEmail("用户例子.广告")).toBe(false);
+    expect(validateIdnEmail("@例子.广告")).toBe(false);
   });
 });
 

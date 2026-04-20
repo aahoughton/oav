@@ -23,6 +23,28 @@ describe("properties keyword", () => {
     const r = v.validate({ email: 42 });
     expect(r.error?.path).toEqual(["email"]);
   });
+
+  it("property names and pattern sources with JS-hostile chars don't break codegen", () => {
+    // Property names and regex patterns end up embedded in generated
+    // JavaScript — quoteString + escapeMessage must escape every code
+    // point that could terminate a literal or inject new source.
+    const evilName = 'bad"name\nwith`backticks`${1+1}';
+    const evilPattern = "^hi\\${injected}$";
+    const v = compile({
+      type: "object",
+      required: [evilName],
+      properties: { [evilName]: { type: "string", pattern: evilPattern } },
+    });
+    // Valid: property present, matches pattern verbatim.
+    expect(v.validate({ [evilName]: "hi${injected}" }).valid).toBe(true);
+    // Missing property → required error with the hostile name intact.
+    const missing = v.validate({});
+    expect(missing.error?.code).toBe("required");
+    expect(missing.error?.params?.missing).toBe(evilName);
+    // Present but failing the pattern → pattern error, no source injection.
+    const bad = v.validate({ [evilName]: "nope" });
+    expect(bad.error?.code).toBe("pattern");
+  });
 });
 
 describe("patternProperties keyword", () => {

@@ -65,6 +65,24 @@ describe("$ref keyword", () => {
       }),
     ).toThrow(/Nope/);
   });
+
+  it("decodes percent-encoded JSON Pointer fragments before unescaping", () => {
+    // ajv #2447: fragments generated from generic type names often
+    // contain URI-encoded chars (e.g. "<" → %3C). The resolver must
+    // run `decodeURIComponent` before the ~0/~1 JSON-Pointer unescape
+    // so these refs resolve.
+    const v = compile({
+      $defs: {
+        "Record<string,Person>": {
+          type: "object",
+          properties: { name: { type: "string" } },
+        },
+      },
+      $ref: "#/$defs/Record%3Cstring%2CPerson%3E",
+    });
+    expect(v.validate({ name: "x" }).valid).toBe(true);
+    expect(v.validate({ name: 1 }).valid).toBe(false);
+  });
 });
 
 describe("$dynamicRef fallback", () => {
