@@ -67,11 +67,14 @@ export async function resolveSpec(options: ResolveSpecOptions): Promise<Resolved
     value: unknown,
     currentBase: string,
     stitchingUri: string | null,
+    externalSourceUri: string | null,
   ): Promise<unknown> => {
     if (value === null || typeof value !== "object") return value;
     if (Array.isArray(value)) {
       const out: unknown[] = [];
-      for (const item of value) out.push(await walk(item, currentBase, stitchingUri));
+      for (const item of value) {
+        out.push(await walk(item, currentBase, stitchingUri, externalSourceUri));
+      }
       return out;
     }
     const obj = value as Mutable;
@@ -101,25 +104,52 @@ export async function resolveSpec(options: ResolveSpecOptions): Promise<Resolved
         docs.set(targetUri, targetDoc);
       }
       const resolved = fragment === "" ? targetDoc : resolveJsonPointer(targetDoc, fragment);
-      const inlined = await walk(resolved, dirname(targetUri), stitchingUri);
+      // Recurse into the inlined subtree with the external file's URI
+      // as the source context. Any internal `#/...` refs inside the
+      // subtree are actually refs into this external file and will be
+      // rewritten to point at its stitched location (see the internal-
+      // ref branch below).
+      const inlined = await walk(resolved, dirname(targetUri), stitchingUri, targetUri);
       visiting.delete(targetUri + "#" + fragment);
       // preserve sibling properties (OpenAPI 3.1 allows $ref + siblings for some objects)
       const siblings: Mutable = {};
       for (const key of Object.keys(obj)) {
         if (key === "$ref") continue;
-        siblings[key] = await walk(obj[key], currentBase, stitchingUri);
+        siblings[key] = await walk(obj[key], currentBase, stitchingUri, externalSourceUri);
       }
       if (Object.keys(siblings).length === 0) return inlined;
       return inlined !== null && typeof inlined === "object" && !Array.isArray(inlined)
         ? { ...(inlined as Mutable), ...siblings }
         : inlined;
     }
+    // Internal ref inside a subtree that came from an external file:
+    // rewrite it to point at the external's stitched location and make
+    // sure that file ends up in $defs.__ext__. Without this rewrite,
+    // `#/components/schemas/Thing` inside an inlined subtree would
+    // resolve against the *root* document, orphaning the ref.
+    if (typeof ref === "string" && ref.startsWith("#") && externalSourceUri !== null) {
+      const fragment = ref.slice(1);
+      const encoded = encodeUri(externalSourceUri);
+      const rewritten =
+        fragment === "" || fragment === "/"
+          ? `#/$defs/__ext__/${encoded}`
+          : `#/$defs/__ext__/${encoded}${fragment.startsWith("/") ? fragment : `/${fragment}`}`;
+      stitchQueue.add(externalSourceUri);
+      const siblings: Mutable = { $ref: rewritten };
+      for (const key of Object.keys(obj)) {
+        if (key === "$ref") continue;
+        siblings[key] = await walk(obj[key], currentBase, stitchingUri, externalSourceUri);
+      }
+      return siblings;
+    }
     const out: Mutable = {};
-    for (const key of Object.keys(obj)) out[key] = await walk(obj[key], currentBase, stitchingUri);
+    for (const key of Object.keys(obj)) {
+      out[key] = await walk(obj[key], currentBase, stitchingUri, externalSourceUri);
+    }
     return out;
   };
 
-  const resolved = (await walk(entryDoc, baseDir, null)) as OpenAPIDocument;
+  const resolved = (await walk(entryDoc, baseDir, null, null)) as OpenAPIDocument;
 
   if (stitchQueue.size > 0) {
     const stitched: Mutable = {};
@@ -133,11 +163,15 @@ export async function resolveSpec(options: ResolveSpecOptions): Promise<Resolved
         targetDoc = await reader.read(uri);
         docs.set(uri, targetDoc);
       }
-      // Walk the full document from scratch; self-references collapse into
-      // internal refs so the walk terminates.
+      // Walk the full document from scratch. Self-references collapse
+      // into internal refs pointing at the stitched copy so the walk
+      // terminates. Pass `uri` as externalSourceUri so *internal* refs
+      // inside the stitched content (e.g. `#/components/schemas/Thing`)
+      // get rewritten to point at their siblings under the stitched
+      // location, not at the root document.
       const savedVisiting = new Set(visiting);
       visiting.clear();
-      const inlined = await walk(targetDoc, dirname(uri), uri);
+      const inlined = await walk(targetDoc, dirname(uri), uri, uri);
       visiting.clear();
       for (const v of savedVisiting) visiting.add(v);
       stitched[uri] = inlined;
