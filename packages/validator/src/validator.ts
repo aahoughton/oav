@@ -53,7 +53,7 @@ import {
   createDirectionResolver,
   transformBodySchemaForDirection,
   type BodyDirection,
-} from "./direction.js";
+} from "./body-schema-transform.js";
 
 /**
  * The HTTP validator: after being built from a (resolved) OpenAPI document,

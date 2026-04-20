@@ -1,3 +1,23 @@
+/**
+ * Body schema pre-transforms applied before the JSON Schema compiler
+ * sees the operation's body schema. Two concerns live here:
+ *
+ *   1. Direction (readOnly / writeOnly) — properties forbidden in the
+ *      current leg of the HTTP exchange are rewritten to `false` and
+ *      stripped from `required`. See
+ *      {@link transformBodySchemaForDirection}.
+ *
+ *   2. Opaque bodies — `format: "binary"` fields arrive as Buffers or
+ *      framework-specific objects, not strings, so the transform
+ *      replaces them with `{}` (an "accept anything" schema) in both
+ *      directions. See {@link isBinaryStringSchema}.
+ *
+ * Concern (2) isn't about direction at all but is colocated here
+ * because both operate by rewriting a body schema before compile.
+ *
+ * @packageDocumentation
+ */
+
 import type { SchemaOrBoolean } from "@oav/core";
 import {
   SUBSCHEMA_ARRAY_POSITIONS,
