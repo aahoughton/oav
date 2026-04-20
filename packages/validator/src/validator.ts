@@ -462,7 +462,7 @@ export function createValidator(
     const statusKey = matchResponseKey(res.status, Object.fromEntries(cache.responses));
     if (statusKey === undefined) {
       children.push(
-        createLeafError("status", ["response"], `no response defined for status ${res.status}`, {
+        createLeafError("status", [], `no response defined for status ${res.status}`, {
           status: res.status,
         }),
       );
@@ -478,7 +478,7 @@ export function createValidator(
               children.push(
                 createLeafError(
                   "header-param",
-                  ["response", "headers", name],
+                  ["headers", name],
                   `missing required header "${name}"`,
                   {
                     name,
@@ -501,7 +501,7 @@ export function createValidator(
               style: hdr.style,
               explode: hdr.explode,
             });
-            const r = validator.validate(value, ["response", "headers", name]);
+            const r = validator.validate(value, ["headers", name]);
             if (!r.valid && r.error !== undefined) {
               children.push(r.error);
             }
@@ -514,7 +514,7 @@ export function createValidator(
             children.push(
               createLeafError(
                 "content-type",
-                ["response", "body"],
+                ["body"],
                 `response Content-Type "${res.contentType ?? "<missing>"}" is not declared for status ${statusKey}`,
                 {
                   contentType: res.contentType,
@@ -530,7 +530,7 @@ export function createValidator(
               "response",
             );
             if (validator !== undefined) {
-              const r = validator.validate(res.body, ["response", "body"]);
+              const r = validator.validate(res.body, ["body"]);
               if (!r.valid && r.error !== undefined) {
                 children.push(r.error);
               }

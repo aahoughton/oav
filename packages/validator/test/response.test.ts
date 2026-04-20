@@ -86,7 +86,7 @@ describe("validateResponse", () => {
         body: { id: "u1", password: "secret" },
       },
     );
-    expect(leafAt(err, "response.body.password")).toBeDefined();
+    expect(leafAt(err, "body.password")).toBeDefined();
 
     // Server omits writeOnly password → passes (not required on the response side).
     expect(
@@ -152,6 +152,6 @@ describe("validateResponse", () => {
         body: { id: "u1", password: "secret" },
       },
     );
-    expect(leafAt(err, "response.body.password")).toBeDefined();
+    expect(leafAt(err, "body.password")).toBeDefined();
   });
 });
