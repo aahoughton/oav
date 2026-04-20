@@ -195,6 +195,89 @@ describe("validateRequest", () => {
     expect(leafCodes(err)).toContain("minLength");
   });
 
+  it("accepts Buffer / Uint8Array for type:string, format:binary body fields", () => {
+    // openapi-backend #860 / #809: multipart binary fields arrive as
+    // Buffer / Uint8Array / framework-specific objects, not JS strings.
+    // A strict string-type check here would reject every file upload.
+    const spec: OpenAPIDocument = {
+      openapi: "3.1.0",
+      info: { title: "t", version: "1" },
+      paths: {
+        "/upload": {
+          post: {
+            requestBody: {
+              required: true,
+              content: {
+                "multipart/form-data": {
+                  schema: {
+                    type: "object",
+                    required: ["file"],
+                    properties: {
+                      name: { type: "string" },
+                      file: { type: "string", format: "binary" },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "201": { description: "ok" } },
+          },
+        },
+      },
+    };
+    const sv = createValidator(spec);
+
+    // Buffer-backed field passes.
+    expect(
+      sv.validateRequest({
+        method: "POST",
+        path: "/upload",
+        contentType: "multipart/form-data",
+        body: { name: "hello.txt", file: Buffer.from("hello") },
+      }),
+    ).toBeNull();
+    // Uint8Array also passes.
+    expect(
+      sv.validateRequest({
+        method: "POST",
+        path: "/upload",
+        contentType: "multipart/form-data",
+        body: { name: "x", file: new Uint8Array([1, 2, 3]) },
+      }),
+    ).toBeNull();
+    // But format:byte (base64) stays a string and is checked normally.
+    const strictSpec: OpenAPIDocument = {
+      ...spec,
+      paths: {
+        "/upload": {
+          post: {
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["file"],
+                    properties: { file: { type: "string", format: "byte" } },
+                  },
+                },
+              },
+            },
+            responses: { "201": { description: "ok" } },
+          },
+        },
+      },
+    };
+    const strictSv = createValidator(strictSpec);
+    const err = strictSv.validateRequest({
+      method: "POST",
+      path: "/upload",
+      contentType: "application/json",
+      body: { file: Buffer.from("nope") },
+    });
+    expect(leafAt(err, "body.file")?.code).toBe("type");
+  });
+
   it("operation-level parameters replace path-level ones with the same name+in", () => {
     // openapi-backend #46. Path-level param: minLength 1; op-level
     // override: minLength 10. Per OAS 3.x the op-level fully replaces

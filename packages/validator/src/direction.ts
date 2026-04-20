@@ -102,6 +102,18 @@ function transformInner(
   const cached = cache.get(schema);
   if (cached !== undefined) return cached;
 
+  // OAS `format: "binary"` marks opaque bytes — the field arrives as a
+  // Buffer, Uint8Array, or framework-specific object (multer etc.), not
+  // a JS string. Stripping all constraints so the validator accepts
+  // whatever the HTTP layer decoded avoids false positives on every
+  // multipart file upload. `format: "byte"` (base64) stays as a string
+  // and follows normal validation.
+  if (isBinaryStringSchema(schema)) {
+    const empty: Record<string, unknown> = {};
+    cache.set(schema, empty as unknown as SchemaOrBoolean);
+    return empty as unknown as SchemaOrBoolean;
+  }
+
   const clone: Record<string, unknown> = { ...schema };
   cache.set(schema, clone as unknown as SchemaOrBoolean);
 
@@ -174,6 +186,20 @@ const SUBSCHEMA_MAP_POSITIONS = [
   "$defs",
   "definitions",
 ] as const;
+
+function isBinaryStringSchema(schema: SchemaOrBoolean): boolean {
+  if (typeof schema !== "object" || schema === null || Array.isArray(schema)) return false;
+  const s = schema as Record<string, unknown>;
+  if (s.format !== "binary") return false;
+  // Either `type: "string"` or an array containing "string" — accept
+  // both, including the 3.1 shorthand `type: ["string", "null"]`.
+  if (s.type === "string") return true;
+  if (Array.isArray(s.type) && (s.type as unknown[]).includes("string")) return true;
+  // Author declared `format: binary` without a type. Still not a
+  // validatable JSON value — bypass.
+  if (s.type === undefined) return true;
+  return false;
+}
 
 function hasDirectionalFlag(
   schema: SchemaOrBoolean,
