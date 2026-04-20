@@ -106,8 +106,5 @@ export {
   oas30NullableKeyword,
   oas30TypeKeyword,
 } from "./oas30.js";
-export {
-  discriminatorKeyword,
-  unevaluatedItemsKeyword,
-  unevaluatedPropertiesKeyword,
-} from "./unevaluated.js";
+export { discriminatorKeyword } from "./discriminator.js";
+export { unevaluatedItemsKeyword, unevaluatedPropertiesKeyword } from "./unevaluated.js";

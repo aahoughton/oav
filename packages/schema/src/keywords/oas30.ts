@@ -22,6 +22,7 @@
  */
 
 import { NAMES, quoteString } from "../codegen/index.js";
+import { buildTypeMismatchCondition } from "./type-predicates.js";
 import type { KeywordCompileContext, KeywordDefinition } from "./types.js";
 import { OAS30_VOCAB } from "./vocabulary-uris.js";
 
@@ -161,29 +162,3 @@ export const oas30ExclusiveMinimumKeyword: KeywordDefinition = {
     // intentionally empty
   },
 };
-
-function buildTypeMismatchCondition(dataExpr: string, expected: string[]): string {
-  const predicates = expected.map((t) => typePredicate(dataExpr, t));
-  return `!(${predicates.join(" || ")})`;
-}
-
-function typePredicate(dataExpr: string, typeName: string): string {
-  switch (typeName) {
-    case "null":
-      return `${dataExpr} === null`;
-    case "boolean":
-      return `typeof ${dataExpr} === "boolean"`;
-    case "string":
-      return `typeof ${dataExpr} === "string"`;
-    case "array":
-      return `Array.isArray(${dataExpr})`;
-    case "object":
-      return `(typeof ${dataExpr} === "object" && ${dataExpr} !== null && !Array.isArray(${dataExpr}))`;
-    case "number":
-      return `(typeof ${dataExpr} === "number" && Number.isFinite(${dataExpr}))`;
-    case "integer":
-      return `(typeof ${dataExpr} === "number" && Number.isFinite(${dataExpr}) && Number.isInteger(${dataExpr}))`;
-    default:
-      return "false";
-  }
-}

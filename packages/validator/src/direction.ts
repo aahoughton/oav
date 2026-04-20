@@ -1,5 +1,10 @@
 import type { SchemaOrBoolean } from "@oav/core";
-import type { RefResolver } from "@oav/schema";
+import {
+  SUBSCHEMA_ARRAY_POSITIONS,
+  SUBSCHEMA_MAP_POSITIONS,
+  SUBSCHEMA_SINGLE_POSITIONS,
+  type RefResolver,
+} from "@oav/schema";
 
 /**
  * Which leg of the HTTP exchange a schema is being validated against.
@@ -152,6 +157,8 @@ function transformInner(
     }
   }
   for (const k of SUBSCHEMA_MAP_POSITIONS) {
+    // `properties` is handled specially above (readOnly/writeOnly filtering).
+    if (k === "properties") continue;
     const v = clone[k];
     if (v !== null && typeof v === "object" && !Array.isArray(v)) {
       const m: Record<string, SchemaOrBoolean> = {};
@@ -164,28 +171,6 @@ function transformInner(
 
   return clone as unknown as SchemaOrBoolean;
 }
-
-const SUBSCHEMA_SINGLE_POSITIONS = [
-  "additionalProperties",
-  "items",
-  "propertyNames",
-  "contains",
-  "not",
-  "if",
-  "then",
-  "else",
-  "unevaluatedProperties",
-  "unevaluatedItems",
-] as const;
-
-const SUBSCHEMA_ARRAY_POSITIONS = ["allOf", "anyOf", "oneOf", "prefixItems"] as const;
-
-const SUBSCHEMA_MAP_POSITIONS = [
-  "patternProperties",
-  "dependentSchemas",
-  "$defs",
-  "definitions",
-] as const;
 
 function isBinaryStringSchema(schema: SchemaOrBoolean): boolean {
   if (typeof schema !== "object" || schema === null || Array.isArray(schema)) return false;

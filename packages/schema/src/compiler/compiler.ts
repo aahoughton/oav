@@ -1,5 +1,5 @@
 import type { PathSegment, SchemaObject, SchemaOrBoolean, ValidationError } from "@oav/core";
-import { CodeGen, NAMES, quoteString } from "../codegen/index.js";
+import { CodeGen, NAMES } from "../codegen/index.js";
 import type { Dialect, KeywordDefinition } from "../keywords/types.js";
 import { createKeywordContext, emitPushStatement } from "../keywords/context.js";
 import { createCustomKeywordDefinition, type CustomKeywordValidator } from "../keywords/custom.js";
@@ -10,6 +10,11 @@ import {
   type RefResolver,
   type ResolvedGraph,
 } from "../resolve/index.js";
+import {
+  SUBSCHEMA_ARRAY_POSITIONS,
+  SUBSCHEMA_MAP_POSITIONS,
+  SUBSCHEMA_SINGLE_POSITIONS,
+} from "../subschema-positions.js";
 import { createDeps, type ValidatorDeps } from "./runtime.js";
 
 /**
@@ -79,8 +84,6 @@ export interface CompileOptions {
   external?: Map<string, SchemaOrBoolean>;
   /** Pre-registered format validators, keyed by format name. */
   formats?: Record<string, (value: string) => boolean>;
-  /** Extra runtime deps to merge into the compiled closure. Used for tests. */
-  extraDeps?: Partial<ValidatorDeps>;
   /** Custom ref resolver — overrides the default (which resolves fragments within the root). */
   refResolver?: RefResolver;
   /**
@@ -151,35 +154,6 @@ export interface CompileState {
   readonly unevaluatedTracking: boolean;
   nextFn: number;
 }
-
-type WrapperCode = "schema" | "not" | "ref";
-
-/**
- * Known JSON Schema 2020-12 (+ OpenAPI) positions that hold a single
- * subschema. Walked by {@link schemaUsesUnevaluated} so the flag detector
- * descends only through schema-valued fields, not arbitrary user data
- * in `enum` / `const` / `default` / `examples`.
- */
-const SUBSCHEMA_SINGLE_POSITIONS = [
-  "additionalProperties",
-  "propertyNames",
-  "contains",
-  "not",
-  "if",
-  "then",
-  "else",
-  "items",
-  "unevaluatedProperties",
-  "unevaluatedItems",
-] as const;
-const SUBSCHEMA_ARRAY_POSITIONS = ["allOf", "anyOf", "oneOf", "prefixItems"] as const;
-const SUBSCHEMA_MAP_POSITIONS = [
-  "properties",
-  "patternProperties",
-  "dependentSchemas",
-  "$defs",
-  "definitions",
-] as const;
 
 /**
  * Return `true` iff `schema` (or any schema reachable from it through
@@ -268,8 +242,6 @@ export function compileSchema(schema: SchemaOrBoolean, options: CompileOptions):
       if (fn !== undefined) deps.customKeywords.set(name, fn);
     }
   }
-  if (options.extraDeps) Object.assign(deps, options.extraDeps);
-
   const registry = new SchemaRegistry();
   if (options.external !== undefined) {
     for (const [uri, ext] of options.external) registry.add(uri, ext);
@@ -331,7 +303,7 @@ function compileValidator(schema: SchemaOrBoolean, state: CompileState): string 
   state.nextFn += 1;
   state.compiledFor.set(schema, name);
 
-  const body = buildFunctionBody(schema, state, "schema");
+  const body = buildFunctionBody(schema, state);
   state.functionBodies.push(
     `function ${name}(${NAMES.DATA}, ${NAMES.PATH}, ${NAMES.OUT_EVAL_PROPS}, ${NAMES.OUT_EVAL_ITEMS}) {\n${body}\n}`,
   );
@@ -392,11 +364,7 @@ function needsItemTracking(schema: SchemaObject, state: CompileState): boolean {
   );
 }
 
-function buildFunctionBody(
-  schema: SchemaOrBoolean,
-  state: CompileState,
-  wrapCode: WrapperCode,
-): string {
+function buildFunctionBody(schema: SchemaOrBoolean, state: CompileState): string {
   const gen = new CodeGen();
   gen.indent();
   gen.const(NAMES.ERRORS, "[]");
@@ -436,9 +404,7 @@ function buildFunctionBody(
     }
   }
 
-  gen.line(
-    `return ${NAMES.DEPS}.wrapErrors(${quoteString(wrapCode)}, ${NAMES.PATH}, ${NAMES.ERRORS});`,
-  );
+  gen.line(`return ${NAMES.DEPS}.wrapErrors("schema", ${NAMES.PATH}, ${NAMES.ERRORS});`);
   gen.dedent();
   return gen.toString();
 }

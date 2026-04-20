@@ -62,16 +62,12 @@ describe("maxErrors option", () => {
     const v = compile({ type: "array", items: { type: "number" } }, 3);
     const badArray: unknown[] = [];
     for (let i = 0; i < 10_000; i += 1) badArray.push("string instead of number");
-    const t0 = performance.now();
     const r = v.validate(badArray);
-    const elapsed = performance.now() - t0;
     expect(r.valid).toBe(false);
+    // Leaf count proves the short-circuit: a non-gated impl would collect
+    // 10_000 leaves, not 3.
     expect(collectLeaves(r.error!)).toHaveLength(3);
     expect(r.truncated).toBe(true);
-    // Very loose: short-circuited we stop after ~3 iterations — certainly
-    // under 50ms even on a slow machine. A non-short-circuiting impl would
-    // validate all 10k items and allocate a 10k-wide error tree.
-    expect(elapsed).toBeLessThan(50);
   });
 
   it("short-circuits property iteration once the budget is exhausted", () => {

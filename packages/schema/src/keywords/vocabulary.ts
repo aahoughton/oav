@@ -49,11 +49,8 @@ import {
   refKeyword,
   schemaDialectKeyword,
 } from "./ref.js";
-import {
-  discriminatorKeyword,
-  unevaluatedItemsKeyword,
-  unevaluatedPropertiesKeyword,
-} from "./unevaluated.js";
+import { discriminatorKeyword } from "./discriminator.js";
+import { unevaluatedItemsKeyword, unevaluatedPropertiesKeyword } from "./unevaluated.js";
 import {
   oas30ExclusiveMaximumKeyword,
   oas30ExclusiveMinimumKeyword,

@@ -57,6 +57,7 @@ export const dynamicRefKeyword: KeywordDefinition = {
 export const dynamicAnchorKeyword: KeywordDefinition = {
   keyword: "$dynamicAnchor",
   vocabulary: CORE_VOCAB,
+  annotation: true,
   compile(): void {
     // intentionally empty — anchor is consumed at resolve time
   },
@@ -71,6 +72,7 @@ export const dynamicAnchorKeyword: KeywordDefinition = {
 export const anchorKeyword: KeywordDefinition = {
   keyword: "$anchor",
   vocabulary: CORE_VOCAB,
+  annotation: true,
   compile(): void {
     // intentionally empty — anchor is consumed at resolve time
   },
@@ -85,6 +87,7 @@ export const anchorKeyword: KeywordDefinition = {
 export const idKeyword: KeywordDefinition = {
   keyword: "$id",
   vocabulary: CORE_VOCAB,
+  annotation: true,
   compile(): void {
     // intentionally empty
   },
@@ -99,6 +102,7 @@ export const idKeyword: KeywordDefinition = {
 export const defsKeyword: KeywordDefinition = {
   keyword: "$defs",
   vocabulary: CORE_VOCAB,
+  annotation: true,
   compile(): void {
     // intentionally empty — resolved on demand via $ref
   },
