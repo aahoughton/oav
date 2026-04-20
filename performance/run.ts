@@ -22,7 +22,7 @@ import {
   unregisterSchema,
   validate as hjValidate,
 } from "@hyperjump/json-schema/draft-2020-12";
-import { compileSchema, defaultVocabularies } from "../packages/schema/src/index.ts";
+import { compileSchema, jsonSchemaDialect } from "../packages/schema/src/index.ts";
 import { builtInFormats } from "../packages/formats/src/index.ts";
 import { perfSchemas, type PerfSchema } from "./schemas.ts";
 
@@ -53,6 +53,25 @@ function fmtUs(us: number): string {
   return (us / 1000).toFixed(2) + "ms";
 }
 
+// tinybench v6's Task.result is a union that includes errored / aborted /
+// not-started states with no statistics. Probe for throughput/latency
+// instead of dereferencing blindly so one failing task can't take the
+// whole script down.
+function taskStats(t: { result?: unknown }): { hz: number; mean: number } | null {
+  const r = t.result as
+    | { throughput?: { mean?: number }; latency?: { mean?: number } }
+    | undefined;
+  const hz = r?.throughput?.mean;
+  const latency = r?.latency?.mean;
+  if (typeof hz !== "number" || typeof latency !== "number") return null;
+  return { hz, mean: latency * 1e3 };
+}
+
+function taskErrorMessage(t: { result?: unknown }): string | undefined {
+  const r = t.result as { error?: { message?: string } } | undefined;
+  return r?.error?.message;
+}
+
 async function benchSchema(s: PerfSchema): Promise<void> {
   console.log(`\n=== ${s.name} — ${s.description} ===`);
 
@@ -65,7 +84,7 @@ async function benchSchema(s: PerfSchema): Promise<void> {
   const URI_POOL = 50_000;
   const hjCompileUris = Array.from({ length: URI_POOL }, (_, i) => `bench://c-${s.name}-${i}`);
   let hjCompileIdx = 0;
-  const oavOpts = { vocabularies: defaultVocabularies, formats: builtInFormats };
+  const oavOpts = { dialect: jsonSchemaDialect, formats: builtInFormats };
   const ajvFactory = () => new Ajv({ allErrors: true, strict: false });
 
   // COMPILE BENCH: each task turns a fresh schema object into a callable
@@ -99,12 +118,16 @@ async function benchSchema(s: PerfSchema): Promise<void> {
   console.log("compile:");
   for (const t of compileBench.tasks) {
     const lib = t.name.split(" ")[0] as Result["lib"];
-    const hz = t.result?.throughput.mean ?? 0;
-    const mean = (t.result?.latency.mean ?? 0) * 1e3; // ms → µs
+    const stats = taskStats(t);
+    if (stats === null) {
+      const why = taskErrorMessage(t) ?? "no result";
+      console.log(`  ${t.name.padEnd(22)}  ERRORED (${why})`);
+      continue;
+    }
     console.log(
-      `  ${t.name.padEnd(22)}  ${fmtHz(hz).padStart(8)} ops/s   ${fmtUs(mean).padStart(10)} / op`,
+      `  ${t.name.padEnd(22)}  ${fmtHz(stats.hz).padStart(8)} ops/s   ${fmtUs(stats.mean).padStart(10)} / op`,
     );
-    results.push({ schema: s.name, metric: "compile", lib, hz, mean });
+    results.push({ schema: s.name, metric: "compile", lib, hz: stats.hz, mean: stats.mean });
   }
 
   // VALIDATE BENCH: every library pre-compiles its validator OUTSIDE the
@@ -120,7 +143,7 @@ async function benchSchema(s: PerfSchema): Promise<void> {
   const hjV = await hjValidate(hjUri);
 
   const oav = compileSchema(s.schema as never, {
-    vocabularies: defaultVocabularies,
+    dialect: jsonSchemaDialect,
     formats: builtInFormats,
   });
 
@@ -155,12 +178,23 @@ async function benchSchema(s: PerfSchema): Promise<void> {
   console.log("validate:");
   for (const t of validateBench.tasks) {
     const lib = t.name.split(" ")[0] as Result["lib"];
-    const hz = t.result?.throughput.mean ?? 0;
-    const mean = (t.result?.latency.mean ?? 0) * 1e3;
+    const stats = taskStats(t);
+    if (stats === null) {
+      const why = taskErrorMessage(t) ?? "no result";
+      console.log(`  ${t.name.padEnd(30)}  ERRORED (${why})`);
+      continue;
+    }
     console.log(
-      `  ${t.name.padEnd(30)}  ${fmtHz(hz).padStart(8)} ops/s   ${fmtUs(mean).padStart(10)} / op`,
+      `  ${t.name.padEnd(30)}  ${fmtHz(stats.hz).padStart(8)} ops/s   ${fmtUs(stats.mean).padStart(10)} / op`,
     );
-    results.push({ schema: s.name, metric: "validate", lib, hz, mean, variant: t.name });
+    results.push({
+      schema: s.name,
+      metric: "validate",
+      lib,
+      hz: stats.hz,
+      mean: stats.mean,
+      variant: t.name,
+    });
   }
 
   unregisterSchema(hjUri);
