@@ -59,11 +59,11 @@ Both have their own `package.json` + `pnpm-workspace.yaml` (with empty
 
 ```
 cli → validator → router
-               → spec → schema → core
+               → spec → core
                → formats → core
-               → schema
+               → schema → core
                → core
-     → spec
+     → spec → core
      → core
 ```
 

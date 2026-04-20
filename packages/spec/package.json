@@ -14,7 +14,6 @@
   },
   "dependencies": {
     "@oav/core": "workspace:*",
-    "@oav/schema": "workspace:*",
     "yaml": "2.8.3"
   },
   "engines": {
