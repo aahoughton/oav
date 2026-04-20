@@ -195,6 +195,51 @@ describe("validateRequest", () => {
     expect(leafCodes(err)).toContain("minLength");
   });
 
+  it("operation-level parameters replace path-level ones with the same name+in", () => {
+    // openapi-backend #46. Path-level param: minLength 1; op-level
+    // override: minLength 10. Per OAS 3.x the op-level fully replaces
+    // the path-level — a single error with the op-level constraint.
+    const spec: OpenAPIDocument = {
+      openapi: "3.1.0",
+      info: { title: "t", version: "1" },
+      paths: {
+        "/users": {
+          parameters: [
+            {
+              name: "id",
+              in: "query",
+              required: true,
+              schema: { type: "string", minLength: 1 },
+            },
+          ],
+          get: {
+            parameters: [
+              {
+                name: "id",
+                in: "query",
+                required: true,
+                schema: { type: "string", minLength: 10 },
+              },
+            ],
+            responses: { "200": { description: "ok" } },
+          },
+        },
+      },
+    };
+    const sv = createValidator(spec);
+    // "x" fails the op-level constraint (len 1 < 10) and would have
+    // passed the path-level (len 1 >= 1). The op-level must win.
+    const err = sv.validateRequest({ method: "GET", path: "/users", query: { id: "x" } });
+    const leaves = collectLeaves(err ?? undefined!).filter((l) => l.path.join(".") === "query.id");
+    // Exactly one leaf, carrying the op-level constraint.
+    expect(leaves).toHaveLength(1);
+    expect(leaves[0]?.params).toMatchObject({ minLength: 10 });
+    // And a value that passes the op-level constraint validates cleanly.
+    expect(
+      sv.validateRequest({ method: "GET", path: "/users", query: { id: "0123456789" } }),
+    ).toBeNull();
+  });
+
   it("enforces item-level schemas on array query parameters", () => {
     // eov #917: per-item pattern / minLength checks must run on each
     // element of a deserialized array query param.

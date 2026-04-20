@@ -307,15 +307,20 @@ export function createValidator(
     const existing = operationCache.get(pathMatch.operation);
     if (existing !== undefined) return existing;
 
+    // OAS 3.x: operation-level parameters replace path-level parameters
+    // of the same (name, in). Push op-level second so later writes win
+    // in the (in, name)-keyed dedup, then materialise the unique list.
     const rawParams: (ParameterObject | ReferenceObject)[] = [
       ...(pathMatch.pathItem.parameters ?? []),
       ...(pathMatch.operation.parameters ?? []),
     ];
-    const parameters: ParameterObject[] = [];
+    const byKey = new Map<string, ParameterObject>();
     for (const p of rawParams) {
       const resolved = resolveRef<ParameterObject>(p);
-      if (resolved !== undefined) parameters.push(resolved);
+      if (resolved === undefined) continue;
+      byKey.set(`${resolved.in}\0${resolved.name}`, resolved);
     }
+    const parameters: ParameterObject[] = [...byKey.values()];
 
     const pathParamValidators = new Map<string, CompiledSchema>();
     const queryParamValidators = new Map<string, CompiledSchema>();
