@@ -94,55 +94,39 @@ const INLINEABLE_SINGLE_KEYWORDS = new Set([
 ]);
 
 /**
- * Keys that force us to the function-call path.
+ * Keys that force us to the function-call path regardless of the
+ * {@link KeywordDefinition.applicator} flag. These are keywords whose
+ * correctness depends on per-function state that the inline path
+ * cannot supply:
  *
  * - `$ref` / `$dynamicRef` need a named function for cycle handling;
- *   bringing them into the inline body would lose the
- *   compiled-for cache that breaks cycles.
- * - `unevaluatedProperties` / `unevaluatedItems` require a per-function
- *   evaluated-keys / evaluated-indices Set. That set is initialised
- *   at function-body entry in the compiler; the inline path doesn't
- *   own its own function body, so the inlined keyword would run with
- *   no set to consult and silently no-op. Safer to compile as a
- *   function so the setup happens naturally.
+ *   bringing them into the inline body would lose the compiled-for
+ *   cache that breaks cycles.
+ *
+ * The unevaluated-keys keywords (`unevaluatedProperties`,
+ * `unevaluatedItems`) also need per-function state, but they are
+ * already tagged `applicator: true` so the applicator check below
+ * catches them — no need to list them here.
  */
-const INLINE_DISQUALIFIERS = new Set([
-  "$ref",
-  "$dynamicRef",
-  "unevaluatedProperties",
-  "unevaluatedItems",
-]);
+const INLINE_DISQUALIFIERS = new Set(["$ref", "$dynamicRef"]);
 
 /**
- * Applicator keywords — when a multi-keyword subschema contains any of
- * these, we prefer the function-call path over inlining. Two reasons:
- *
- * 1. The function's body is then hot-called N times from a loop, which
- *    V8 monomorphises and JIT-specialises well. Inlining a long body
- *    into the loop makes the loop body too large for the same
- *    optimisations and measurably slows array-heavy workloads.
- * 2. Applicators have their own inlining logic internally (for their
- *    subschemas). We still inline those single-keyword property/item
- *    schemas under the enclosing function.
+ * Applicator-keyword names not backed by their own {@link KeywordDefinition}
+ * but which the inliner must still treat as applicators. `if` owns
+ * `then` / `else` via the `implements` list; a schema that mentions
+ * them in isolation (without `if`) should still fall back to the
+ * function-call path rather than being treated as empty.
  */
-const APPLICATOR_KEYS = new Set([
-  "properties",
-  "patternProperties",
-  "additionalProperties",
-  "propertyNames",
-  "items",
-  "prefixItems",
-  "contains",
-  "allOf",
-  "anyOf",
-  "oneOf",
-  "not",
-  "if",
-  "then",
-  "else",
-  "dependentSchemas",
-  "discriminator",
-]);
+const STANDALONE_APPLICATOR_FALLBACKS = new Set(["then", "else"]);
+
+function isApplicatorKey(
+  byKeyword: ReadonlyMap<string, KeywordDefinition> | undefined,
+  k: string,
+): boolean {
+  if (byKeyword === undefined) return false;
+  if (byKeyword.get(k)?.applicator === true) return true;
+  return STANDALONE_APPLICATOR_FALLBACKS.has(k);
+}
 
 /**
  * Ceiling on how deep a chain of multi-keyword inlinings we'll follow
@@ -256,7 +240,7 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     // dispatch pays for itself on hot loops because V8 monomorphises
     // the function better than it can optimise a massive inlined
     // loop body.
-    if (validationKeys.some((k) => APPLICATOR_KEYS.has(k))) return false;
+    if (validationKeys.some((k) => isApplicatorKey(inputs.byKeyword, k))) return false;
     if (validationKeys.length > MAX_INLINE_KEYWORDS) return false;
     if (inlineDepth >= MAX_INLINE_DEPTH) return false;
 

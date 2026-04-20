@@ -71,6 +71,22 @@ cli → validator → router
 
 1. Create `packages/schema/src/keywords/<area>.ts` exporting a
    `KeywordDefinition` with `keyword`, `vocabulary`, `compile(ctx)`.
+   Flags on the definition itself drive compiler specialisation —
+   set them correctly or performance optimisations silently mis-fire:
+   - `applicator: true` — keyword descends into subschemas (items,
+     properties, allOf, not, …). Drives the inliner to use the
+     function-call path for multi-keyword schemas containing this
+     keyword. A missed flag costs correctness (inlined applicators can
+     skip per-function evaluated-keys state) and speed (V8 can't
+     monomorphise a huge inline body).
+   - `annotation: true` — keyword is metadata only, emits no runtime
+     code (`title`, `description`, `$id`, `$schema`, `$comment`, …).
+     Lets the inliner count keyword density correctly and avoids
+     spurious "unknown-keyword" diagnostics.
+   - `evaluates: { properties?: true; items?: true }` — keyword
+     contributes to evaluated-keys / evaluated-items tracking for
+     `unevaluated*`.
+
    The context (`KeywordCompileContext`) offers:
    - `ctx.gen` — code emitter (see the `CodeEmitter` interface).
    - `ctx.data`, `ctx.path`, `ctx.errors` — JS expressions for the
@@ -89,6 +105,7 @@ cli → validator → router
    - `ctx.resolveRef(ref)`, `ctx.evaluatedPropertiesVar` /
      `ctx.evaluatedItemsVar` — for `$ref` and unevaluated-tracking.
    - `ctx.emitBudgetBreak()` at the tail of hot loops.
+
 2. Add it to the vocabulary's `keywords` array in `vocabulary.ts`.
 3. Re-export from `keywords/index.ts` and top-level `src/index.ts`.
 4. Add a `test/keyword-<name>.test.ts` that compiles a schema, validates
