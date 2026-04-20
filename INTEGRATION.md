@@ -516,9 +516,9 @@ before calling the validator.
 | `validateRequests.coerceTypes`          | Query scalars coerced by default; body coercion not supported.                                                  |
 | `validateRequests.removeAdditional`     | Not supported. `additionalProperties: false` rejects; there is no silent-drop mode.                             |
 | `validateRequests.discriminator`        | Native, always on for OpenAPI specs.                                                                            |
-| `formats`                               | `createValidator(spec, { formats: { ... } })`. Built-ins from `@aahoughton/oav/formats`.                        |
+| `formats`                               | `createValidator(spec, { formats: { ... } })` — see [format-shape note](#format-shape-note) below.              |
 | `validateFormats: "fast" \| "full"`     | N/A — single-pass validation; the built-in formats are RFC-sourced.                                             |
-| `ajvFormats`                            | Pass custom format functions via the `formats` option.                                                          |
+| `ajvFormats`                            | Pass custom format functions via the `formats` option — see [format-shape note](#format-shape-note) below.      |
 | `serDes`                                | Not supported. Pre- or post-transform the payload in your handler if you need `Date` / `ObjectId` / etc.        |
 | `validateSecurity.handlers`             | Your own auth middleware, run before the validator.                                                             |
 | `fileUploader: true`                    | Your own multer middleware (see [recipe](#file-uploads-with-multer)).                                           |
@@ -563,6 +563,43 @@ before calling the validator.
   routes without configuration gymnastics; run it twice (per-request
   and per-response) with different `maxErrors` budgets; run it at
   the edge of a queue processor outside any HTTP framework.
+
+### Format-shape note
+
+`ajv-formats` and custom formats registered with
+`express-openapi-validator` follow the ajv shape:
+
+```ts
+formats: {
+  duration: { type: "string", validate: (v) => isISODuration(v) },
+}
+```
+
+`oav` expects a plain string predicate:
+
+```ts
+formats: {
+  duration: (v) => isISODuration(v),
+}
+```
+
+A three-line helper handles the conversion if you're migrating a
+map of ajv-shaped definitions without rewriting each one:
+
+```ts
+type AjvFormatDef = { type?: "string" | "number"; validate: (v: unknown) => boolean };
+
+function fromAjv(defs: Record<string, AjvFormatDef>): Record<string, (v: string) => boolean> {
+  return Object.fromEntries(Object.entries(defs).map(([k, d]) => [k, (v) => d.validate(v)]));
+}
+
+createValidator(spec, { formats: fromAjv(myAjvFormats) });
+```
+
+`oav`'s `format` keyword only applies to string values (per JSON
+Schema 2020-12 §6.3), so ajv's `type: "number"` format entries are
+effectively no-ops — the function never runs on non-string data.
+Keep them in the map if it's simpler; they cost nothing.
 
 ### Behavior differences to watch for
 
