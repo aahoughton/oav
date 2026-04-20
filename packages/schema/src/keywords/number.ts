@@ -24,9 +24,13 @@ function emitNumericError(
  * value (without floating-point remainder).
  *
  * The check compares `data / divisor` against its nearest integer with a
- * small epsilon so valid multiples are not rejected when the division
- * produces a non-terminating binary fraction (e.g. `2.34 / 0.01` yields
- * `234.00000000000003` under IEEE-754). AJV uses the same approach.
+ * relative epsilon so valid multiples aren't rejected when the division
+ * produces a non-terminating binary fraction. IEEE-754 rounding error
+ * grows roughly with magnitude, so a flat tolerance is wrong at both
+ * ends — a value like `143.48 / 0.01` drifts by about `1.82e-12`, while
+ * values near `1` stay within `1e-14`. Scaling by `Number.EPSILON *
+ * max(1, |q|, |divisor|)` gives each multiple of `divisor` the same
+ * proportional slack without letting true non-multiples sneak through.
  *
  * @public
  */
@@ -36,9 +40,16 @@ export const multipleOfKeyword: KeywordDefinition = {
   compile(ctx: KeywordCompileContext): void {
     const divisor = ctx.schema as number;
     const q = ctx.gen.scope.name("q");
+    const tol = ctx.gen.scope.name("tol");
+    // 16 * Number.EPSILON ≈ 3.55e-15; at |q| = 1e15 that admits ~3.55
+    // units, which is still far less than one divisor's worth for any
+    // reasonable spec value. The `divisor` factor keeps the tolerance
+    // proportional when the spec uses tiny divisors (e.g. 1e-7).
+    const tolExpr = `16 * Number.EPSILON * Math.max(1, Math.abs(${q}), Math.abs(${divisor}))`;
     ctx.gen.if(numberGuard(ctx.data), () => {
       ctx.gen.const(q, `${ctx.data} / ${divisor}`);
-      ctx.gen.if(`Math.abs(${q} - Math.round(${q})) > 1e-12`, () => {
+      ctx.gen.const(tol, tolExpr);
+      ctx.gen.if(`Math.abs(${q} - Math.round(${q})) > ${tol}`, () => {
         ctx.emitError(
           "leaf",
           `${NAMES.DEPS}.createLeafError(` +

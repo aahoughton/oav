@@ -26,6 +26,18 @@ describe("numeric keywords", () => {
     expect(v2.validate(0.25).valid).toBe(false);
   });
 
+  it("multipleOf tolerance scales with value magnitude", () => {
+    // 143.48 / 0.01 === 14347.999999999998; |q - round(q)| ≈ 1.82e-12,
+    // above the flat 1e-12 tolerance. A relative-magnitude check must
+    // still accept it as a valid 0.01 multiple.
+    const v = compile({ multipleOf: 0.01 });
+    expect(v.validate(143.48).valid).toBe(true);
+    expect(v.validate(999.99).valid).toBe(true);
+    expect(v.validate(1234567.89).valid).toBe(true);
+    // And still reject genuine non-multiples at that scale.
+    expect(v.validate(143.485).valid).toBe(false);
+  });
+
   it("maximum / exclusiveMaximum enforce upper bounds", () => {
     const max = compile({ maximum: 10 });
     expect(max.validate(10).valid).toBe(true);
