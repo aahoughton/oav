@@ -195,6 +195,66 @@ describe("validateRequest", () => {
     expect(leafCodes(err)).toContain("minLength");
   });
 
+  it("discriminator failures inside an array carry the index in the body path", () => {
+    // eov #669: when a polymorphic body element fails, the error tree
+    // must identify which array index broke. Exercises the full
+    // body-validation path, not just the schema compiler.
+    const spec: OpenAPIDocument = {
+      openapi: "3.1.0",
+      info: { title: "t", version: "1" },
+      components: {
+        schemas: {
+          Cat: {
+            type: "object",
+            required: ["kind", "purr"],
+            properties: { kind: { const: "Cat" }, purr: { type: "boolean" } },
+          },
+          Dog: {
+            type: "object",
+            required: ["kind", "bark"],
+            properties: { kind: { const: "Dog" }, bark: { type: "string" } },
+          },
+        },
+      },
+      paths: {
+        "/pack": {
+          post: {
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "array",
+                    items: {
+                      discriminator: { propertyName: "kind" },
+                      oneOf: [
+                        { $ref: "#/components/schemas/Cat" },
+                        { $ref: "#/components/schemas/Dog" },
+                      ],
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "201": { description: "ok" } },
+          },
+        },
+      },
+    };
+    const sv = createValidator(spec);
+    const err = sv.validateRequest({
+      method: "POST",
+      path: "/pack",
+      contentType: "application/json",
+      body: [
+        { kind: "Cat", purr: true },
+        { kind: "Dog" }, // missing bark
+      ],
+    });
+    const leaf = leafAt(err, "body.1.bark");
+    expect(leaf?.code).toBe("required");
+  });
+
   it("readOnly properties are rejected in request bodies", () => {
     const spec: OpenAPIDocument = {
       openapi: "3.1.0",

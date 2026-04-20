@@ -113,4 +113,72 @@ describe("discriminator keyword", () => {
     expect(r.valid).toBe(false);
     expect(r.error?.code).toBe("discriminator");
   });
+
+  it("falls back to the schema name when no explicit mapping is declared", () => {
+    // Per OAS: with no `mapping`, the discriminator value matches the
+    // last path segment of a branch's `$ref`.
+    const v = compile({
+      $defs: {
+        Cat: { type: "object", required: ["purr"], properties: { purr: { type: "boolean" } } },
+        Dog: { type: "object", required: ["bark"], properties: { bark: { type: "string" } } },
+      },
+      discriminator: { propertyName: "kind" },
+      oneOf: [{ $ref: "#/$defs/Cat" }, { $ref: "#/$defs/Dog" }],
+    });
+    expect(v.validate({ kind: "Cat", purr: true }).valid).toBe(true);
+    expect(v.validate({ kind: "Dog", bark: "woof" }).valid).toBe(true);
+    const r = v.validate({ kind: "Mouse" });
+    expect(r.error?.code).toBe("discriminator");
+    expect(r.error?.params).toMatchObject({ value: "Mouse" });
+  });
+
+  it("accepts multiple mapping keys that point to the same branch", () => {
+    // eov #1088: two mapping entries targeting the same schema should
+    // not collide — each key routes to the shared branch deterministically.
+    const v = compile({
+      $defs: {
+        Pet: { type: "object", required: ["name"], properties: { name: { type: "string" } } },
+      },
+      discriminator: {
+        propertyName: "kind",
+        mapping: { Dog: "#/$defs/Pet", Cat: "#/$defs/Pet" },
+      },
+      oneOf: [{ $ref: "#/$defs/Pet" }],
+    });
+    expect(v.validate({ kind: "Dog", name: "Rex" }).valid).toBe(true);
+    expect(v.validate({ kind: "Cat", name: "Luna" }).valid).toBe(true);
+    expect(v.validate({ kind: "Dog" }).valid).toBe(false);
+  });
+
+  it("reports the array index in the error path for discriminator branches inside an array", () => {
+    // eov #669: error paths must include the array index so the caller
+    // can tell which element failed.
+    const v = compile({
+      $defs: {
+        Cat: {
+          type: "object",
+          required: ["purr"],
+          properties: { kind: { const: "Cat" }, purr: { type: "boolean" } },
+        },
+        Dog: {
+          type: "object",
+          required: ["bark"],
+          properties: { kind: { const: "Dog" }, bark: { type: "string" } },
+        },
+      },
+      type: "array",
+      items: {
+        discriminator: { propertyName: "kind" },
+        oneOf: [{ $ref: "#/$defs/Cat" }, { $ref: "#/$defs/Dog" }],
+      },
+    });
+    const r = v.validate([
+      { kind: "Cat", purr: true },
+      { kind: "Dog", bark: "woof" },
+      { kind: "Cat" }, // missing purr
+    ]);
+    expect(r.valid).toBe(false);
+    expect(r.error?.code).toBe("required");
+    expect(r.error?.path).toEqual([2, "purr"]);
+  });
 });
