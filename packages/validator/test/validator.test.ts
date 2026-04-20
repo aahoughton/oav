@@ -195,6 +195,139 @@ describe("validateRequest", () => {
     expect(leafCodes(err)).toContain("minLength");
   });
 
+  it("enforces item-level schemas on array query parameters", () => {
+    // eov #917: per-item pattern / minLength checks must run on each
+    // element of a deserialized array query param.
+    const spec: OpenAPIDocument = {
+      openapi: "3.1.0",
+      info: { title: "t", version: "1" },
+      paths: {
+        "/search": {
+          get: {
+            parameters: [
+              {
+                name: "tag",
+                in: "query",
+                required: true,
+                explode: false,
+                schema: {
+                  type: "array",
+                  items: { type: "string", pattern: "^[a-z]+$", minLength: 2 },
+                },
+              },
+            ],
+            responses: { "200": { description: "ok" } },
+          },
+        },
+      },
+    };
+    const sv = createValidator(spec);
+    expect(
+      sv.validateRequest({ method: "GET", path: "/search", query: { tag: "foo,bar" } }),
+    ).toBeNull();
+    const patternErr = sv.validateRequest({
+      method: "GET",
+      path: "/search",
+      query: { tag: "foo,BAR" },
+    });
+    expect(leafCodes(patternErr)).toContain("pattern");
+    const lengthErr = sv.validateRequest({
+      method: "GET",
+      path: "/search",
+      query: { tag: "foo,b" },
+    });
+    expect(leafCodes(lengthErr)).toContain("minLength");
+  });
+
+  it("resolves parameters declared via $ref", () => {
+    // eov #803: operations frequently reference shared parameters from
+    // components.parameters.
+    const spec: OpenAPIDocument = {
+      openapi: "3.1.0",
+      info: { title: "t", version: "1" },
+      components: {
+        parameters: {
+          Tenant: { name: "X-Tenant", in: "header", required: true, schema: { type: "string" } },
+        },
+      },
+      paths: {
+        "/pets": {
+          get: {
+            parameters: [{ $ref: "#/components/parameters/Tenant" }],
+            responses: { "200": { description: "ok" } },
+          },
+        },
+      },
+    };
+    const sv = createValidator(spec);
+    expect(
+      sv.validateRequest({ method: "GET", path: "/pets", headers: { "x-tenant": "t1" } }),
+    ).toBeNull();
+    const err = sv.validateRequest({ method: "GET", path: "/pets" });
+    expect(leafCodes(err)).toContain("header-param");
+  });
+
+  it("accepts an optional-body POST with no body and no content-type", () => {
+    // eov #397 / #646 / #655: when requestBody is not required and the
+    // caller sends nothing, there's nothing to validate — don't error
+    // on the missing content-type.
+    const spec: OpenAPIDocument = {
+      openapi: "3.1.0",
+      info: { title: "t", version: "1" },
+      paths: {
+        "/ping": {
+          post: {
+            requestBody: {
+              required: false,
+              content: { "application/json": { schema: { type: "object" } } },
+            },
+            responses: { "204": { description: "ok" } },
+          },
+        },
+      },
+    };
+    const sv = createValidator(spec);
+    expect(sv.validateRequest({ method: "POST", path: "/ping" })).toBeNull();
+  });
+
+  it("format validators let null pass through on nullable OAS 3.0 fields", () => {
+    // eov #382 / #108: format checks should not fire for null values on
+    // nullable properties — the format predicate only applies to strings.
+    const spec: OpenAPIDocument = {
+      openapi: "3.0.3",
+      info: { title: "t", version: "1" },
+      paths: {
+        "/t": {
+          post: {
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      when: { type: "string", format: "date-time", nullable: true },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "200": { description: "ok" } },
+          },
+        },
+      },
+    };
+    const sv = createValidator(spec);
+    expect(
+      sv.validateRequest({
+        method: "POST",
+        path: "/t",
+        contentType: "application/json",
+        body: { when: null },
+      }),
+    ).toBeNull();
+  });
+
   it("discriminator failures inside an array carry the index in the body path", () => {
     // eov #669: when a polymorphic body element fails, the error tree
     // must identify which array index broke. Exercises the full

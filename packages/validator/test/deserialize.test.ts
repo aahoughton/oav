@@ -93,6 +93,29 @@ describe("deserialize", () => {
     });
     expect(out).toBe("color[r]=100");
   });
+
+  it("parses form-style objects with explode:false as flat comma-separated kv pairs", () => {
+    // eov #1064: `?id=role,admin,firstName,Alex` against a type:object
+    // schema with explode:false must produce { role: "admin", firstName: "Alex" }.
+    const out = deserialize("role,admin,firstName,Alex", {
+      name: "id",
+      in: "query",
+      explode: false,
+      schema: { type: "object" },
+    });
+    expect(out).toEqual({ role: "admin", firstName: "Alex" });
+  });
+
+  it("wraps a single-value repeated-explode array param as a one-element array", () => {
+    // eov #27: `?x=foo` against a type:array schema with explode:true
+    // (the form default) must yield ["foo"], not "foo".
+    const out = deserialize("foo", {
+      name: "x",
+      in: "query",
+      schema: { type: "array", items: { type: "string" } },
+    });
+    expect(out).toEqual(["foo"]);
+  });
 });
 
 describe("matchMediaType", () => {
