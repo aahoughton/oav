@@ -320,9 +320,15 @@ export function createLeafError(
   message: string,
   params: Record<string, unknown> = {},
 ): ValidationError {
-  // See note in {@link createError} on snapshotting.
-  return { code, path: [...path], message, params, children: [] };
+  // Children: a shared frozen empty array rather than a fresh `[]` on
+  // every leaf. Saves one allocation per failure on hot invalid paths.
+  // Leaves never accumulate children; the type is
+  // `ValidationError[]` (mutable) for branch uses, but readers should
+  // treat a leaf's array as read-only — which is the existing contract.
+  return { code, path: [...path], message, params, children: EMPTY_CHILDREN };
 }
+
+const EMPTY_CHILDREN: ValidationError[] = Object.freeze([]) as ValidationError[];
 
 /**
  * Construct a branch error that wraps a list of child errors (e.g. the

@@ -35,11 +35,14 @@ export const unevaluatedPropertiesKeyword: KeywordDefinition = {
         }
         if (sub === false) {
           ctx.withPathSegment(key, () => {
+            // Offending key name lives in params.unexpected; dropping
+            // it from the message turns the emitted string into a
+            // constant literal.
             ctx.emitError(
               "leaf",
               `${NAMES.DEPS}.createLeafError(` +
                 `${quoteString("unevaluatedProperties")}, ${ctx.path}, ` +
-                `\`property "\${${key}}" is not evaluated by the schema\`, ` +
+                `"property is not evaluated by the schema", ` +
                 `{ unexpected: ${key} })`,
             );
           });

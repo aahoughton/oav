@@ -97,7 +97,7 @@ export const discriminatorKeyword: KeywordDefinition = {
                   "leaf",
                   `${NAMES.DEPS}.createLeafError(` +
                     `${quoteString("discriminator")}, ${ctx.path}, ` +
-                    `\`discriminator value "\${${discVal}}" does not match any branch\`, ` +
+                    `"discriminator value does not match any branch", ` +
                     `{ propertyName: ${propLit}, value: ${discVal} })`,
                 ),
               );

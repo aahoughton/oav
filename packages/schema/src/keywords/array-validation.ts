@@ -75,11 +75,14 @@ export const uniqueItemsKeyword: KeywordDefinition = {
       g.dedent();
       g.line(`}`);
       g.if(`${dup} !== null`, () => {
+        // Duplicate indices live in params.duplicates; keep the
+        // message as a baked literal to avoid per-error template
+        // concatenation.
         ctx.emitError(
           "leaf",
           `${NAMES.DEPS}.createLeafError(` +
             `${quoteString("uniqueItems")}, ${ctx.path}, ` +
-            `\`must have unique items (indices \${${dup}.a} and \${${dup}.b} are equal)\`, ` +
+            `"must have unique items", ` +
             `{ duplicates: [${dup}.a, ${dup}.b] })`,
         );
       });

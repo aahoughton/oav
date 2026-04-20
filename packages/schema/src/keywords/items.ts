@@ -115,11 +115,13 @@ export const containsKeyword: KeywordDefinition = {
       });
       if (min > 0) {
         g.if(`${count} < ${min}`, () => {
+          // actual count lives in params.actual; dropping it from the
+          // message turns the emitted string into a constant literal.
           ctx.emitError(
             "leaf",
             `${NAMES.DEPS}.createLeafError(` +
               `${quoteString("contains")}, ${ctx.path}, ` +
-              `\`must contain at least ${min} matching item(s) (found \${${count}})\`, ` +
+              `\`must contain at least ${min} matching item(s)\`, ` +
               `{ minContains: ${min}, actual: ${count} })`,
           );
         });
@@ -130,7 +132,7 @@ export const containsKeyword: KeywordDefinition = {
             "leaf",
             `${NAMES.DEPS}.createLeafError(` +
               `${quoteString("maxContains")}, ${ctx.path}, ` +
-              `\`must contain at most ${max} matching item(s) (found \${${count}})\`, ` +
+              `\`must contain at most ${max} matching item(s)\`, ` +
               `{ maxContains: ${max}, actual: ${count} })`,
           );
         });
