@@ -195,6 +195,103 @@ describe("validateRequest", () => {
     expect(leafCodes(err)).toContain("minLength");
   });
 
+  it("assembles form/explode object query params from top-level query keys", () => {
+    // OAS `style: form, explode: true` (the default for query) spreads
+    // an object across top-level keys: ?role=admin&firstName=Alex should
+    // populate filter = { role: "admin", firstName: "Alex" }.
+    const spec: OpenAPIDocument = {
+      openapi: "3.1.0",
+      info: { title: "t", version: "1" },
+      paths: {
+        "/x": {
+          get: {
+            parameters: [
+              {
+                name: "filter",
+                in: "query",
+                required: true,
+                schema: {
+                  type: "object",
+                  required: ["role"],
+                  properties: {
+                    role: { type: "string" },
+                    firstName: { type: "string" },
+                    age: { type: "integer" },
+                  },
+                },
+              },
+            ],
+            responses: { "200": { description: "ok" } },
+          },
+        },
+      },
+    };
+    const sv = createValidator(spec);
+    // All three property keys present; integer is coerced.
+    expect(
+      sv.validateRequest({
+        method: "GET",
+        path: "/x",
+        query: { role: "admin", firstName: "Alex", age: "42" },
+      }),
+    ).toBeNull();
+    // Required role missing from a partial payload → required error.
+    const err = sv.validateRequest({
+      method: "GET",
+      path: "/x",
+      query: { firstName: "Alex" },
+    });
+    expect(leafCodes(err)).toContain("required");
+    // No matching keys at all → missing required param.
+    const missing = sv.validateRequest({ method: "GET", path: "/x" });
+    expect(leafCodes(missing)).toContain("query-param");
+  });
+
+  it("assembles deepObject query params (?color[r]=100&color[g]=50)", () => {
+    const spec: OpenAPIDocument = {
+      openapi: "3.1.0",
+      info: { title: "t", version: "1" },
+      paths: {
+        "/paint": {
+          get: {
+            parameters: [
+              {
+                name: "color",
+                in: "query",
+                style: "deepObject",
+                schema: {
+                  type: "object",
+                  properties: {
+                    r: { type: "string" },
+                    g: { type: "string" },
+                    b: { type: "string" },
+                  },
+                },
+              },
+            ],
+            responses: { "200": { description: "ok" } },
+          },
+        },
+      },
+    };
+    const sv = createValidator(spec);
+    expect(
+      sv.validateRequest({
+        method: "GET",
+        path: "/paint",
+        query: { "color[r]": "100", "color[g]": "50" },
+      }),
+    ).toBeNull();
+    // Keys outside the prefix are ignored (don't collide with other params).
+    expect(
+      sv.validateRequest({
+        method: "GET",
+        path: "/paint",
+        query: { "color[r]": "100", other: "ignored" },
+      }),
+    ).toBeNull();
+  });
+
   it("reports distinct paths when two properties share a $ref", () => {
     // openapi-backend #730: a component schema referenced by multiple
     // properties must surface the failing property's path on each error,

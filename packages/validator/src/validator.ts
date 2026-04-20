@@ -564,12 +564,36 @@ function validateParameter(
       pathPrefix = ["path", p.name];
       code = "path-param";
       break;
-    case "query":
-      raw = req.query?.[p.name];
-      validator = cache.queryParamValidators.get(p.name);
+    case "query": {
       pathPrefix = ["query", p.name];
       code = "query-param";
+      validator = cache.queryParamValidators.get(p.name);
+      // Object-valued query params with style:form + explode:true, or
+      // style:deepObject, are spread across multiple top-level query
+      // keys rather than living under `query[p.name]`. Assemble a
+      // value from those keys before falling through to the scalar /
+      // array deserialization path.
+      const assembled = assembleObjectQueryParam(p, req.query);
+      if (assembled !== undefined) {
+        if (validator === undefined) return null;
+        if (assembled.value === undefined) {
+          if (p.required) {
+            return createLeafError(
+              code,
+              pathPrefix,
+              `missing required ${p.in} parameter "${p.name}"`,
+              { name: p.name, in: p.in },
+            );
+          }
+          return null;
+        }
+        const r = validator.validate(assembled.value, pathPrefix);
+        if (r.valid || r.error === undefined) return null;
+        return r.error;
+      }
+      raw = req.query?.[p.name];
       break;
+    }
     case "header":
       raw = req.headers?.[p.name.toLowerCase()] ?? req.headers?.[p.name];
       validator = cache.headerParamValidators.get(p.name);
@@ -651,6 +675,102 @@ function firstContentMediaType(p: ParameterObject): string | undefined {
 function isJsonMediaType(mediaType: string): boolean {
   const base = mediaType.split(";")[0]?.trim().toLowerCase() ?? "";
   return base === "application/json" || base.endsWith("+json");
+}
+
+/**
+ * Assemble an object query parameter that's been spread across multiple
+ * top-level query keys per OAS `style: form + explode: true` (the default
+ * for query params) or `style: deepObject`. Returns `undefined` when the
+ * parameter isn't this shape (caller should fall through to the standard
+ * scalar/array path). When the parameter IS this shape but no matching
+ * keys were present in the request, returns `{ value: undefined }` so
+ * the caller can treat it as absent.
+ */
+function assembleObjectQueryParam(
+  p: ParameterObject,
+  query: Record<string, string | string[]> | undefined,
+): { value: unknown } | undefined {
+  if (p.in !== "query") return undefined;
+  const schemaType = extractSchemaType(p.schema);
+  if (schemaType !== "object") return undefined;
+  const style = p.style ?? "form";
+  const explode = p.explode ?? style === "form";
+  if (style === "deepObject") {
+    return { value: assembleDeepObject(p.name, query) };
+  }
+  if (style === "form" && explode) {
+    return { value: assembleFormExplodedObject(p.schema, query) };
+  }
+  return undefined;
+}
+
+function assembleDeepObject(
+  name: string,
+  query: Record<string, string | string[]> | undefined,
+): Record<string, unknown> | undefined {
+  if (query === undefined) return undefined;
+  const prefix = `${name}[`;
+  const out: Record<string, unknown> = {};
+  let any = false;
+  for (const [k, v] of Object.entries(query)) {
+    if (!k.startsWith(prefix) || !k.endsWith("]")) continue;
+    const propName = k.slice(prefix.length, -1);
+    out[propName] = Array.isArray(v) ? v[0] : v;
+    any = true;
+  }
+  return any ? out : undefined;
+}
+
+function assembleFormExplodedObject(
+  schema: SchemaOrBoolean | undefined,
+  query: Record<string, string | string[]> | undefined,
+): Record<string, unknown> | undefined {
+  if (query === undefined) return undefined;
+  const props = extractObjectProperties(schema);
+  if (props === undefined) return undefined;
+  const out: Record<string, unknown> = {};
+  let any = false;
+  for (const [propName, propSchema] of Object.entries(props)) {
+    if (!Object.prototype.hasOwnProperty.call(query, propName)) continue;
+    const raw = query[propName];
+    out[propName] = coerceQueryScalar(Array.isArray(raw) ? raw[0] : raw, propSchema);
+    any = true;
+  }
+  return any ? out : undefined;
+}
+
+function extractSchemaType(schema: SchemaOrBoolean | undefined): string | undefined {
+  if (schema === undefined || typeof schema === "boolean") return undefined;
+  const t = (schema as { type?: unknown }).type;
+  if (typeof t === "string") return t;
+  if (Array.isArray(t))
+    return (t as unknown[]).find((x) => typeof x === "string") as string | undefined;
+  return undefined;
+}
+
+function extractObjectProperties(
+  schema: SchemaOrBoolean | undefined,
+): Record<string, SchemaOrBoolean> | undefined {
+  if (schema === undefined || typeof schema === "boolean") return undefined;
+  const props = (schema as { properties?: unknown }).properties;
+  if (props === null || typeof props !== "object" || Array.isArray(props)) return undefined;
+  return props as Record<string, SchemaOrBoolean>;
+}
+
+function coerceQueryScalar(value: string | undefined, schema: SchemaOrBoolean): unknown {
+  if (value === undefined) return undefined;
+  if (typeof schema === "boolean") return value;
+  const type = extractSchemaType(schema);
+  if (type === "integer" || type === "number") {
+    const n = Number(value);
+    return Number.isNaN(n) ? value : n;
+  }
+  if (type === "boolean") {
+    if (value === "true") return true;
+    if (value === "false") return false;
+    return value;
+  }
+  return value;
 }
 
 function validateBody(req: HttpRequest, cache: OperationCache): ValidationError | null {
