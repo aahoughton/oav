@@ -84,7 +84,7 @@
     "@types/node": "22.19.17",
     "commander": "12.1.0",
     "oxfmt": "0.45.0",
-    "oxlint": "1.51.0",
+    "oxlint": "1.60.0",
     "tsup": "8.5.1",
     "typescript": "5.9.3",
     "vitest": "4.1.4"
