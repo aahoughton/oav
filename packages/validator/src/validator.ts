@@ -285,7 +285,8 @@ export function createValidator(
     const cookieParamValidators = new Map<string, CompiledSchema>();
 
     for (const p of parameters) {
-      const schema = p.schema;
+      const contentSchema = firstContentSchema(p);
+      const schema = contentSchema ?? p.schema;
       if (schema === undefined) continue;
       const v = compile(schema);
       const target =
@@ -555,10 +556,57 @@ function validateParameter(
   if (raw === "" && p.in === "query" && p.allowEmptyValue === true) return null;
   if (validator === undefined) return null;
 
+  // `parameter.content` takes precedence over `parameter.schema` when both
+  // are present. Spec permits exactly one media-type entry; take it.
+  // For JSON media types, parse the raw string before validating; other
+  // types (text/plain, etc.) are passed through as the raw string.
+  const contentMediaType = firstContentMediaType(p);
+  if (contentMediaType !== undefined) {
+    const rawStr = Array.isArray(raw) ? raw[0] : raw;
+    if (typeof rawStr !== "string") return null;
+    let parsed: unknown = rawStr;
+    if (isJsonMediaType(contentMediaType)) {
+      try {
+        parsed = JSON.parse(rawStr);
+      } catch (err) {
+        return createLeafError(
+          code,
+          pathPrefix,
+          `${p.in} parameter "${p.name}" is not valid ${contentMediaType}: ${(err as Error).message}`,
+          { name: p.name, in: p.in, mediaType: contentMediaType, reason: "content-parse" },
+        );
+      }
+    }
+    const r = validator.validate(parsed, pathPrefix);
+    if (r.valid || r.error === undefined) return null;
+    return r.error;
+  }
+
   const value = deserialize(raw, p);
   const r = validator.validate(value, pathPrefix);
   if (r.valid || r.error === undefined) return null;
   return r.error;
+}
+
+function firstContentSchema(p: ParameterObject): SchemaOrBoolean | undefined {
+  if (p.content === undefined) return undefined;
+  for (const mto of Object.values(p.content)) {
+    if (mto.schema !== undefined) return mto.schema;
+  }
+  return undefined;
+}
+
+function firstContentMediaType(p: ParameterObject): string | undefined {
+  if (p.content === undefined) return undefined;
+  for (const [mt, mto] of Object.entries(p.content)) {
+    if (mto.schema !== undefined) return mt;
+  }
+  return undefined;
+}
+
+function isJsonMediaType(mediaType: string): boolean {
+  const base = mediaType.split(";")[0]?.trim().toLowerCase() ?? "";
+  return base === "application/json" || base.endsWith("+json");
 }
 
 function validateBody(req: HttpRequest, cache: OperationCache): ValidationError | null {

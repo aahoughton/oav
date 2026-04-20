@@ -195,6 +195,70 @@ describe("validateRequest", () => {
     expect(leafCodes(err)).toContain("minLength");
   });
 
+  it("parameter.content parses JSON and validates its schema", () => {
+    // OpenAPI 3.1 §4.8.12.1 lets a parameter carry `content` instead of
+    // `schema` — standard pattern for structured-JSON query params.
+    const spec: OpenAPIDocument = {
+      openapi: "3.1.0",
+      info: { title: "t", version: "1" },
+      paths: {
+        "/items": {
+          get: {
+            parameters: [
+              {
+                name: "filter",
+                in: "query",
+                content: {
+                  "application/json": {
+                    schema: {
+                      type: "object",
+                      required: ["x"],
+                      properties: { x: { type: "integer" } },
+                    },
+                  },
+                },
+              },
+            ],
+            responses: { "200": { description: "ok" } },
+          },
+        },
+      },
+    };
+    const sv = createValidator(spec);
+
+    // Valid JSON against schema → ok.
+    expect(
+      sv.validateRequest({
+        method: "GET",
+        path: "/items",
+        query: { filter: '{"x":1}' },
+      }),
+    ).toBeNull();
+
+    // JSON that violates the schema → schema error (not a parse error).
+    const schemaErr = sv.validateRequest({
+      method: "GET",
+      path: "/items",
+      query: { filter: '{"x":"nope"}' },
+    });
+    expect(leafCodes(schemaErr)).toContain("type");
+
+    // Malformed JSON → dedicated content-parse error.
+    const parseErr = sv.validateRequest({
+      method: "GET",
+      path: "/items",
+      query: { filter: "{not-json}" },
+    });
+    const leaf = collectLeaves(parseErr ?? undefined!).find(
+      (l) => l.params?.reason === "content-parse",
+    );
+    expect(leaf?.params).toMatchObject({
+      name: "filter",
+      in: "query",
+      mediaType: "application/json",
+    });
+  });
+
   it("allowEmptyValue on a query parameter exempts empty-string from schema validation", () => {
     const spec: OpenAPIDocument = {
       openapi: "3.1.0",
