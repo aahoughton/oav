@@ -109,6 +109,15 @@ function coerceScalar(value: string, schema: SchemaObject | boolean | undefined)
  * patterns (which may use wildcards like `application/*` or `*\/*`). Returns
  * the most-specific match, or `undefined`.
  *
+ * Media-type parameters (the bits after `;`) are honoured on both sides:
+ * a pattern like `application/json; version=1` only matches a concrete
+ * `application/json; version=1` (extra parameters on the concrete side
+ * are allowed). A pattern with no parameters matches any concrete type
+ * that shares its type/subtype. Patterns with parameters win ties over
+ * bare patterns, so a spec declaring both `application/json` and
+ * `application/json; version=1` routes a versioned request to the
+ * versioned entry.
+ *
  * @param contentType - The concrete type (e.g. `"application/json; charset=utf-8"`).
  * @param patterns - Iterable of patterns from `content` keys.
  * @returns The matched pattern, or `undefined`.
@@ -120,22 +129,55 @@ export function matchMediaType(
   patterns: Iterable<string>,
 ): string | undefined {
   if (contentType === undefined) return undefined;
-  const concrete = contentType.split(";")[0]?.trim().toLowerCase() ?? "";
-  const [type, subtype = ""] = concrete.split("/");
-  if (type === undefined) return undefined;
+  const concrete = parseMediaType(contentType);
+  if (concrete === undefined) return undefined;
   let best: { pattern: string; specificity: number } | undefined;
   for (const pattern of patterns) {
-    const [pType, pSubtype = ""] = pattern.toLowerCase().split("/");
-    if (pType === undefined) continue;
-    const typeMatch = pType === "*" || pType === type;
-    const subtypeMatch = pSubtype === "*" || pSubtype === subtype;
+    const parsed = parseMediaType(pattern);
+    if (parsed === undefined) continue;
+    const typeMatch = parsed.type === "*" || parsed.type === concrete.type;
+    const subtypeMatch = parsed.subtype === "*" || parsed.subtype === concrete.subtype;
     if (!typeMatch || !subtypeMatch) continue;
-    const spec = (pType === "*" ? 0 : 2) + (pSubtype === "*" ? 0 : 1);
+    let paramsMatch = true;
+    for (const [k, v] of Object.entries(parsed.params)) {
+      if (concrete.params[k] !== v) {
+        paramsMatch = false;
+        break;
+      }
+    }
+    if (!paramsMatch) continue;
+    const spec =
+      (parsed.type === "*" ? 0 : 2) +
+      (parsed.subtype === "*" ? 0 : 1) +
+      Object.keys(parsed.params).length;
     if (!best || spec > best.specificity) {
       best = { pattern, specificity: spec };
     }
   }
   return best?.pattern;
+}
+
+function parseMediaType(
+  raw: string,
+): { type: string; subtype: string; params: Record<string, string> } | undefined {
+  const parts = raw.trim().toLowerCase().split(";");
+  const head = parts[0]?.trim() ?? "";
+  const [type, subtype = ""] = head.split("/");
+  if (type === undefined || type === "") return undefined;
+  const params: Record<string, string> = {};
+  for (let i = 1; i < parts.length; i += 1) {
+    const piece = parts[i]?.trim() ?? "";
+    if (piece === "") continue;
+    const eq = piece.indexOf("=");
+    if (eq < 0) continue;
+    const k = piece.slice(0, eq).trim();
+    const v = piece
+      .slice(eq + 1)
+      .trim()
+      .replace(/^"(.*)"$/, "$1");
+    if (k !== "") params[k] = v;
+  }
+  return { type, subtype, params };
 }
 
 /**

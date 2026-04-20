@@ -124,6 +124,43 @@ describe("matchMediaType", () => {
   it("returns undefined when nothing matches", () => {
     expect(matchMediaType("text/plain", ["application/json"])).toBeUndefined();
   });
+
+  it("matches versioned/vendor media-type parameters on both sides", () => {
+    // eov #862: specs that declare vendored/versioned media types should
+    // match requests with those parameters present.
+    expect(matchMediaType("application/json; version=1", ["application/json; version=1"])).toBe(
+      "application/json; version=1",
+    );
+    // Concrete side may carry additional parameters (e.g. charset) on
+    // top of the ones the pattern requires.
+    expect(
+      matchMediaType("application/json; version=1; charset=utf-8", ["application/json; version=1"]),
+    ).toBe("application/json; version=1");
+  });
+
+  it("prefers a pattern with matching parameters over a bare type", () => {
+    const patterns = ["application/json", "application/json; version=1"];
+    expect(matchMediaType("application/json; version=1", patterns)).toBe(
+      "application/json; version=1",
+    );
+    expect(matchMediaType("application/json; version=2", patterns)).toBe("application/json");
+  });
+
+  it("rejects a request whose parameters don't match the pattern", () => {
+    expect(matchMediaType("application/json", ["application/json; version=1"])).toBeUndefined();
+    expect(
+      matchMediaType("application/json; version=2", ["application/json; version=1"]),
+    ).toBeUndefined();
+  });
+
+  it("matches case-insensitively across the whole value, including parameters", () => {
+    // eov #463: the RFC says parameter names are case-insensitive; values
+    // are usually token-compared case-insensitively too. Normalising both
+    // sides to lowercase keeps the comparison consistent.
+    expect(
+      matchMediaType("Application/JSON; Charset=UTF-8", ["application/json; charset=utf-8"]),
+    ).toBe("application/json; charset=utf-8");
+  });
 });
 
 describe("matchResponseKey", () => {
