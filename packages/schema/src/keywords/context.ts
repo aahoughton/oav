@@ -1,6 +1,11 @@
 import type { SchemaObject, SchemaOrBoolean } from "@oav/core";
 import { NAMES, type CodeGen } from "../codegen/index.js";
-import type { ErrorKind, KeywordCompileContext, ValidateSubschemaOptions } from "./types.js";
+import type {
+  ErrorKind,
+  KeywordCompileContext,
+  KeywordDefinition,
+  ValidateSubschemaOptions,
+} from "./types.js";
 
 /**
  * Inputs accepted by {@link createKeywordContext}. The compiler assembles
@@ -32,7 +37,7 @@ export interface KeywordContextInputs {
    * fresh function. Optional: when omitted, subschema emission always
    * takes the function-call path.
    */
-  byKeyword?: ReadonlyMap<string, { compile: (ctx: KeywordCompileContext) => void }>;
+  byKeyword?: ReadonlyMap<string, KeywordDefinition>;
   /**
    * Depth counter for recursive multi-keyword inlining. Callers never
    * set this directly — the context threads it through
@@ -86,22 +91,6 @@ const INLINEABLE_SINGLE_KEYWORDS = new Set([
   "uniqueItems",
   "minProperties",
   "maxProperties",
-]);
-
-/**
- * Schema keys that are purely informational / metadata and can coexist
- * with an inlineable keyword without disqualifying the schema.
- */
-const IGNORABLE_KEYS = new Set([
-  "$comment",
-  "$schema",
-  "title",
-  "description",
-  "default",
-  "examples",
-  "readOnly",
-  "writeOnly",
-  "deprecated",
 ]);
 
 /**
@@ -225,7 +214,12 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     const allKeys = Object.keys(schema);
     const validationKeys: string[] = [];
     for (const k of allKeys) {
-      if (IGNORABLE_KEYS.has(k)) continue;
+      // Annotation keywords (title, description, $comment, etc.) are
+      // registered with `annotation: true` and emit no code — safe to
+      // skip. Unknown keys fall through to `validationKeys` so the
+      // inliner conservatively refuses to inline them, which matches
+      // the old behaviour for pre-`annotation`-flag unknowns.
+      if (inputs.byKeyword.get(k)?.annotation === true) continue;
       if (INLINE_DISQUALIFIERS.has(k)) return false;
       validationKeys.push(k);
     }

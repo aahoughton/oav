@@ -112,6 +112,7 @@ export const defsKeyword: KeywordDefinition = {
 export const schemaDialectKeyword: KeywordDefinition = {
   keyword: "$schema",
   vocabulary: CORE_VOCAB,
+  annotation: true,
   compile(): void {
     // intentionally empty
   },
@@ -125,6 +126,7 @@ export const schemaDialectKeyword: KeywordDefinition = {
 export const commentKeyword: KeywordDefinition = {
   keyword: "$comment",
   vocabulary: CORE_VOCAB,
+  annotation: true,
   compile(): void {
     // intentionally empty
   },

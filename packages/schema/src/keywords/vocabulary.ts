@@ -30,6 +30,16 @@ import {
   propertyNamesKeyword,
 } from "./properties.js";
 import {
+  defaultKeyword,
+  deprecatedKeyword,
+  descriptionKeyword,
+  exampleKeyword,
+  examplesKeyword,
+  readOnlyKeyword,
+  titleKeyword,
+  writeOnlyKeyword,
+} from "./meta-data.js";
+import {
   anchorKeyword,
   commentKeyword,
   defsKeyword,
@@ -68,6 +78,7 @@ export {
   CORE_VOCAB,
   FORMAT_ASSERTION_VOCAB,
   FORMAT_VOCAB,
+  META_DATA_VOCAB,
   OAS30_VOCAB,
   UNEVALUATED_VOCAB,
 } from "./vocabulary-uris.js";
@@ -77,6 +88,7 @@ import {
   CORE_VOCAB,
   FORMAT_ASSERTION_VOCAB,
   FORMAT_VOCAB,
+  META_DATA_VOCAB,
   OAS30_VOCAB,
   UNEVALUATED_VOCAB,
 } from "./vocabulary-uris.js";
@@ -195,6 +207,39 @@ export const formatAssertionVocabulary: Vocabulary = {
 };
 
 /**
+ * The JSON Schema 2020-12 Meta-Data vocabulary. Pure annotations — these
+ * keywords carry human- and tool-facing metadata and never reject data.
+ * Registering them explicitly gives the compiler's inliner a single,
+ * dialect-scoped source of truth for "which keys are safe to ignore".
+ *
+ * @public
+ */
+export const metaDataVocabulary: Vocabulary = {
+  uri: META_DATA_VOCAB,
+  keywords: [
+    titleKeyword,
+    descriptionKeyword,
+    defaultKeyword,
+    deprecatedKeyword,
+    readOnlyKeyword,
+    writeOnlyKeyword,
+    examplesKeyword,
+  ],
+};
+
+/**
+ * OpenAPI-specific annotations layered on top of
+ * {@link metaDataVocabulary}. Currently carries only `example` (single),
+ * which OpenAPI permits but JSON Schema 2020-12 does not.
+ *
+ * @public
+ */
+export const openapiMetaDataVocabulary: Vocabulary = {
+  uri: "https://spec.openapis.org/oas/vocab/meta-data",
+  keywords: [exampleKeyword],
+};
+
+/**
  * The three default vocabularies (validation + applicator +
  * format-annotation) in the order the compiler expects. Consumers
  * normally pick a full {@link Dialect} instead — see
@@ -209,6 +254,7 @@ export const defaultVocabularies: Vocabulary[] = [
   applicatorVocabulary,
   unevaluatedVocabulary,
   formatVocabulary,
+  metaDataVocabulary,
 ];
 
 /**
@@ -260,6 +306,8 @@ export const openapi31Dialect: Dialect = {
     unevaluatedVocabulary,
     formatAssertionVocabulary,
     formatVocabulary,
+    metaDataVocabulary,
+    openapiMetaDataVocabulary,
   ],
   rules: { refSuppressesSiblings: false },
 };
@@ -282,6 +330,8 @@ export const oas30Dialect: Dialect = {
     applicatorVocabulary,
     formatAssertionVocabulary,
     formatVocabulary,
+    metaDataVocabulary,
+    openapiMetaDataVocabulary,
   ],
   rules: { refSuppressesSiblings: true },
 };

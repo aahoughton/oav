@@ -71,6 +71,7 @@ export {
   CORE_VOCAB,
   FORMAT_ASSERTION_VOCAB,
   FORMAT_VOCAB,
+  META_DATA_VOCAB,
   OAS30_VOCAB,
   UNEVALUATED_VOCAB,
   applicatorVocabulary,
@@ -79,12 +80,24 @@ export {
   formatAssertionVocabulary,
   formatVocabulary,
   jsonSchemaDialect,
+  metaDataVocabulary,
   oas30Dialect,
   oas30Vocabulary,
   openapi31Dialect,
+  openapiMetaDataVocabulary,
   unevaluatedVocabulary,
   validationVocabulary,
 } from "./vocabulary.js";
+export {
+  defaultKeyword,
+  deprecatedKeyword,
+  descriptionKeyword,
+  exampleKeyword,
+  examplesKeyword,
+  readOnlyKeyword,
+  titleKeyword,
+  writeOnlyKeyword,
+} from "./meta-data.js";
 export {
   oas30ExclusiveMaximumKeyword,
   oas30ExclusiveMinimumKeyword,

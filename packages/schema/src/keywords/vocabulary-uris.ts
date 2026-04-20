@@ -10,6 +10,7 @@ export const UNEVALUATED_VOCAB = "https://json-schema.org/draft/2020-12/vocab/un
 export const FORMAT_VOCAB = "https://json-schema.org/draft/2020-12/vocab/format-annotation";
 export const FORMAT_ASSERTION_VOCAB =
   "https://json-schema.org/draft/2020-12/vocab/format-assertion";
+export const META_DATA_VOCAB = "https://json-schema.org/draft/2020-12/vocab/meta-data";
 
 // Not a JSON-Schema-spec URI; used only to group the OpenAPI 3.0 keyword set.
 export const OAS30_VOCAB = "https://spec.openapis.org/oas/3.0/vocab/schema";

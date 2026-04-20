@@ -186,6 +186,15 @@ export interface KeywordDefinition {
   evaluates?: { properties?: boolean; items?: boolean };
   /** When `true`, indicates the keyword takes subschemas (applicator). */
   applicator?: boolean;
+  /**
+   * When `true`, declares this keyword to be pure annotation/metadata —
+   * it emits no runtime validation code. Annotation keywords can coexist
+   * with inlineable keywords without disqualifying the schema. Used by
+   * the subschema inliner to decide which keys to skip when counting
+   * "real" validation keywords. A keyword defining `annotation: true`
+   * should also have an empty `compile`.
+   */
+  annotation?: boolean;
 }
 
 /**
