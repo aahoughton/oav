@@ -98,4 +98,25 @@ describe("router", () => {
     const r2 = createRouter(paths2);
     expect(r2.match("head", "/write-only")).toBeUndefined();
   });
+
+  it("matches path segments containing a literal colon", () => {
+    const p: Record<string, PathItem> = { "/users/me:follow": { get: op("follow") } };
+    const rc = createRouter(p);
+    expect(rc.match("get", "/users/me:follow")?.operation.operationId).toBe("follow");
+  });
+
+  it("decodes percent-encoded colons in request paths", () => {
+    const p: Record<string, PathItem> = { "/users/me:follow": { get: op("follow") } };
+    const rc = createRouter(p);
+    expect(rc.match("get", "/users/me%3Afollow")?.operation.operationId).toBe("follow");
+  });
+
+  it("rejects two path templates that differ only in parameter names", () => {
+    expect(() =>
+      createRouter({
+        "/items/{id}": { get: op("byId") },
+        "/items/{slug}": { get: op("bySlug") },
+      }),
+    ).toThrow(/ambiguous/);
+  });
 });

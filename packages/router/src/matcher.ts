@@ -89,8 +89,23 @@ export function parseTemplate(template: string): Segment[] {
  */
 export function createRouter(paths: Record<string, PathItem>): Router {
   const routes: Route[] = [];
+  const bySignature = new Map<string, string>();
   for (const [pattern, item] of Object.entries(paths)) {
-    routes.push({ segments: parseTemplate(pattern), pathPattern: pattern, pathItem: item });
+    const segments = parseTemplate(pattern);
+    // Detect routes that are structurally identical except for template
+    // parameter names — e.g. `/items/{id}` vs `/items/{slug}`. These are
+    // an ill-formed document per OAS (two paths that would always match
+    // the same request), so surface that at construction rather than
+    // silently dropping every request into whichever sort order wins.
+    const signature = segments.map((s) => (s.kind === "literal" ? s.value : "\0{}")).join("/");
+    const existing = bySignature.get(signature);
+    if (existing !== undefined) {
+      throw new Error(
+        `createRouter: path templates "${existing}" and "${pattern}" are ambiguous — they differ only in parameter names. Rename one or merge them.`,
+      );
+    }
+    bySignature.set(signature, pattern);
+    routes.push({ segments, pathPattern: pattern, pathItem: item });
   }
   // Sort by specificity: more literal segments win, longer paths win on ties.
   routes.sort((a, b) => {
