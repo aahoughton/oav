@@ -128,7 +128,13 @@ export function createRouter(paths: Record<string, PathItem>): Router {
           }
         }
         if (!matched) continue;
-        const operation = route.pathItem[normMethod];
+        let operation = route.pathItem[normMethod];
+        // RFC 9110 §9.3.2: any resource that answers GET must also answer
+        // HEAD. OpenAPI authors rarely declare HEAD explicitly, so fall
+        // back to the GET operation when no explicit HEAD is present.
+        if (operation === undefined && normMethod === "head") {
+          operation = route.pathItem.get;
+        }
         if (operation === undefined) continue;
         return {
           operation,

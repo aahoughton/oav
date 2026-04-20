@@ -78,4 +78,24 @@ describe("router", () => {
     const m = r.match("get", "/pets/42/tags/vet");
     expect(m?.pathParams).toEqual({ id: "42", tag: "vet" });
   });
+
+  it("routes HEAD to the GET operation when no explicit HEAD is declared", () => {
+    // RFC 9110 §9.3.2: resources that answer GET must answer HEAD.
+    const m = r.match("head", "/pets");
+    expect(m?.operation.operationId).toBe("listPets");
+  });
+
+  it("prefers an explicit HEAD operation over the GET fallback", () => {
+    const paths2: Record<string, PathItem> = {
+      "/pets": { get: op("listPets"), head: op("headPets") },
+    };
+    const r2 = createRouter(paths2);
+    expect(r2.match("head", "/pets")?.operation.operationId).toBe("headPets");
+  });
+
+  it("does not invent a HEAD route when the path has no GET", () => {
+    const paths2: Record<string, PathItem> = { "/write-only": { post: op("post") } };
+    const r2 = createRouter(paths2);
+    expect(r2.match("head", "/write-only")).toBeUndefined();
+  });
 });
