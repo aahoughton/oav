@@ -49,7 +49,11 @@ function dialectFor(version: OpenAPIVersion): Dialect {
 }
 
 import { deserialize, matchMediaType, matchResponseKey } from "./deserialize.js";
-import { transformBodySchemaForDirection, type BodyDirection } from "./direction.js";
+import {
+  createDirectionResolver,
+  transformBodySchemaForDirection,
+  type BodyDirection,
+} from "./direction.js";
 
 /**
  * The HTTP validator: after being built from a (resolved) OpenAPI document,
@@ -211,13 +215,16 @@ export function createValidator(
   const refResolver: RefResolver = createRefResolver(graph);
 
   const compiledCache = new Map<SchemaOrBoolean, CompiledSchema>();
-  const compile = (schema: SchemaOrBoolean): CompiledSchema => {
+  const compile = (
+    schema: SchemaOrBoolean,
+    resolver: RefResolver = refResolver,
+  ): CompiledSchema => {
     const cached = compiledCache.get(schema);
     if (cached !== undefined) return cached;
     const c = compileSchema(schema, {
       dialect,
       formats,
-      refResolver,
+      refResolver: resolver,
       maxErrors: options.maxErrors,
       keywords: options.keywords,
     });
@@ -229,9 +236,16 @@ export function createValidator(
   // sensitive, so the same schema object produces two differently-clipped
   // clones (one with readOnly properties forbidden, one with writeOnly).
   // Keyed by the original schema identity; reused across operations.
+  // The direction resolvers project the same transform across every
+  // `$ref` target so inherited `properties` / `required` from composed
+  // schemas (`allOf: [{ $ref: ... }]`) are transformed too.
   const directionTransformCache = {
     request: new Map<SchemaOrBoolean, SchemaOrBoolean>(),
     response: new Map<SchemaOrBoolean, SchemaOrBoolean>(),
+  };
+  const directionResolvers = {
+    request: createDirectionResolver(refResolver, "request", directionTransformCache.request),
+    response: createDirectionResolver(refResolver, "response", directionTransformCache.response),
   };
   const compileForDirection = (schema: SchemaOrBoolean, direction: BodyDirection): CompiledSchema =>
     compile(
@@ -241,6 +255,7 @@ export function createValidator(
         refResolver,
         directionTransformCache[direction],
       ),
+      directionResolvers[direction],
     );
 
   // Look up a response-side validator, compiling on first access and

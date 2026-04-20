@@ -354,6 +354,126 @@ describe("validateRequest", () => {
     ).toBeNull();
   });
 
+  it("readOnly inside an allOf-referenced subschema is enforced on request bodies", () => {
+    // eov #149 / #389: the classic OpenAPI composition pattern — a
+    // per-entity schema extends a shared "timestamps" fragment via
+    // allOf + $ref. The shared fragment's readOnly fields (and their
+    // required-ness) must be transformed on the request side.
+    const spec: OpenAPIDocument = {
+      openapi: "3.1.0",
+      info: { title: "t", version: "1" },
+      components: {
+        schemas: {
+          Timestamps: {
+            type: "object",
+            required: ["createdAt"],
+            properties: { createdAt: { type: "string", readOnly: true } },
+          },
+          User: {
+            allOf: [
+              { $ref: "#/components/schemas/Timestamps" },
+              {
+                type: "object",
+                required: ["name"],
+                properties: { name: { type: "string" } },
+              },
+            ],
+          },
+        },
+      },
+      paths: {
+        "/users": {
+          post: {
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": { schema: { $ref: "#/components/schemas/User" } },
+              },
+            },
+            responses: { "201": { description: "ok" } },
+          },
+        },
+      },
+    };
+    const sv = createValidator(spec);
+    // Omitting createdAt should pass — the readOnly field is exempt
+    // from required on the request side.
+    expect(
+      sv.validateRequest({
+        method: "POST",
+        path: "/users",
+        contentType: "application/json",
+        body: { name: "n" },
+      }),
+    ).toBeNull();
+    // Sending createdAt should fail — clients must not supply it.
+    const err = sv.validateRequest({
+      method: "POST",
+      path: "/users",
+      contentType: "application/json",
+      body: { name: "n", createdAt: "2026-01-01" },
+    });
+    expect(leafAt(err, "body.createdAt")).toBeDefined();
+  });
+
+  it("writeOnly inside an allOf-referenced subschema is enforced on response bodies", () => {
+    const spec: OpenAPIDocument = {
+      openapi: "3.1.0",
+      info: { title: "t", version: "1" },
+      components: {
+        schemas: {
+          Secrets: {
+            type: "object",
+            required: ["password"],
+            properties: { password: { type: "string", writeOnly: true } },
+          },
+          User: {
+            allOf: [
+              { $ref: "#/components/schemas/Secrets" },
+              {
+                type: "object",
+                required: ["id"],
+                properties: { id: { type: "string" } },
+              },
+            ],
+          },
+        },
+      },
+      paths: {
+        "/users": {
+          get: {
+            responses: {
+              "200": {
+                description: "ok",
+                content: {
+                  "application/json": { schema: { $ref: "#/components/schemas/User" } },
+                },
+              },
+            },
+          },
+        },
+      },
+    };
+    const sv = createValidator(spec);
+    // Response omits writeOnly password — should pass.
+    expect(
+      sv.validateResponse(
+        { method: "GET", path: "/users" },
+        { status: 200, contentType: "application/json", body: { id: "u1" } },
+      ),
+    ).toBeNull();
+    // Response includes writeOnly password — rejected.
+    const err = sv.validateResponse(
+      { method: "GET", path: "/users" },
+      {
+        status: 200,
+        contentType: "application/json",
+        body: { id: "u1", password: "secret" },
+      },
+    );
+    expect(leafAt(err, "response.body.password")).toBeDefined();
+  });
+
   it("readOnly via $ref is still enforced on request bodies", () => {
     const spec: OpenAPIDocument = {
       openapi: "3.1.0",

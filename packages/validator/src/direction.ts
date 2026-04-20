@@ -23,14 +23,15 @@ export type BodyDirection = "request" | "response";
  * replaced with `false` (rejecting their presence) and stripped from
  * `required` (exempting their absence).
  *
- * Scope: `$ref` at the root of the passed schema is unwrapped so body
- * schemas of the form `{ $ref: "#/components/schemas/User" }` see the
- * real target. Inside the tree, `$ref` nodes are preserved (inlining
- * eagerly would synthesise object-identity cycles on self-recursive
- * schemas). Detection of `readOnly` / `writeOnly` on a property's
- * schema does follow a single `$ref` hop and direct `allOf` children,
- * so specs that split a field's constraints across a reference still
- * trigger the rejection.
+ * The transform is a local rewrite only — `$ref` nodes are preserved as
+ * they are. To make composition-via-ref work (e.g.
+ * `allOf: [{ $ref: "#/Timestamps" }, ...]` where `Timestamps` owns the
+ * readOnly field), pair this with {@link createDirectionResolver}:
+ * every `$ref` the compiler follows at validate-time goes through the
+ * same local transform on its target, so the inherited `properties`
+ * and `required` get projected as well. Leaving `$ref` intact keeps
+ * OAS 3.0 sibling suppression and the discriminator's branch lookup
+ * (both of which read `$ref` at compile time) working as before.
  *
  * @internal
  */
@@ -42,6 +43,27 @@ export function transformBodySchemaForDirection(
 ): SchemaOrBoolean {
   const unwrapped = unwrapRootRef(schema, refResolver);
   return transformInner(unwrapped, direction, refResolver, cache);
+}
+
+/**
+ * Wrap a {@link RefResolver} so every target is direction-transformed.
+ * Each unique target schema is transformed once per direction and
+ * memoised inside the shared cache, so multiple `$ref`s pointing at the
+ * same component see the same transformed object.
+ *
+ * @internal
+ */
+export function createDirectionResolver(
+  base: RefResolver,
+  direction: BodyDirection,
+  cache: Map<SchemaOrBoolean, SchemaOrBoolean>,
+): RefResolver {
+  return {
+    resolve(ref, fromBaseUri) {
+      const target = base.resolve(ref, fromBaseUri);
+      return transformInner(target, direction, base, cache);
+    },
+  };
 }
 
 /**
