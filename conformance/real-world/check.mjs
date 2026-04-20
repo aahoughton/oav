@@ -63,29 +63,22 @@ for (const file of files) {
     const v = createValidator(loaded.document);
     const t3 = performance.now();
     row.compileMs = Math.round(t3 - t2);
-    // Smoke test: sample a few operations per spec and try validateRequest
-    // against each. We're not checking the result — only that routing +
-    // lazy per-op compilation + execution don't throw. Sampling caps
-    // memory growth from lazy response-schema compilation (see
-    // validator.ts:cacheFor) on specs with hundreds of operations.
-    const SAMPLE = 20;
-    const ops = [];
+    // Smoke test: validate a request against every declared operation.
+    // We're not checking the result — only that routing + lazy per-op
+    // compilation + execution don't throw and don't blow the heap.
+    // validateRequest never touches response schemas, so this stays
+    // cheap even on Stripe-shaped specs.
+    let invoked = 0;
     for (const [path, pathItem] of Object.entries(loaded.document.paths ?? {})) {
       for (const method of ["get", "post", "put", "patch", "delete", "options", "head"]) {
         if (!pathItem || !pathItem[method]) continue;
-        ops.push({ path, method });
+        const testPath = path.replace(/\{[^}]+\}/g, "x");
+        v.validateRequest({ method: method.toUpperCase(), path: testPath });
+        invoked += 1;
       }
     }
-    const step = Math.max(1, Math.floor(ops.length / SAMPLE));
-    let invoked = 0;
-    for (let i = 0; i < ops.length; i += step) {
-      const { path, method } = ops[i];
-      const testPath = path.replace(/\{[^}]+\}/g, "x");
-      v.validateRequest({ method: method.toUpperCase(), path: testPath });
-      invoked += 1;
-      if (invoked >= SAMPLE) break;
-    }
-    row.detail = `v=${v.detectedVersion ?? "?"} paths=${row.paths} ops=${ops.length} sampled=${invoked}`;
+    const heapMB = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+    row.detail = `v=${v.detectedVersion ?? "?"} paths=${row.paths} ops=${invoked} heap=${heapMB}MB`;
   } catch (err) {
     row.status = "error";
     row.detail = truncate(err instanceof Error ? `${err.name}: ${err.message}` : String(err));

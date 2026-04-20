@@ -145,6 +145,17 @@ interface ResponseCompiled {
   object: ResponseObject;
   /** Keyed by lowercased header name; value preserves the spec-cased name. */
   headers: Map<string, { name: string; object: HeaderObject }>;
+  /**
+   * Response body schemas, keyed by media type. Each is compiled lazily
+   * on first use and memoized into `bodyValidators`. Eager compilation
+   * of every response schema at `cacheFor` time is expensive on specs
+   * with hundreds of operations (Stripe-shaped), and most validators
+   * are only ever asked about a single status/media-type pairing.
+   */
+  bodySchemas: Map<string, SchemaOrBoolean>;
+  /** Header schemas keyed by lowercased name; compiled lazily. */
+  headerSchemas: Map<string, SchemaOrBoolean>;
+  /** Memoization caches for the lazy compiles. */
   bodyValidators: Map<string, CompiledSchema>;
   headerValidators: Map<string, CompiledSchema>;
 }
@@ -210,6 +221,22 @@ export function createValidator(
       keywords: options.keywords,
     });
     compiledCache.set(schema, c);
+    return c;
+  };
+
+  // Look up a response-side validator, compiling on first access and
+  // memoizing into the passed cache. Shared by body and header paths.
+  const getResponseValidator = (
+    cache: Map<string, CompiledSchema>,
+    schemas: Map<string, SchemaOrBoolean>,
+    key: string,
+  ): CompiledSchema | undefined => {
+    const hit = cache.get(key);
+    if (hit !== undefined) return hit;
+    const schema = schemas.get(key);
+    if (schema === undefined) return undefined;
+    const c = compile(schema);
+    cache.set(key, c);
     return c;
   };
 
@@ -285,24 +312,26 @@ export function createValidator(
     for (const [status, rawResponse] of Object.entries(rawResponses)) {
       const response = resolveRef<ResponseObject>(rawResponse);
       if (response === undefined) continue;
-      const bodyVs = new Map<string, CompiledSchema>();
-      const headerVs = new Map<string, CompiledSchema>();
+      const bodySchemas = new Map<string, SchemaOrBoolean>();
+      const headerSchemas = new Map<string, SchemaOrBoolean>();
       const headersResolved = new Map<string, { name: string; object: HeaderObject }>();
       for (const [mt, mto] of Object.entries(response.content ?? {})) {
-        if (mto.schema) bodyVs.set(mt, compile(mto.schema));
+        if (mto.schema) bodySchemas.set(mt, mto.schema);
       }
       for (const [name, rawHdr] of Object.entries(response.headers ?? {})) {
         const hdr = resolveRef<HeaderObject>(rawHdr);
         if (hdr === undefined) continue;
         const lower = name.toLowerCase();
         headersResolved.set(lower, { name, object: hdr });
-        if (hdr.schema) headerVs.set(lower, compile(hdr.schema));
+        if (hdr.schema) headerSchemas.set(lower, hdr.schema);
       }
       responses.set(status, {
         object: response,
         headers: headersResolved,
-        bodyValidators: bodyVs,
-        headerValidators: headerVs,
+        bodySchemas,
+        headerSchemas,
+        bodyValidators: new Map(),
+        headerValidators: new Map(),
       });
     }
 
@@ -393,7 +422,6 @@ export function createValidator(
           for (const [lowered, entry] of responseCompiled.headers) {
             const hdr = entry.object;
             const name = entry.name;
-            const validator = responseCompiled.headerValidators.get(lowered);
             const raw = res.headers[lowered] ?? res.headers[name];
             if (hdr.required && (raw === undefined || raw === "")) {
               children.push(
@@ -408,7 +436,13 @@ export function createValidator(
               );
               continue;
             }
-            if (validator === undefined || raw === undefined) continue;
+            if (raw === undefined) continue;
+            const validator = getResponseValidator(
+              responseCompiled.headerValidators,
+              responseCompiled.headerSchemas,
+              lowered,
+            );
+            if (validator === undefined) continue;
             const value = deserialize(raw, {
               name,
               in: "header",
@@ -423,8 +457,8 @@ export function createValidator(
           }
         }
 
-        if (responseCompiled.bodyValidators.size > 0 && res.body !== undefined) {
-          const mt = matchMediaType(res.contentType, responseCompiled.bodyValidators.keys());
+        if (responseCompiled.bodySchemas.size > 0 && res.body !== undefined) {
+          const mt = matchMediaType(res.contentType, responseCompiled.bodySchemas.keys());
           if (mt === undefined) {
             children.push(
               createLeafError(
@@ -433,12 +467,16 @@ export function createValidator(
                 `response Content-Type "${res.contentType ?? "<missing>"}" is not declared for status ${statusKey}`,
                 {
                   contentType: res.contentType,
-                  declared: [...responseCompiled.bodyValidators.keys()],
+                  declared: [...responseCompiled.bodySchemas.keys()],
                 },
               ),
             );
           } else {
-            const validator = responseCompiled.bodyValidators.get(mt);
+            const validator = getResponseValidator(
+              responseCompiled.bodyValidators,
+              responseCompiled.bodySchemas,
+              mt,
+            );
             if (validator !== undefined) {
               const r = validator.validate(res.body, ["response", "body"]);
               if (!r.valid && r.error !== undefined) {
