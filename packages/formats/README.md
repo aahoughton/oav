@@ -23,13 +23,13 @@ replace them.
 
 ## Formats
 
-- **Date / time** — `date-time`, `date`, `time`, `duration` (RFC 3339)
-- **Email** — `email` (ASCII), `idn-email` (RFC 6531)
-- **Hostname** — `hostname`, `idn-hostname`
-- **IP** — `ipv4`, `ipv6`
-- **URI** — `uri`, `uri-reference`, `iri`, `iri-reference`, `uri-template`
-- **JSON Pointer** — `json-pointer`, `relative-json-pointer`
-- **Misc** — `regex`, `uuid`
+- **Date / time**: `date-time`, `date`, `time`, `duration` (RFC 3339)
+- **Email**: `email` (ASCII), `idn-email` (RFC 6531)
+- **Hostname**: `hostname`, `idn-hostname`
+- **IP**: `ipv4`, `ipv6`
+- **URI**: `uri`, `uri-reference`, `iri`, `iri-reference`, `uri-template`
+- **JSON Pointer**: `json-pointer`, `relative-json-pointer`
+- **Misc**: `regex`, `uuid`
 
 ## Registering a custom format
 
@@ -59,7 +59,7 @@ for a runnable end-to-end.
 
 ## Assertive vs annotation-only
 
-In JSON Schema 2020-12, `format` is advisory by default — a validator
+In JSON Schema 2020-12, `format` is advisory by default: a validator
 recognises the name but doesn't reject malformed values. OpenAPI 3.0 /
 3.1 / 3.2 treat `format` as assertive; the validator wires up the
 corresponding vocabulary so `format: email` actually rejects non-emails.
