@@ -195,6 +195,29 @@ Levers we tried that didn't pan out:
 
 Levers we haven't attempted:
 
+- **Gate `unevaluated*` tracking on whether the schema actually uses it.**
+  Commit `f9d7579` (feat(schema): thread evaluated-key sets through
+  compiled subvalidators) taught every non-leaf function to allocate
+  `evalProps` / `evalItems` Sets and thread them through composition.
+  That machinery is inert for schemas that don't use
+  `unevaluatedProperties` / `unevaluatedItems` anywhere, but it still
+  runs: every applicator-containing function allocates two Sets per
+  call, every composition branch allocates another two, and a merge
+  loop runs before return. Measured cost on HEAD vs the pre-`f9d7579`
+  compiler (`--time=250`, same laptop):
+  - `petstore` valid: 142 → 169 ns (+19%)
+  - `tree` valid: 51 → 81 ns (+60%)
+  - `composition` valid: 244 → 486 ns (+99%)
+  - `array-heavy` valid: 3.44 → 10.56 µs (+207%)
+  - `tiny`: no change (leaf schemas don't get tracking).
+    Fix path: one-pass walk of the root schema plus any `external`
+    schemas in the registry before codegen; if no `unevaluated*` appears
+    anywhere, set a `state.tracking = false` flag and have the codegen
+    sites emit their pre-`f9d7579` shape. A per-schema variant that
+    reasons about whether a given subschema is reachable from an
+    `unevaluated*` ancestor is possible but tricky (`$ref` means one
+    compiled schema can have multiple callers); start with the coarse
+    version.
 - **Specialised short-circuit for `items: { type: T }`** where the
   type predicate is a single compare against a pre-materialised
   predicate function. Would help the most trivial array shapes

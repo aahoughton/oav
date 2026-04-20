@@ -206,3 +206,11 @@ having an unknown field, which 2020-12 allows in every dialect.
 - `$dynamicRef` currently behaves like `$ref` with an anchor lookup — no
   runtime dynamic-scope traversal. Good enough for schemas that don't
   actually rewire the extension point at runtime.
+- `unevaluated*` evaluated-key tracking is enabled unconditionally on
+  any applicator-containing schema, even when nothing in the tree uses
+  `unevaluatedProperties` / `unevaluatedItems`. That costs measurable
+  validate throughput on schemas that don't need it (up to ~3× slower
+  on `array-heavy`). Gating on a compile-time walk of the tree is
+  tracked in `performance/README.md` under "Levers we haven't
+  attempted"; do that before shipping `@oav/validator` to latency-
+  sensitive consumers.

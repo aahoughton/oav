@@ -58,9 +58,7 @@ function fmtUs(us: number): string {
 // instead of dereferencing blindly so one failing task can't take the
 // whole script down.
 function taskStats(t: { result?: unknown }): { hz: number; mean: number } | null {
-  const r = t.result as
-    | { throughput?: { mean?: number }; latency?: { mean?: number } }
-    | undefined;
+  const r = t.result as { throughput?: { mean?: number }; latency?: { mean?: number } } | undefined;
   const hz = r?.throughput?.mean;
   const latency = r?.latency?.mean;
   if (typeof hz !== "number" || typeof latency !== "number") return null;
