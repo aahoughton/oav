@@ -297,6 +297,11 @@ export interface ParameterObject {
   description?: string;
   required?: boolean;
   deprecated?: boolean;
+  /**
+   * Query-only. When `true`, an empty value (`?flag=`) is legitimate and
+   * exempted from schema validation. OpenAPI 3.1 §4.8.12.1.
+   */
+  allowEmptyValue?: boolean;
   style?: ParameterStyle;
   explode?: boolean;
   allowReserved?: boolean;

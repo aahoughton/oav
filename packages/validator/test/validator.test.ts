@@ -152,6 +152,76 @@ describe("validateRequest", () => {
     });
     expect(leafCodes(err)).toContain("header-param");
   });
+
+  it("empty-string query param is not treated as missing", () => {
+    const spec: OpenAPIDocument = {
+      openapi: "3.1.0",
+      info: { title: "t", version: "1" },
+      paths: {
+        "/search": {
+          get: {
+            parameters: [{ name: "q", in: "query", required: true, schema: { type: "string" } }],
+            responses: { "200": { description: "ok" } },
+          },
+        },
+      },
+    };
+    const sv = createValidator(spec);
+    expect(sv.validateRequest({ method: "GET", path: "/search", query: { q: "" } })).toBeNull();
+  });
+
+  it("empty-string query param is rejected by a minLength:1 schema", () => {
+    const spec: OpenAPIDocument = {
+      openapi: "3.1.0",
+      info: { title: "t", version: "1" },
+      paths: {
+        "/search": {
+          get: {
+            parameters: [
+              {
+                name: "q",
+                in: "query",
+                required: true,
+                schema: { type: "string", minLength: 1 },
+              },
+            ],
+            responses: { "200": { description: "ok" } },
+          },
+        },
+      },
+    };
+    const sv = createValidator(spec);
+    const err = sv.validateRequest({ method: "GET", path: "/search", query: { q: "" } });
+    expect(leafCodes(err)).toContain("minLength");
+  });
+
+  it("allowEmptyValue on a query parameter exempts empty-string from schema validation", () => {
+    const spec: OpenAPIDocument = {
+      openapi: "3.1.0",
+      info: { title: "t", version: "1" },
+      paths: {
+        "/search": {
+          get: {
+            parameters: [
+              {
+                name: "debug",
+                in: "query",
+                required: false,
+                allowEmptyValue: true,
+                // A schema that would normally reject "" — allowEmptyValue skips it.
+                schema: { type: "string", minLength: 4 },
+              },
+            ],
+            responses: { "200": { description: "ok" } },
+          },
+        },
+      },
+    };
+    const sv = createValidator(spec);
+    expect(sv.validateRequest({ method: "GET", path: "/search", query: { debug: "" } })).toBeNull();
+    const err = sv.validateRequest({ method: "GET", path: "/search", query: { debug: "ab" } });
+    expect(leafCodes(err)).toContain("minLength");
+  });
 });
 
 describe("validateResponse", () => {

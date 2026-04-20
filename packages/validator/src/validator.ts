@@ -539,7 +539,7 @@ function validateParameter(
       break;
   }
 
-  if (raw === undefined || raw === "") {
+  if (raw === undefined) {
     if (p.required) {
       return createLeafError(code, pathPrefix, `missing required ${p.in} parameter "${p.name}"`, {
         name: p.name,
@@ -548,6 +548,11 @@ function validateParameter(
     }
     return null;
   }
+  // Empty-string is a legitimate value — `minLength`/`pattern` on the
+  // parameter schema handles rejection where needed. OpenAPI 3.1 §4.8.12.1
+  // explicitly permits `?flag=` on query parameters declaring
+  // `allowEmptyValue: true`; exempt those from validation.
+  if (raw === "" && p.in === "query" && p.allowEmptyValue === true) return null;
   if (validator === undefined) return null;
 
   const value = deserialize(raw, p);
