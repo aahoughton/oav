@@ -197,14 +197,23 @@ export const ifThenElseKeyword: KeywordDefinition = {
     const elseSchema = ctx.parentSchema.else;
     const ifFn = ctx.compileSubschema(ifSchema);
     const ifErr = ctx.gen.scope.name("ifErr");
-    // Annotations from `if` are discarded per spec; only then/else
-    // contribute to the enclosing scope's evaluated-key tracking.
-    ctx.gen.const(ifErr, `${ifFn}(${ctx.data}, ${ctx.path}, undefined, undefined)`);
-    const passProps = ctx.evaluatedPropertiesVar ?? "undefined";
-    const passItems = ctx.evaluatedItemsVar ?? "undefined";
+    const outProps = ctx.evaluatedPropertiesVar;
+    const outItems = ctx.evaluatedItemsVar;
+    // Per 2020-12: annotations from `if` are preserved when `if` passes
+    // and merged into the enclosing scope alongside `then`'s. Give `if`
+    // its own Set so failing runs don't leak keys into `else`'s path.
+    const ifProps = ctx.gen.scope.name("ifProps");
+    const ifItems = ctx.gen.scope.name("ifItems");
+    ctx.gen.const(ifProps, outProps !== null ? "new Set()" : "undefined");
+    ctx.gen.const(ifItems, outItems !== null ? "new Set()" : "undefined");
+    ctx.gen.const(ifErr, `${ifFn}(${ctx.data}, ${ctx.path}, ${ifProps}, ${ifItems})`);
+    const passProps = outProps ?? "undefined";
+    const passItems = outItems ?? "undefined";
     ctx.gen.if(
       `${ifErr} === null`,
       (g) => {
+        if (outProps !== null) g.line(`for (const k of ${ifProps}) ${outProps}.add(k);`);
+        if (outItems !== null) g.line(`for (const k of ${ifItems}) ${outItems}.add(k);`);
         if (thenSchema !== undefined) {
           const tFn = ctx.compileSubschema(thenSchema);
           const tErr = g.scope.name("thenErr");

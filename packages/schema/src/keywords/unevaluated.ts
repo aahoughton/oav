@@ -30,6 +30,7 @@ export const unevaluatedPropertiesKeyword: KeywordDefinition = {
       g.forIn(key, ctx.data, (gi) => {
         gi.if(`${evaluatedVar}.has(${key})`, (gii) => gii.line("continue;"));
         if (sub === true) {
+          gi.line(`${evaluatedVar}.add(${key});`);
           return;
         }
         if (sub === false) {
@@ -74,6 +75,7 @@ export const unevaluatedItemsKeyword: KeywordDefinition = {
       g.forRange(i, `${ctx.data}.length`, (gi) => {
         gi.if(`${evaluatedVar}.has(${i})`, (gii) => gii.line("continue;"));
         if (sub === true) {
+          gi.line(`${evaluatedVar}.add(${i});`);
           return;
         }
         if (sub === false) {

@@ -1,3 +1,4 @@
+/* eslint-disable unicorn/no-thenable -- `then` is a JSON Schema keyword here */
 import { describe, expect, it } from "vitest";
 import type { ValidationError } from "@oav/core";
 import { compile } from "./helpers.js";
@@ -86,5 +87,83 @@ describe("unevaluatedProperties across composition", () => {
     });
     expect(v.validate(["a", 1]).valid).toBe(true);
     expect(v.validate(["a", 1, true]).valid).toBe(false);
+  });
+
+  it("counts every key as evaluated when a nested branch has unevaluatedProperties: true", () => {
+    const v = compile({
+      type: "object",
+      properties: { foo: { type: "string" } },
+      allOf: [{ unevaluatedProperties: true }],
+      unevaluatedProperties: { type: "string", maxLength: 2 },
+    });
+    // Outer `unevaluatedProperties: {…}` would normally constrain
+    // `bar` to maxLength 2, but the inner `unevaluatedProperties: true`
+    // evaluates every key first, so the outer sees nothing unevaluated.
+    expect(v.validate({ foo: "foo", bar: "bar" }).valid).toBe(true);
+  });
+
+  it("counts every index as evaluated when a nested branch has unevaluatedItems: true", () => {
+    const v = compile({
+      type: "array",
+      allOf: [{ prefixItems: [{ type: "string" }] }, { unevaluatedItems: true }],
+      unevaluatedItems: false,
+    });
+    expect(v.validate(["foo", 42, true]).valid).toBe(true);
+  });
+
+  it("preserves if annotations in the outer evaluated set when if passes", () => {
+    const v = compile({
+      type: "object",
+      if: {
+        properties: { foo: { const: "then" } },
+        required: ["foo"],
+      },
+      then: {
+        properties: { bar: { type: "string" } },
+        required: ["bar"],
+      },
+      else: {
+        properties: { baz: { type: "string" } },
+        required: ["baz"],
+      },
+      unevaluatedProperties: false,
+    });
+    // `foo` is evaluated by `if`; `bar` by `then`. Both must be seen by
+    // the outer `unevaluatedProperties: false`.
+    expect(v.validate({ foo: "then", bar: "bar" }).valid).toBe(true);
+    const r = v.validate({ foo: "then", bar: "bar", extra: "no" });
+    expect(r.valid).toBe(false);
+    expect(leafCodes(r.error)).toContain("unevaluatedProperties");
+  });
+
+  it("preserves if annotations when if has no sibling then/else", () => {
+    const v = compile({
+      type: "object",
+      if: {
+        patternProperties: { foo: { type: "string" } },
+      },
+      unevaluatedProperties: false,
+    });
+    expect(v.validate({ foo: "a" }).valid).toBe(true);
+    expect(v.validate({ bar: "a" }).valid).toBe(false);
+  });
+
+  it("threads contains annotations through if into unevaluatedItems", () => {
+    const v = compile({
+      type: "array",
+      if: { contains: { const: "a" } },
+      then: {
+        if: { contains: { const: "b" } },
+        then: { if: { contains: { const: "c" } } },
+      },
+      unevaluatedItems: false,
+    });
+    expect(v.validate([]).valid).toBe(true);
+    expect(v.validate(["a", "a"]).valid).toBe(true);
+    expect(v.validate(["a", "b", "a"]).valid).toBe(true);
+    expect(v.validate(["c", "a", "b", "c"]).valid).toBe(true);
+    // Missing `a` — the outer `if` fails, no annotations flow in, so
+    // every item becomes unevaluated.
+    expect(v.validate(["b", "b"]).valid).toBe(false);
   });
 });

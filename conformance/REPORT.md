@@ -7,8 +7,8 @@ Generated against the upstream test suites listed in
 
 | Source                              | Cases | Pass | Mismatch | Error | % pass |
 | ----------------------------------- | ----- | ---- | -------- | ----- | ------ |
-| JSON Schema Test Suite (required)   | 1290  | 1257 | 29       | 4     | 97.4%  |
-| JSON Schema Test Suite (+ optional) | 1452  | 1415 | 33       | 4     | 97.5%  |
+| JSON Schema Test Suite (required)   | 1290  | 1271 | 15       | 4     | 98.5%  |
+| JSON Schema Test Suite (+ optional) | 1452  | 1429 | 19       | 4     | 98.4%  |
 | OpenAPI `petstore` via `oav` CLI    | 14    | 14   | 0        | 0     | 100%   |
 
 "Mismatch" = our verdict differs from upstream; "error" = our compiler
@@ -53,6 +53,14 @@ validation, resolve `$dynamicRef` at call time.
   generated subvalidators now take out-parameter `Set<string>`s and
   composition / `$ref` / `if-then-else` / `dependentSchemas` keywords
   thread them through, merging keys from passing branches only.
+- `if`-branch annotations & nested `unevaluated*: true` — fixed 14
+  cases across `unevaluatedProperties.json` / `unevaluatedItems.json`.
+  `if`'s evaluated-key set is now merged into the outer scope when
+  `if` passes (2020-12 semantics, not 2019-09's drop-on-if), which
+  also threads `contains`-via-`if` annotations into
+  `unevaluatedItems`. A nested `unevaluatedProperties: true` /
+  `unevaluatedItems: true` now marks every iterated key/index as
+  evaluated so outer scopes see them.
 
 ## Optional-suite breakdown
 
