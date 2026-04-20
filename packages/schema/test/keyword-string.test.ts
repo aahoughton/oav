@@ -14,6 +14,13 @@ describe("string keywords", () => {
     expect(min.validate("🦀🦀").valid).toBe(false);
   });
 
+  it("maxLength treats a single surrogate-pair code point as length 1", () => {
+    // Regression for #12 — str.length would return 2 for this.
+    const v = compile({ maxLength: 1 });
+    expect(v.validate("👨").valid).toBe(true);
+    expect(v.validate("ab").valid).toBe(false);
+  });
+
   it("pattern matches against an ECMA-262 regex (unicode)", () => {
     const v = compile({ pattern: "^[a-z]+$" });
     expect(v.validate("abc").valid).toBe(true);

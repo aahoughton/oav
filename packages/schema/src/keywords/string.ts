@@ -13,7 +13,7 @@ export const maxLengthKeyword: KeywordDefinition = {
   vocabulary: CORE_VALIDATION_VOCAB,
   compile(ctx: KeywordCompileContext): void {
     const limit = ctx.schema as number;
-    const lenExpr = codeUnitLengthExpr(ctx.data);
+    const lenExpr = codePointLengthExpr(ctx.data);
     ctx.gen.if(`typeof ${ctx.data} === "string" && ${lenExpr} > ${limit}`, () => {
       ctx.emitError(
         "leaf",
@@ -37,7 +37,7 @@ export const minLengthKeyword: KeywordDefinition = {
   vocabulary: CORE_VALIDATION_VOCAB,
   compile(ctx: KeywordCompileContext): void {
     const limit = ctx.schema as number;
-    const lenExpr = codeUnitLengthExpr(ctx.data);
+    const lenExpr = codePointLengthExpr(ctx.data);
     ctx.gen.if(`typeof ${ctx.data} === "string" && ${lenExpr} < ${limit}`, () => {
       ctx.emitError(
         "leaf",
@@ -124,10 +124,13 @@ export const formatAssertionKeyword: KeywordDefinition = {
 };
 
 /**
- * UTF-16 code-point-safe string length. JSON Schema specifies character
- * (code point) counts, so surrogate pairs count as one.
+ * Emit an expression that returns the Unicode code-point count of a string.
+ * JSON Schema 2020-12 §6.3 specifies that `minLength` / `maxLength` count
+ * code points, so surrogate pairs (emoji, astral CJK, ...) count as one.
+ * Spreading a string invokes its `[Symbol.iterator]`, which yields code
+ * points — not the UTF-16 code units that `str.length` returns.
  */
-function codeUnitLengthExpr(dataExpr: string): string {
+function codePointLengthExpr(dataExpr: string): string {
   return `[...${dataExpr}].length`;
 }
 
