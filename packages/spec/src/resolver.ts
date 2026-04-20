@@ -171,8 +171,13 @@ function encodeFragment(fragment: string): string {
 /**
  * Resolve a JSON Pointer (RFC 6901) fragment against the given root value.
  *
+ * Accepts pointers as they appear inside a URI fragment: percent-escapes
+ * are decoded first (RFC 6901 §6), then `~1`/`~0` are decoded per §4.
+ * Callers pass `$ref.slice(1)` directly — no need to `decodeURIComponent`
+ * themselves.
+ *
  * @param root - Root value.
- * @param pointer - Pointer (e.g. `"/$defs/Pet"`).
+ * @param pointer - Pointer (e.g. `"/$defs/Pet"` or `"/paths/~1v2~1apps~1%7Bapp_id%7D"`).
  * @returns The targeted value.
  * @throws When the pointer traverses into a non-object or the target is missing.
  *
@@ -180,7 +185,11 @@ function encodeFragment(fragment: string): string {
  */
 export function resolveJsonPointer(root: unknown, pointer: string): JsonValue {
   if (pointer === "" || pointer === "/") return root as JsonValue;
-  const parts = pointer
+  // RFC 6901 §6: percent-decoding happens on the whole pointer first,
+  // then ~0/~1 decoding per §4. Only well-formed %XX escapes are decoded
+  // so stray '%' chars in keys are preserved.
+  const decoded = pointer.replace(/%[0-9A-Fa-f]{2}/g, (m) => decodeURIComponent(m));
+  const parts = decoded
     .replace(/^\//, "")
     .split("/")
     .map((s) => s.replace(/~1/g, "/").replace(/~0/g, "~"));

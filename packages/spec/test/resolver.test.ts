@@ -184,6 +184,28 @@ describe("resolveSpec", () => {
     }
   });
 
+  it("resolves refs whose fragments percent-encode reserved chars (e.g. {})", async () => {
+    // Real-world case: DigitalOcean's spec uses fragments like
+    // #/paths/~1v2~1apps~1%7Bapp_id%7D/get/parameters/0 because { and }
+    // are reserved in URI fragments per RFC 3986 §3.5. Per RFC 6901 §6,
+    // percent-decoding must happen before ~0/~1 decoding.
+    const doc = {
+      paths: {
+        "/v2/apps/{app_id}": {
+          get: { parameters: [{ name: "app_id", in: "path" }] },
+        },
+      },
+    };
+    const p = resolveJsonPointer(doc, "/paths/~1v2~1apps~1%7Bapp_id%7D/get/parameters/0");
+    expect(p).toEqual({ name: "app_id", in: "path" });
+  });
+
+  it("preserves stray % chars in keys (only well-formed %XX sequences decode)", async () => {
+    const doc = { "50%": { value: 1 } };
+    const p = resolveJsonPointer(doc, "/50%");
+    expect(p).toEqual({ value: 1 });
+  });
+
   it("merges $defs.__ext__ with pre-existing $defs on the entry doc", async () => {
     const reader = createMemoryReader(
       new Map<string, unknown>([
