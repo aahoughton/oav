@@ -1,224 +1,193 @@
 # @oav-dev/performance
 
 Cross-library benchmarks for `@oav/schema` vs
-[ajv](https://github.com/ajv-validator/ajv) (2020 dialect) and
-[@hyperjump/json-schema](https://github.com/hyperjump-io/json-schema)
-(2020-12 first-class).
+[ajv](https://github.com/ajv-validator/ajv) (2020-12 dialect) vs
+[@hyperjump/json-schema](https://github.com/hyperjump-io/json-schema).
+Two benchmark entry points, two use cases.
 
-This is a **standalone package** inside the monorepo — its deps (ajv,
-hyperjump, tinybench, tsx) are declared here, not in the main workspace,
-so `pnpm install` at the repo root stays lean.
+## Bootstrap
 
-## Bootstrap and run
+Deps live in this sub-package and aren't part of the main workspace install:
 
 ```bash
 cd performance
-pnpm install            # one-time
-pnpm bench              # all schemas, default 500ms per task
-pnpm bench:long         # all schemas, 1.5s per task (steadier numbers)
-pnpm bench -- --filter=petstore   # a single schema
-pnpm bench -- --time=250          # quick smoke
+pnpm install
 ```
 
-Each schema is benchmarked on two axes:
+## Entry points
 
-- **compile**: cold-start cost (codegen / eval / meta-validation for
-  libraries that do it). Measures how much you pay the first time a
-  schema is loaded.
-- **validate**: steady-state invocation of a pre-compiled validator,
-  alternating over a mix of valid and invalid inputs.
+### `run.ts` — cross-library schema benchmark
 
-The five schemas in `schemas.ts` try to cover the realistic shape
-distribution: a trivial scalar (overhead baseline), a petstore-style
-flat object, a recursive `$ref`, `oneOf` + `allOf` composition, and a
-large array of small objects.
+```bash
+pnpm bench                                      # default 500ms per task
+pnpm bench:long                                 # 1500ms per task
+pnpm bench -- --filter=petstore                 # one schema only
+pnpm bench -- --time=250                        # quick smoke
+pnpm bench -- --spec=path/to/openapi.yaml       # real spec mode
+```
 
-## Latest run (Node 22, developer laptop, `--time=500`)
+Two modes, one script:
 
-Compile — oav wins across the board; ajv's meta-schema validation costs
-milliseconds on every compile.
+- **Default (synthetic).** Iterates the schemas in `./schemas.ts` — a
+  curated shape distribution (trivial scalar, flat object, recursive
+  `$ref`, `oneOf`+`allOf` composition, large array of small objects).
+  Measures both `compile` and `validate`; validate has separate valid
+  / invalid tasks so neither library wins by short-circuiting. Uses
+  [tinybench](https://github.com/tinylibs/tinybench) for
+  warmup-plus-iterations statistics.
 
-| schema      | ajv    | hyperjump | oav    |
-| ----------- | ------ | --------- | ------ |
-| tiny        | 2.59ms | 35.39µs   | 8.27µs |
-| petstore    | 2.63ms | 172.36µs  | 37.6µs |
-| tree        | 2.54ms | 150.74µs  | 32.2µs |
-| composition | 2.76ms | 347.27µs  | 70.5µs |
-| array-heavy | 2.53ms | 143.49µs  | 32.0µs |
+- **`--spec=<path>` (real-world).** Loads the given OpenAPI entry via
+  [`@apidevtools/json-schema-ref-parser`](https://github.com/APIDevTools/json-schema-ref-parser)
+  (to keep the input identical across all three libraries), extracts
+  every unique request- and response-body schema, and times each
+  library's compile across the whole set with plain
+  `performance.now()`. Validate is skipped in this mode: real-world
+  schemas don't come with paired valid/invalid fixtures, so there's
+  no honest apples-to-apples way to measure it here. Use the
+  synthetic mode if you need validate throughput numbers.
 
-Validate (happy path — pre-compiled validator, one valid input per
-iteration, no per-iteration setup):
+Output lands on stdout and as JSON at `./results.json`.
 
-| schema      | ajv     | hyperjump | oav    |
-| ----------- | ------- | --------- | ------ |
-| tiny        | 20.8ns  | 129.4ns   | 18.9ns |
-| petstore    | 39.9ns  | 853.3ns   | 147ns  |
-| tree        | 34.5ns  | 485.1ns   | 46ns   |
-| composition | 52.4ns  | 1.60µs    | 241ns  |
-| array-heavy | 980.5ns | 192.4µs   | 3.37µs |
+### `bench-real-world.mjs` — oav end-to-end on one spec
 
-Validate (failure path — pre-compiled validator, one invalid input per
-iteration):
+```bash
+pnpm build                                      # dist/ needs to exist
+node performance/bench-real-world.mjs <spec> [...more]
+```
 
-| schema      | ajv    | hyperjump | oav    |
-| ----------- | ------ | --------- | ------ |
-| tiny        | 28.4ns | 127.4ns   | 26.3ns |
-| petstore    | 62.9ns | 549.9ns   | 206ns  |
-| tree        | 49.2ns | 631.3ns   | 79ns   |
-| composition | 57.3ns | 1.37µs    | 294ns  |
-| array-heavy | 1.01µs | 196.7µs   | 3.42µs |
+Not a library comparison. Runs oav's full OpenAPI pipeline on one or
+more specs and reports:
 
-(Numbers drift run-to-run; use `results.json` for the raw series.)
+- oav `loadSpec` duration (or FAIL + error when it throws)
+- `@apidevtools/json-schema-ref-parser` duration for comparison
+- `createValidator` construction
+- `validateRequest` cold-path median + max across ~50 sampled ops
+- hot-path median after caches are warm
+- heap usage
 
-## Changes since the first measurement
+Use it to sanity-check a new spec loads end-to-end through oav, or to
+regression-check when you touch `@oav/spec` / `@oav/validator`.
 
-Three optimisations landed as distinct commits, each with its own
-rigorous test suite:
+## Which entry point when
 
-**1. Single-keyword subschema inlining.** When an applicator
-dispatches to a subschema containing exactly one leaf keyword from a
-safe whitelist, the keyword's code is emitted directly into the
-enclosing function.
-
-- tree: 77 → 63 ns (+19%)
-- array-heavy: 16.12 → 9.32 µs (+42%)
-
-**2. Shared mutable path array.** Generated validators used to build
-a fresh `[...path, seg]` per sub-call, even on the happy path. Now
-the path variable is a single mutable array that gets pushed on
-descent and popped on ascent. Error-creation helpers snapshot the
-path at commit time, so errors retain correct paths regardless of
-later push/pop unwind. 11 new rigorous tests in
-`path-sharing.test.ts` catch the dangerous cases (live-reference
-corruption, missing pop, sibling interference).
-
-- array-heavy: 9.32 → 3.69 µs (+60%)
-- composition: 321 → 242 ns (+25%)
-
-**3. Multi-keyword leaf subschema inlining.** Subschemas with
-multiple leaf keywords (`{type: "integer", minimum: 1}`, etc.) now
-inline too. Tree shape preserved via errors-array-length
-snapshot + conditional `schema`-branch wrap. Applicator-containing
-schemas (e.g., `{type: "object", properties: ...}`) stay as
-functions — V8 monomorphises hot-loop function calls better than
-it optimises massive inlined loop bodies.
-
-- petstore: 189 → 172 ns (+9%)
-- composition: 243 → 242 ns (neutral)
-- array-heavy: 3.69 → 3.54 µs (+4%)
-
-**4. Gated `unevaluated*` tracking.** The evaluated-keys-Set machinery
-(per-function `evalProps` / `evalItems` Sets, merge loop at function
-exit, threading through composition and `$ref`) is inert unless
-`unevaluatedProperties` / `unevaluatedItems` actually consumes the Sets
-somewhere. A one-pass compile-time walk of the root schema and any
-registered external schemas decides this once per compile;
-`CompileState.unevaluatedTracking = false` turns off allocation and
-merge emission everywhere. Essentially every OpenAPI spec takes the
-off path.
-
-- tree: 83 → 46 ns (+81%, erases a prior regression)
-- petstore: 164 → 147 ns (+12%)
-- composition: 515 → 241 ns (+114%, erases a prior regression)
-- array-heavy: 10.37 → 3.37 µs (+208%, erases a prior regression)
-
-**Attempted-and-reverted**: a "deferred path" variant that passed
-`[...path, seg]` as the literal path expression to single-keyword
-inlines, skipping the push/pop. Gained 10% on array-heavy but lost
-25% on composition — plausibly V8 de-optimised the surrounding
-function. Reverted.
-
-Cumulative vs pre-optimisation baseline:
-
-- tiny: 43ns → 25ns (+42%)
-- petstore: 267ns → 172ns (+36%)
-- tree: 215ns → 72ns (+67%)
-- composition: 410ns → 242ns (+41%)
-- array-heavy: 16.05µs → 3.54µs (+78%, 4.5× faster)
-
-Compile got ~50% slower (from ~20µs → ~45µs on realistic schemas)
-because the context threads more state through every dispatch.
-Still 60–300× faster than ajv to compile.
-
-## Methodology notes
-
-**Compile** — each per-iteration hot path is only the library's work:
-
-- **ajv** — `new Ajv({allErrors, strict:false}).compile(schema)`. The
-  `new Ajv()` stays in because it's part of the cold-start cost for a
-  path that doesn't already have an Ajv instance to reuse.
-- **hyperjump** — `registerSchema(schema, uri)` +
-  `await validate(uri)` + `unregisterSchema(uri)`. URIs come from a
-  pre-generated pool so no string construction is in the hot loop; the
-  unregister keeps registry size bounded.
-- **oav** — `compileSchema(schema, opts)` with a pre-built `opts`.
-
-**Validate** — every library pre-compiles its validator ONCE outside
-the timed region. The hot path is literally `validator(sample)` — no
-closures, no cursor math, no modulo, no per-iteration I/O. This
-measures the pre-spec-loaded "I got a JSON, how fast can I check it"
-cost, which is the production workload we care about.
-
-The happy-path and failure-path numbers are separate rows so neither
-side wins by short-circuiting. Both use `allErrors: true` on ajv for
-parity.
+| You want to know...                                                    | Use                                                                       |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Is oav competitive with ajv / hyperjump on shape X?                    | `run.ts` (synthetic, pick the matching schema in `schemas.ts` or add one) |
+| How does library choice scale across a real spec's schemas?            | `run.ts --spec=<path>`                                                    |
+| Does this real spec load cleanly through oav's pipeline?               | `bench-real-world.mjs`                                                    |
+| How long does oav take from spec-on-disk to "first validated request"? | `bench-real-world.mjs`                                                    |
 
 ## Reading the results
 
-- If your workload compiles schemas hot (per-request, per-tenant, etc.),
-  oav is the clear win — ~55–300× faster than ajv, ~4–13× faster than
-  hyperjump.
-- If your workload is steady-state validation of the same compiled
-  schema over many payloads (the most common production case), ajv
-  wins. The gap is tight on trivial / tree shapes (~1–1.4×), moderate
-  on real objects (~3×) and composition (~3.5×), and largest on big
-  nested arrays (~3.3× after the perf work — was 15× before).
-- Hyperjump is the reference implementation for spec correctness, not
-  the speed king — expect 5–200× slower validate than ajv depending on
-  schema shape.
-- For very large payloads where every item fails the same way,
-  `maxErrors` (or `maxErrors: 1` for fast-fail) turns an O(n) scan
-  into O(cap). Measured: 100k bad items in a 10-MB array goes from
-  ~64 ms uncapped to ~0.1 ms with `maxErrors: 10`.
+### Synthetic mode
 
-## Where oav's remaining validate overhead comes from
+```
+=== petstore — flat object with bounds and formats ===
+compile:
+  ajv compile                  402 ops/s       2.49ms / op
+  hyperjump compile           5.8K ops/s     172.36µs / op
+  oav compile                26.7K ops/s      37.60µs / op
+validate:
+  ajv validate (valid)              25.0M ops/s      39.95ns / op
+  ...
+```
 
-Two structural reasons ajv still wins on validate:
+Per-library line per task. `ops/s` is tinybench's measured throughput,
+`/ op` is mean latency per call. Bigger ops/s = faster. The relative
+table at the end normalises against ajv as baseline.
 
-1. **Function-per-schema for applicator-containing subschemas.**
-   Leaf subschemas (single or multi-keyword) now inline. But any
-   schema containing `properties`/`items`/`allOf`/etc. still
-   compiles to a function — V8 monomorphises that hot-loop call
-   well, and trying to inline an applicator body into a 100-iter
-   loop blew up the caller's code size past what V8 optimises.
-   Ajv inlines everything under one top-level schema and accepts the
-   compile-time cost.
-2. **Always-all-errors by default.** oav collects complete error
-   trees out of the box; ajv defaults to `allErrors: false` (first
-   error wins). The bench sets `allErrors: true` on ajv for parity,
-   but ajv's codegen is shaped for early-exit. oav's `maxErrors`
-   opt-in closes this gap when the caller can tolerate partial
-   reports — `maxErrors: 1` is apples-to-apples with ajv's default
-   mode.
+### Spec mode
 
-Levers we tried that didn't pan out:
+```
+=== Real-world spec: path/to/openapi.yaml ===
+277 unique request/response body schemas.
+compile (per library, aggregated across every schema):
+  ajv         total  3858.40ms   mean    13.93ms   p95    41.17ms   max    54.78ms
+  hyperjump   total  1337.84ms   mean     4.83ms   p95    17.01ms   max    22.35ms
+  oav         total    336.77ms   mean     1.22ms   p95     3.86ms   max     5.92ms
+```
 
-- **Deferred path construction** — pass `[...path, seg]` as the
-  literal path expression to single-keyword inlines, skipping the
-  push/pop. Won 10% on array-heavy but lost 25% on composition.
-  Reverted; see commit log for detail.
+- `total` is wall-clock time to compile every body schema in the spec.
+- `mean`, `p95`, `max` describe per-schema distribution.
+- Any schemas that fail to compile are counted separately and a
+  sample of their error messages is printed below the table (a
+  library that rejects an OAS 3.0-specific keyword like `nullable`
+  will show up here; that's a real property of the library, not a
+  benchmark artifact).
 
-Levers we haven't attempted:
+### Note on `validate` under `--spec`
 
-- **Specialised short-circuit for `items: { type: T }`** where the
-  type predicate is a single compare against a pre-materialised
-  predicate function. Would help the most trivial array shapes
-  (e.g., `string[]`, `number[]`).
-- **Sharing a single errors array across an applicator's branches**
-  (`allOf` / `oneOf`), eliminating the per-branch `const errsVar =
-[]` allocation. Small but free.
-- **Per-call JIT warm-up** — repeatedly invoked validators tend to
-  shake a few ns off after V8's tier-up. A documented "warm up the
-  validator before measuring" note in any consumer's README.
+Deliberately omitted. Without paired valid/invalid fixtures per
+schema, any choice of synthetic input (`{}`, an example mined from
+the spec, a type-driven synthesised value) would favour one library's
+fast-path over another in ways that don't reflect real workloads. If
+you need validate throughput numbers on real shapes, copy the
+relevant body schema into `schemas.ts` with hand-authored inputs and
+run the synthetic mode.
 
-None are required for correctness.
+## Methodology
+
+**Compile (synthetic).** Each hot-loop iteration is only the
+library's work:
+
+- **ajv**: `new Ajv({allErrors, strict:false}).compile(schema)`. The
+  instance construction stays in — it's part of the cold-start cost
+  for a consumer that doesn't already have an Ajv around.
+- **hyperjump**: `registerSchema(schema, uri)` then `await validate(uri)`
+  then `unregisterSchema(uri)`. URIs come from a pre-generated pool
+  so no string construction is in the hot loop; the unregister keeps
+  registry size bounded.
+- **oav**: `compileSchema(schema, opts)` with pre-built `opts`.
+
+**Compile (spec mode).** Same per-library semantics, one iteration
+per schema. Hyperjump gets an explicit `https://json-schema.org/draft/2020-12/schema`
+dialect URI passed to `registerSchema` (spec-derived schemas don't
+carry `$schema`). Ajv runs with `logger: false` so OAS-specific
+format warnings don't flood stdout.
+
+**Validate (synthetic).** Every library pre-compiles its validator
+once, outside the timed loop. The hot path is literally
+`validator(sample)` — no closures, no cursor math, no per-iteration
+setup. One representative sample each for the valid and invalid
+paths so neither side wins by short-circuiting. `allErrors: true` on
+ajv for parity with oav's always-collect-everything default.
+
+## Interpreting the results
+
+- **Compile-hot workloads.** Per-request or per-tenant validator
+  construction. oav wins across the board in the current numbers,
+  by one to two orders of magnitude against ajv.
+- **Steady-state validate on the same payload shape.** Call
+  `compile` once at boot, validate many times. ajv is the fastest
+  here; oav is roughly 1.4× on trivial shapes, ~3× on object and
+  composition shapes, ~3× on large-array shapes. `maxErrors: 1`
+  closes the ajv gap on invalid payloads (apples-to-apples with
+  ajv's default fail-fast behaviour).
+- **Hyperjump**'s validate throughput sits roughly two orders of
+  magnitude below ajv / oav. It's the 2020-12 reference
+  implementation, not a speed target.
+- **`@oav/schema`**'s remaining validate overhead vs ajv comes from
+  two structural choices: schemas that contain applicators
+  (`properties` / `items` / `allOf` / ...) compile to a function
+  call rather than inlining into the enclosing body (V8 monomorphises
+  hot-loop calls better than massive inline bodies); and oav collects
+  complete error trees by default, while ajv defaults to
+  `allErrors: false`. Set `maxErrors: 1` on oav for apples-to-apples
+  fast-fail semantics.
+
+## Results file
+
+Raw numbers land in `./results.json` after every run. Format:
+
+```ts
+type Result = {
+  schema: string; // schema name or spec path
+  metric: "compile" | "validate";
+  lib: "ajv" | "hyperjump" | "oav";
+  hz: number; // ops/sec
+  mean: number; // µs per op
+  variant?: string; // e.g. "oav validate (valid)"
+};
+```
+
+Each run overwrites the previous file.

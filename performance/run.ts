@@ -2,19 +2,20 @@
  * Cross-library benchmarks for @oav/schema vs ajv (2020) vs
  * @hyperjump/json-schema (2020-12).
  *
- * Measures two numbers per schema:
- *   - compile: cold-start cost (includes any codegen / parsing)
- *   - validate: steady-state validator invocation (already-compiled)
+ * Two modes:
  *
- * Both with the same realistic schemas in ./schemas.ts, against both
- * valid and invalid inputs so neither path is skipped.
+ *   - Synthetic (default): iterate over ./schemas.ts and measure
+ *     compile + validate with hand-authored valid/invalid inputs.
+ *   - Spec (--spec <path>): load an OpenAPI document, extract every
+ *     unique request/response body schema, and measure each
+ *     library's compile time across the set. Validate is skipped in
+ *     this mode because real-world schemas come without paired
+ *     valid/invalid fixtures.
  *
- * Usage:
- *   pnpm tsx performance/run.ts
- *   pnpm tsx performance/run.ts --filter=petstore    # only one schema
- *   pnpm tsx performance/run.ts --iterations=2       # quick smoke
+ * See ./README.md for details.
  */
 
+import $RefParser from "@apidevtools/json-schema-ref-parser";
 import { Bench } from "tinybench";
 import Ajv from "ajv/dist/2020.js";
 import {
@@ -31,6 +32,8 @@ const filterArg = args.find((a) => a.startsWith("--filter="));
 const filter = filterArg?.slice("--filter=".length);
 const timeArg = args.find((a) => a.startsWith("--time="));
 const time = timeArg ? Number.parseInt(timeArg.slice("--time=".length), 10) : 500;
+const specArg = args.find((a) => a.startsWith("--spec="));
+const specPath = specArg?.slice("--spec=".length);
 
 type Result = {
   schema: string;
@@ -198,37 +201,204 @@ async function benchSchema(s: PerfSchema): Promise<void> {
   unregisterSchema(hjUri);
 }
 
-const filtered = filter ? perfSchemas.filter((s) => s.name.includes(filter)) : perfSchemas;
-for (const s of filtered) await benchSchema(s);
-
-// Relative table: oav ops/sec / ajv ops/sec per row.
-console.log("\n=== Relative throughput (vs ajv = 1.00) ===");
-console.log(
-  "schema".padEnd(14) + "metric".padEnd(20) + "ajv".padEnd(10) + "hyperjump".padEnd(12) + "oav",
-);
-console.log("-".repeat(70));
-const byKey = new Map<string, Record<string, number>>();
-for (const r of results) {
-  // Distinguish validate-valid vs validate-invalid when we have variants.
-  const variantLabel = r.variant ? r.variant.replace(/^\S+\s+/, "") : r.metric;
-  const key = `${r.schema}|${variantLabel}`;
-  const row = byKey.get(key) ?? {};
-  row[r.lib] = r.hz;
-  byKey.set(key, row);
+/**
+ * Pull every request / response body schema out of an OpenAPI document,
+ * deduplicating by object identity (which works because
+ * @apidevtools/json-schema-ref-parser dereferences `$ref`s to shared
+ * references, so schemas reused across operations appear as one).
+ */
+function extractBodySchemas(doc: unknown): unknown[] {
+  const out = new Set<unknown>();
+  const paths = (doc as Record<string, unknown>)?.paths as Record<string, unknown> | undefined;
+  if (paths === undefined) return [];
+  for (const pathItem of Object.values(paths)) {
+    if (pathItem === null || typeof pathItem !== "object") continue;
+    for (const method of ["get", "post", "put", "patch", "delete", "options", "head", "query"]) {
+      const op = (pathItem as Record<string, unknown>)[method];
+      if (op === null || typeof op !== "object") continue;
+      const reqBody = (op as Record<string, unknown>).requestBody as
+        | { content?: Record<string, { schema?: unknown }> }
+        | undefined;
+      for (const mt of Object.values(reqBody?.content ?? {})) {
+        if (mt?.schema !== undefined && mt.schema !== null) out.add(mt.schema);
+      }
+      const responses = (op as Record<string, unknown>).responses as
+        | Record<string, { content?: Record<string, { schema?: unknown }> }>
+        | undefined;
+      for (const resp of Object.values(responses ?? {})) {
+        for (const mt of Object.values(resp?.content ?? {})) {
+          if (mt?.schema !== undefined && mt.schema !== null) out.add(mt.schema);
+        }
+      }
+    }
+  }
+  return [...out];
 }
-for (const [key, row] of byKey) {
-  const [schema, metric] = key.split("|");
-  const ajv = row["ajv"] ?? 0;
-  const hj = row["hyperjump"] ?? 0;
-  const oav = row["oav"] ?? 0;
-  const base = ajv || 1;
+
+async function benchSpec(path: string): Promise<void> {
+  // Use @apidevtools/json-schema-ref-parser to produce a fully
+  // dereferenced document. That isolates compile-time comparisons
+  // from any resolver differences between libraries and gives ajv /
+  // hyperjump / oav an identical input.
+  const doc = await $RefParser.dereference(path);
+  const schemas = extractBodySchemas(doc);
+  console.log(`\n=== Real-world spec: ${path} ===`);
+  console.log(`${schemas.length} unique request/response body schemas.`);
+  if (schemas.length === 0) return;
+
+  // Per-schema compile timings with plain performance.now(). tinybench's
+  // warmup + iteration machinery is overkill at ms scale and across
+  // 100+ schemas it blows past anything resembling a reasonable run time.
+  const ajvTimes: number[] = [];
+  const hjTimes: number[] = [];
+  const oavTimes: number[] = [];
+  const ajvErrors: string[] = [];
+  const hjErrors: string[] = [];
+  const oavErrors: string[] = [];
+
+  for (let i = 0; i < schemas.length; i += 1) {
+    const schema = schemas[i];
+
+    try {
+      const t0 = performance.now();
+      // `logger: false` suppresses "unknown format X" warnings that
+      // would otherwise flood the output; the schemas use OAS-specific
+      // formats (`duration`, `float`) that neither ajv nor
+      // ajv-formats recognise by default.
+      new Ajv({ allErrors: true, strict: false, logger: false }).compile(schema as never);
+      ajvTimes.push(performance.now() - t0);
+    } catch (err) {
+      ajvErrors.push(err instanceof Error ? err.message : String(err));
+    }
+
+    const uri = `bench://spec-${i}`;
+    // Spec-derived schemas don't declare `$schema`. Pin 2020-12
+    // explicitly so hyperjump doesn't refuse on dialect detection.
+    // OAS 3.0 keywords (`nullable`, etc.) will still trip it; those
+    // show up as per-schema compile failures, which is accurate: the
+    // benchmark is measuring what the library can actually do with
+    // the input, not what it could do with a hand-crafted fixture.
+    //
+    // Hyperjump prints unknown-format warnings to stdout on register.
+    // Swallow them so the bench output stays readable.
+    const origLog = console.log;
+    console.log = () => {};
+    try {
+      registerSchema(schema as never, uri, "https://json-schema.org/draft/2020-12/schema");
+      const t0 = performance.now();
+      await hjValidate(uri);
+      hjTimes.push(performance.now() - t0);
+    } catch (err) {
+      hjErrors.push(err instanceof Error ? err.message : String(err));
+    } finally {
+      console.log = origLog;
+      try {
+        unregisterSchema(uri);
+      } catch {
+        // registry state may already be clean; ignore.
+      }
+    }
+
+    try {
+      const t0 = performance.now();
+      compileSchema(schema as never, { dialect: jsonSchemaDialect, formats: builtInFormats });
+      oavTimes.push(performance.now() - t0);
+    } catch (err) {
+      oavErrors.push(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  const row = (label: string, times: number[], errors: string[]): void => {
+    if (times.length === 0) {
+      console.log(`  ${label.padEnd(10)}  all ${schemas.length} schemas failed to compile`);
+      return;
+    }
+    const total = times.reduce((a, b) => a + b, 0);
+    const max = Math.max(...times);
+    const mean = total / times.length;
+    const sorted = [...times].sort((a, b) => a - b);
+    const p95 = sorted[Math.floor(sorted.length * 0.95)] ?? 0;
+    const failed = errors.length;
+    const failedTag = failed > 0 ? `  (${failed} failed)` : "";
+    console.log(
+      `  ${label.padEnd(10)}  total ${fmtUs(total * 1000).padStart(10)}   ` +
+        `mean ${fmtUs(mean * 1000).padStart(10)}   ` +
+        `p95 ${fmtUs(p95 * 1000).padStart(10)}   ` +
+        `max ${fmtUs(max * 1000).padStart(10)}${failedTag}`,
+    );
+  };
+
+  console.log("compile (per library, aggregated across every schema):");
+  row("ajv", ajvTimes, ajvErrors);
+  row("hyperjump", hjTimes, hjErrors);
+  row("oav", oavTimes, oavErrors);
+
+  for (const [lib, errs] of [
+    ["ajv", ajvErrors] as const,
+    ["hyperjump", hjErrors] as const,
+    ["oav", oavErrors] as const,
+  ]) {
+    if (errs.length === 0) continue;
+    console.log(`\n${lib} compile errors:`);
+    const counts = new Map<string, number>();
+    for (const e of errs) counts.set(e, (counts.get(e) ?? 0) + 1);
+    for (const [msg, count] of [...counts].sort((a, b) => b[1] - a[1]).slice(0, 5)) {
+      console.log(`  ${count}×  ${msg.length > 120 ? msg.slice(0, 117) + "…" : msg}`);
+    }
+    if (counts.size > 5) console.log(`  … and ${counts.size - 5} other distinct error(s)`);
+  }
+
+  const pushSpec = (lib: "ajv" | "hyperjump" | "oav", times: number[]): void => {
+    if (times.length === 0) return;
+    const total = times.reduce((a, b) => a + b, 0);
+    results.push({
+      schema: path,
+      metric: "compile",
+      lib,
+      hz: times.length / (total / 1000),
+      mean: (total / times.length) * 1000,
+    });
+  };
+  pushSpec("ajv", ajvTimes);
+  pushSpec("hyperjump", hjTimes);
+  pushSpec("oav", oavTimes);
+}
+
+if (specPath !== undefined) {
+  await benchSpec(specPath);
+} else {
+  const filtered = filter ? perfSchemas.filter((s) => s.name.includes(filter)) : perfSchemas;
+  for (const s of filtered) await benchSchema(s);
+
+  // Relative table: oav ops/sec / ajv ops/sec per row.
+  console.log("\n=== Relative throughput (vs ajv = 1.00) ===");
   console.log(
-    (schema ?? "").padEnd(14) +
-      (metric ?? "").padEnd(20) +
-      "1.00".padEnd(10) +
-      (hj / base).toFixed(2).padEnd(12) +
-      (oav / base).toFixed(2),
+    "schema".padEnd(14) + "metric".padEnd(20) + "ajv".padEnd(10) + "hyperjump".padEnd(12) + "oav",
   );
+  console.log("-".repeat(70));
+  const byKey = new Map<string, Record<string, number>>();
+  for (const r of results) {
+    // Distinguish validate-valid vs validate-invalid when we have variants.
+    const variantLabel = r.variant ? r.variant.replace(/^\S+\s+/, "") : r.metric;
+    const key = `${r.schema}|${variantLabel}`;
+    const row = byKey.get(key) ?? {};
+    row[r.lib] = r.hz;
+    byKey.set(key, row);
+  }
+  for (const [key, row] of byKey) {
+    const [schema, metric] = key.split("|");
+    const ajv = row["ajv"] ?? 0;
+    const hj = row["hyperjump"] ?? 0;
+    const oav = row["oav"] ?? 0;
+    const base = ajv || 1;
+    console.log(
+      (schema ?? "").padEnd(14) +
+        (metric ?? "").padEnd(20) +
+        "1.00".padEnd(10) +
+        (hj / base).toFixed(2).padEnd(12) +
+        (oav / base).toFixed(2),
+    );
+  }
 }
 
 import { writeFileSync } from "node:fs";
