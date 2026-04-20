@@ -139,10 +139,81 @@ export interface CompileState {
    * dispatch only `$ref` and ignore every other keyword.
    */
   readonly refSuppressesSiblings: boolean;
+  /**
+   * `true` when `unevaluatedProperties` or `unevaluatedItems` appears
+   * anywhere in the root schema or any registered external schema. When
+   * `false`, the compiler suppresses allocation of per-function
+   * `evalProps` / `evalItems` Sets and the merge loop that threads them
+   * back to the caller — machinery that's inert unless
+   * `unevaluated*` actually consumes it. OpenAPI specs essentially
+   * never use these keywords, so the false path is the common case.
+   */
+  readonly unevaluatedTracking: boolean;
   nextFn: number;
 }
 
 type WrapperCode = "schema" | "not" | "ref";
+
+/**
+ * Known JSON Schema 2020-12 (+ OpenAPI) positions that hold a single
+ * subschema. Walked by {@link schemaUsesUnevaluated} so the flag detector
+ * descends only through schema-valued fields, not arbitrary user data
+ * in `enum` / `const` / `default` / `examples`.
+ */
+const SUBSCHEMA_SINGLE_POSITIONS = [
+  "additionalProperties",
+  "propertyNames",
+  "contains",
+  "not",
+  "if",
+  "then",
+  "else",
+  "items",
+  "unevaluatedProperties",
+  "unevaluatedItems",
+] as const;
+const SUBSCHEMA_ARRAY_POSITIONS = ["allOf", "anyOf", "oneOf", "prefixItems"] as const;
+const SUBSCHEMA_MAP_POSITIONS = [
+  "properties",
+  "patternProperties",
+  "dependentSchemas",
+  "$defs",
+  "definitions",
+] as const;
+
+/**
+ * Return `true` iff `schema` (or any schema reachable from it through
+ * subschema-valued positions) contains the `unevaluatedProperties` or
+ * `unevaluatedItems` keyword. The detector is the gate for the
+ * evaluated-keys-Set machinery — when it's `false`, the compiler emits
+ * a form that skips the per-function Set allocation entirely.
+ */
+function schemaUsesUnevaluated(schema: SchemaOrBoolean): boolean {
+  const seen = new WeakSet<object>();
+  const walk = (s: unknown): boolean => {
+    if (typeof s !== "object" || s === null || Array.isArray(s)) return false;
+    if (seen.has(s)) return false;
+    seen.add(s);
+    if ("unevaluatedProperties" in s || "unevaluatedItems" in s) return true;
+    for (const key of SUBSCHEMA_SINGLE_POSITIONS) {
+      if (key in s && walk((s as Record<string, unknown>)[key])) return true;
+    }
+    for (const key of SUBSCHEMA_ARRAY_POSITIONS) {
+      const arr = (s as Record<string, unknown>)[key];
+      if (Array.isArray(arr)) {
+        for (const item of arr) if (walk(item)) return true;
+      }
+    }
+    for (const key of SUBSCHEMA_MAP_POSITIONS) {
+      const obj = (s as Record<string, unknown>)[key];
+      if (obj !== null && typeof obj === "object" && !Array.isArray(obj)) {
+        for (const v of Object.values(obj)) if (walk(v)) return true;
+      }
+    }
+    return false;
+  };
+  return walk(schema);
+}
 
 /**
  * Compile a JSON Schema 2020-12 document into an executable validator.
@@ -206,6 +277,22 @@ export function compileSchema(schema: SchemaOrBoolean, options: CompileOptions):
   const graph = resolve(schema, { registry });
   const refResolver = options.refResolver ?? createRefResolver(graph);
 
+  // One-pass walk: does anything in this compile unit use
+  // `unevaluatedProperties` / `unevaluatedItems`? Include external
+  // schemas in the walk because a `$ref` can cross into them. A false
+  // positive costs perf but not correctness; a miss would silently
+  // disable tracking for a spec that needs it, so the walker's
+  // subschema positions are kept conservative.
+  let unevaluatedTracking = schemaUsesUnevaluated(schema);
+  if (!unevaluatedTracking && options.external) {
+    for (const ext of options.external.values()) {
+      if (schemaUsesUnevaluated(ext)) {
+        unevaluatedTracking = true;
+        break;
+      }
+    }
+  }
+
   const state: CompileState = {
     gen: new CodeGen(),
     byKeyword,
@@ -218,6 +305,7 @@ export function compileSchema(schema: SchemaOrBoolean, options: CompileOptions):
     nextFn: 0,
     gated: Number.isFinite(maxErrors),
     refSuppressesSiblings: options.dialect.rules.refSuppressesSiblings,
+    unevaluatedTracking,
     compileValidator(sub) {
       return compileValidator(sub, state);
     },
@@ -255,9 +343,15 @@ function compileValidator(schema: SchemaOrBoolean, state: CompileState): string 
  * itself or might do so through a subschema? We use this to decide
  * whether a generated function needs to allocate evaluated-key sets.
  *
+ * Short-circuits to `false` when {@link CompileState.unevaluatedTracking}
+ * is off — a compile unit that never uses `unevaluatedProperties` has
+ * nothing to consume the Sets, so allocating + merging them is pure
+ * overhead.
+ *
  * @internal
  */
-function needsPropTracking(schema: SchemaObject): boolean {
+function needsPropTracking(schema: SchemaObject, state: CompileState): boolean {
+  if (!state.unevaluatedTracking) return false;
   return (
     "unevaluatedProperties" in schema ||
     "properties" in schema ||
@@ -280,7 +374,8 @@ function needsPropTracking(schema: SchemaObject): boolean {
  *
  * @internal
  */
-function needsItemTracking(schema: SchemaObject): boolean {
+function needsItemTracking(schema: SchemaObject, state: CompileState): boolean {
+  if (!state.unevaluatedTracking) return false;
   return (
     "unevaluatedItems" in schema ||
     "prefixItems" in schema ||
@@ -312,8 +407,8 @@ function buildFunctionBody(
     const falseErr = `${NAMES.DEPS}.createLeafError("false", ${NAMES.PATH}, "schema is false, nothing is valid")`;
     gen.line(emitPushStatement(NAMES.ERRORS, falseErr, state.gated));
   } else {
-    const trackProps = needsPropTracking(schema);
-    const trackItems = needsItemTracking(schema);
+    const trackProps = needsPropTracking(schema, state);
+    const trackItems = needsItemTracking(schema, state);
     let evaluatedPropertiesVar: string | null = null;
     let evaluatedItemsVar: string | null = null;
     if (trackProps) {

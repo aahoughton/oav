@@ -38,35 +38,35 @@ large array of small objects.
 Compile — oav wins across the board; ajv's meta-schema validation costs
 milliseconds on every compile.
 
-| schema      | ajv    | hyperjump | oav     |
-| ----------- | ------ | --------- | ------- |
-| tiny        | 2.97ms | 37.47µs   | 10.85µs |
-| petstore    | 2.98ms | 204.46µs  | 54.48µs |
-| tree        | 2.94ms | 170.57µs  | 40.67µs |
-| composition | 3.43ms | 434.86µs  | 87.62µs |
-| array-heavy | 2.88ms | 163.39µs  | 42.54µs |
+| schema      | ajv    | hyperjump | oav    |
+| ----------- | ------ | --------- | ------ |
+| tiny        | 2.59ms | 35.39µs   | 8.27µs |
+| petstore    | 2.63ms | 172.36µs  | 37.6µs |
+| tree        | 2.54ms | 150.74µs  | 32.2µs |
+| composition | 2.76ms | 347.27µs  | 70.5µs |
+| array-heavy | 2.53ms | 143.49µs  | 32.0µs |
 
 Validate (happy path — pre-compiled validator, one valid input per
 iteration, no per-iteration setup):
 
-| schema      | ajv    | hyperjump | oav    |
-| ----------- | ------ | --------- | ------ |
-| tiny        | 24.3ns | 226.3ns   | 25ns   |
-| petstore    | 62.9ns | 1.05µs    | 172ns  |
-| tree        | 50.2ns | 631.3ns   | 72ns   |
-| composition | 69.7ns | 2.38µs    | 242ns  |
-| array-heavy | 1.08µs | 240.35µs  | 3.54µs |
+| schema      | ajv     | hyperjump | oav    |
+| ----------- | ------- | --------- | ------ |
+| tiny        | 20.8ns  | 129.4ns   | 18.9ns |
+| petstore    | 39.9ns  | 853.3ns   | 147ns  |
+| tree        | 34.5ns  | 485.1ns   | 46ns   |
+| composition | 52.4ns  | 1.60µs    | 241ns  |
+| array-heavy | 980.5ns | 192.4µs   | 3.37µs |
 
 Validate (failure path — pre-compiled validator, one invalid input per
 iteration):
 
 | schema      | ajv    | hyperjump | oav    |
 | ----------- | ------ | --------- | ------ |
-| tiny        | 35.1ns | 191.3ns   | 50ns   |
-| petstore    | 82.9ns | 798.0ns   | 235ns  |
-| tree        | 78.2ns | 620.0ns   | 81ns   |
-| composition | 89.3ns | 2.02µs    | 321ns  |
-| array-heavy | 1.14µs | 244.84µs  | 3.63µs |
+| tiny        | 28.4ns | 127.4ns   | 26.3ns |
+| petstore    | 62.9ns | 549.9ns   | 206ns  |
+| tree        | 49.2ns | 631.3ns   | 79ns   |
+| composition | 57.3ns | 1.37µs    | 294ns  |
+| array-heavy | 1.01µs | 196.7µs   | 3.42µs |
 
 (Numbers drift run-to-run; use `results.json` for the raw series.)
 
@@ -106,6 +106,21 @@ it optimises massive inlined loop bodies.
 - petstore: 189 → 172 ns (+9%)
 - composition: 243 → 242 ns (neutral)
 - array-heavy: 3.69 → 3.54 µs (+4%)
+
+**4. Gated `unevaluated*` tracking.** The evaluated-keys-Set machinery
+(per-function `evalProps` / `evalItems` Sets, merge loop at function
+exit, threading through composition and `$ref`) is inert unless
+`unevaluatedProperties` / `unevaluatedItems` actually consumes the Sets
+somewhere. A one-pass compile-time walk of the root schema and any
+registered external schemas decides this once per compile;
+`CompileState.unevaluatedTracking = false` turns off allocation and
+merge emission everywhere. Essentially every OpenAPI spec takes the
+off path.
+
+- tree: 83 → 46 ns (+81%, erases a prior regression)
+- petstore: 164 → 147 ns (+12%)
+- composition: 515 → 241 ns (+114%, erases a prior regression)
+- array-heavy: 10.37 → 3.37 µs (+208%, erases a prior regression)
 
 **Attempted-and-reverted**: a "deferred path" variant that passed
 `[...path, seg]` as the literal path expression to single-keyword
@@ -195,29 +210,6 @@ Levers we tried that didn't pan out:
 
 Levers we haven't attempted:
 
-- **Gate `unevaluated*` tracking on whether the schema actually uses it.**
-  Commit `f9d7579` (feat(schema): thread evaluated-key sets through
-  compiled subvalidators) taught every non-leaf function to allocate
-  `evalProps` / `evalItems` Sets and thread them through composition.
-  That machinery is inert for schemas that don't use
-  `unevaluatedProperties` / `unevaluatedItems` anywhere, but it still
-  runs: every applicator-containing function allocates two Sets per
-  call, every composition branch allocates another two, and a merge
-  loop runs before return. Measured cost on HEAD vs the pre-`f9d7579`
-  compiler (`--time=250`, same laptop):
-  - `petstore` valid: 142 → 169 ns (+19%)
-  - `tree` valid: 51 → 81 ns (+60%)
-  - `composition` valid: 244 → 486 ns (+99%)
-  - `array-heavy` valid: 3.44 → 10.56 µs (+207%)
-  - `tiny`: no change (leaf schemas don't get tracking).
-    Fix path: one-pass walk of the root schema plus any `external`
-    schemas in the registry before codegen; if no `unevaluated*` appears
-    anywhere, set a `state.tracking = false` flag and have the codegen
-    sites emit their pre-`f9d7579` shape. A per-schema variant that
-    reasons about whether a given subschema is reachable from an
-    `unevaluated*` ancestor is possible but tricky (`$ref` means one
-    compiled schema can have multiple callers); start with the coarse
-    version.
 - **Specialised short-circuit for `items: { type: T }`** where the
   type predicate is a single compare against a pre-materialised
   predicate function. Would help the most trivial array shapes
