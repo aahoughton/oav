@@ -23,6 +23,11 @@ function emitNumericError(
  * The JSON Schema `multipleOf` keyword. Data must be divisible by the schema
  * value (without floating-point remainder).
  *
+ * The check compares `data / divisor` against its nearest integer with a
+ * small epsilon so valid multiples are not rejected when the division
+ * produces a non-terminating binary fraction (e.g. `2.34 / 0.01` yields
+ * `234.00000000000003` under IEEE-754). AJV uses the same approach.
+ *
  * @public
  */
 export const multipleOfKeyword: KeywordDefinition = {
@@ -30,14 +35,18 @@ export const multipleOfKeyword: KeywordDefinition = {
   vocabulary: CORE_VALIDATION_VOCAB,
   compile(ctx: KeywordCompileContext): void {
     const divisor = ctx.schema as number;
-    ctx.gen.if(`${numberGuard(ctx.data)} && (${ctx.data} / ${divisor}) % 1 !== 0`, () => {
-      ctx.emitError(
-        "leaf",
-        `${NAMES.DEPS}.createLeafError(` +
-          `${quoteString("multipleOf")}, ${ctx.path}, ` +
-          `\`must be a multiple of ${divisor}\`, ` +
-          `{ multipleOf: ${divisor}, actual: ${ctx.data} })`,
-      );
+    const q = ctx.gen.scope.name("q");
+    ctx.gen.if(numberGuard(ctx.data), () => {
+      ctx.gen.const(q, `${ctx.data} / ${divisor}`);
+      ctx.gen.if(`Math.abs(${q} - Math.round(${q})) > 1e-12`, () => {
+        ctx.emitError(
+          "leaf",
+          `${NAMES.DEPS}.createLeafError(` +
+            `${quoteString("multipleOf")}, ${ctx.path}, ` +
+            `\`must be a multiple of ${divisor}\`, ` +
+            `{ multipleOf: ${divisor}, actual: ${ctx.data} })`,
+        );
+      });
     });
   },
 };

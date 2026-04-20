@@ -12,6 +12,20 @@ describe("numeric keywords", () => {
     expect(r.error?.params).toMatchObject({ multipleOf: 3, actual: 10 });
   });
 
+  it("multipleOf tolerates IEEE-754 rounding on decimal divisors", () => {
+    const v = compile({ multipleOf: 0.01 });
+    // 2.34 / 0.01 === 234.00000000000003 under IEEE-754; still a valid multiple.
+    expect(v.validate(2.34).valid).toBe(true);
+    expect(v.validate(0.1).valid).toBe(true);
+    expect(v.validate(0.3).valid).toBe(true);
+    expect(v.validate(2.345).valid).toBe(false);
+
+    const v2 = compile({ multipleOf: 0.1 });
+    expect(v2.validate(0.2).valid).toBe(true);
+    expect(v2.validate(0.3).valid).toBe(true);
+    expect(v2.validate(0.25).valid).toBe(false);
+  });
+
   it("maximum / exclusiveMaximum enforce upper bounds", () => {
     const max = compile({ maximum: 10 });
     expect(max.validate(10).valid).toBe(true);
