@@ -1,4 +1,5 @@
 export { deserialize, matchMediaType, matchResponseKey } from "./deserialize.js";
+export { httpRequestFromFetch, httpResponseFromFetch } from "./from-fetch.js";
 export {
   assembleDeepObject,
   assembleFormExplodedObject,

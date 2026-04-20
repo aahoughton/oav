@@ -54,6 +54,7 @@ import {
   transformBodySchemaForDirection,
   type BodyDirection,
 } from "./body-schema-transform.js";
+import { httpRequestFromFetch, httpResponseFromFetch } from "./from-fetch.js";
 import { assembleObjectQueryParam } from "./query-assembly.js";
 
 /**
@@ -66,6 +67,67 @@ import { assembleObjectQueryParam } from "./query-assembly.js";
 export interface OavValidator {
   validateRequest(req: HttpRequest): ValidationError | null;
   validateResponse(req: HttpRequest, res: HttpResponse): ValidationError | null;
+  /**
+   * Parse a Web Standards {@link Request} and validate it in one call.
+   * Convenient for route handlers in frameworks that expose `Request`
+   * directly (Next.js App Router, Hono, Bun, Deno) so callers don't
+   * repeat ~10 lines of URL / header / body extraction per route.
+   *
+   * Returns a discriminated union. On success, `body` is the parsed
+   * request body, narrowed to the generic type the caller supplies
+   * (validation has already confirmed the shape, so the cast is safe
+   * in practice). On failure, `error` is the same
+   * {@link ValidationError} tree `validateRequest` would return.
+   *
+   * Body parsing recognises `application/json` (and `*+json`),
+   * `application/x-www-form-urlencoded`, `multipart/form-data`
+   * (file fields come through as `Uint8Array`), and `text/*`. Any
+   * other content type is read as raw bytes; the spec's
+   * `format: "binary"` opaque-body bypass accepts it.
+   *
+   * @param request - The incoming Web Standards request.
+   * @typeParam T - Declared shape of the parsed body on success.
+   *
+   * @example
+   * ```ts
+   * export async function POST(request: Request) {
+   *   const r = await validator.validateFetchRequest<CreatePet>(request);
+   *   if (!r.ok) return problemResponse(r.error);
+   *   // r.body is typed as CreatePet
+   * }
+   * ```
+   */
+  validateFetchRequest<T = unknown>(
+    request: Request,
+  ): Promise<{ ok: true; body: T } | { ok: false; error: ValidationError }>;
+  /**
+   * Validate a Web Standards {@link Response} against the operation
+   * the {@link Request} resolves to. Mirrors
+   * {@link validateFetchRequest} for the response side — useful when
+   * you're calling an upstream API and want to confirm its response
+   * matches the spec, or when you're testing your own handler's
+   * output against its OpenAPI contract.
+   *
+   * Both messages are consumed by this call. The `request` is used
+   * only to match the route, method, and path; its body isn't
+   * read (and `request.clone()` will give you back a fresh one if
+   * you need it after the fact).
+   *
+   * @param request  - The Web Standards request that triggered `response`.
+   * @param response - The Web Standards response to validate.
+   * @typeParam T    - Declared shape of the parsed response body on success.
+   *
+   * @example
+   * ```ts
+   * const response = await fetch(upstreamUrl, init);
+   * const r = await validator.validateFetchResponse<PetList>(req, response);
+   * if (!r.ok) log.warn("upstream returned malformed response", r.error);
+   * ```
+   */
+  validateFetchResponse<T = unknown>(
+    request: Request,
+    response: Response,
+  ): Promise<{ ok: true; body: T } | { ok: false; error: ValidationError }>;
   /**
    * The OpenAPI version detected from the spec's `openapi` field, or
    * `undefined` when the field was missing/malformed and the validator
@@ -550,7 +612,38 @@ export function createValidator(
     );
   };
 
-  return { validateRequest, validateResponse, detectedVersion, stats };
+  const validateFetchRequest = async <T>(
+    request: Request,
+  ): Promise<{ ok: true; body: T } | { ok: false; error: ValidationError }> => {
+    const { httpRequest, body } = await httpRequestFromFetch(request);
+    const error = validateRequest(httpRequest);
+    if (error === null) return { ok: true, body: body as T };
+    return { ok: false, error };
+  };
+
+  const validateFetchResponse = async <T>(
+    request: Request,
+    response: Response,
+  ): Promise<{ ok: true; body: T } | { ok: false; error: ValidationError }> => {
+    // Build an HttpRequest from the fetch Request without reading its
+    // body — we only need method + path to match the operation.
+    const url = new URL(request.url);
+    const method = request.method.toUpperCase();
+    const httpRequest: HttpRequest = { method, path: url.pathname };
+    const { httpResponse, body } = await httpResponseFromFetch(response);
+    const error = validateResponse(httpRequest, httpResponse);
+    if (error === null) return { ok: true, body: body as T };
+    return { ok: false, error };
+  };
+
+  return {
+    validateRequest,
+    validateResponse,
+    validateFetchRequest,
+    validateFetchResponse,
+    detectedVersion,
+    stats,
+  };
 }
 
 function validateParameter(

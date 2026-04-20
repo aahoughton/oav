@@ -373,7 +373,15 @@ export interface HttpRequest {
   headers?: Record<string, string | string[]>;
   cookies?: Record<string, string>;
   contentType?: string;
-  body?: JsonValue | undefined;
+  /**
+   * Already-parsed request body. Typed as `unknown` because the shape
+   * depends on the `Content-Type` and the spec: JSON gives a plain
+   * object / array / primitive; multipart bodies arrive as
+   * `{ [fieldname]: string | Uint8Array }`; `application/octet-stream`
+   * as raw bytes. The validator's `format: "binary"` body-schema
+   * bypass accepts `Buffer` / `Uint8Array` for fields declared that way.
+   */
+  body?: unknown;
   rawBody?: string | undefined;
 }
 
@@ -386,6 +394,7 @@ export interface HttpResponse {
   status: number;
   headers?: Record<string, string | string[]>;
   contentType?: string;
-  body?: JsonValue | undefined;
+  /** See {@link HttpRequest.body}. */
+  body?: unknown;
   rawBody?: string | undefined;
 }

@@ -136,10 +136,11 @@ body parsing but before the route handler.
 
 ```ts
 fastify.addHook("preValidation", async (request, reply) => {
+  const url = new URL(request.url, `http://${request.headers.host ?? "localhost"}`);
   const err = validator.validateRequest({
     method: request.method,
-    path: request.url.split("?")[0] ?? "/",
-    query: request.query as Record<string, string | string[]>,
+    path: url.pathname,
+    query: Object.fromEntries(url.searchParams.entries()),
     headers: request.headers as Record<string, string | string[]>,
     contentType: request.headers["content-type"],
     body: request.body,
@@ -157,50 +158,88 @@ Fastify parses JSON bodies automatically; for other formats register
 the appropriate content-type parser (`@fastify/formbody`, etc.)
 ahead of the hook.
 
-### Next.js (App Router)
+### Next.js (App Router), Hono, Bun, Deno
 
-Next.js App Router handlers receive a Web Standards `Request` and
-return a `Response`. No middleware chain. Validate at the top of each
-handler, or factor into a shared helper:
+These frameworks expose a Web Standards `Request` per route, and there
+is no middleware chain to hang a one-time adapter off. Use
+`validator.validateFetchRequest` directly in each route handler. It
+reads `request.url`, `request.headers`, and the body (dispatching on
+`Content-Type`: JSON, `*+json`, URL-encoded, multipart, text, or raw
+bytes) and returns a discriminated union.
 
 ```ts
+// app/pets/route.ts
+import { toProblemDetails } from "@aahoughton/oav";
+import { validator } from "@/lib/validator";
+import { httpStatusFor } from "@/lib/status";
+
+type CreatePet = { name: string; tag?: string };
+
 export async function POST(request: Request) {
-  const url = new URL(request.url);
-  const contentType = request.headers.get("content-type") ?? undefined;
-  const body = contentType?.includes("json") ? await request.json() : await request.text();
-
-  const err = validator.validateRequest({
-    method: request.method,
-    path: url.pathname,
-    query: Object.fromEntries(url.searchParams.entries()),
-    headers: Object.fromEntries(request.headers.entries()),
-    contentType,
-    body,
-  });
-
-  if (err !== null) {
-    return Response.json(toProblemDetails(err, { instance: request.url }), {
-      status: httpStatusFor(err),
+  const result = await validator.validateFetchRequest<CreatePet>(request);
+  if (!result.ok) {
+    return Response.json(toProblemDetails(result.error, { instance: request.url }), {
+      status: httpStatusFor(result.error),
       headers: { "Content-Type": "application/problem+json" },
     });
   }
-
-  // ... handler logic
+  const { body } = result; // typed as CreatePet
+  // ...handler logic
+  return Response.json({ id: createPet(body) }, { status: 201 });
 }
 ```
 
-Two Next.js-specific notes:
+Three things to know:
 
-- `Object.fromEntries(searchParams.entries())` takes the last value
-  for repeated keys. If your spec uses `?ids=1&ids=2&ids=3` style
-  (form-explode arrays), call `searchParams.getAll(name)` per
-  parameter instead.
-- The top-level `middleware.ts` runs on the Edge runtime and
-  doesn't know which route matched yet. Validate inside the route
-  handler, not in `middleware.ts`.
+- **Body is consumed.** `Request.body` is a one-shot stream;
+  `validateFetchRequest` reads it. If you need the original bytes,
+  `request.clone()` first.
+- **Typed body narrows via the generic, not runtime inference.** The
+  validator has just confirmed the body matches the spec's schema, so
+  the cast is safe for a handler using the same schema. If you change
+  the spec, update the generic.
+- **Repeated query keys.** `validateFetchRequest` collapses
+  `?ids=1&ids=2` into `query.ids = ["1", "2"]`. Single values stay
+  strings.
 
-The same shape works for Hono, Bun, and Deno servers: they all speak
-Web Standards `Request` / `Response`.
+**Next.js-specific note.** The top-level `middleware.ts` runs on the
+Edge runtime and doesn't know which route matched yet. Validate
+inside the route handler, not in `middleware.ts`.
+
+**Fully bespoke body handling.** If the built-in body parsing doesn't
+fit (e.g. you want to stream-process a large JSON payload or handle
+an unusual content type), use the lower-level primitive:
+
+```ts
+import { httpRequestFromFetch } from "@aahoughton/oav";
+
+const { httpRequest } = await httpRequestFromFetch(request);
+// Mutate httpRequest.body however you need, then:
+const err = validator.validateRequest(httpRequest);
+```
+
+Hono has `.use()` middleware and can use the Express-style adapter
+above if you prefer a single registration point. The per-route
+`validateFetchRequest` still wins on generic-driven body typing.
+
+**Validating upstream responses.** The symmetric method
+`validateFetchResponse(request, response)` runs the response side of
+validation against a Web Standards `Response`. The `request` is used
+only to match the operation (method + path); its body is not read.
+
+```ts
+const request = new Request(upstreamUrl);
+const response = await fetch(request);
+const result = await validator.validateFetchResponse<PetList>(request, response);
+if (!result.ok) {
+  log.warn("upstream returned a response the spec doesn't declare", result.error);
+}
+// result.body is the parsed response body, typed as PetList on success.
+```
+
+Useful for contract-testing a service integration, or for catching
+spec drift when an upstream changes its response shape without
+updating the document.
 
 ## Recipes
 
