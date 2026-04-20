@@ -215,6 +215,134 @@ describe("3.0 support", () => {
     ).toBeNull();
   });
 
+  it("drops nullable when it sits beside a $ref (3.0 sibling suppression)", () => {
+    // eov #839: `{ $ref: X, nullable: true }` does NOT make the
+    // referenced schema nullable — 3.0 suppresses siblings of $ref.
+    const spec: OpenAPIDocument = {
+      openapi: "3.0.3",
+      info: { title: "t", version: "1" },
+      paths: {
+        "/x": {
+          post: {
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      owner: { $ref: "#/components/schemas/User", nullable: true },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "200": { description: "ok" } },
+          },
+        },
+      },
+      components: {
+        schemas: {
+          User: { type: "object", required: ["id"], properties: { id: { type: "string" } } },
+        },
+      },
+    };
+    const v = createValidator(spec);
+    // Sibling `nullable` is ignored → null fails the referenced type:object.
+    const err = v.validateRequest({
+      method: "POST",
+      path: "/x",
+      contentType: "application/json",
+      body: { owner: null },
+    });
+    expect(err).not.toBeNull();
+  });
+
+  it("nullable combines with string constraints — null ok, short strings fail", () => {
+    // eov #912: nullable + minLength should treat null as a valid value
+    // (bypassing length entirely) and still enforce minLength on strings.
+    const spec: OpenAPIDocument = {
+      openapi: "3.0.3",
+      info: { title: "t", version: "1" },
+      paths: {
+        "/x": {
+          post: {
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      label: { type: "string", nullable: true, minLength: 5 },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "200": { description: "ok" } },
+          },
+        },
+      },
+    };
+    const v = createValidator(spec);
+    expect(
+      v.validateRequest({
+        method: "POST",
+        path: "/x",
+        contentType: "application/json",
+        body: { label: null },
+      }),
+    ).toBeNull();
+    const err = v.validateRequest({
+      method: "POST",
+      path: "/x",
+      contentType: "application/json",
+      body: { label: "abc" },
+    });
+    expect(err).not.toBeNull();
+  });
+
+  it('rejects 3.1-style `type: ["string", "null"]` in a 3.0 spec', () => {
+    // eov #802: the 3.1 short-hand is invalid in 3.0; authors must use
+    // `nullable: true`. oas30TypeKeyword enforces string-only `type`.
+    const spec: OpenAPIDocument = {
+      openapi: "3.0.3",
+      info: { title: "t", version: "1" },
+      paths: {
+        "/x": {
+          post: {
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      label: { type: ["string", "null"] as unknown as "string" },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "200": { description: "ok" } },
+          },
+        },
+      },
+    };
+    // Compilation is lazy on the request-body schema, so the throw
+    // happens on first validateRequest against the path.
+    const v = createValidator(spec);
+    expect(() =>
+      v.validateRequest({
+        method: "POST",
+        path: "/x",
+        contentType: "application/json",
+        body: { label: "x" },
+      }),
+    ).toThrow(/OpenAPI 3\.0 'type' must be a single string/);
+  });
+
   it("an explicit `dialect` option overrides the version dispatch", async () => {
     // The override path skips version detection entirely and uses the
     // caller's dialect even if the spec declares a different version.
