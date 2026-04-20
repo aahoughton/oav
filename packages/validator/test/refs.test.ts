@@ -8,6 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { OpenAPIDocument } from "@oav/core";
+import { createMemoryReader, resolveSpec } from "@oav/spec";
 import { createValidator } from "../src/validator.js";
 
 describe("operation-level $ref resolution", () => {
@@ -292,6 +293,63 @@ describe("operation-level $ref resolution", () => {
         body: {},
       }),
     ).toThrow(/chain|cycle/i);
+  });
+
+  it("validates a request with cross-file circular schema refs", async () => {
+    const reader = createMemoryReader(
+      new Map<string, unknown>([
+        [
+          "main.json",
+          {
+            openapi: "3.1.0",
+            info: { title: "X", version: "1" },
+            paths: {
+              "/nodes": {
+                post: {
+                  requestBody: {
+                    required: true,
+                    content: {
+                      "application/json": { schema: { $ref: "node.json#/Node" } },
+                    },
+                  },
+                  responses: { "200": { description: "ok" } },
+                },
+              },
+            },
+          },
+        ],
+        [
+          "node.json",
+          {
+            Node: {
+              type: "object",
+              required: ["name"],
+              properties: {
+                name: { type: "string", minLength: 1 },
+                next: { $ref: "node.json#/Node" },
+              },
+            },
+          },
+        ],
+      ]),
+    );
+    const { document } = await resolveSpec({ reader, entry: "main.json" });
+    const v = createValidator(document);
+    expect(
+      v.validateRequest({
+        method: "POST",
+        path: "/nodes",
+        contentType: "application/json",
+        body: { name: "a", next: { name: "b", next: { name: "c" } } },
+      }),
+    ).toBeNull();
+    const err = v.validateRequest({
+      method: "POST",
+      path: "/nodes",
+      contentType: "application/json",
+      body: { name: "a", next: { name: "" } },
+    });
+    expect(err).not.toBeNull();
   });
 
   it("throws with a helpful message on unresolved external $ref", () => {
