@@ -1,14 +1,49 @@
 import { Command } from "commander";
-import { resolveCommand, validateCommand, type ValidateMode } from "./commands.js";
+import { type CommandIo, resolveCommand, validateCommand, type ValidateMode } from "./commands.js";
 import { KNOWN_OUTPUT_FORMATS, isOutputFormat, type OutputFormat } from "./format-output.js";
 
 /**
- * Build the Commander program. Exported so tests can invoke the program
- * without spawning a child process.
+ * Options accepted by {@link buildProgram}.
  *
  * @public
  */
-export function buildProgram(): Command {
+export interface BuildProgramOptions {
+  /**
+   * I/O substrate. Defaults to the real filesystem + stdin via
+   * {@link defaultCommandIo}. Tests can pass an in-memory substitute
+   * so argv-level coverage doesn't need `pnpm build` + `spawnSync`.
+   */
+  io?: CommandIo;
+  /**
+   * stdout writer. Defaults to `process.stdout.write`. In-process
+   * tests can capture output by passing a buffered writer.
+   */
+  stdout?: (chunk: string) => void;
+  /**
+   * stderr writer. Defaults to `process.stderr.write`.
+   */
+  stderr?: (chunk: string) => void;
+  /**
+   * Exit handler. Defaults to `process.exit`. In-process tests should
+   * pass a throwing implementation so the test harness observes the
+   * exit code via the rejection and doesn't actually terminate.
+   */
+  exit?: (code: number) => void;
+}
+
+/**
+ * Build the Commander program. Exported so tests can invoke the program
+ * without spawning a child process; pass `{ io, stdout, stderr, exit }`
+ * to route all side-effects through in-process collaborators.
+ *
+ * @public
+ */
+export function buildProgram(options: BuildProgramOptions = {}): Command {
+  const io = options.io;
+  const stdout = options.stdout ?? ((s) => process.stdout.write(s));
+  const stderr = options.stderr ?? ((s) => process.stderr.write(s));
+  const exit = options.exit ?? ((code) => process.exit(code));
+
   const program = new Command();
   program.name("oav").description("OpenAPI 3.1 HTTP request/response validator").exitOverride();
 
@@ -19,17 +54,20 @@ export function buildProgram(): Command {
     .option("-o, --output <file>", "write output to a file instead of stdout")
     .option("--quiet", "print nothing; exit code only", false)
     .action(async (spec: string, opts: { overlay: string[]; output?: string; quiet: boolean }) => {
-      const res = await resolveCommand({
-        spec,
-        overlays: opts.overlay ?? [],
-        options: {
-          format: "text",
-          output: opts.output,
-          quiet: opts.quiet,
+      const res = await resolveCommand(
+        {
+          spec,
+          overlays: opts.overlay ?? [],
+          options: {
+            format: "text",
+            output: opts.output,
+            quiet: opts.quiet,
+          },
         },
-      });
-      if (res.output !== undefined && !opts.quiet) process.stdout.write(res.output + "\n");
-      process.exit(res.exitCode);
+        io,
+      );
+      if (res.output !== undefined && !opts.quiet) stdout(res.output + "\n");
+      exit(res.exitCode);
     });
 
   program
@@ -54,9 +92,20 @@ export function buildProgram(): Command {
     .option("-o, --output <file>", "write output to a file instead of stdout")
     .option("--quiet", "print nothing; exit code only", false)
     .action(async (spec: string, opts) => {
+      // deriveMode is the only pre-validation step that throws (usage
+      // errors). Keep the try narrow so it doesn't also catch the
+      // exit() call's in-process throw (tests inject a throwing exit
+      // to observe the code without terminating the process).
+      let mode: ValidateMode;
       try {
-        const mode = deriveMode(opts);
-        const res = await validateCommand({
+        mode = deriveMode(opts);
+      } catch (err) {
+        stderr(`error: ${(err as Error).message}\n`);
+        exit(3);
+        return;
+      }
+      const res = await validateCommand(
+        {
           spec,
           overlays: opts.overlay ?? [],
           mode,
@@ -66,15 +115,13 @@ export function buildProgram(): Command {
             output: opts.output,
             quiet: opts.quiet,
           },
-        });
-        if (res.output !== undefined && !opts.quiet && res.output !== "") {
-          process.stdout.write(res.output + "\n");
-        }
-        process.exit(res.exitCode);
-      } catch (err) {
-        process.stderr.write(`error: ${(err as Error).message}\n`);
-        process.exit(3);
+        },
+        io,
+      );
+      if (res.output !== undefined && !opts.quiet && res.output !== "") {
+        stdout(res.output + "\n");
       }
+      exit(res.exitCode);
     });
 
   return program;
