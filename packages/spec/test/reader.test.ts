@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { composeReaders, createMemoryReader } from "../src/reader.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { composeReaders, createHttpReader, createMemoryReader } from "../src/reader.js";
 
 describe("memory reader", () => {
   it("returns parsed JSON when given a string source", async () => {
@@ -22,6 +22,62 @@ describe("memory reader", () => {
     const r = createMemoryReader(new Map([["x", "y"]]));
     expect(r.canRead("x")).toBe(true);
     expect(r.canRead("nope")).toBe(false);
+  });
+});
+
+describe("http reader", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("reports canRead() for http/https URIs only", () => {
+    const r = createHttpReader();
+    expect(r.canRead("http://example.com/spec.json")).toBe(true);
+    expect(r.canRead("https://example.com/spec.json")).toBe(true);
+    expect(r.canRead("file:///tmp/spec.json")).toBe(false);
+    expect(r.canRead("memory:spec")).toBe(false);
+  });
+
+  it("fetches and parses JSON by .json extension", async () => {
+    const fetchMock = vi.fn(async () => new Response('{"openapi":"3.1.0"}', { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const r = createHttpReader();
+    expect(await r.read("https://example.com/spec.json")).toEqual({ openapi: "3.1.0" });
+    expect(fetchMock).toHaveBeenCalledWith("https://example.com/spec.json");
+  });
+
+  it("fetches and parses YAML by .yaml extension", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("openapi: 3.1.0\ninfo:\n  title: X", { status: 200 })),
+    );
+    const r = createHttpReader();
+    expect(await r.read("https://example.com/spec.yaml")).toEqual({
+      openapi: "3.1.0",
+      info: { title: "X" },
+    });
+  });
+
+  it("throws when the response is non-ok, including the status in the message", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("not found", { status: 404 })),
+    );
+    const r = createHttpReader();
+    await expect(r.read("https://example.com/missing.json")).rejects.toThrow(
+      /HTTP 404 fetching https:\/\/example\.com\/missing\.json/,
+    );
+  });
+
+  it("propagates network-level fetch rejections", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("network down");
+      }),
+    );
+    const r = createHttpReader();
+    await expect(r.read("https://example.com/spec.json")).rejects.toThrow(/network down/);
   });
 });
 
