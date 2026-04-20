@@ -317,9 +317,6 @@ Runnable, self-contained TypeScript examples in
 
 ## Known limitations
 
-- `unevaluatedProperties` / `unevaluatedItems` do not propagate
-  evaluation sets across `allOf` / `anyOf` / `oneOf`. Covers the common
-  case; may produce false positives under composition.
 - `$dynamicRef` behaves like `$ref` with anchor lookup — no runtime
   dynamic-scope traversal.
 

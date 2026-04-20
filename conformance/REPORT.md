@@ -7,8 +7,8 @@ Generated against the upstream test suites listed in
 
 | Source                              | Cases | Pass | Mismatch | Error | % pass |
 | ----------------------------------- | ----- | ---- | -------- | ----- | ------ |
-| JSON Schema Test Suite (required)   | 1290  | 1158 | 64       | 68    | 89.8%  |
-| JSON Schema Test Suite (+ optional) | 1452  | 1314 | 69       | 69    | 90.5%  |
+| JSON Schema Test Suite (required)   | 1290  | 1257 | 29       | 4     | 97.4%  |
+| JSON Schema Test Suite (+ optional) | 1452  | 1415 | 33       | 4     | 97.5%  |
 | OpenAPI `petstore` via `oav` CLI    | 14    | 14   | 0        | 0     | 100%   |
 
 "Mismatch" = our verdict differs from upstream; "error" = our compiler
@@ -22,38 +22,10 @@ strings — but the machine-readable `code`s are stable and checkable).
 
 ## Where we diverge from the JSON Schema suite
 
-Every remaining divergence falls into one of four categories, documented
-below. The first two are intentional scope decisions; the last two are
-known weak spots that we could harden without redesigning anything.
+Every remaining divergence falls into a small number of categories,
+documented below.
 
-### 1. External / cross-document `$ref` (53 cases) — out of scope for the embedded compiler
-
-`refRemote.json` (31 errors) and portions of `ref.json`, `anchor.json`,
-`defs.json`, `vocabulary.json` expect the validator to fetch schemas from
-`http://localhost:1234/…`, `https://json-schema.org/draft/2020-12/schema`,
-URN refs, and relative URIs resolved through a `$id` stack. `@oav/schema`
-resolves `#`-fragments within the schema passed in; cross-document loading
-is the `@oav/spec` resolver's job (and `@oav/spec` already inlines external
-refs _before_ compilation). The suite's tests run the compiler bare, so
-they trigger this error.
-
-**Fix path**: accept a pre-registered external schema map on `compileSchema`,
-and teach the ref resolver to walk a base-URI stack built from `$id`.
-Straightforward but deferred.
-
-### 2. `unevaluatedProperties` / `unevaluatedItems` across composition (52 cases) — documented limitation
-
-Our compiler tracks evaluated keys inside one generated function. When
-`allOf` / `oneOf` / `anyOf` delegates to another compiled function, the
-evaluation set doesn't propagate back. The suite tests this scenario
-heavily. Documented in `CLAUDE.md` "Known limitations".
-
-**Fix path**: make subschema validators return `{ error, evaluated }`
-tuples (items + properties), and have every applicator merge those into
-the enclosing scope. Requires touching every applicator keyword plus the
-function-call convention; meaningful refactor but well-scoped.
-
-### 3. `$dynamicRef` with runtime dynamic scope (24 cases) — partial implementation
+### 1. `$dynamicRef` with runtime dynamic scope (~25 cases) — partial implementation
 
 Our `$dynamicRef` resolves statically against the anchor map. Tests that
 rely on a `$dynamicRef` rebinding at the outermost `$dynamicAnchor`
@@ -62,35 +34,25 @@ encountered during validation fail. Documented in `CLAUDE.md`.
 **Fix path**: maintain a runtime stack of `$dynamicAnchor` scopes during
 validation, resolve `$dynamicRef` at call time.
 
-### 4. Fixed so far
+### 2. Fixed so far
 
 - `format.json` — 17 → 0. Flipped `format` to the spec's non-assertive
   default and put the assertion keyword behind an opt-in vocabulary that
-  `@oav/validator` enables. Commit `e182afb`.
-- JSON Pointer percent-decoding — 6 → 0 on `ref.json`. Same commit.
+  `@oav/validator` enables.
+- JSON Pointer percent-decoding — 6 → 0 on `ref.json`.
 - `dependencies` (draft-07 compat) — 14 → 0 on
   `optional/dependencies-compatibility.json`. The keyword was split in
   2020-12 into `dependentRequired`/`dependentSchemas`, but older schemas
   continue to use the combined form; added a keyword that dispatches
-  per-entry on value shape. Commit `79af5a7`.
-
-### 5. Remaining "single-case" failures — actually facets of #1–#3
-
-Two divergences looked like standalone bugs in an earlier pass; on
-closer inspection each is a surface of one of the larger limitations
-above, and can't be fixed without the underlying work.
-
-- `not.json` / "annotations are still collected inside a 'not'" — the
-  schema wraps `anyOf` + `unevaluatedProperties: false` inside a `not`.
-  Correct handling requires propagating the annotation set out of the
-  `not`-subschema's compiled function. Same fix as #2
-  (`unevaluatedProperties` across composition).
-- `ref.json` / "order of evaluation: $id and $anchor and $ref" — two
-  subschemas declare `$anchor: "bigint"`in different`$id` scopes. Our
-  resolver flattens all anchors into one map keyed only by name, so the
-  inner entry clobbers the outer one. Correct handling requires scoping
-  anchors by their enclosing `$id` URI — that's the same base-URI stack
-  #1 needs.
+  per-entry on value shape.
+- External / cross-document `$ref` — `refRemote.json` 0/31 → 31/31.
+  `compileSchema` now accepts a pre-registered external schema map
+  via the `external` option, and `resolve()` walks every registered
+  schema to collect its `$id` / `$anchor` entries scoped by base URI.
+- `unevaluatedProperties` / `unevaluatedItems` across composition —
+  generated subvalidators now take out-parameter `Set<string>`s and
+  composition / `$ref` / `if-then-else` / `dependentSchemas` keywords
+  thread them through, merging keys from passing branches only.
 
 ## Optional-suite breakdown
 

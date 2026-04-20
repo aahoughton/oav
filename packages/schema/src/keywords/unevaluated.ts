@@ -10,17 +10,10 @@ function isObjectGuard(dataExpr: string): string {
 /**
  * The `unevaluatedProperties` keyword. Validates every property NOT already
  * evaluated by sibling keywords (`properties`, `patternProperties`,
- * `additionalProperties`) against the given subschema.
- *
- * @remarks
- * Evaluation reporting across `allOf`/`anyOf`/`oneOf` boundaries is NOT
- * propagated — subschemas validated through composition keywords are
- * compiled into separate functions that do not touch the enclosing
- * `evaluatedProperties` set. This covers the common case but may produce
- * false-positive errors for schemas that rely on composition to satisfy
- * `unevaluatedProperties`. Upgrading this to full dynamic evaluation would
- * require returning both errors and evaluation-sets from every subschema
- * call.
+ * `additionalProperties`) or by any composition keyword (`allOf`,
+ * `anyOf`, `oneOf`, `$ref`, `if`/`then`/`else`, `dependentSchemas`) in the
+ * enclosing scope, against the given subschema. Annotations from failing
+ * subschemas are discarded per the 2020-12 spec.
  *
  * @public
  */
@@ -62,11 +55,9 @@ export const unevaluatedPropertiesKeyword: KeywordDefinition = {
 
 /**
  * The `unevaluatedItems` keyword. Validates every array index NOT already
- * evaluated by sibling keywords (`prefixItems`, `items`, `contains`) against
- * the given subschema.
- *
- * @remarks
- * See {@link unevaluatedPropertiesKeyword} for a note on composition.
+ * evaluated by sibling keywords (`prefixItems`, `items`, `contains`) or by
+ * any composition keyword in the enclosing scope, against the given
+ * subschema.
  *
  * @public
  */

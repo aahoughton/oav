@@ -203,10 +203,6 @@ having an unknown field, which 2020-12 allows in every dialect.
 
 ## Known limitations
 
-- `unevaluatedProperties` / `unevaluatedItems` do not propagate evaluation
-  sets across `allOf` / `anyOf` / `oneOf` boundaries; each subschema
-  compiles as its own function. See the TSDoc on
-  `unevaluatedPropertiesKeyword` for detail.
 - `$dynamicRef` currently behaves like `$ref` with an anchor lookup — no
   runtime dynamic-scope traversal. Good enough for schemas that don't
   actually rewire the extension point at runtime.
