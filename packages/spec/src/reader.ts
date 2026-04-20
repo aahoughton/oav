@@ -35,7 +35,14 @@ export function createFileReader(cwd: string = process.cwd()): DocumentReader {
       return !/^(https?|memory):/i.test(uri);
     },
     async read(uri) {
-      const path = resolvePath(cwd, uri.replace(/^file:\/\//, ""));
+      const stripped = uri.replace(/^file:\/\//, "");
+      // `$ref` URIs are percent-encoded per RFC 3986, so a filesystem
+      // path like "my spec.yaml" arrives here as "my%20spec.yaml". Decode
+      // well-formed %XX escapes before hitting the disk. Stray `%` that
+      // isn't a valid escape passes through so it can match a literal
+      // filename that actually contains one.
+      const decoded = stripped.replace(/%[0-9A-Fa-f]{2}/g, (m) => decodeURIComponent(m));
+      const path = resolvePath(cwd, decoded);
       const raw = await readFile(path, "utf8");
       return parseByExtension(path, raw);
     },

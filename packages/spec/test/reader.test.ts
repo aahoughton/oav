@@ -1,5 +1,13 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { composeReaders, createHttpReader, createMemoryReader } from "../src/reader.js";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  composeReaders,
+  createFileReader,
+  createHttpReader,
+  createMemoryReader,
+} from "../src/reader.js";
 
 describe("memory reader", () => {
   it("returns parsed JSON when given a string source", async () => {
@@ -78,6 +86,46 @@ describe("http reader", () => {
     );
     const r = createHttpReader();
     await expect(r.read("https://example.com/spec.json")).rejects.toThrow(/network down/);
+  });
+});
+
+describe("file reader", () => {
+  let dir: string;
+
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), "oav-reader-"));
+    writeFileSync(join(dir, "plain.json"), '{"x":1}');
+    writeFileSync(join(dir, "has space.yaml"), "x: 1");
+    writeFileSync(join(dir, "has+plus.yaml"), "x: 2");
+  });
+
+  afterAll(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("reads an undecorated path", async () => {
+    const r = createFileReader(dir);
+    expect(await r.read("plain.json")).toEqual({ x: 1 });
+  });
+
+  it("decodes percent-escaped spaces in $ref-style paths (#37)", async () => {
+    const r = createFileReader(dir);
+    expect(await r.read("has%20space.yaml")).toEqual({ x: 1 });
+  });
+
+  it("decodes percent-escaped `+` in paths", async () => {
+    const r = createFileReader(dir);
+    expect(await r.read("has%2Bplus.yaml")).toEqual({ x: 2 });
+  });
+
+  it("leaves the path alone when it contains a literal unescaped space", async () => {
+    const r = createFileReader(dir);
+    expect(await r.read("has space.yaml")).toEqual({ x: 1 });
+  });
+
+  it("accepts file:// URIs", async () => {
+    const r = createFileReader(dir);
+    expect(await r.read("file://plain.json")).toEqual({ x: 1 });
   });
 });
 
