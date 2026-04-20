@@ -3,7 +3,13 @@ import { CodeGen, NAMES, quoteString } from "../codegen/index.js";
 import type { Dialect, KeywordDefinition } from "../keywords/types.js";
 import { createKeywordContext, emitPushStatement } from "../keywords/context.js";
 import { createCustomKeywordDefinition, type CustomKeywordValidator } from "../keywords/custom.js";
-import { createRefResolver, resolve, type RefResolver } from "../resolve/index.js";
+import {
+  createRefResolver,
+  resolve,
+  SchemaRegistry,
+  type RefResolver,
+  type ResolvedGraph,
+} from "../resolve/index.js";
 import { createDeps, type ValidatorDeps } from "./runtime.js";
 
 /**
@@ -120,6 +126,7 @@ export interface CompileState {
   readonly functionBodies: string[];
   readonly deps: ValidatorDeps;
   readonly refResolver: RefResolver;
+  readonly graph: ResolvedGraph;
   readonly compileValidator: (schema: SchemaOrBoolean) => string;
   /**
    * `true` when a finite `maxErrors` was configured. Codegen uses this
@@ -192,12 +199,11 @@ export function compileSchema(schema: SchemaOrBoolean, options: CompileOptions):
   }
   if (options.extraDeps) Object.assign(deps, options.extraDeps);
 
-  const graph = resolve(schema);
+  const registry = new SchemaRegistry();
   if (options.external !== undefined) {
-    for (const [uri, ext] of options.external) {
-      if (!graph.registry.has(uri)) graph.registry.add(uri, ext);
-    }
+    for (const [uri, ext] of options.external) registry.add(uri, ext);
   }
+  const graph = resolve(schema, { registry });
   const refResolver = options.refResolver ?? createRefResolver(graph);
 
   const state: CompileState = {
@@ -208,6 +214,7 @@ export function compileSchema(schema: SchemaOrBoolean, options: CompileOptions):
     functionBodies: [],
     deps,
     refResolver,
+    graph,
     nextFn: 0,
     gated: Number.isFinite(maxErrors),
     refSuppressesSiblings: options.dialect.rules.refSuppressesSiblings,
@@ -286,8 +293,9 @@ function compileSchemaKeywords(
   evaluatedItemsVar: string | null,
 ): void {
   const subCompiler = (subSchema: SchemaOrBoolean): string => compileValidator(subSchema, state);
+  const currentBaseUri = state.graph.schemaBaseUri.get(schema) ?? state.graph.baseUri;
   const resolveRefToFunction = (ref: string): string => {
-    const target = state.refResolver.resolve(ref);
+    const target = state.refResolver.resolve(ref, currentBaseUri);
     return compileValidator(target, state);
   };
 

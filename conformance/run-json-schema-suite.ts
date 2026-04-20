@@ -56,6 +56,31 @@ interface FileResult {
 
 const SUITE_ROOT = resolve(new URL(".", import.meta.url).pathname, "JSON-Schema-Test-Suite");
 const TESTS_DIR = join(SUITE_ROOT, "tests", "draft2020-12");
+const REMOTES_DIR = join(SUITE_ROOT, "remotes");
+const REMOTE_BASE = "http://localhost:1234";
+
+function loadRemoteSchemas(): Map<string, unknown> {
+  const map = new Map<string, unknown>();
+  const walk = (dir: string, prefix: string): void => {
+    if (!existsSync(dir)) return;
+    for (const entry of readdirSync(dir)) {
+      const abs = join(dir, entry);
+      const st = statSync(abs);
+      if (st.isDirectory()) walk(abs, `${prefix}/${entry}`);
+      else if (entry.endsWith(".json")) {
+        try {
+          map.set(`${prefix}/${entry}`, JSON.parse(readFileSync(abs, "utf8")));
+        } catch {
+          // skip unparsable fixtures
+        }
+      }
+    }
+  };
+  walk(REMOTES_DIR, REMOTE_BASE);
+  return map;
+}
+
+const remoteSchemas = loadRemoteSchemas();
 
 const args = new Set(process.argv.slice(2));
 const includeOptional = args.has("--optional");
@@ -90,6 +115,7 @@ function runFile(path: string): FileResult {
       const compiled = compileSchema(group.schema as never, {
         dialect: jsonSchemaDialect,
         formats: builtInFormats,
+        external: remoteSchemas as Map<string, never>,
       });
       validate = compiled.validate;
     } catch (err) {

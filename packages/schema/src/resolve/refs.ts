@@ -1,5 +1,5 @@
 import type { SchemaObject, SchemaOrBoolean } from "@oav/core";
-import type { ResolvedGraph } from "./resolver.js";
+import { absolutizeUri, type ResolvedGraph } from "./resolver.js";
 
 /**
  * A function capable of resolving a JSON Schema `$ref` string (absolute or
@@ -8,7 +8,16 @@ import type { ResolvedGraph } from "./resolver.js";
  * @public
  */
 export interface RefResolver {
-  resolve(ref: string): SchemaOrBoolean;
+  /**
+   * Resolve a `$ref` string to the target schema.
+   *
+   * @param ref - The `$ref` value, either a fragment (`#...`), a relative
+   *   URI, or an absolute URI (with optional `#fragment`).
+   * @param fromBaseUri - Optional base URI of the schema containing the
+   *   `$ref`. Used to absolutize relative refs and to pick the right
+   *   scope for `#anchor` / `#/pointer` fragments under nested `$id`s.
+   */
+  resolve(ref: string, fromBaseUri?: string): SchemaOrBoolean;
 }
 
 /**
@@ -17,9 +26,11 @@ export interface RefResolver {
  *
  * @remarks
  * Supported forms:
- * - `#` — the root schema.
- * - `#/a/b/c` — JSON Pointer into the root schema.
- * - `#name` — lookup in `byAnchor`.
+ * - `#` — the root of the enclosing `$id` scope (or the graph root if
+ *   the `$ref` appears at the root).
+ * - `#/a/b/c` — JSON Pointer into the enclosing scope's root schema.
+ * - `#name` — lookup in the enclosing scope's anchor map; falls back to
+ *   the flat anchor map for cross-scope references.
  * - absolute URI — lookup in `byId` or the external registry.
  * - absolute URI + fragment — resolve the URI, then the fragment.
  *
@@ -37,36 +48,55 @@ export interface RefResolver {
  */
 export function createRefResolver(graph: ResolvedGraph): RefResolver {
   return {
-    resolve(ref: string): SchemaOrBoolean {
-      return resolveOne(ref, graph);
+    resolve(ref: string, fromBaseUri: string = graph.baseUri): SchemaOrBoolean {
+      return resolveOne(ref, graph, fromBaseUri);
     },
   };
 }
 
-function resolveOne(ref: string, graph: ResolvedGraph): SchemaOrBoolean {
-  if (ref === "#" || ref === "") return graph.root;
-  if (ref.startsWith("#")) return resolveFragment(ref.slice(1), graph.root, graph);
+function rootForBase(graph: ResolvedGraph, baseUri: string): SchemaOrBoolean {
+  if (baseUri === "" || baseUri === graph.baseUri) return graph.root;
+  const fromId = graph.byId.get(baseUri);
+  if (fromId !== undefined) return fromId;
+  const fromRegistry = graph.registry.get(baseUri);
+  if (fromRegistry !== undefined) return fromRegistry;
+  return graph.root;
+}
 
-  const hashIdx = ref.indexOf("#");
-  const base = hashIdx < 0 ? ref : ref.slice(0, hashIdx);
-  const fragment = hashIdx < 0 ? "" : ref.slice(hashIdx + 1);
+function resolveOne(ref: string, graph: ResolvedGraph, fromBaseUri: string): SchemaOrBoolean {
+  if (ref === "#" || ref === "") return rootForBase(graph, fromBaseUri);
+  if (ref.startsWith("#")) {
+    return resolveFragment(ref.slice(1), rootForBase(graph, fromBaseUri), graph, fromBaseUri);
+  }
+
+  const resolvedRef = absolutizeUri(ref, fromBaseUri);
+  const hashIdx = resolvedRef.indexOf("#");
+  const base = hashIdx < 0 ? resolvedRef : resolvedRef.slice(0, hashIdx);
+  const fragment = hashIdx < 0 ? "" : resolvedRef.slice(hashIdx + 1);
   const baseSchema = graph.byId.get(base) ?? graph.registry.get(base);
   if (baseSchema === undefined) {
     throw new Error(`cannot resolve $ref: ${ref}`);
   }
   if (fragment === "") return baseSchema;
-  return resolveFragment(fragment, baseSchema, graph);
+  return resolveFragment(fragment, baseSchema, graph, base);
 }
 
 function resolveFragment(
   fragment: string,
   rootSchema: SchemaOrBoolean,
   graph: ResolvedGraph,
+  baseUri: string,
 ): SchemaOrBoolean {
   if (fragment === "") return rootSchema;
   if (fragment.startsWith("/")) return resolveJsonPointer(rootSchema, fragment);
-  const anchored = graph.byAnchor.get(fragment) ?? graph.byDynamicAnchor.get(fragment);
-  if (anchored !== undefined) return anchored;
+  const scoped =
+    graph.anchorScopes.get(baseUri)?.get(fragment) ??
+    graph.dynamicAnchorScopes.get(baseUri)?.get(fragment);
+  if (scoped !== undefined) return scoped;
+  // Fall back to the flat union — lets #anchor refs resolve against
+  // cousin scopes when the enclosing scope doesn't own the anchor.
+  const flat = graph.byAnchor.get(fragment) ?? graph.byDynamicAnchor.get(fragment);
+  if (flat !== undefined) return flat;
   throw new Error(`unknown anchor: #${fragment}`);
 }
 
