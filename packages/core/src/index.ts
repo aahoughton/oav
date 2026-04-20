@@ -30,6 +30,8 @@ export {
   type ValidationIssue,
 } from "./problem-details.js";
 
+export { resolveJsonPointer } from "./json-pointer.js";
+
 export { detectOpenAPIVersion, type OpenAPIVersion } from "./version.js";
 
 export type {

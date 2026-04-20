@@ -28,7 +28,7 @@ import {
   type Dialect,
   type RefResolver,
 } from "@oav/schema";
-import { resolveJsonPointer } from "@oav/spec";
+import { resolveJsonPointer } from "@oav/core";
 
 /**
  * Pick the dialect for a given OpenAPI version. 3.1 and 3.2 share the
@@ -304,28 +304,8 @@ export function createValidator(
     return c;
   };
 
-  // Resolve an operation-level $ref (requestBody, response, parameter,
-  // header) against the spec. Returns the target object with any
-  // siblings on the reference itself dropped — per OAS, siblings of a
-  // Reference are ignored. Follows ref chains with a depth guard.
-  // External refs must be inlined upstream by @oav/spec.resolveSpec().
-  const resolveRef = <T>(value: T | ReferenceObject | undefined): T | undefined => {
-    let current: unknown = value;
-    for (let hops = 0; hops < 32; hops++) {
-      if (current === undefined || current === null || typeof current !== "object") {
-        return current as T | undefined;
-      }
-      const ref = (current as ReferenceObject).$ref;
-      if (typeof ref !== "string") return current as T;
-      if (!ref.startsWith("#")) {
-        throw new Error(
-          `external ref "${ref}" not resolved; run @oav/spec's resolveSpec() over the document before passing it to createValidator()`,
-        );
-      }
-      current = resolveJsonPointer(spec, ref.slice(1));
-    }
-    throw new Error(`$ref chain exceeded 32 hops (possible cycle)`);
-  };
+  const resolveRef = <T>(value: T | ReferenceObject | undefined): T | undefined =>
+    resolveOperationRef<T>(spec, value);
 
   const operationCache = new WeakMap<OperationObject, OperationCache>();
 
@@ -824,4 +804,37 @@ function validateBody(req: HttpRequest, cache: OperationCache): ValidationError 
   const r = validator.validate(req.body, ["body"]);
   if (r.valid || r.error === undefined) return null;
   return r.error;
+}
+
+/**
+ * Resolve an operation-level `$ref` (requestBody / response / parameter /
+ * header) against the spec. Returns the target object with any siblings
+ * on the reference itself dropped — per OAS, siblings of a Reference
+ * are ignored. Follows chains with a depth guard to catch cycles.
+ * External refs must be inlined upstream by @oav/spec.resolveSpec().
+ *
+ * Lifted to module scope so it can be exercised independently of
+ * createValidator.
+ *
+ * @internal
+ */
+export function resolveOperationRef<T>(
+  spec: unknown,
+  value: T | ReferenceObject | undefined,
+): T | undefined {
+  let current: unknown = value;
+  for (let hops = 0; hops < 32; hops++) {
+    if (current === undefined || current === null || typeof current !== "object") {
+      return current as T | undefined;
+    }
+    const ref = (current as ReferenceObject).$ref;
+    if (typeof ref !== "string") return current as T;
+    if (!ref.startsWith("#")) {
+      throw new Error(
+        `external ref "${ref}" not resolved; run @oav/spec's resolveSpec() over the document before passing it to createValidator()`,
+      );
+    }
+    current = resolveJsonPointer(spec, ref.slice(1));
+  }
+  throw new Error(`$ref chain exceeded 32 hops (possible cycle)`);
 }

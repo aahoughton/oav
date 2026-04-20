@@ -1,6 +1,10 @@
 import { dirname, isAbsolute, posix, resolve as resolvePath } from "node:path";
-import type { JsonValue, OpenAPIDocument } from "@oav/core";
+import { resolveJsonPointer, type OpenAPIDocument } from "@oav/core";
 import type { DocumentReader } from "./reader.js";
+
+// Re-export the canonical implementation so @oav/spec consumers who
+// imported `resolveJsonPointer` keep working.
+export { resolveJsonPointer };
 
 /**
  * Options accepted by {@link resolveSpec}.
@@ -29,7 +33,6 @@ export interface ResolvedSpec {
 }
 
 type Mutable = Record<string, unknown>;
-type JsonObject = Record<string, JsonValue>;
 
 /**
  * Load an OpenAPI 3.1 document and inline all external `$ref`s, producing a
@@ -166,44 +169,4 @@ function encodeUri(uri: string): string {
 
 function encodeFragment(fragment: string): string {
   return fragment.replace(/^\//, "");
-}
-
-/**
- * Resolve a JSON Pointer (RFC 6901) fragment against the given root value.
- *
- * Accepts pointers as they appear inside a URI fragment: percent-escapes
- * are decoded first (RFC 6901 §6), then `~1`/`~0` are decoded per §4.
- * Callers pass `$ref.slice(1)` directly — no need to `decodeURIComponent`
- * themselves.
- *
- * @param root - Root value.
- * @param pointer - Pointer (e.g. `"/$defs/Pet"` or `"/paths/~1v2~1apps~1%7Bapp_id%7D"`).
- * @returns The targeted value.
- * @throws When the pointer traverses into a non-object or the target is missing.
- *
- * @public
- */
-export function resolveJsonPointer(root: unknown, pointer: string): JsonValue {
-  if (pointer === "" || pointer === "/") return root as JsonValue;
-  // RFC 6901 §6: percent-decoding happens on the whole pointer first,
-  // then ~0/~1 decoding per §4. Only well-formed %XX escapes are decoded
-  // so stray '%' chars in keys are preserved.
-  const decoded = pointer.replace(/%[0-9A-Fa-f]{2}/g, (m) => decodeURIComponent(m));
-  const parts = decoded
-    .replace(/^\//, "")
-    .split("/")
-    .map((s) => s.replace(/~1/g, "/").replace(/~0/g, "~"));
-  let cur: unknown = root;
-  for (const part of parts) {
-    if (cur === null || typeof cur !== "object") {
-      throw new Error(`JSON pointer ${pointer} traverses a primitive at ${part}`);
-    }
-    const asArr = Array.isArray(cur);
-    const key = asArr ? Number.parseInt(part, 10) : part;
-    cur = (cur as JsonObject)[key as never];
-    if (cur === undefined) {
-      throw new Error(`JSON pointer ${pointer} not found (at ${part})`);
-    }
-  }
-  return cur as JsonValue;
 }

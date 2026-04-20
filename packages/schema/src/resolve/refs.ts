@@ -1,4 +1,8 @@
-import type { SchemaObject, SchemaOrBoolean } from "@oav/core";
+import {
+  resolveJsonPointer as coreResolveJsonPointer,
+  type SchemaObject,
+  type SchemaOrBoolean,
+} from "@oav/core";
 import { absolutizeUri, type ResolvedGraph } from "./resolver.js";
 
 /**
@@ -101,34 +105,7 @@ function resolveFragment(
 }
 
 function resolveJsonPointer(root: SchemaOrBoolean, pointer: string): SchemaOrBoolean {
-  if (!pointer.startsWith("/")) throw new Error(`invalid JSON pointer: ${pointer}`);
-  const parts = pointer
-    .slice(1)
-    .split("/")
-    .map((s) => {
-      // `$ref` fragments are URI-encoded first, then JSON-Pointer-escaped;
-      // reverse in that order.
-      let decoded: string;
-      try {
-        decoded = decodeURIComponent(s);
-      } catch {
-        decoded = s;
-      }
-      return decoded.replace(/~1/g, "/").replace(/~0/g, "~");
-    });
-  let cur: unknown = root;
-  for (const part of parts) {
-    if (cur === null || typeof cur !== "object") {
-      throw new Error(`cannot walk JSON pointer "${pointer}" into a primitive`);
-    }
-    const arr = Array.isArray(cur);
-    const key = arr ? Number.parseInt(part, 10) : part;
-    cur = (cur as Record<string, unknown>)[key as never];
-    if (cur === undefined) {
-      throw new Error(`reference not found at ${pointer}`);
-    }
-  }
-  return cur as SchemaOrBoolean;
+  return coreResolveJsonPointer(root, pointer) as SchemaOrBoolean;
 }
 
 /**
