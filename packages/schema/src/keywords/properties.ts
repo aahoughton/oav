@@ -57,10 +57,7 @@ export const patternPropertiesKeyword: KeywordDefinition = {
           const subSchema = patterns[pattern];
           const patternLit = quoteString(pattern);
           const regexVar = g.scope.name("re");
-          g.line(
-            `let ${regexVar} = ${NAMES.DEPS}.patterns.get(${patternLit}); ` +
-              `if (${regexVar} === undefined) { ${regexVar} = new RegExp(${patternLit}, "u"); ${NAMES.DEPS}.patterns.set(${patternLit}, ${regexVar}); }`,
-          );
+          g.line(`const ${regexVar} = ${NAMES.DEPS}.compilePattern(${patternLit});`);
           return { regex: regexVar, sub: subSchema };
         },
       );
@@ -102,10 +99,7 @@ export const additionalPropertiesKeyword: KeywordDefinition = {
       for (const p of patterns) {
         const v = g.scope.name("re");
         const lit = quoteString(p);
-        g.line(
-          `let ${v} = ${NAMES.DEPS}.patterns.get(${lit}); ` +
-            `if (${v} === undefined) { ${v} = new RegExp(${lit}, "u"); ${NAMES.DEPS}.patterns.set(${lit}, ${v}); }`,
-        );
+        g.line(`const ${v} = ${NAMES.DEPS}.compilePattern(${lit});`);
         patternVars.push(v);
       }
       const known = g.scope.name("known");

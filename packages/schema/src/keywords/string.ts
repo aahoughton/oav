@@ -63,10 +63,7 @@ export const patternKeyword: KeywordDefinition = {
     const source = ctx.schema as string;
     const patternVar = ctx.gen.scope.name("pattern");
     const patternLit = quoteString(source);
-    ctx.gen.line(
-      `let ${patternVar} = ${NAMES.DEPS}.patterns.get(${patternLit});` +
-        ` if (${patternVar} === undefined) { ${patternVar} = new RegExp(${patternLit}, "u"); ${NAMES.DEPS}.patterns.set(${patternLit}, ${patternVar}); }`,
-    );
+    ctx.gen.line(`const ${patternVar} = ${NAMES.DEPS}.compilePattern(${patternLit});`);
     ctx.gen.if(`typeof ${ctx.data} === "string" && !${patternVar}.test(${ctx.data})`, () => {
       ctx.emitError(
         "leaf",

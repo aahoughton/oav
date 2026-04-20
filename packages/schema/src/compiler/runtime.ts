@@ -19,6 +19,15 @@ export interface ValidatorDeps {
     errs: ValidationError[],
   ) => ValidationError | null;
   patterns: Map<string, RegExp>;
+  /**
+   * Compile a user-supplied regex. Tries the `u` (Unicode) flag first —
+   * JSON Schema 2020-12 recommends it — and falls back to no-flag when
+   * the pattern trips strict `u`-mode rules (stray `\-`, `\:`, `\/` etc.,
+   * common in real-world OpenAPI specs). Results are memoized in
+   * `patterns`. Throws `SyntaxError` only when the pattern is malformed
+   * under both modes.
+   */
+  compilePattern: (pattern: string) => RegExp;
   formats: Map<string, (value: string) => boolean>;
   refs: Map<string, Validator>;
   /** User-registered keyword validators, keyed by keyword name. */
@@ -161,6 +170,7 @@ export function wrapErrors(
  * @public
  */
 export function createDeps(maxErrors: number = Number.POSITIVE_INFINITY): ValidatorDeps {
+  const patterns = new Map<string, RegExp>();
   return {
     createError,
     createLeafError,
@@ -168,7 +178,25 @@ export function createDeps(maxErrors: number = Number.POSITIVE_INFINITY): Valida
     typeOf,
     deepEqual,
     wrapErrors,
-    patterns: new Map<string, RegExp>(),
+    patterns,
+    compilePattern(pattern: string): RegExp {
+      const cached = patterns.get(pattern);
+      if (cached !== undefined) return cached;
+      let re: RegExp;
+      try {
+        re = new RegExp(pattern, "u");
+      } catch (errU) {
+        try {
+          re = new RegExp(pattern);
+        } catch {
+          // Surface the stricter (`u`-mode) error — it's more informative
+          // when both modes reject the pattern.
+          throw errU;
+        }
+      }
+      patterns.set(pattern, re);
+      return re;
+    },
     formats: new Map<string, (value: string) => boolean>(),
     refs: new Map<string, Validator>(),
     customKeywords: new Map<string, CustomKeywordValidator>(),

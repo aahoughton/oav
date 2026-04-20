@@ -26,6 +26,29 @@ describe("string keywords", () => {
     expect(v.validate(1).valid).toBe(true);
   });
 
+  it("pattern falls back to no-flag when `u` rejects stray escapes", () => {
+    // Real-world case: DigitalOcean's spec uses patterns like
+    //   ^[a-zA-Z0-9_\-\:]+$
+    // which fail under the `u` flag (stray \- / \:) but are accepted
+    // in non-Unicode mode. Validators should not reject these specs.
+    const v = compile({ pattern: "^[a-zA-Z0-9_\\-\\:]+$" });
+    expect(v.validate("abc-123:xyz").valid).toBe(true);
+    expect(v.validate("abc!").valid).toBe(false);
+  });
+
+  it("pattern keeps Unicode-only features when `u` does parse", () => {
+    // \p{L} is only meaningful under the `u` flag — without it, the
+    // regex would match literal 'p{L}'. Verifies we try `u` first.
+    const v = compile({ pattern: "^\\p{L}+$" });
+    expect(v.validate("héllo").valid).toBe(true);
+    expect(v.validate("abc123").valid).toBe(false);
+  });
+
+  it("pattern surfaces the error when the regex is malformed under both modes", () => {
+    const v = compile({ pattern: "(" });
+    expect(() => v.validate("anything")).toThrow(/Invalid regular expression/);
+  });
+
   it("format is annotation-only by default (spec default)", () => {
     // Without the format-assertion vocabulary opt-in, bad values pass.
     const v = compile({ format: "email" }, { formats: { email: (s) => /@/.test(s) } });
