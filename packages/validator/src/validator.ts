@@ -72,6 +72,29 @@ export interface OavValidator {
    * {@link ValidatorOptions.onUnknownVersion}).
    */
   readonly detectedVersion: OpenAPIVersion | undefined;
+  /**
+   * Runtime observability for compile-time-specialisation optimisations.
+   * The counters live on the validator, not inside a ValidationError
+   * tree, so tests can assert on the optimisation directly rather than
+   * through indirect signals (throwing test schemas, source grepping).
+   */
+  readonly stats: ValidatorStats;
+}
+
+/**
+ * Live counters attached to an {@link OavValidator}.
+ *
+ * @public
+ */
+export interface ValidatorStats {
+  /**
+   * Number of response-body schemas that have been lazily compiled since
+   * the validator was constructed. Starts at `0`; bumps by one each time
+   * a `(status, mediaType)` pairing is seen by `validateResponse` for
+   * the first time. A spec's response bodies are NOT compiled at
+   * `createValidator` time, so on a fresh validator this is always `0`.
+   */
+  responseBodiesCompiled: number;
 }
 
 /**
@@ -214,6 +237,8 @@ export function createValidator(
   const graph = resolve(spec as unknown as SchemaOrBoolean);
   const refResolver: RefResolver = createRefResolver(graph);
 
+  const stats: ValidatorStats = { responseBodiesCompiled: 0 };
+
   const compiledCache = new Map<SchemaOrBoolean, CompiledSchema>();
   const compile = (
     schema: SchemaOrBoolean,
@@ -275,6 +300,7 @@ export function createValidator(
     if (schema === undefined) return undefined;
     const c = direction === undefined ? compile(schema) : compileForDirection(schema, direction);
     cache.set(key, c);
+    if (direction === "response") stats.responseBodiesCompiled += 1;
     return c;
   };
 
@@ -543,7 +569,7 @@ export function createValidator(
     );
   };
 
-  return { validateRequest, validateResponse, detectedVersion };
+  return { validateRequest, validateResponse, detectedVersion, stats };
 }
 
 function validateParameter(

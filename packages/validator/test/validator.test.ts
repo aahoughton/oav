@@ -1175,16 +1175,13 @@ describe("custom keywords via createValidator", () => {
   });
 
   describe("lazy response-schema compilation", () => {
-    // Observable contract: response-body and response-header schemas are
-    // compiled lazily on first validateResponse touch. We probe this by
-    // planting a schema that throws deterministically at compileSchema
-    // time — `type: [...]` is illegal in the OAS 3.0 dialect, so its
-    // keyword throws at compile. If response compilation were eager,
-    // createValidator would throw. If lazy, it succeeds and the throw
-    // appears at first validateResponse for the offending op.
-    function specWithBrokenResponseBody(): OpenAPIDocument {
+    // Observable contract: response-body schemas are compiled lazily on
+    // first validateResponse touch. Direct assertion via
+    // `validator.stats.responseBodiesCompiled`; no reliance on a
+    // throw-on-compile trick.
+    function specWithResponseBody(): OpenAPIDocument {
       return {
-        openapi: "3.0.3",
+        openapi: "3.1.0",
         info: { title: "x", version: "1" },
         paths: {
           "/a": {
@@ -1199,9 +1196,7 @@ describe("custom keywords via createValidator", () => {
                 "200": {
                   description: "ok",
                   content: {
-                    "application/json": {
-                      schema: { type: ["string", "null"] as unknown as string },
-                    },
+                    "application/json": { schema: { type: "string" } },
                   },
                 },
               },
@@ -1212,29 +1207,33 @@ describe("custom keywords via createValidator", () => {
     }
 
     it("doesn't compile response bodies at createValidator time", () => {
-      expect(() => createValidator(specWithBrokenResponseBody())).not.toThrow();
+      const v = createValidator(specWithResponseBody());
+      expect(v.stats.responseBodiesCompiled).toBe(0);
     });
 
     it("doesn't compile response bodies during validateRequest", () => {
-      const v = createValidator(specWithBrokenResponseBody());
-      expect(() =>
-        v.validateRequest({
-          method: "POST",
-          path: "/a",
-          contentType: "application/json",
-          body: {},
-        }),
-      ).not.toThrow();
+      const v = createValidator(specWithResponseBody());
+      v.validateRequest({
+        method: "POST",
+        path: "/a",
+        contentType: "application/json",
+        body: {},
+      });
+      expect(v.stats.responseBodiesCompiled).toBe(0);
     });
 
-    it("compiles the response body on first validateResponse touch", () => {
-      const v = createValidator(specWithBrokenResponseBody());
-      expect(() =>
-        v.validateResponse(
-          { method: "POST", path: "/a" },
-          { status: 200, contentType: "application/json", body: "ok" },
-        ),
-      ).toThrow(/OpenAPI 3\.0 'type' must be a single string/);
+    it("compiles the response body on first validateResponse touch, then memoizes", () => {
+      const v = createValidator(specWithResponseBody());
+      v.validateResponse(
+        { method: "POST", path: "/a" },
+        { status: 200, contentType: "application/json", body: "ok" },
+      );
+      expect(v.stats.responseBodiesCompiled).toBe(1);
+      v.validateResponse(
+        { method: "POST", path: "/a" },
+        { status: 200, contentType: "application/json", body: "again" },
+      );
+      expect(v.stats.responseBodiesCompiled).toBe(1);
     });
 
     it("doesn't compile response headers whose values are absent", () => {

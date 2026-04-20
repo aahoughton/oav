@@ -48,6 +48,16 @@ export interface CompileStats {
    * subschemas that stay as functions each add one.
    */
   functionCount: number;
+  /**
+   * `true` iff the compiler actually emitted `evalProps` / `evalItems`
+   * Set machinery anywhere in the generated source. When `false`, the
+   * unevaluated-keys-gating optimisation is taking effect — the schema
+   * doesn't use `unevaluatedProperties` / `unevaluatedItems`, so the
+   * compiler suppressed the per-function Set allocation and merge loop.
+   * Surfaced so tests can assert on the optimisation directly instead
+   * of grepping the generated JS.
+   */
+  unevaluatedTrackingEmitted: boolean;
 }
 
 /**
@@ -153,6 +163,13 @@ export interface CompileState {
    */
   readonly unevaluatedTracking: boolean;
   nextFn: number;
+  /**
+   * Set to `true` the first time any generated function actually
+   * allocates an `evalProps` / `evalItems` Set. Surfaced in
+   * {@link CompileStats.unevaluatedTrackingEmitted} so callers can
+   * observe the gating optimisation's effect.
+   */
+  unevaluatedEmitted: boolean;
 }
 
 /**
@@ -278,6 +295,7 @@ export function compileSchema(schema: SchemaOrBoolean, options: CompileOptions):
     gated: Number.isFinite(maxErrors),
     refSuppressesSiblings: options.dialect.rules.refSuppressesSiblings,
     unevaluatedTracking,
+    unevaluatedEmitted: false,
     compileValidator(sub) {
       return compileValidator(sub, state);
     },
@@ -288,7 +306,14 @@ export function compileSchema(schema: SchemaOrBoolean, options: CompileOptions):
   const wholeSource = assembleSource(state, rootName);
   const factory = new Function(NAMES.DEPS, wholeSource) as (deps: ValidatorDeps) => CompiledFactory;
   const { validate } = factory(deps);
-  return { validate, source: wholeSource, stats: { functionCount: state.nextFn } };
+  return {
+    validate,
+    source: wholeSource,
+    stats: {
+      functionCount: state.nextFn,
+      unevaluatedTrackingEmitted: state.unevaluatedEmitted,
+    },
+  };
 }
 
 interface CompiledFactory {
@@ -382,10 +407,12 @@ function buildFunctionBody(schema: SchemaOrBoolean, state: CompileState): string
     if (trackProps) {
       evaluatedPropertiesVar = gen.scope.name("evalProps");
       gen.const(evaluatedPropertiesVar, "new Set()");
+      state.unevaluatedEmitted = true;
     }
     if (trackItems) {
       evaluatedItemsVar = gen.scope.name("evalItems");
       gen.const(evaluatedItemsVar, "new Set()");
+      state.unevaluatedEmitted = true;
     }
     compileSchemaKeywords(schema, gen, state, evaluatedPropertiesVar, evaluatedItemsVar);
     // Merge evaluated-key sets into the caller's out-parameters when the

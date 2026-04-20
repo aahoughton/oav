@@ -4,10 +4,11 @@ import { compile } from "./helpers.js";
 /**
  * The compiler short-circuits its evaluated-keys-tracking machinery
  * when no schema in the compile unit uses `unevaluatedProperties` /
- * `unevaluatedItems`. Observable via the generated source:
+ * `unevaluatedItems`. Observable via
+ * `stats.unevaluatedTrackingEmitted`:
  * - When tracking is off, no `evalProps` / `evalItems` Sets are
  *   allocated and no merge loop runs at function exit.
- * - When tracking is on, both appear.
+ * - When tracking is on, both appear and the stat flips to `true`.
  * The flag is compile-unit-wide: if *any* reachable schema triggers
  * it, tracking stays on everywhere so `unevaluated*` observes all
  * evaluated keys from sibling applicators and $ref targets.
@@ -22,7 +23,7 @@ describe("unevaluated-tracking compile-time gating", () => {
         },
       },
     });
-    expect(v.source).not.toMatch(/evalProps|evalItems/);
+    expect(v.stats.unevaluatedTrackingEmitted).toBe(false);
     // Sanity-check that the compiled validator still works.
     expect(v.validate({ inner: { x: "a" } }).valid).toBe(true);
     expect(v.validate({ inner: { x: 1 } }).valid).toBe(false);
@@ -34,7 +35,7 @@ describe("unevaluated-tracking compile-time gating", () => {
       properties: { a: { type: "string" } },
       unevaluatedProperties: false,
     });
-    expect(v.source).toMatch(/evalProps/);
+    expect(v.stats.unevaluatedTrackingEmitted).toBe(true);
     expect(v.validate({ a: "x" }).valid).toBe(true);
     expect(v.validate({ a: "x", extra: 1 }).valid).toBe(false);
   });
@@ -53,7 +54,7 @@ describe("unevaluated-tracking compile-time gating", () => {
       },
       $ref: "#/$defs/Strict",
     });
-    expect(v.source).toMatch(/evalProps/);
+    expect(v.stats.unevaluatedTrackingEmitted).toBe(true);
     expect(v.validate({ a: "x", extra: 1 }).valid).toBe(false);
   });
 
@@ -74,7 +75,7 @@ describe("unevaluated-tracking compile-time gating", () => {
       ],
     ]);
     const v = compile({ $ref: "ext://strict" }, { external });
-    expect(v.source).toMatch(/evalProps/);
+    expect(v.stats.unevaluatedTrackingEmitted).toBe(true);
     expect(v.validate({ a: "x" }).valid).toBe(true);
     expect(v.validate({ a: "x", extra: 1 }).valid).toBe(false);
   });
@@ -89,6 +90,6 @@ describe("unevaluated-tracking compile-time gating", () => {
       default: { unevaluatedProperties: false },
       enum: [{ unevaluatedProperties: "literal" }],
     });
-    expect(v.source).not.toMatch(/evalProps|evalItems/);
+    expect(v.stats.unevaluatedTrackingEmitted).toBe(false);
   });
 });
