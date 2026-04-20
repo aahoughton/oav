@@ -9,6 +9,7 @@
     "bench:long": "tsx run.ts --time=1500"
   },
   "devDependencies": {
+    "@apidevtools/json-schema-ref-parser": "^15.3.5",
     "@hyperjump/json-schema": "^1.17.5",
     "ajv": "^8.18.0",
     "tinybench": "^6.0.0",
