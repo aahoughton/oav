@@ -195,6 +195,109 @@ describe("validateRequest", () => {
     expect(leafCodes(err)).toContain("minLength");
   });
 
+  it("reports distinct paths when two properties share a $ref", () => {
+    // openapi-backend #730: a component schema referenced by multiple
+    // properties must surface the failing property's path on each error,
+    // not the first $ref usage.
+    const spec: OpenAPIDocument = {
+      openapi: "3.1.0",
+      info: { title: "t", version: "1" },
+      components: {
+        schemas: {
+          Measurement: {
+            type: "object",
+            required: ["value"],
+            properties: { value: { type: "number" } },
+          },
+        },
+      },
+      paths: {
+        "/m": {
+          post: {
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      weight: { $ref: "#/components/schemas/Measurement" },
+                      temperature: { $ref: "#/components/schemas/Measurement" },
+                    },
+                  },
+                },
+              },
+            },
+            responses: { "201": { description: "ok" } },
+          },
+        },
+      },
+    };
+    const sv = createValidator(spec);
+    const err = sv.validateRequest({
+      method: "POST",
+      path: "/m",
+      contentType: "application/json",
+      body: { weight: {}, temperature: {} },
+    });
+    const leaves = collectLeaves(err ?? undefined!).filter((l) => l.code === "required");
+    const paths = leaves.map((l) => l.path.join("."));
+    // Each error's path carries the parent property's slot (weight vs
+    // temperature) — not a single shared location derived from the
+    // $ref site.
+    expect(paths.sort()).toEqual(["body.temperature.value", "body.weight.value"]);
+  });
+
+  it("response validation flags undeclared status codes", () => {
+    // openapi-backend #384.
+    const spec: OpenAPIDocument = {
+      openapi: "3.1.0",
+      info: { title: "t", version: "1" },
+      paths: {
+        "/p": {
+          get: { responses: { "200": { description: "ok" } } },
+        },
+      },
+    };
+    const sv = createValidator(spec);
+    const err = sv.validateResponse({ method: "GET", path: "/p" }, { status: 204 });
+    const leaf = collectLeaves(err ?? undefined!).find((l) => l.code === "status");
+    expect(leaf?.params).toMatchObject({ status: 204 });
+  });
+
+  it("optional requestBody:required=false passes when the body is omitted", () => {
+    // openapi-backend #817 / #292. Distinct from the bareboss no-body
+    // case — here the spec declares content but explicitly marks it
+    // non-required.
+    const spec: OpenAPIDocument = {
+      openapi: "3.1.0",
+      info: { title: "t", version: "1" },
+      paths: {
+        "/maybe": {
+          post: {
+            requestBody: {
+              required: false,
+              content: {
+                "application/json": { schema: { type: "object", required: ["name"] } },
+              },
+            },
+            responses: { "204": { description: "ok" } },
+          },
+        },
+      },
+    };
+    const sv = createValidator(spec);
+    expect(sv.validateRequest({ method: "POST", path: "/maybe" })).toBeNull();
+    // But if the caller does send a body, the schema still applies.
+    const err = sv.validateRequest({
+      method: "POST",
+      path: "/maybe",
+      contentType: "application/json",
+      body: {},
+    });
+    expect(leafCodes(err)).toContain("required");
+  });
+
   it("accepts Buffer / Uint8Array for type:string, format:binary body fields", () => {
     // openapi-backend #860 / #809: multipart binary fields arrive as
     // Buffer / Uint8Array / framework-specific objects, not JS strings.
