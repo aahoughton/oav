@@ -5,6 +5,7 @@ dist/
 .turbo/
 coverage/
 tmp/
+conformance/real-world/specs/
 .DS_Store
 *.log
 oav-*.tgz
