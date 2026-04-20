@@ -1,5 +1,11 @@
 export { deserialize, matchMediaType, matchResponseKey } from "./deserialize.js";
 export {
+  assembleDeepObject,
+  assembleFormExplodedObject,
+  assembleObjectQueryParam,
+  coerceQueryScalar,
+} from "./query-assembly.js";
+export {
   createValidator,
   resolveOperationRef,
   type OavValidator,
