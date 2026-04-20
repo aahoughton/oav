@@ -21,4 +21,14 @@ export const NAMES = {
   PATTERNS: "patterns",
   /** Format validators registered at compile time. */
   FORMATS: "formats",
+  /**
+   * Extra function parameter: an optional `Set<string>` that, when
+   * supplied, receives the keys the function evaluated. Used to
+   * propagate `unevaluatedProperties` tracking across composition
+   * (`allOf` / `anyOf` / `oneOf` / `$ref` / `if-then-else`).
+   * `undefined` means the caller doesn't need this information.
+   */
+  OUT_EVAL_PROPS: "outEvalProps",
+  /** Same as {@link NAMES.OUT_EVAL_PROPS} but for array indices. */
+  OUT_EVAL_ITEMS: "outEvalItems",
 } as const;

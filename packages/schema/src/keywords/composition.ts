@@ -18,11 +18,28 @@ export const allOfKeyword: KeywordDefinition = {
     if (schemas.length === 0) return;
     const errsVar = ctx.gen.scope.name("allOfErrs");
     ctx.gen.const(errsVar, "[]");
+    // Annotations (evaluated keys/items) are only collected from
+    // subschemas that pass, per the 2020-12 spec. We give each branch
+    // its own Set and merge them into the enclosing scope only when the
+    // branch returns null.
+    const outProps = ctx.evaluatedPropertiesVar;
+    const outItems = ctx.evaluatedItemsVar;
     schemas.forEach((sub) => {
       const fn = ctx.compileSubschema(sub);
       const errVar = ctx.gen.scope.name("e");
-      ctx.gen.const(errVar, `${fn}(${ctx.data}, ${ctx.path})`);
-      ctx.gen.if(`${errVar} !== null`, (g) => g.line(`${errsVar}.push(${errVar});`));
+      const propsVar = ctx.gen.scope.name("bProps");
+      const itemsVar = ctx.gen.scope.name("bItems");
+      ctx.gen.const(propsVar, outProps !== null ? "new Set()" : "undefined");
+      ctx.gen.const(itemsVar, outItems !== null ? "new Set()" : "undefined");
+      ctx.gen.const(errVar, `${fn}(${ctx.data}, ${ctx.path}, ${propsVar}, ${itemsVar})`);
+      ctx.gen.if(
+        `${errVar} === null`,
+        (g) => {
+          if (outProps !== null) g.line(`for (const k of ${propsVar}) ${outProps}.add(k);`);
+          if (outItems !== null) g.line(`for (const k of ${itemsVar}) ${outItems}.add(k);`);
+        },
+        (g) => g.line(`${errsVar}.push(${errVar});`),
+      );
     });
     const n = schemas.length;
     ctx.gen.if(`${errsVar}.length > 0`, () => {
@@ -54,13 +71,23 @@ export const anyOfKeyword: KeywordDefinition = {
     const matched = ctx.gen.scope.name("matched");
     ctx.gen.const(errsVar, "[]");
     ctx.gen.let(matched, "false");
+    const outProps = ctx.evaluatedPropertiesVar;
+    const outItems = ctx.evaluatedItemsVar;
     schemas.forEach((sub) => {
       const fn = ctx.compileSubschema(sub);
       const errVar = ctx.gen.scope.name("e");
-      ctx.gen.const(errVar, `${fn}(${ctx.data}, ${ctx.path})`);
+      const propsVar = ctx.gen.scope.name("bProps");
+      const itemsVar = ctx.gen.scope.name("bItems");
+      ctx.gen.const(propsVar, outProps !== null ? "new Set()" : "undefined");
+      ctx.gen.const(itemsVar, outItems !== null ? "new Set()" : "undefined");
+      ctx.gen.const(errVar, `${fn}(${ctx.data}, ${ctx.path}, ${propsVar}, ${itemsVar})`);
       ctx.gen.if(
         `${errVar} === null`,
-        (g) => g.line(`${matched} = true;`),
+        (g) => {
+          g.line(`${matched} = true;`);
+          if (outProps !== null) g.line(`for (const k of ${propsVar}) ${outProps}.add(k);`);
+          if (outItems !== null) g.line(`for (const k of ${itemsVar}) ${outItems}.add(k);`);
+        },
         (g) => g.line(`${errsVar}.push(${errVar});`),
       );
     });
@@ -94,13 +121,23 @@ export const oneOfKeyword: KeywordDefinition = {
     const matchCount = ctx.gen.scope.name("matched");
     ctx.gen.const(errsVar, "[]");
     ctx.gen.let(matchCount, "0");
+    const outProps = ctx.evaluatedPropertiesVar;
+    const outItems = ctx.evaluatedItemsVar;
     schemas.forEach((sub) => {
       const fn = ctx.compileSubschema(sub);
       const errVar = ctx.gen.scope.name("e");
-      ctx.gen.const(errVar, `${fn}(${ctx.data}, ${ctx.path})`);
+      const propsVar = ctx.gen.scope.name("bProps");
+      const itemsVar = ctx.gen.scope.name("bItems");
+      ctx.gen.const(propsVar, outProps !== null ? "new Set()" : "undefined");
+      ctx.gen.const(itemsVar, outItems !== null ? "new Set()" : "undefined");
+      ctx.gen.const(errVar, `${fn}(${ctx.data}, ${ctx.path}, ${propsVar}, ${itemsVar})`);
       ctx.gen.if(
         `${errVar} === null`,
-        (g) => g.line(`${matchCount} += 1;`),
+        (g) => {
+          g.line(`${matchCount} += 1;`);
+          if (outProps !== null) g.line(`for (const k of ${propsVar}) ${outProps}.add(k);`);
+          if (outItems !== null) g.line(`for (const k of ${itemsVar}) ${outItems}.add(k);`);
+        },
         (g) => g.line(`${errsVar}.push(${errVar});`),
       );
     });
@@ -160,14 +197,18 @@ export const ifThenElseKeyword: KeywordDefinition = {
     const elseSchema = ctx.parentSchema.else;
     const ifFn = ctx.compileSubschema(ifSchema);
     const ifErr = ctx.gen.scope.name("ifErr");
-    ctx.gen.const(ifErr, `${ifFn}(${ctx.data}, ${ctx.path})`);
+    // Annotations from `if` are discarded per spec; only then/else
+    // contribute to the enclosing scope's evaluated-key tracking.
+    ctx.gen.const(ifErr, `${ifFn}(${ctx.data}, ${ctx.path}, undefined, undefined)`);
+    const passProps = ctx.evaluatedPropertiesVar ?? "undefined";
+    const passItems = ctx.evaluatedItemsVar ?? "undefined";
     ctx.gen.if(
       `${ifErr} === null`,
       (g) => {
         if (thenSchema !== undefined) {
           const tFn = ctx.compileSubschema(thenSchema);
           const tErr = g.scope.name("thenErr");
-          g.const(tErr, `${tFn}(${ctx.data}, ${ctx.path})`);
+          g.const(tErr, `${tFn}(${ctx.data}, ${ctx.path}, ${passProps}, ${passItems})`);
           g.if(`${tErr} !== null`, () => ctx.emitError("lift", tErr));
         }
       },
@@ -175,7 +216,7 @@ export const ifThenElseKeyword: KeywordDefinition = {
         if (elseSchema !== undefined) {
           const eFn = ctx.compileSubschema(elseSchema);
           const eErr = g.scope.name("elseErr");
-          g.const(eErr, `${eFn}(${ctx.data}, ${ctx.path})`);
+          g.const(eErr, `${eFn}(${ctx.data}, ${ctx.path}, ${passProps}, ${passItems})`);
           g.if(`${eErr} !== null`, () => ctx.emitError("lift", eErr));
         }
       },
@@ -198,6 +239,8 @@ export const dependentSchemasKeyword: KeywordDefinition = {
     ctx.gen.if(
       `typeof ${ctx.data} === "object" && ${ctx.data} !== null && !Array.isArray(${ctx.data})`,
       (g) => {
+        const passProps = ctx.evaluatedPropertiesVar ?? "undefined";
+        const passItems = ctx.evaluatedItemsVar ?? "undefined";
         for (const name of Object.keys(deps)) {
           const sub = deps[name];
           if (sub === undefined) continue;
@@ -205,7 +248,7 @@ export const dependentSchemasKeyword: KeywordDefinition = {
           const keyLit = quoteString(name);
           g.if(`Object.prototype.hasOwnProperty.call(${ctx.data}, ${keyLit})`, (gi) => {
             const errVar = gi.scope.name("e");
-            gi.const(errVar, `${fn}(${ctx.data}, ${ctx.path})`);
+            gi.const(errVar, `${fn}(${ctx.data}, ${ctx.path}, ${passProps}, ${passItems})`);
             gi.if(`${errVar} !== null`, () => ctx.emitError("lift", errVar));
           });
         }

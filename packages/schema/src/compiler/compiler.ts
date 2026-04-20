@@ -244,8 +244,57 @@ function compileValidator(schema: SchemaOrBoolean, state: CompileState): string 
   state.compiledFor.set(schema, name);
 
   const body = buildFunctionBody(schema, state, "schema");
-  state.functionBodies.push(`function ${name}(${NAMES.DATA}, ${NAMES.PATH}) {\n${body}\n}`);
+  state.functionBodies.push(
+    `function ${name}(${NAMES.DATA}, ${NAMES.PATH}, ${NAMES.OUT_EVAL_PROPS}, ${NAMES.OUT_EVAL_ITEMS}) {\n${body}\n}`,
+  );
   return name;
+}
+
+/**
+ * Does `schema` contain any keyword that either evaluates properties
+ * itself or might do so through a subschema? We use this to decide
+ * whether a generated function needs to allocate evaluated-key sets.
+ *
+ * @internal
+ */
+function needsPropTracking(schema: SchemaObject): boolean {
+  return (
+    "unevaluatedProperties" in schema ||
+    "properties" in schema ||
+    "patternProperties" in schema ||
+    "additionalProperties" in schema ||
+    "allOf" in schema ||
+    "anyOf" in schema ||
+    "oneOf" in schema ||
+    "if" in schema ||
+    "then" in schema ||
+    "else" in schema ||
+    "$ref" in schema ||
+    "$dynamicRef" in schema ||
+    "dependentSchemas" in schema
+  );
+}
+
+/**
+ * Mirror of {@link needsPropTracking} for array indices.
+ *
+ * @internal
+ */
+function needsItemTracking(schema: SchemaObject): boolean {
+  return (
+    "unevaluatedItems" in schema ||
+    "prefixItems" in schema ||
+    "items" in schema ||
+    "contains" in schema ||
+    "allOf" in schema ||
+    "anyOf" in schema ||
+    "oneOf" in schema ||
+    "if" in schema ||
+    "then" in schema ||
+    "else" in schema ||
+    "$ref" in schema ||
+    "$dynamicRef" in schema
+  );
 }
 
 function buildFunctionBody(
@@ -263,19 +312,33 @@ function buildFunctionBody(
     const falseErr = `${NAMES.DEPS}.createLeafError("false", ${NAMES.PATH}, "schema is false, nothing is valid")`;
     gen.line(emitPushStatement(NAMES.ERRORS, falseErr, state.gated));
   } else {
-    const hasUnevaluatedProps = "unevaluatedProperties" in schema;
-    const hasUnevaluatedItems = "unevaluatedItems" in schema;
+    const trackProps = needsPropTracking(schema);
+    const trackItems = needsItemTracking(schema);
     let evaluatedPropertiesVar: string | null = null;
     let evaluatedItemsVar: string | null = null;
-    if (hasUnevaluatedProps) {
+    if (trackProps) {
       evaluatedPropertiesVar = gen.scope.name("evalProps");
       gen.const(evaluatedPropertiesVar, "new Set()");
     }
-    if (hasUnevaluatedItems) {
+    if (trackItems) {
       evaluatedItemsVar = gen.scope.name("evalItems");
       gen.const(evaluatedItemsVar, "new Set()");
     }
     compileSchemaKeywords(schema, gen, state, evaluatedPropertiesVar, evaluatedItemsVar);
+    // Merge evaluated-key sets into the caller's out-parameters when the
+    // caller is tracking. Runs regardless of errors — a keyword that
+    // evaluated a key evaluated it, even if other keywords flagged the
+    // data invalid.
+    if (evaluatedPropertiesVar !== null) {
+      gen.line(
+        `if (${NAMES.OUT_EVAL_PROPS} !== undefined) { for (const k of ${evaluatedPropertiesVar}) ${NAMES.OUT_EVAL_PROPS}.add(k); }`,
+      );
+    }
+    if (evaluatedItemsVar !== null) {
+      gen.line(
+        `if (${NAMES.OUT_EVAL_ITEMS} !== undefined) { for (const k of ${evaluatedItemsVar}) ${NAMES.OUT_EVAL_ITEMS}.add(k); }`,
+      );
+    }
   }
 
   gen.line(

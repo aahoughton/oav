@@ -4,7 +4,12 @@ import { CORE_VOCAB } from "./vocabulary-uris.js";
 function compileRefCall(ctx: KeywordCompileContext, ref: string): void {
   const fn = ctx.resolveRef(ref);
   const errVar = ctx.gen.scope.name("refErr");
-  ctx.gen.const(errVar, `${fn}(${ctx.data}, ${ctx.path})`);
+  // A $ref targets a single schema whose annotations (evaluated keys)
+  // count toward the enclosing scope, so we thread the caller's
+  // evaluated-key sets straight through.
+  const passProps = ctx.evaluatedPropertiesVar ?? "undefined";
+  const passItems = ctx.evaluatedItemsVar ?? "undefined";
+  ctx.gen.const(errVar, `${fn}(${ctx.data}, ${ctx.path}, ${passProps}, ${passItems})`);
   ctx.gen.if(`${errVar} !== null`, () => ctx.emitError("lift", errVar));
 }
 
