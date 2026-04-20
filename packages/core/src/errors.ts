@@ -114,18 +114,21 @@ export interface BuiltInErrorParams {
   // --- HTTP-level wrappers (emitted by @oav/validator) ---
   /** No route matched `method` + `path`. */
   route: { method: string; path: string };
-  /** Request or response body. Branch when sub-errors bubble; leaf when the body is missing. */
+  /**
+   * Request body, leaf-only. Emitted when a `required: true` body is
+   * absent on the request. When a present body fails schema validation,
+   * the schema's own error (with a keyword-specific code) bubbles up
+   * directly with path prefix `["body", ...]` — no `"body"` wrapper.
+   */
   body: Record<string, never>;
   /** Request branch — children are parameter / body failures. */
-  request: Record<string, never>;
+  request: { method: string; pathPattern: string };
   /** Response branch — children are status / content-type / header / body failures. */
   response: { status: number };
   /** Content-Type negotiation failed. */
   "content-type": { contentType: string | undefined; accepted?: string[]; declared?: string[] };
   /** No declared response matches the status. */
   status: { status: number; declared?: string[] };
-  /** A required response header is missing. */
-  header: { name: string };
   /** Parameter validation failures, scoped by `in`. */
   "path-param": { name: string; in: "path" };
   "query-param": { name: string; in: "query" };
@@ -135,6 +138,60 @@ export interface BuiltInErrorParams {
   /** Catch-all for custom / not-yet-documented codes. */
   [code: string]: Record<string, unknown>;
 }
+
+/**
+ * Runtime-visible list of every named code documented in
+ * {@link BuiltInErrorParams}. Kept in-file alongside the interface so
+ * the two drift together under review; cross-check tests assert that
+ * the compiler / validator never emit a code outside this list.
+ *
+ * @public
+ */
+export const BUILT_IN_ERROR_CODES = [
+  // --- JSON Schema keywords ---
+  "false",
+  "type",
+  "const",
+  "enum",
+  "minimum",
+  "maximum",
+  "multipleOf",
+  "minLength",
+  "maxLength",
+  "pattern",
+  "format",
+  "minItems",
+  "maxItems",
+  "uniqueItems",
+  "minProperties",
+  "maxProperties",
+  "required",
+  "items",
+  "contains",
+  "maxContains",
+  "additionalProperties",
+  "unevaluatedProperties",
+  "unevaluatedItems",
+  "not",
+  "allOf",
+  "anyOf",
+  "oneOf",
+  "schema",
+  "discriminator",
+  "dependentRequired",
+  "dependencies",
+  // --- HTTP-level wrappers (emitted by @oav/validator) ---
+  "route",
+  "body",
+  "request",
+  "response",
+  "content-type",
+  "status",
+  "path-param",
+  "query-param",
+  "header-param",
+  "cookie-param",
+] as const satisfies ReadonlyArray<keyof BuiltInErrorParams>;
 
 /**
  * Type helper that narrows `ValidationError.params` for a specific
