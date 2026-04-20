@@ -60,6 +60,50 @@ rooted at the HTTP frame (e.g. `["body", "pets", 3, "name"]`), a
 human-readable `message`, and a machine-readable `params` object whose
 shape per code is documented in `BuiltInErrorParams`.
 
+## Why this exists
+
+Two motivations drive the design.
+
+**Native OpenAPI 3.0 semantics.** Most OpenAPI validators are thin
+wrappers over ajv. That works for 3.1 / 3.2, which use JSON Schema
+2020-12 directly, but it translates poorly to 3.0: `type` can't be an
+array, `exclusiveMaximum` is a boolean, `nullable` is its own keyword,
+and siblings of `$ref` are ignored. oav ships a dedicated 3.0 dialect
+alongside the 3.1 / 3.2 one so 3.0 specs validate by 3.0 rules, no
+meta-schema rewrite step, no "mostly 3.1 and hope".
+
+**First-class overlays.** Many projects consume an OpenAPI document
+they don't own: an upstream framework (Supabase, Directus, Hasura,
+PocketBase, ...) or a gateway's published spec. `applyOverlays`
+patches the base document programmatically at load time — add a
+gateway-required header to every operation, extend a component
+schema, swap a response shape in staging — without forking or
+preprocessing the upstream file. `loadSpec` stitches external `$ref`s
+and applies overlays in a single call.
+
+If you want raw validate-per-second throughput on a spec you already
+own end to end, ajv is still the throughput king. If you want
+correct 3.0, a structured error tree you can narrow against, and an
+overlay model that respects the upstream document, this is the
+library.
+
+### Conformance
+
+Published, not claimed. Every number below comes out of
+[`conformance/`](./conformance/README.md) on every build:
+
+| Suite                                                                | Result                                                  |
+| -------------------------------------------------------------------- | ------------------------------------------------------- |
+| [JSON Schema 2020-12 Test Suite](./conformance/REPORT.md) (required) | 1271 / 1290 passing (98.5%)                             |
+| JSON Schema 2020-12 Test Suite (+ optional)                          | 1429 / 1452 passing (98.4%)                             |
+| OpenAPI request/response scenarios (3.0, 3.1, 3.2 petstores)         | 14 / 14                                                 |
+| Real-world specs loaded + compiled by `createValidator`              | Stripe, GitHub, DigitalOcean, Twilio, Asana, Box, Adyen |
+
+Remaining JSON Schema mismatches (`$dynamicRef` runtime scope and a
+handful of optional-suite edges) are enumerated in
+[`conformance/REPORT.md`](./conformance/REPORT.md). No divergence is
+silent.
+
 ## CLI
 
 ```bash
@@ -131,161 +175,24 @@ short-circuit once the budget is exhausted. Results carry
 
 ## Framework integration
 
-`oav` doesn't ship framework-specific middleware — Express, Fastify,
-and Next.js each evolve their own idioms, and the adapter per
-framework is ~15 lines of straightforward glue. What the library does
-ship is `toProblemDetails` (RFC 9457 `application/problem+json`
-response envelope) and `collectIssues` (flat leaves with RFC 6901
-JSON Pointers). Wire them into your framework of choice with the
-snippets below.
+`oav` is a validator, not a middleware package: you write a short
+adapter between your framework and `validateRequest` /
+`validateResponse`. See [**INTEGRATION.md**](./INTEGRATION.md) for:
 
-### What the validator expects
+- Copy-paste adapters for Express 4, Express 5, Fastify, and
+  Next.js / Hono / Bun / Deno.
+- Recipes for file uploads (multer), response validation, security,
+  ignoring paths, and status-code mapping.
+- A migration table from `express-openapi-validator`, including
+  where oav is stricter or more conformant and where you'll do more
+  wiring by hand.
 
-`validateRequest` / `validateResponse` take a framework-agnostic
-`HttpRequest` / `HttpResponse`. The adapter's job is extracting those
-fields from the framework's own request object:
-
-```ts
-interface HttpRequest {
-  method: string; // uppercase verb
-  path: string; // pathname only
-  query?: Record<string, string | string[]>; // parsed query params
-  headers?: Record<string, string | string[]>; // lowercased header names
-  contentType?: string; // may include "; charset=utf-8"
-  body?: unknown; // already-parsed (object / FormData / string)
-  cookies?: Record<string, string>;
-}
-```
-
-### Express 5
-
-Express 5 is promise-native: async middleware that throws routes to
-the error handler automatically.
-
-```ts
-import { toProblemDetails } from "@aahoughton/oav";
-
-app.use(async (req, res, next) => {
-  const err = validator.validateRequest({
-    method: req.method,
-    path: req.path,
-    query: req.query as Record<string, string | string[]>,
-    headers: req.headers as Record<string, string | string[]>,
-    contentType: req.get("content-type") ?? undefined,
-    body: req.body,
-    cookies: req.cookies,
-  });
-  if (err === null) return next();
-  res
-    .status(400)
-    .type("application/problem+json")
-    .json(toProblemDetails(err, { instance: req.originalUrl }));
-});
-```
-
-Requires `express.json()` (and `cookie-parser` if you use `cookies`)
-registered before this middleware.
-
-### Express 4
-
-The `req` surface didn't change between majors, so the extraction is
-identical. The difference is that Express 4 doesn't await returned
-promises — uncaught async errors don't propagate. Use `try`/`catch` to
-forward to the error handler:
-
-```ts
-app.use((req, res, next) => {
-  try {
-    const err = validator.validateRequest(/* same as Express 5 */);
-    if (err === null) return next();
-    res
-      .status(400)
-      .type("application/problem+json")
-      .json(toProblemDetails(err, { instance: req.originalUrl }));
-  } catch (e) {
-    next(e);
-  }
-});
-```
-
-### Fastify
-
-Register as a `preValidation` hook so it runs after Fastify's own
-body parsing but before the route handler.
-
-```ts
-import { toProblemDetails } from "@aahoughton/oav";
-
-fastify.addHook("preValidation", async (request, reply) => {
-  const err = validator.validateRequest({
-    method: request.method,
-    path: request.url.split("?")[0] ?? "/",
-    query: request.query as Record<string, string | string[]>,
-    headers: request.headers as Record<string, string | string[]>,
-    contentType: request.headers["content-type"],
-    body: request.body,
-    // cookies: request.cookies — requires @fastify/cookie
-  });
-  if (err !== null) {
-    return reply
-      .code(400)
-      .type("application/problem+json")
-      .send(toProblemDetails(err, { instance: request.url }));
-  }
-});
-```
-
-Fastify parses JSON bodies automatically; for other formats register
-the appropriate content-type parser (`@fastify/formbody`, etc.) ahead
-of the hook.
-
-### Next.js (App Router)
-
-Next.js App Router route handlers receive a Web Standards `Request`
-and return a `Response` — no middleware chain. Do the validation at
-the top of each handler, or factor it into a shared `validate(request)`
-helper:
-
-```ts
-import { toProblemDetails } from "@aahoughton/oav";
-
-export async function POST(request: Request) {
-  const url = new URL(request.url);
-  const contentType = request.headers.get("content-type") ?? undefined;
-  const body = contentType?.includes("json") ? await request.json() : await request.text();
-
-  const err = validator.validateRequest({
-    method: request.method,
-    path: url.pathname,
-    query: Object.fromEntries(url.searchParams.entries()),
-    headers: Object.fromEntries(request.headers.entries()),
-    contentType,
-    body,
-  });
-
-  if (err !== null) {
-    return Response.json(toProblemDetails(err, { instance: request.url }), {
-      status: 400,
-      headers: { "Content-Type": "application/problem+json" },
-    });
-  }
-
-  // ... handler logic
-}
-```
-
-Two Next.js-specific notes:
-
-- `Object.fromEntries(searchParams.entries())` takes the last value
-  for repeated keys. If your spec uses `?ids=1&ids=2&ids=3` style
-  (form-explode arrays), call `searchParams.getAll(name)` per
-  parameter instead.
-- The top-level `middleware.ts` runs on the Edge runtime and doesn't
-  know which route matched yet. Validate inside the route handler,
-  not in `middleware.ts`.
-
-The same shape works for Hono, Bun, and Deno servers — they all speak
-Web Standards `Request` / `Response`.
+The short version: `oav` is not a drop-in for
+`express-openapi-validator`. You own the error → HTTP mapping, you
+wire up multer if you need file uploads, and you run your own auth
+middleware. In exchange you get a structured error tree, native
+OpenAPI 3.0 semantics, overlays, and no monkey-patching of `req` or
+`res`.
 
 ## Modules
 

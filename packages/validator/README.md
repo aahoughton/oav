@@ -34,6 +34,19 @@ etc.) so downstream code can group by location. The top-level node's
 detected on construction (or `undefined` if the field was missing or
 unsupported and a fallback was used — see `onUnknownVersion` below).
 
+## Why this validator
+
+Native OpenAPI 3.0 dialect alongside 3.1 / 3.2, so `nullable`,
+boolean `exclusiveMaximum`, and `$ref`-suppresses-siblings work by
+3.0 rules rather than via a 2020-12 translation shim. Pairs with
+[`@aahoughton/oav/spec`](../spec/README.md)'s `applyOverlays` for
+patching externally-owned base specs at load time. Published
+conformance numbers (98.5% on the 1290-case JSON Schema Test Suite,
+100% on the OpenAPI request/response cases) live at
+[`conformance/REPORT.md`](../../conformance/REPORT.md). The
+[top-level README](../../README.md#why-this-exists) has the full
+rationale.
+
 ## Features
 
 - **Compile at construction**: every operation's schemas get compiled
