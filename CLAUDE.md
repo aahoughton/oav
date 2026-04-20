@@ -43,8 +43,9 @@ Both have their own `package.json` + `pnpm-workspace.yaml` (with empty
 - **`@oav/spec`** — `DocumentReader` abstraction (file/http/memory/composite)
   plus `resolveSpec()` which inlines external `$ref`s and leaves circular
   ones as internal refs. `applyOverlays()` handles the extension system.
-- **`@oav/router`** — a trie-ish router. Sorted at construction so `match`
-  is O(segments).
+- **`@oav/router`** — a sorted-list route matcher. Routes are sorted once
+  at construction (more-literal segments first); `match` is a linear scan,
+  O(routes × segments). Cheap for typical OpenAPI spec sizes.
 - **`@oav/validator`** — orchestrator. Pre-compiles every operation's
   parameter/body/response schemas, does content-type negotiation and
   parameter deserialization (style + explode), and returns a

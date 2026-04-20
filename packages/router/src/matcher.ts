@@ -65,10 +65,12 @@ export function parseTemplate(template: string): Segment[] {
 }
 
 /**
- * Build a trie-based router from a map of `pathTemplate → PathItem`. Paths
- * with more literal (non-template) segments win over more template-heavy
- * siblings at the same depth; everything is sorted once at construction so
- * `match` is O(path segments).
+ * Build a router from a map of `pathTemplate → PathItem`. Paths with more
+ * literal (non-template) segments win over more template-heavy siblings;
+ * the route list is sorted once at construction, then each `match` call is
+ * a linear scan — O(routes × segments). That is cheap for the route counts
+ * typical in OpenAPI specs (tens to low hundreds); swap in a proper radix
+ * tree here if you're routing thousands of paths.
  *
  * @param paths - Record of path templates to PathItems.
  * @returns A {@link Router}.

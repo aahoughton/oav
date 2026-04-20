@@ -2,7 +2,7 @@
   "name": "@oav/router",
   "version": "0.0.0",
   "private": true,
-  "description": "Internal: trie-based OpenAPI path router for @aahoughton/oav.",
+  "description": "Internal: OpenAPI path matcher for @aahoughton/oav.",
   "type": "module",
   "sideEffects": false,
   "main": "./src/index.ts",
