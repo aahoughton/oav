@@ -112,8 +112,15 @@ export interface BuiltInErrorParams {
   dependencies: { trigger: string; missing: string };
 
   // --- HTTP-level wrappers (emitted by @oav/validator) ---
-  /** No route matched `method` + `path`. */
+  /** No path template matched `path` — semantically HTTP 404. */
   route: { method: string; path: string };
+  /**
+   * Path template matched but the requested method isn't declared on
+   * it — semantically HTTP 405. `allowed` is the uppercase list of
+   * methods the matched path(s) do accept, suitable for an RFC 9110
+   * `Allow` response header.
+   */
+  method: { method: string; pathPattern: string; allowed: string[] };
   /**
    * Request body, leaf-only. Emitted when a `required: true` body is
    * absent on the request. When a present body fails schema validation,
@@ -202,6 +209,7 @@ export const BUILT_IN_ERROR_CODES = [
   "dependencies",
   // --- HTTP-level wrappers (emitted by @oav/validator) ---
   "route",
+  "method",
   "body",
   "request",
   "response",

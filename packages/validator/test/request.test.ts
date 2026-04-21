@@ -45,6 +45,17 @@ describe("validateRequest", () => {
     expect(err?.code).toBe("route");
   });
 
+  it("errors with `method` (not `route`) when the path exists but the verb doesn't", () => {
+    // /pets declares GET + POST; DELETE is 405, not 404.
+    const err = v.validateRequest({ method: "DELETE", path: "/pets" });
+    expect(err?.code).toBe("method");
+    expect(err?.params).toMatchObject({
+      method: "DELETE",
+      pathPattern: "/pets",
+      allowed: ["GET", "HEAD", "POST"],
+    });
+  });
+
   it("errors for wrong Content-Type", () => {
     const err = v.validateRequest({
       method: "POST",

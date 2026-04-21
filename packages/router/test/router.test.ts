@@ -46,9 +46,11 @@ describe("router", () => {
   });
 
   it("matches methods independently on the same path", () => {
-    expect(r.match("get", "/pets")?.operation.operationId).toBe("listPets");
-    expect(r.match("post", "/pets")?.operation.operationId).toBe("createPet");
-    expect(r.match("delete", "/pets")).toBeUndefined();
+    expect(r.match("get", "/pets")?.kind).toBe("match");
+    expect(r.match("post", "/pets")?.kind).toBe("match");
+    // DELETE isn't declared on /pets → method-not-allowed, not a path miss.
+    const m = r.match("delete", "/pets");
+    expect(m?.kind).toBe("method-not-allowed");
   });
 
   it("decodes percent-encoded segments", () => {
@@ -96,7 +98,9 @@ describe("router", () => {
   it("does not invent a HEAD route when the path has no GET", () => {
     const paths2: Record<string, PathItem> = { "/write-only": { post: op("post") } };
     const r2 = createRouter(paths2);
-    expect(r2.match("head", "/write-only")).toBeUndefined();
+    // Path matches; HEAD isn't implicitly available without GET → 405.
+    const m = r2.match("head", "/write-only");
+    expect(m?.kind).toBe("method-not-allowed");
   });
 
   it("matches path segments containing a literal colon", () => {
@@ -118,5 +122,45 @@ describe("router", () => {
         "/items/{slug}": { get: op("bySlug") },
       }),
     ).toThrow(/ambiguous/);
+  });
+
+  it("returns method-not-allowed with an allowed set (405 shape)", () => {
+    const m = r.match("delete", "/pets");
+    expect(m).toEqual({
+      kind: "method-not-allowed",
+      pathPattern: "/pets",
+      allowed: ["GET", "HEAD", "POST"],
+    });
+  });
+
+  it("unions allowed methods across every path template that matches the path", () => {
+    // /items/42 and /items/{id} both structurally match POST /items/42.
+    // Neither declares POST, so the allowed union is {GET (from /items/42),
+    // HEAD (implicit via GET), PUT (from /items/{id})}.
+    const rc = createRouter({
+      "/items/42": { get: op("literal") },
+      "/items/{id}": { put: op("byId") },
+    });
+    const m = rc.match("post", "/items/42");
+    expect(m).toEqual({
+      kind: "method-not-allowed",
+      pathPattern: "/items/42",
+      allowed: ["GET", "HEAD", "PUT"],
+    });
+  });
+
+  it("falls through to a matching method on a less-specific path", () => {
+    // /items/42 has GET only; /items/{id} has POST. A POST /items/42
+    // should hit the {id} route, not return method-not-allowed.
+    const rc = createRouter({
+      "/items/42": { get: op("literal") },
+      "/items/{id}": { post: op("byId") },
+    });
+    const m = rc.match("post", "/items/42");
+    expect(m?.kind).toBe("match");
+    if (m?.kind === "match") {
+      expect(m.operation.operationId).toBe("byId");
+      expect(m.pathPattern).toBe("/items/{id}");
+    }
   });
 });
