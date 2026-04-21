@@ -376,6 +376,14 @@ export function createValidator(
         { method: req.method, path: req.path },
       );
     }
+    if (match.kind === "method-not-allowed") {
+      return createLeafError(
+        "method",
+        [],
+        `method ${req.method.toUpperCase()} not allowed on ${match.pathPattern}; allowed: ${match.allowed.join(", ")}`,
+        { method: req.method, pathPattern: match.pathPattern, allowed: match.allowed },
+      );
+    }
     const cache = cacheFor(match);
     const children: ValidationError[] = [];
 
@@ -421,6 +429,14 @@ export function createValidator(
         [],
         `no route matches ${req.method.toUpperCase()} ${req.path}`,
         { method: req.method, path: req.path },
+      );
+    }
+    if (match.kind === "method-not-allowed") {
+      return createLeafError(
+        "method",
+        [],
+        `method ${req.method.toUpperCase()} not allowed on ${match.pathPattern}; allowed: ${match.allowed.join(", ")}`,
+        { method: req.method, pathPattern: match.pathPattern, allowed: match.allowed },
       );
     }
     const cache = cacheFor(match);

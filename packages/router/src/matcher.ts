@@ -8,7 +8,8 @@ import type { HttpMethod, OperationObject, PathItem } from "@oav/core";
 export type Segment = { kind: "literal"; value: string } | { kind: "template"; name: string };
 
 /**
- * Result of a successful route match.
+ * Result of a successful route match: the path template matched *and*
+ * the requested method is declared on it.
  *
  * `operation` and `pathItem` are the identical references supplied to
  * {@link createRouter}. Downstream consumers (notably `@oav/validator`)
@@ -19,6 +20,7 @@ export type Segment = { kind: "literal"; value: string } | { kind: "template"; n
  * @public
  */
 export interface RouteMatch {
+  kind: "match";
   operation: OperationObject;
   pathItem: PathItem;
   pathPattern: string;
@@ -26,13 +28,52 @@ export interface RouteMatch {
 }
 
 /**
- * The router interface. Returns `undefined` for unmatched routes.
+ * Result returned when the path template matched but the requested
+ * method isn't declared on it. Semantically a 405 Method Not Allowed
+ * rather than a 404. `allowed` is the union of HTTP methods declared
+ * across every path template that matched the request path, uppercased
+ * — suitable for an RFC 9110 `Allow` response header.
+ *
+ * @public
+ */
+export interface MethodNotAllowed {
+  kind: "method-not-allowed";
+  /** The most specific path template that matched. */
+  pathPattern: string;
+  /** Uppercased HTTP methods declared on matching path(s). */
+  allowed: string[];
+}
+
+/**
+ * The router interface. `match` returns:
+ *
+ * - `RouteMatch` — the path matched and the method is declared on it.
+ * - `MethodNotAllowed` — the path matched but no declared method
+ *   handles the request's verb. Callers map this to HTTP 405.
+ * - `undefined` — no path template matched at all. Callers map this
+ *   to HTTP 404.
  *
  * @public
  */
 export interface Router {
-  match(method: string, path: string): RouteMatch | undefined;
+  match(method: string, path: string): RouteMatch | MethodNotAllowed | undefined;
 }
+
+// HTTP methods to scan on a `PathItem` when collecting `allowed` for a
+// 405 response. Mirrors the `HttpMethod` union in @oav/core; kept local
+// here to avoid pulling an extra symbol across the package boundary
+// for a constant array.
+const ALL_METHODS: HttpMethod[] = [
+  "get",
+  "put",
+  "post",
+  "delete",
+  "options",
+  "head",
+  "patch",
+  "trace",
+  "query",
+];
 
 interface Route {
   segments: Segment[];
@@ -122,6 +163,15 @@ export function createRouter(paths: Record<string, PathItem>): Router {
       const stripped = path.split("?")[0] ?? path;
       const trimmed = stripped.replace(/^\/+/, "").replace(/\/+$/, "");
       const tokens = trimmed === "" ? [] : trimmed.split("/").map((s) => decodeURIComponent(s));
+
+      // If we scan every matching path without finding the method, we
+      // still want to report a 405 (not 404) and carry the union of
+      // declared methods across every path that matched structurally.
+      // `/items/42` and `/items/{id}` can both match `POST /items/42`
+      // even though neither declares POST.
+      let firstMatchedPattern: string | undefined;
+      const allowed = new Set<string>();
+
       for (const route of routes) {
         if (route.segments.length !== tokens.length) continue;
         const params: Record<string, string> = {};
@@ -150,12 +200,32 @@ export function createRouter(paths: Record<string, PathItem>): Router {
         if (operation === undefined && normMethod === "head") {
           operation = route.pathItem.get;
         }
-        if (operation === undefined) continue;
+        if (operation !== undefined) {
+          return {
+            kind: "match",
+            operation,
+            pathItem: route.pathItem,
+            pathPattern: route.pathPattern,
+            pathParams: params,
+          };
+        }
+
+        // Path matched but this path's method map doesn't include the
+        // request's verb. Remember the first (most-specific) matched
+        // pattern, union the declared methods, and keep scanning.
+        if (firstMatchedPattern === undefined) firstMatchedPattern = route.pathPattern;
+        for (const m of ALL_METHODS) {
+          if (route.pathItem[m] !== undefined) allowed.add(m.toUpperCase());
+        }
+        // GET implicitly answers HEAD (RFC 9110 §9.3.2).
+        if (route.pathItem.get !== undefined) allowed.add("HEAD");
+      }
+
+      if (firstMatchedPattern !== undefined) {
         return {
-          operation,
-          pathItem: route.pathItem,
-          pathPattern: route.pathPattern,
-          pathParams: params,
+          kind: "method-not-allowed",
+          pathPattern: firstMatchedPattern,
+          allowed: [...allowed].sort(),
         };
       }
       return undefined;

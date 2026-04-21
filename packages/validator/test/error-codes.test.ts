@@ -158,6 +158,7 @@ describe("BuiltInErrorParams registry cross-check", () => {
     };
 
     collect(v.validateRequest({ method: "DELETE", path: "/nope" })); // route
+    collect(v.validateRequest({ method: "DELETE", path: "/items/1" })); // method (405)
     collect(
       v.validateRequest({ method: "POST", path: "/items/1", contentType: "application/json" }),
     ); // body (missing required)
@@ -188,6 +189,7 @@ describe("BuiltInErrorParams registry cross-check", () => {
 
     for (const code of [
       "route",
+      "method",
       "body",
       "content-type",
       "request",
@@ -222,6 +224,7 @@ describe("BuiltInErrorParams registry cross-check", () => {
     // TypeScript can't enforce the contract — this test is the backstop.
     const requiredKeys: Record<string, readonly string[]> = {
       route: ["method", "path"],
+      method: ["method", "pathPattern", "allowed"],
       request: ["method", "pathPattern"],
       response: ["status"],
       status: ["status"],
@@ -269,6 +272,8 @@ describe("BuiltInErrorParams registry cross-check", () => {
     });
 
     check(v.validateRequest({ method: "DELETE", path: "/nope" }), "route");
+    // Path /items/{id} exists but declares only GET + POST; DELETE is 405.
+    check(v.validateRequest({ method: "DELETE", path: "/items/1" }), "method");
     check(
       v.validateRequest({
         method: "POST",

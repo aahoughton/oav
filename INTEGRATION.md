@@ -251,7 +251,9 @@ import type { ValidationError } from "@aahoughton/oav";
 function httpStatusFor(err: ValidationError): number {
   switch (err.code) {
     case "route":
-      return 404; // no matching method + path
+      return 404; // no path template matched
+    case "method":
+      return 405; // path matched but the verb isn't declared
     case "content-type":
       return 415; // request Content-Type not declared
     case "status":
@@ -262,15 +264,19 @@ function httpStatusFor(err: ValidationError): number {
 }
 ```
 
-`express-openapi-validator` distinguishes 404 (no path) from 405
-(path exists, wrong method). `oav` emits `code: "route"` for both.
-If you need 405 specifically, do a method-agnostic path check
-yourself:
+RFC 9110 requires the `Allow` response header on 405s. The `method`
+error's `params.allowed` is the uppercased list to send back:
 
 ```ts
-// Pseudocode: if the path matches ANY route at a different method, return 405.
-// oav's router doesn't expose this directly yet; a simple regex pass over
-// your own spec's path templates gets you there in ~10 lines.
+if (err.code === "method") {
+  const p = err.params as ErrorParamsFor<"method">;
+  res.setHeader("Allow", p.allowed.join(", "));
+  res
+    .status(405)
+    .type("application/problem+json")
+    .json(toProblemDetails(err, { instance: req.originalUrl }));
+  return;
+}
 ```
 
 For richer response envelopes, `toProblemDetails` produces
@@ -593,10 +599,11 @@ Keep them in the map if it's simpler; they cost nothing.
 
 ### Behavior differences to watch for
 
-- **404 vs 405.** `express-openapi-validator` returns 405 when the
-  path exists but the method doesn't. `oav` emits `code: "route"`
-  for both cases. Add a method-agnostic path check if you need 405
-  specifically.
+- **404 vs 405.** Both libraries distinguish them. `oav` emits
+  `code: "route"` for no path match and `code: "method"` for a path
+  that matched without the requested verb; the `method` error's
+  `params.allowed` is the uppercased method list, suitable for a
+  405's `Allow` response header.
 - **Response body interception.** `express-openapi-validator` catches
   `res.send("{...}")` (string form) too via its wrappers. `oav` does
   not unless you write the wrapper yourself, in which case parse
