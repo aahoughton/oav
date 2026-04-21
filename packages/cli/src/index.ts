@@ -6,5 +6,4 @@ export {
   type CommandResult,
   type ValidateMode,
 } from "./commands.js";
-export { formatError, type OutputFormat } from "./format-output.js";
 export { parseHttpFile } from "./http-parser.js";

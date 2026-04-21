@@ -23,6 +23,14 @@ export {
 } from "./format.js";
 
 export {
+  formatError,
+  isOutputFormat,
+  KNOWN_OUTPUT_FORMATS,
+  type ErrorRenderer,
+  type OutputFormat,
+} from "./format-output.js";
+
+export {
   collectIssues,
   toProblemDetails,
   type ProblemDetails,

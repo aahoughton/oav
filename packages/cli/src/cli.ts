@@ -1,6 +1,6 @@
 import { Command } from "commander";
+import { KNOWN_OUTPUT_FORMATS, isOutputFormat, type OutputFormat } from "@oav/core";
 import { type CommandIo, resolveCommand, validateCommand, type ValidateMode } from "./commands.js";
-import { KNOWN_OUTPUT_FORMATS, isOutputFormat, type OutputFormat } from "./format-output.js";
 
 /**
  * Options accepted by {@link buildProgram}.
