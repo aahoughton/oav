@@ -328,7 +328,13 @@ export function createLeafError(
   return { code, path: [...path], message, params, children: EMPTY_CHILDREN };
 }
 
-const EMPTY_CHILDREN: ValidationError[] = Object.freeze([]) as ValidationError[];
+// Shared frozen empty array so leaf errors reuse one `children` value
+// instead of allocating a fresh `[]` per failure. `Object.freeze([])`
+// is typed `readonly never[]` which TS refuses to narrow to
+// `ValidationError[]` directly — the double cast expresses intent:
+// readers treat a leaf's `children` as read-only already, and the
+// freeze is a runtime safety net against accidental mutation.
+const EMPTY_CHILDREN = Object.freeze([]) as unknown as ValidationError[];
 
 /**
  * Construct a branch error that wraps a list of child errors (e.g. the
