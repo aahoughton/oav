@@ -50,6 +50,11 @@
       "import": "./dist/schema.js",
       "require": "./dist/schema.cjs"
     },
+    "./schema/internals": {
+      "types": "./dist/schema-internals.d.ts",
+      "import": "./dist/schema-internals.js",
+      "require": "./dist/schema-internals.cjs"
+    },
     "./spec": {
       "types": "./dist/spec.d.ts",
       "import": "./dist/spec.js",
