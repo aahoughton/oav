@@ -89,7 +89,7 @@ cli → validator → router
 
    `ctx.predicate` is `true` when the user requested predicate mode
    (`compileSchema(..., { predicate: true })`). Most keywords don't
-   need to read this — `ctx.emitError`, `ctx.withPathSegment`,
+   need to read this — `ctx.emitError`, `ctx.leafErrorExpr`,
    `ctx.validateSubschema`, and `ctx.emitBudgetBreak` all do the
    right thing automatically. Branch on it only when your keyword
    reads a sub-validator's return value (composition keywords,
@@ -105,7 +105,13 @@ cli → validator → router
    - `ctx.emitError(kind, expr)` / `ctx.errorStatement(kind, expr)` —
      push an error expression (`"leaf"` = counts against `maxErrors`,
      `"lift"` = propagating an already-counted sub-validator result).
-   - `ctx.withPathSegment(seg, body)` — scoped path push/pop.
+   - `ctx.leafErrorExpr(codeExpr, msgExpr, paramsExpr, extraSegments?)`
+     — build a `deps.createLeafError(...)` call. Pass any per-error
+     trailing path segment (e.g. a missing property name) via
+     `extraSegments` so the runtime helper splices them; the helper
+     also picks up any segments pending from an enclosing inlined
+     `validateSubschema` call. `ctx.branchErrorExpr(...)` is the
+     equivalent for branch errors.
    - `ctx.validateSubschema(schema, dataExpr, { segment? })` — the
      common "descend into a subschema" pattern (inlines when simple).
    - `ctx.compileSubschema(schema) -> fnName` — lower-level; use when
@@ -113,6 +119,10 @@ cli → validator → router
      logic (composition keywords do this).
    - `ctx.resolveRef(ref)`, `ctx.evaluatedPropertiesVar` /
      `ctx.evaluatedItemsVar` — for `$ref` and unevaluated-tracking.
+   - `ctx.effectivePathExpr` — JS expression for the runtime path
+     including any pending inline segments. Reach for this only when
+     passing the path to something other than the error helpers
+     (e.g. a user-supplied custom-keyword callback).
    - `ctx.emitBudgetBreak()` at the tail of hot loops.
 
 2. Add it to the vocabulary's `keywords` array in `vocabulary.ts`.

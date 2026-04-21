@@ -27,10 +27,11 @@ export const enumKeyword: KeywordDefinition = {
     ctx.gen.if(`!${matched}`, () => {
       ctx.emitError(
         "leaf",
-        `${NAMES.DEPS}.createLeafError(` +
-          `${quoteString("enum")}, ${ctx.path}, ` +
-          `"must be one of the allowed values", ` +
-          `{ allowed: ${valuesLit}, actual: ${ctx.data} })`,
+        ctx.leafErrorExpr(
+          quoteString("enum"),
+          `"must be one of the allowed values"`,
+          `{ allowed: ${valuesLit}, actual: ${ctx.data} }`,
+        ),
       );
     });
   },
@@ -51,10 +52,11 @@ export const constKeyword: KeywordDefinition = {
     ctx.gen.if(`!${NAMES.DEPS}.deepEqual(${ctx.data}, ${valueLit})`, () => {
       ctx.emitError(
         "leaf",
-        `${NAMES.DEPS}.createLeafError(` +
-          `${quoteString("const")}, ${ctx.path}, ` +
-          `"must equal the expected constant", ` +
-          `{ expected: ${valueLit}, actual: ${ctx.data} })`,
+        ctx.leafErrorExpr(
+          quoteString("const"),
+          `"must equal the expected constant"`,
+          `{ expected: ${valueLit}, actual: ${ctx.data} }`,
+        ),
       );
     });
   },

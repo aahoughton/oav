@@ -20,10 +20,11 @@ export const typeKeyword: KeywordDefinition = {
       const actualExpr = `${NAMES.DEPS}.typeOf(${ctx.data})`;
       ctx.emitError(
         "leaf",
-        `${NAMES.DEPS}.createLeafError(` +
-          `${quoteString("type")}, ${ctx.path}, ` +
-          `"must be " + ${JSON.stringify(formatTypeList(expected))}, ` +
-          `{ expected: ${expectedLit}, actual: ${actualExpr} })`,
+        ctx.leafErrorExpr(
+          quoteString("type"),
+          `"must be " + ${JSON.stringify(formatTypeList(expected))}`,
+          `{ expected: ${expectedLit}, actual: ${actualExpr} }`,
+        ),
       );
     });
   },

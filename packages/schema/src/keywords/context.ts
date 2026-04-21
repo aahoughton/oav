@@ -7,6 +7,8 @@ import type {
   ValidateSubschemaOptions,
 } from "./types.js";
 
+const EMPTY_PATH_SEGMENTS: readonly string[] = Object.freeze([]);
+
 /**
  * Inputs accepted by {@link createKeywordContext}. The compiler assembles
  * these from its own state — keyword authors never construct them directly.
@@ -20,6 +22,12 @@ export interface KeywordContextInputs {
   data: string;
   path: string;
   errors: string;
+  /**
+   * Extra path segments that the inliner has accumulated without
+   * materializing them into `path`. See
+   * {@link KeywordCompileContext.pathSegments}. Defaults to empty.
+   */
+  pathSegments?: readonly string[];
   compileSubschema: (schema: SchemaOrBoolean) => string;
   resolveRef: (ref: string) => string;
   evaluatedPropertiesVar?: string | null;
@@ -160,6 +168,14 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
   const evaluatedItemsVar = inputs.evaluatedItemsVar ?? null;
   const gated = inputs.gated ?? false;
   const predicate = inputs.predicate ?? false;
+  const pathSegments = inputs.pathSegments ?? EMPTY_PATH_SEGMENTS;
+  const effectivePathExpr =
+    pathSegments.length === 0
+      ? inputs.path
+      : pathJoinExpr(
+          inputs.path,
+          pathSegments.map((s) => rawExpr(s)),
+        );
   // Fall back to a local-scope const when no compiler-provided hoist sink
   // is threaded in (for tests or out-of-tree callers that build a
   // context directly). In that case the "hoisted" value just lives in
@@ -205,19 +221,59 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     if (stmt !== "") inputs.gen.line(stmt);
   };
 
-  // No runtime mutation — on the happy path the segment is invisible.
-  // `body` receives the base path and the segment separately so error
-  // constructors can pass them as distinct arguments to
-  // `createLeafError` / `createBranchError` (the runtime allocates the
-  // extended path array once, inside the helper, on the error path).
-  // Predicate mode doesn't emit errors, so the values go unused in
-  // that mode — we pass them anyway for a stable API.
-  const withPathSegment = (
-    segmentExpr: string,
-    body: (basePath: string, segExpr: string) => void,
-  ): void => {
-    body(inputs.path, segmentExpr);
+  // Assemble a `deps.createLeafError(...)` / `createBranchError(...)`
+  // call. Up to two trailing segments embed as explicit parameters,
+  // matching the runtime signature; three-plus fall back to eagerly
+  // materializing `[...path, ...segs]` at the call site (rare —
+  // pathologically nested inlined subschemas, capped by
+  // MAX_INLINE_DEPTH).
+  const assembleErrorExpr = (
+    fnName: string,
+    fixedArgs: (pathExpr: string) => string,
+    allSegs: readonly string[],
+  ): string => {
+    if (allSegs.length === 0) {
+      return `${NAMES.DEPS}.${fnName}(${fixedArgs(inputs.path)})`;
+    }
+    if (allSegs.length <= 2) {
+      return `${NAMES.DEPS}.${fnName}(${fixedArgs(inputs.path)}, ${allSegs.join(", ")})`;
+    }
+    const materialized = pathJoinExpr(
+      inputs.path,
+      allSegs.map((s) => rawExpr(s)),
+    );
+    return `${NAMES.DEPS}.${fnName}(${fixedArgs(materialized)})`;
   };
+  const concatSegs = (extras: readonly string[]): readonly string[] =>
+    extras.length === 0
+      ? pathSegments
+      : pathSegments.length === 0
+        ? extras
+        : [...pathSegments, ...extras];
+  const leafErrorExpr = (
+    codeExpr: string,
+    messageExpr: string,
+    paramsExpr: string,
+    extraSegments: readonly string[] = EMPTY_PATH_SEGMENTS,
+  ): string =>
+    assembleErrorExpr(
+      "createLeafError",
+      (pathExpr: string) => `${codeExpr}, ${pathExpr}, ${messageExpr}, ${paramsExpr}`,
+      concatSegs(extraSegments),
+    );
+  const branchErrorExpr = (
+    codeExpr: string,
+    messageExpr: string,
+    childrenExpr: string,
+    paramsExpr: string = "{}",
+    extraSegments: readonly string[] = EMPTY_PATH_SEGMENTS,
+  ): string =>
+    assembleErrorExpr(
+      "createBranchError",
+      (pathExpr: string) =>
+        `${codeExpr}, ${pathExpr}, ${messageExpr}, ${childrenExpr}, ${paramsExpr}`,
+      concatSegs(extraSegments),
+    );
 
   const inlineDepth = inputs.inlineDepth ?? 0;
 
@@ -236,8 +292,12 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
    *   wrap the new errors in a "schema" branch to match the tree
    *   shape of the would-be function's `wrapErrors` return value.
    */
-  const tryInline = (schema: SchemaObject, dataExpr: string, pathOverride?: string): boolean => {
-    const path = pathOverride ?? inputs.path;
+  const tryInline = (
+    schema: SchemaObject,
+    dataExpr: string,
+    innerPathSegments?: readonly string[],
+  ): boolean => {
+    const innerSegments = innerPathSegments ?? pathSegments;
     if (inputs.byKeyword === undefined) return false;
     const allKeys = Object.keys(schema);
     const validationKeys: string[] = [];
@@ -264,7 +324,8 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
         schema: (schema as Record<string, unknown>)[k],
         parentSchema: schema,
         data: dataExpr,
-        path,
+        path: inputs.path,
+        pathSegments: innerSegments,
         errors: inputs.errors,
         compileSubschema: inputs.compileSubschema,
         resolveRef: inputs.resolveRef,
@@ -325,7 +386,8 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
         schema: (schema as Record<string, unknown>)[kwName],
         parentSchema: schema,
         data: dataExpr,
-        path,
+        path: inputs.path,
+        pathSegments: innerSegments,
         errors: inputs.errors,
         compileSubschema: inputs.compileSubschema,
         resolveRef: inputs.resolveRef,
@@ -346,14 +408,24 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     // short-circuits the wrap.
     if (startVar !== null) {
       const wrappedVar = inputs.gen.scope.name("_wrapped");
+      // The wrap expression lives at the same extended path as its
+      // leaf children — use the inner-scope segments directly (not
+      // the outer ctx's `pathSegments`, which is what the public
+      // helpers would concat).
+      // Always include the empty `params` slot so the runtime
+      // helper correctly sees any trailing segments in the
+      // `extraSegment` / `extraSegment2` positions.
+      const wrapExpr = assembleErrorExpr(
+        "createBranchError",
+        (pathExpr: string) =>
+          `"schema", ${pathExpr}, "schema validation failed", ${wrappedVar}, {}`,
+        innerSegments,
+      );
       inputs.gen.if(
         `${inputs.errors} !== null && ${inputs.errors}.length - ${startVar} > 1`,
         () => {
           inputs.gen.const(wrappedVar, `${inputs.errors}.splice(${startVar})`);
-          inputs.gen.line(
-            `${inputs.errors}.push(${NAMES.DEPS}.createBranchError(` +
-              `"schema", ${path}, "schema validation failed", ${wrappedVar}));`,
-          );
+          inputs.gen.line(`${inputs.errors}.push(${wrapExpr});`);
         },
       );
     }
@@ -367,32 +439,36 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     options?: ValidateSubschemaOptions,
   ): void => {
     const segment = options?.segment;
-    // Inline path uses a lazy extended-path expression — only evaluated
-    // when an error actually fires. Function-call fallback keeps the
-    // classic push/pop-then-call shape because the callee reads the
-    // (mutated) shared array directly, avoiding a per-call array
-    // allocation for the extended path.
+    // Inline path threads `pathSegments` through the inner keyword
+    // contexts — leaves splice the segments as trailing
+    // createLeafError args, avoiding the pre-materialized
+    // `[...path, seg]` double-allocation. Function-call fallback
+    // keeps the classic push/pop-then-call shape because the callee
+    // reads the (mutated) shared array directly.
     if (schema === true) return;
     if (schema === false) {
       if (predicate) {
         inputs.gen.line("return false;");
         return;
       }
-      // Use the runtime's `extraSegment` parameter so the extended
-      // path array is built once inside createLeafError rather than
-      // pre-materialized at the call site and then re-snapshotted.
-      const falseErr =
-        segment !== undefined
-          ? `${NAMES.DEPS}.createLeafError("false", ${inputs.path}, ` +
-            `"schema is false, nothing is valid", {}, ${segment})`
-          : `${NAMES.DEPS}.createLeafError("false", ${inputs.path}, ` +
-            `"schema is false, nothing is valid")`;
+      // `leafErrorExpr` picks up the ctx's pending pathSegments plus
+      // the subschema's own segment (if any) automatically.
+      const falseErr = leafErrorExpr(
+        '"false"',
+        '"schema is false, nothing is valid"',
+        "{}",
+        segment !== undefined ? [segment] : EMPTY_PATH_SEGMENTS,
+      );
       emitError("leaf", falseErr);
       return;
     }
-    const inlineExtPath =
-      segment !== undefined ? pathJoinExpr(inputs.path, [rawExpr(segment)]) : undefined;
-    if (tryInline(schema, dataExpr, inlineExtPath)) return;
+    const innerSegments =
+      segment === undefined
+        ? pathSegments
+        : pathSegments.length === 0
+          ? [segment]
+          : [...pathSegments, segment];
+    if (tryInline(schema, dataExpr, innerSegments)) return;
     // Function-call fallback — push/pop around the call so the callee
     // sees the extended path via the shared array (no per-call
     // allocation just to pass a path).
@@ -420,6 +496,8 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     parentSchema: inputs.parentSchema,
     data: inputs.data,
     path: inputs.path,
+    pathSegments,
+    effectivePathExpr,
     errors: inputs.errors,
     compileSubschema: inputs.compileSubschema,
     resolveRef: inputs.resolveRef,
@@ -431,7 +509,8 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     emitError,
     budgetBreakStatement,
     emitBudgetBreak,
-    withPathSegment,
+    leafErrorExpr,
+    branchErrorExpr,
     validateSubschema,
     hoistConstant,
   };

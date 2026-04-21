@@ -1,4 +1,4 @@
-import { NAMES, quoteString } from "../codegen/index.js";
+import { quoteString } from "../codegen/index.js";
 import type { SchemaOrBoolean } from "@oav/core";
 import type { KeywordCompileContext, KeywordDefinition } from "./types.js";
 import { UNEVALUATED_VOCAB } from "./vocabulary-uris.js";
@@ -34,18 +34,18 @@ export const unevaluatedPropertiesKeyword: KeywordDefinition = {
           return;
         }
         if (sub === false) {
-          ctx.withPathSegment(key, (base, seg) => {
-            // Offending key name lives in params.unexpected; dropping
-            // it from the message turns the emitted string into a
-            // constant literal.
-            ctx.emitError(
-              "leaf",
-              `${NAMES.DEPS}.createLeafError(` +
-                `${quoteString("unevaluatedProperties")}, ${base}, ` +
-                `"property is not evaluated by the schema", ` +
-                `{ unexpected: ${key} }, ${seg})`,
-            );
-          });
+          // Offending key name lives in params.unexpected; dropping
+          // it from the message turns the emitted string into a
+          // constant literal.
+          ctx.emitError(
+            "leaf",
+            ctx.leafErrorExpr(
+              quoteString("unevaluatedProperties"),
+              `"property is not evaluated by the schema"`,
+              `{ unexpected: ${key} }`,
+              [key],
+            ),
+          );
           ctx.emitBudgetBreak();
           return;
         }
@@ -82,15 +82,15 @@ export const unevaluatedItemsKeyword: KeywordDefinition = {
           return;
         }
         if (sub === false) {
-          ctx.withPathSegment(i, (base, seg) => {
-            ctx.emitError(
-              "leaf",
-              `${NAMES.DEPS}.createLeafError(` +
-                `${quoteString("unevaluatedItems")}, ${base}, ` +
-                `"item is not evaluated by the schema", ` +
-                `{ index: ${i} }, ${seg})`,
-            );
-          });
+          ctx.emitError(
+            "leaf",
+            ctx.leafErrorExpr(
+              quoteString("unevaluatedItems"),
+              `"item is not evaluated by the schema"`,
+              `{ index: ${i} }`,
+              [i],
+            ),
+          );
           ctx.emitBudgetBreak();
           return;
         }

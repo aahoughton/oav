@@ -1,4 +1,4 @@
-import { NAMES, quoteString } from "../codegen/index.js";
+import { quoteString } from "../codegen/index.js";
 import type { SchemaOrBoolean } from "@oav/core";
 import type { KeywordCompileContext, KeywordDefinition } from "./types.js";
 import { APPLICATOR_VOCAB } from "./vocabulary-uris.js";
@@ -53,14 +53,10 @@ export const itemsKeyword: KeywordDefinition = {
           g.line(`${ctx.evaluatedItemsVar}.add(${i});`);
         }
       } else if (subSchema === false) {
-        ctx.withPathSegment(i, (base, seg) => {
-          ctx.emitError(
-            "leaf",
-            `${NAMES.DEPS}.createLeafError(` +
-              `${quoteString("items")}, ${base}, ` +
-              `"no additional items allowed", {}, ${seg})`,
-          );
-        });
+        ctx.emitError(
+          "leaf",
+          ctx.leafErrorExpr(quoteString("items"), `"no additional items allowed"`, `{}`, [i]),
+        );
       } else {
         ctx.validateSubschema(subSchema, `${ctx.data}[${i}]`, { segment: i });
         if (ctx.evaluatedItemsVar !== null) {
@@ -139,10 +135,11 @@ export const containsKeyword: KeywordDefinition = {
           // message turns the emitted string into a constant literal.
           ctx.emitError(
             "leaf",
-            `${NAMES.DEPS}.createLeafError(` +
-              `${quoteString("contains")}, ${ctx.path}, ` +
-              `\`must contain at least ${min} matching item(s)\`, ` +
-              `{ minContains: ${min}, actual: ${count} })`,
+            ctx.leafErrorExpr(
+              quoteString("contains"),
+              `\`must contain at least ${min} matching item(s)\``,
+              `{ minContains: ${min}, actual: ${count} }`,
+            ),
           );
         });
       }
@@ -150,10 +147,11 @@ export const containsKeyword: KeywordDefinition = {
         g.if(`${count} > ${max}`, () => {
           ctx.emitError(
             "leaf",
-            `${NAMES.DEPS}.createLeafError(` +
-              `${quoteString("maxContains")}, ${ctx.path}, ` +
-              `\`must contain at most ${max} matching item(s)\`, ` +
-              `{ maxContains: ${max}, actual: ${count} })`,
+            ctx.leafErrorExpr(
+              quoteString("maxContains"),
+              `\`must contain at most ${max} matching item(s)\``,
+              `{ maxContains: ${max}, actual: ${count} }`,
+            ),
           );
         });
       }

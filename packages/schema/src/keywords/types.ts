@@ -91,7 +91,7 @@ export interface KeywordCompileContext {
    * `true` when predicate mode is active — the compiled validator
    * returns `boolean` and constructs no error tree. Most keywords
    * don't need to read this directly: `emitError`,
-   * `errorStatement`, `withPathSegment`, and `validateSubschema` all
+   * `errorStatement`, `leafErrorExpr`, and `validateSubschema` all
    * do the right thing automatically. Composition-style keywords
    * that inspect a sub-validator's return value for their own
    * control flow (`allOf`, `anyOf`, `oneOf`, `not`, `if/then/else`,
@@ -166,20 +166,67 @@ export interface KeywordCompileContext {
     options?: ValidateSubschemaOptions,
   ): void;
   /**
-   * Run `body` in a scope where the current path logically has an
-   * extra segment appended. `body` receives two JS expression strings:
-   * `basePath` (equivalent to `ctx.path`) and `segExpr` (the extra
-   * segment). Pass them as the 4th and 5th arguments of
-   * `deps.createLeafError(code, basePath, message, params, segExpr)`
-   * — the runtime helper allocates the extended path array once,
-   * avoiding the double-copy that a pre-materialized `[...path, seg]`
-   * would trigger.
+   * Pending path segments to splice as trailing args into
+   * `createLeafError` / `createBranchError`. Populated by the
+   * subschema inliner when it flattens a segmented
+   * `validateSubschema` call into the enclosing function body —
+   * instead of pre-materializing `[...path, seg]` for the inner
+   * keyword contexts (which the runtime then re-snapshots, doubling
+   * allocation), we leave `path` unchanged and let leaf keywords
+   * splice segments as extra args.
    *
-   * Implementation: no runtime mutation on the happy path. The
-   * extended path is only materialized when an error actually fires
-   * (inside the error helper).
+   * Most keywords don't need to read this directly: prefer
+   * {@link KeywordCompileContext.leafErrorExpr} /
+   * {@link KeywordCompileContext.branchErrorExpr}, which both
+   * already consume it.
    */
-  withPathSegment(segmentExpr: string, body: (basePath: string, segExpr: string) => void): void;
+  readonly pathSegments: readonly string[];
+  /**
+   * JS expression producing the effective path at runtime —
+   * equivalent to `ctx.path` when `pathSegments` is empty, and to
+   * `[...path, seg1, seg2, …]` otherwise. Prefer the error helpers
+   * for error construction; reach for this only when a keyword
+   * needs to pass the runtime path to something other than
+   * `createLeafError` / `createBranchError` (e.g. a user-supplied
+   * custom-keyword callback).
+   */
+  readonly effectivePathExpr: string;
+  /**
+   * Assemble a `deps.createLeafError(...)` call expression, splicing
+   * any pending {@link KeywordCompileContext.pathSegments} plus the
+   * caller's own `extraSegments` as trailing args. Up to two total
+   * extras embed as explicit parameters (matching the runtime
+   * signature); three or more fall back to eagerly materializing the
+   * extended path at the call site (rare — pathologically nested
+   * inlined subschemas).
+   *
+   * @param codeExpr - Pre-quoted JS expression for the error code
+   *   (e.g. `quoteString("type")`).
+   * @param messageExpr - JS expression for the message (literal or
+   *   template string).
+   * @param paramsExpr - JS expression for the `params` object, or
+   *   `"{}"`.
+   * @param extraSegments - Additional segments this keyword wants to
+   *   append (e.g. a missing property name). Appended after any
+   *   already-pending `pathSegments`.
+   */
+  leafErrorExpr(
+    codeExpr: string,
+    messageExpr: string,
+    paramsExpr: string,
+    extraSegments?: readonly string[],
+  ): string;
+  /**
+   * Assemble a `deps.createBranchError(...)` call expression. Same
+   * trailing-segment rules as {@link KeywordCompileContext.leafErrorExpr}.
+   */
+  branchErrorExpr(
+    codeExpr: string,
+    messageExpr: string,
+    childrenExpr: string,
+    paramsExpr?: string,
+    extraSegments?: readonly string[],
+  ): string;
   /**
    * Emit a `const <name> = <expr>;` declaration at the top of the
    * generated module (outside every validator function). Returns the

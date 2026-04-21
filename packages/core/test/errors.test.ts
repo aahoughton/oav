@@ -39,6 +39,23 @@ describe("createLeafError", () => {
     expect(err.code).toBe("type");
     expect(err.path).toEqual(["a", 0]);
   });
+  it("appends extraSegment to the path when provided", () => {
+    const err = createLeafError("required", ["user"], "missing", { missing: "id" }, "id");
+    expect(err.path).toEqual(["user", "id"]);
+  });
+  it("appends extraSegment + extraSegment2 when both are provided", () => {
+    // Used by the subschema inliner when a caller's pending segment
+    // stacks with the leaf keyword's own trailing segment.
+    const err = createLeafError(
+      "required",
+      [],
+      "missing",
+      { missing: "id" },
+      "user",
+      "id",
+    );
+    expect(err.path).toEqual(["user", "id"]);
+  });
 });
 
 describe("createBranchError", () => {
@@ -47,6 +64,11 @@ describe("createBranchError", () => {
     const err = createBranchError("oneOf", [], "must match one", leaves, { matchCount: 0 });
     expect(err.children).toBe(leaves);
     expect(err.params).toEqual({ matchCount: 0 });
+  });
+  it("appends extraSegment + extraSegment2 when both are provided", () => {
+    const children = [createLeafError("type", ["a", "b"], "x")];
+    const err = createBranchError("schema", [], "wrap", children, {}, "a", "b");
+    expect(err.path).toEqual(["a", "b"]);
   });
 });
 

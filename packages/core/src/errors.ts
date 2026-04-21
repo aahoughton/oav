@@ -320,6 +320,7 @@ export function createLeafError(
   message: string,
   params: Record<string, unknown> = {},
   extraSegment?: PathSegment,
+  extraSegment2?: PathSegment,
 ): ValidationError {
   // Children: a shared frozen empty array rather than a fresh `[]` on
   // every leaf. Saves one allocation per failure on hot invalid paths.
@@ -327,14 +328,21 @@ export function createLeafError(
   // `ValidationError[]` (mutable) for branch uses, but readers should
   // treat a leaf's array as read-only — which is the existing contract.
   //
-  // The `extraSegment` tail parameter lets generated validators append
-  // one segment (a missing property name, an array index) without
-  // allocating an intermediate array at the call site: we pass the
-  // base `path` plus the extra segment and build the final path here
-  // in one allocation. Absent the extra segment, we snapshot `path`
-  // so mutation by the caller after the error is returned can't
-  // corrupt it.
-  const finalPath = extraSegment !== undefined ? [...path, extraSegment] : [...path];
+  // The `extraSegment` / `extraSegment2` tail parameters let generated
+  // validators append up to two path segments without allocating an
+  // intermediate array at the call site: we pass the base `path` plus
+  // the extras and build the final path here in one allocation. The
+  // two-slot form supports inlined-with-segment subschemas whose
+  // leaves themselves append another segment (e.g. an inlined
+  // `required` under a `properties` entry). Deeper nesting (>2
+  // trailing segments) is rare enough that callers pre-materialize the
+  // full path rather than burn more runtime params on it.
+  const finalPath =
+    extraSegment2 !== undefined
+      ? [...path, extraSegment!, extraSegment2]
+      : extraSegment !== undefined
+        ? [...path, extraSegment]
+        : [...path];
   return { code, path: finalPath, message, params, children: EMPTY_CHILDREN };
 }
 
@@ -377,9 +385,15 @@ export function createBranchError(
   children: ValidationError[],
   params: Record<string, unknown> = {},
   extraSegment?: PathSegment,
+  extraSegment2?: PathSegment,
 ): ValidationError {
-  // See note in {@link createLeafError} on `extraSegment`.
-  const finalPath = extraSegment !== undefined ? [...path, extraSegment] : [...path];
+  // See note in {@link createLeafError} on `extraSegment` / `extraSegment2`.
+  const finalPath =
+    extraSegment2 !== undefined
+      ? [...path, extraSegment!, extraSegment2]
+      : extraSegment !== undefined
+        ? [...path, extraSegment]
+        : [...path];
   return { code, path: finalPath, message, params, children };
 }
 
