@@ -90,20 +90,38 @@ projects overlap and where each does more is written up in
 
 ### Conformance
 
-Published, not claimed. Every number below comes out of
-[`conformance/`](./conformance/README.md) on every build:
+The [`conformance/`](./conformance/README.md) sub-package drives the
+compiler and CLI against the upstream JSON Schema 2020-12 Test Suite,
+a set of OpenAPI 3.0 / 3.1 / 3.2 petstore scenarios, and a handful of
+real-world specs (Stripe, GitHub, DigitalOcean, Twilio, Asana, Box,
+Adyen) that have to load and compile without error. Current pass
+counts: 1271 / 1290 on required JSON Schema cases, 1429 / 1452 with
+optional included, 14 / 14 on OpenAPI cases.
 
-| Suite                                                                | Result                                                  |
-| -------------------------------------------------------------------- | ------------------------------------------------------- |
-| [JSON Schema 2020-12 Test Suite](./conformance/REPORT.md) (required) | 1271 / 1290 passing (98.5%)                             |
-| JSON Schema 2020-12 Test Suite (+ optional)                          | 1429 / 1452 passing (98.4%)                             |
-| OpenAPI request/response scenarios (3.0, 3.1, 3.2 petstores)         | 14 / 14                                                 |
-| Real-world specs loaded + compiled by `createValidator`              | Stripe, GitHub, DigitalOcean, Twilio, Asana, Box, Adyen |
+Categories we're not currently attempting, with details in
+[`conformance/REPORT.md`](./conformance/REPORT.md):
 
-Remaining JSON Schema mismatches (`$dynamicRef` runtime scope and a
-handful of optional-suite edges) are enumerated in
-[`conformance/REPORT.md`](./conformance/REPORT.md). No divergence is
-silent.
+- `$dynamicRef` with runtime dynamic-scope rebinding. Our
+  implementation resolves statically against the anchor map.
+- The `optional/format/*` subtree. Those tests target strict-assertion
+  behaviour; `format` is annotation-only by default per JSON Schema
+  2020-12 §6.3.
+- A small tail of isolated optional cases (float-overflow handling,
+  external-ref loading tied to the dynamic-scope category above).
+
+In practice, OpenAPI specs generated or hand-authored by application
+developers rarely touch any of these. `$dynamicRef` / `$dynamicAnchor`
+are concentrated in meta-schemas and extensible-type libraries (JSON
+Schema's own meta-schema, Hyperjump's type system); a spec that
+describes "POST /pets takes a Pet" doesn't declare them. The strict
+format-assertion gap only surfaces if you rely on RFC-edge behaviour
+in `iri`, IRI-reference, or non-BMP regex content — `date-time`,
+`email`, `uuid`, and the common URI formats pass. Float overflow
+concerns numbers beyond `Number.MAX_SAFE_INTEGER` (~9 × 10¹⁵);
+outside that range, JavaScript's own `Number` precision is the
+limiting factor regardless of validator. If any of these corners
+matter for your use case, the report lays out which tests fail and
+why.
 
 ## CLI
 
