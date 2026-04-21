@@ -220,13 +220,21 @@ export interface ValidatorOptions {
    * or not one of the supported versions (3.0, 3.1, 3.2).
    *
    * - `"fallback31"` (default) — silently use the 3.1 dialect.
-   * - `"warn"` — write a message to `stderr` and use the 3.1 dialect.
+   * - `"warn"` — emit a warning via {@link ValidatorOptions.warn} (defaults
+   *   to `process.stderr.write`) and use the 3.1 dialect.
    * - `"throw"` — throw an `Error`.
    *
    * Regardless of the choice, `OavValidator.detectedVersion` is set to
    * `undefined` so callers can introspect after the fact.
    */
   onUnknownVersion?: "fallback31" | "warn" | "throw";
+  /**
+   * Sink for the warning emitted by `onUnknownVersion: "warn"`. Defaults
+   * to `(m) => process.stderr.write(m)`. Inject an alternative when
+   * embedding the validator in workers / edge runtimes / test harnesses
+   * where `process.stderr` isn't the right destination.
+   */
+  warn?: (message: string) => void;
 }
 
 interface OperationCache {
@@ -296,7 +304,8 @@ export function createValidator(
         );
       }
       if (policy === "warn") {
-        process.stderr.write(
+        const warn = options.warn ?? ((m: string) => void process.stderr.write(m));
+        warn(
           "createValidator: spec has a missing or unsupported `openapi` field; falling back to the 3.1 dialect\n",
         );
       }
