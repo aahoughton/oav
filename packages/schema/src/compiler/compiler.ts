@@ -482,7 +482,10 @@ function buildFunctionBody(schema: SchemaOrBoolean, state: CompileState): string
   const gen = new CodeGen();
   gen.indent();
   if (!state.predicate) {
-    gen.const(NAMES.ERRORS, "[]");
+    // Start null; lazily allocate on first push. Valid inputs never
+    // touch this — the function returns null directly without
+    // allocating anything.
+    gen.let(NAMES.ERRORS, "null");
   }
 
   if (schema === true) {
@@ -532,6 +535,9 @@ function buildFunctionBody(schema: SchemaOrBoolean, state: CompileState): string
   if (state.predicate) {
     gen.line("return true;");
   } else {
+    // Happy path: errors stayed null → return null directly and skip
+    // the wrapErrors function call entirely.
+    gen.line(`if (${NAMES.ERRORS} === null) return null;`);
     gen.line(`return ${NAMES.DEPS}.wrapErrors("schema", ${NAMES.PATH}, ${NAMES.ERRORS});`);
   }
   gen.dedent();
