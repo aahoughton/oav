@@ -408,9 +408,28 @@ function compileValidator(schema: SchemaOrBoolean, state: CompileState): string 
   const cached = state.compiledFor.get(schema);
   if (cached !== undefined) return cached;
 
+  // Reserve a name up front so cyclic `$ref`s that point back to this
+  // schema hit the cache below and emit a normal recursive call.
   const name = `validate_${state.nextFn}`;
   state.nextFn += 1;
   state.compiledFor.set(schema, name);
+
+  // Pure-`$ref` elision: a schema whose only non-annotation keyword is
+  // `$ref` compiles to a pass-through wrapper today (allocates a
+  // scratch errors array, calls the target, propagates the result).
+  // Nothing structural comes out of the wrapper — inlining it away
+  // saves one function call per descent on every composition branch /
+  // items call / properties subschema that uses `$ref`. When the ref
+  // resolves back to this schema (self-recursion), alias returns the
+  // placeholder name we just reserved, so we fall through and emit a
+  // real wrapper function.
+  if (isPureRefSchema(schema, state)) {
+    const targetName = resolvePureRefTarget(schema as SchemaObject, state);
+    if (targetName !== null && targetName !== name) {
+      state.compiledFor.set(schema, targetName);
+      return targetName;
+    }
+  }
 
   const body = buildFunctionBody(schema, state);
   // Predicate mode drops the `path` parameter: error expressions
@@ -422,6 +441,44 @@ function compileValidator(schema: SchemaOrBoolean, state: CompileState): string 
     : `${NAMES.DATA}, ${NAMES.PATH}, ${NAMES.OUT_EVAL_PROPS}, ${NAMES.OUT_EVAL_ITEMS}`;
   state.functionBodies.push(`function ${name}(${params}) {\n${body}\n}`);
   return name;
+}
+
+/**
+ * True when `schema` is an object schema whose only non-annotation
+ * keyword is `$ref` (plus possibly `$id`, `$schema`, `$comment`,
+ * `title`, `description`, `$defs`, anchors). Such schemas compile to
+ * a pass-through wrapper that's equivalent to calling the target
+ * validator directly.
+ *
+ * Boolean schemas are excluded (not object-valued); schemas with any
+ * other validation keyword (even a second applicator) are excluded —
+ * those need a full compile because the sibling keywords contribute
+ * to the result.
+ */
+function isPureRefSchema(schema: SchemaOrBoolean, state: CompileState): boolean {
+  if (typeof schema !== "object" || schema === null || Array.isArray(schema)) return false;
+  if (typeof (schema as Record<string, unknown>).$ref !== "string") return false;
+  for (const key of Object.keys(schema)) {
+    if (key === "$ref") continue;
+    const kw = state.byKeyword.get(key);
+    if (kw?.annotation === true) continue;
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Resolve a pure-`$ref` schema's target to a function name.
+ * Mirrors the resolution logic in {@link compileSchemaKeywords}'s
+ * `resolveRefToFunction` but reachable from {@link compileValidator}
+ * before the schema's keywords are walked.
+ */
+function resolvePureRefTarget(schema: SchemaObject, state: CompileState): string | null {
+  const ref = (schema as Record<string, unknown>).$ref;
+  if (typeof ref !== "string") return null;
+  const currentBaseUri = state.graph.schemaBaseUri.get(schema) ?? state.graph.baseUri;
+  const target = state.refResolver.resolve(ref, currentBaseUri);
+  return compileValidator(target, state);
 }
 
 /**
