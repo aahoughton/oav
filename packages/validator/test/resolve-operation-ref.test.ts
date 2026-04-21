@@ -1,6 +1,6 @@
 import type { ReferenceObject } from "@oav/core";
 import { describe, expect, it } from "vitest";
-import { resolveOperationRef } from "../src/index.js";
+import { resolveOperationRef } from "../src/operation-cache.js";
 
 /**
  * Direct tests for the operation-level `$ref` resolver that

@@ -5,13 +5,14 @@ import { workspaceAliases } from "./workspace-aliases.js";
  * Single-package build for the publishable `oav`.
  *
  * Each entry becomes a subpath in the published package:
- *   src/index.ts            →  "oav"
- *   src/schema.ts           →  "oav/schema"
- *   src/schema-internals.ts →  "oav/schema/internals"
- *   src/spec.ts             →  "oav/spec"
- *   src/formats.ts          →  "oav/formats"
- *   src/core.ts             →  "oav/core"
- *   src/cli.ts              →  "oav" binary
+ *   src/index.ts               →  "oav"
+ *   src/schema.ts              →  "oav/schema"
+ *   src/schema-internals.ts    →  "oav/schema/internals"
+ *   src/spec.ts                →  "oav/spec"
+ *   src/formats.ts             →  "oav/formats"
+ *   src/core.ts                →  "oav/core"
+ *   src/validator-internals.ts →  "oav/validator/internals"
+ *   src/cli.ts                 →  "oav" binary
  *
  * The internal `@oav/*` workspace packages are redirected to their
  * source via the esbuild `alias` option, then bundled in as normal
@@ -26,6 +27,7 @@ export default defineConfig({
     spec: "src/spec.ts",
     formats: "src/formats.ts",
     core: "src/core.ts",
+    "validator-internals": "src/validator-internals.ts",
     cli: "src/cli.ts",
   },
   format: ["esm", "cjs"],
