@@ -17,6 +17,12 @@ import {
 } from "../subschema-positions.js";
 import { createDeps, type ValidatorDeps } from "./runtime.js";
 
+// Token scan fed into CompileStats.emittedTreeRuntime. Word-boundaried
+// so stray mentions inside string literals (e.g. an error message that
+// happens to contain "wrapErrors") don't count — every real emission
+// spells the helper as a bare identifier.
+const TREE_RUNTIME_HELPERS = /\b(?:createLeafError|createBranchError|wrapErrors)\b/;
+
 /**
  * Result of compiling a JSON Schema 2020-12 document. The shape mirrors what
  * the user-facing validator in `@oav/validator` wants: a `{ valid, error? }`
@@ -58,6 +64,14 @@ export interface CompileStats {
    * of grepping the generated JS.
    */
   unevaluatedTrackingEmitted: boolean;
+  /**
+   * `true` iff the generated source references any tree-mode runtime
+   * helper (`createLeafError`, `createBranchError`, `wrapErrors`). In
+   * predicate mode this MUST be `false` — the whole point of the mode
+   * is to avoid allocating an error tree. Surfaced so the predicate-
+   * mode contract can be asserted without grepping the generated JS.
+   */
+  emittedTreeRuntime: boolean;
 }
 
 /**
@@ -381,6 +395,7 @@ export function compileSchema(
   const stats: CompileStats = {
     functionCount: state.nextFn,
     unevaluatedTrackingEmitted: state.unevaluatedEmitted,
+    emittedTreeRuntime: TREE_RUNTIME_HELPERS.test(wholeSource),
   };
   if (predicate) {
     const factory = new Function(NAMES.DEPS, wholeSource) as (
