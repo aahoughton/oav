@@ -378,7 +378,7 @@ export const dependentSchemasKeyword: KeywordDefinition = {
           if (sub === undefined) continue;
           const fn = ctx.compileSubschema(sub);
           const keyLit = quoteString(name);
-          g.if(`Object.prototype.hasOwnProperty.call(${ctx.data}, ${keyLit})`, (gi) => {
+          g.if(`Object.hasOwn(${ctx.data}, ${keyLit})`, (gi) => {
             if (ctx.predicate) {
               gi.line(`if (!${fn}(${ctx.data}, ${passProps}, ${passItems})) return false;`);
               return;
@@ -417,10 +417,10 @@ export const dependenciesKeyword: KeywordDefinition = {
           const triggerLit = quoteString(trigger);
           if (Array.isArray(entry)) {
             // Array form → required-property semantics.
-            g.if(`Object.prototype.hasOwnProperty.call(${ctx.data}, ${triggerLit})`, (gi) => {
+            g.if(`Object.hasOwn(${ctx.data}, ${triggerLit})`, (gi) => {
               for (const prop of entry) {
                 const propLit = quoteString(prop);
-                gi.if(`!Object.prototype.hasOwnProperty.call(${ctx.data}, ${propLit})`, () => {
+                gi.if(`!Object.hasOwn(${ctx.data}, ${propLit})`, () => {
                   ctx.withPathSegment(propLit, () => {
                     ctx.emitError(
                       "leaf",
@@ -436,7 +436,7 @@ export const dependenciesKeyword: KeywordDefinition = {
           } else {
             // Schema form → dependent-schema semantics.
             const fn = ctx.compileSubschema(entry);
-            g.if(`Object.prototype.hasOwnProperty.call(${ctx.data}, ${triggerLit})`, (gi) => {
+            g.if(`Object.hasOwn(${ctx.data}, ${triggerLit})`, (gi) => {
               if (ctx.predicate) {
                 gi.line(`if (!${fn}(${ctx.data})) return false;`);
                 return;
@@ -470,10 +470,10 @@ export const dependentRequiredKeyword: KeywordDefinition = {
           const required = deps[trigger];
           if (required === undefined) continue;
           const triggerLit = quoteString(trigger);
-          g.if(`Object.prototype.hasOwnProperty.call(${ctx.data}, ${triggerLit})`, (gi) => {
+          g.if(`Object.hasOwn(${ctx.data}, ${triggerLit})`, (gi) => {
             for (const prop of required) {
               const propLit = quoteString(prop);
-              gi.if(`!Object.prototype.hasOwnProperty.call(${ctx.data}, ${propLit})`, () => {
+              gi.if(`!Object.hasOwn(${ctx.data}, ${propLit})`, () => {
                 ctx.withPathSegment(propLit, () => {
                   ctx.emitError(
                     "leaf",

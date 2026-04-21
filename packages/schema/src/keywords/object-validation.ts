@@ -80,7 +80,7 @@ export const requiredKeyword: KeywordDefinition = {
     ctx.gen.if(isObjectGuard(ctx.data), (g) => {
       g.const(missingVar, "[]");
       g.forOf("_req", requiredLit, (gi) => {
-        gi.if(`!Object.prototype.hasOwnProperty.call(${ctx.data}, _req)`, (gii) => {
+        gi.if(`!Object.hasOwn(${ctx.data}, _req)`, (gii) => {
           gii.line(`${missingVar}.push(_req);`);
         });
       });

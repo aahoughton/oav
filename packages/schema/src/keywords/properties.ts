@@ -24,7 +24,7 @@ export const propertiesKeyword: KeywordDefinition = {
         const subSchema = props[name];
         if (subSchema === undefined) continue;
         const keyLit = quoteString(name);
-        g.if(`Object.prototype.hasOwnProperty.call(${ctx.data}, ${keyLit})`, (gi) => {
+        g.if(`Object.hasOwn(${ctx.data}, ${keyLit})`, (gi) => {
           ctx.validateSubschema(subSchema, `${ctx.data}[${keyLit}]`, { segment: keyLit });
           if (ctx.evaluatedPropertiesVar !== null) {
             gi.line(`${ctx.evaluatedPropertiesVar}.add(${keyLit});`);

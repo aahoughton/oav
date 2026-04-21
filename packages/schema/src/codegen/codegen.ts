@@ -161,7 +161,7 @@ export class CodeGen implements CodeEmitter {
   forIn(nameVar: string, expr: string, body: (g: CodeGen) => void): this {
     this.line(`for (const ${nameVar} in ${expr}) {`);
     this.indentLevel += 1;
-    this.line(`if (!Object.prototype.hasOwnProperty.call(${expr}, ${nameVar})) continue;`);
+    this.line(`if (!Object.hasOwn(${expr}, ${nameVar})) continue;`);
     body(this);
     this.indentLevel -= 1;
     this.line("}");
