@@ -1,0 +1,191 @@
+import {
+  createLeafError,
+  type HttpRequest,
+  type ParameterObject,
+  type ValidationError,
+} from "@oav/core";
+import type { RouteMatch } from "@oav/router";
+import type { CompiledSchema } from "@oav/schema";
+import { deserialize, matchMediaType } from "./deserialize.js";
+import type { OperationCache } from "./operation-cache.js";
+import { assembleObjectQueryParam } from "./query-assembly.js";
+
+/**
+ * Media type of the (single) entry inside a parameter's `content` map,
+ * or `undefined` when `content` isn't in use. Companion to
+ * {@link firstContentSchema}.
+ *
+ * @internal
+ */
+function firstContentMediaType(p: ParameterObject): string | undefined {
+  if (p.content === undefined) return undefined;
+  for (const [mt, mto] of Object.entries(p.content)) {
+    if (mto.schema !== undefined) return mt;
+  }
+  return undefined;
+}
+
+/**
+ * `true` for media types that imply JSON encoding (`application/json`
+ * and any `*+json` suffix per RFC 6838 §4.2.8).
+ *
+ * @internal
+ */
+function isJsonMediaType(mediaType: string): boolean {
+  const base = mediaType.split(";")[0]?.trim().toLowerCase() ?? "";
+  return base === "application/json" || base.endsWith("+json");
+}
+
+/**
+ * Validate a single parameter against the operation cache: fetch the
+ * raw value from the appropriate HTTP frame (path / query / header /
+ * cookie), deserialise per `style` + `explode`, and run the pre-
+ * compiled schema validator. Pure — no closure over createValidator
+ * state; the cache carries everything it needs.
+ *
+ * @internal
+ */
+export function validateParameter(
+  p: ParameterObject,
+  req: HttpRequest,
+  match: RouteMatch,
+  cache: OperationCache,
+): ValidationError | null {
+  let raw: string | string[] | undefined;
+  let validator: CompiledSchema | undefined;
+  let pathPrefix: (string | number)[];
+  let code: string;
+
+  switch (p.in) {
+    case "path":
+      raw = match.pathParams[p.name];
+      validator = cache.pathParamValidators.get(p.name);
+      pathPrefix = ["path", p.name];
+      code = "path-param";
+      break;
+    case "query": {
+      pathPrefix = ["query", p.name];
+      code = "query-param";
+      validator = cache.queryParamValidators.get(p.name);
+      // Object-valued query params with style:form + explode:true, or
+      // style:deepObject, are spread across multiple top-level query
+      // keys rather than living under `query[p.name]`. Assemble a
+      // value from those keys before falling through to the scalar /
+      // array deserialization path.
+      const assembled = assembleObjectQueryParam(p, req.query);
+      if (assembled !== undefined) {
+        if (validator === undefined) return null;
+        if (assembled.value === undefined) {
+          if (p.required) {
+            return createLeafError(
+              code,
+              pathPrefix,
+              `missing required ${p.in} parameter "${p.name}"`,
+              { name: p.name, in: p.in },
+            );
+          }
+          return null;
+        }
+        const r = validator.validate(assembled.value, pathPrefix);
+        if (r.valid || r.error === undefined) return null;
+        return r.error;
+      }
+      raw = req.query?.[p.name];
+      break;
+    }
+    case "header":
+      raw = req.headers?.[p.name.toLowerCase()] ?? req.headers?.[p.name];
+      validator = cache.headerParamValidators.get(p.name);
+      pathPrefix = ["header", p.name];
+      code = "header-param";
+      break;
+    case "cookie":
+      raw = req.cookies?.[p.name];
+      validator = cache.cookieParamValidators.get(p.name);
+      pathPrefix = ["cookie", p.name];
+      code = "cookie-param";
+      break;
+  }
+
+  if (raw === undefined) {
+    if (p.required) {
+      return createLeafError(code, pathPrefix, `missing required ${p.in} parameter "${p.name}"`, {
+        name: p.name,
+        in: p.in,
+      });
+    }
+    return null;
+  }
+  // Empty-string is a legitimate value — `minLength`/`pattern` on the
+  // parameter schema handles rejection where needed. OpenAPI 3.1 §4.8.12.1
+  // explicitly permits `?flag=` on query parameters declaring
+  // `allowEmptyValue: true`; exempt those from validation.
+  if (raw === "" && p.in === "query" && p.allowEmptyValue === true) return null;
+  if (validator === undefined) return null;
+
+  // `parameter.content` takes precedence over `parameter.schema` when both
+  // are present. Spec permits exactly one media-type entry; take it.
+  // For JSON media types, parse the raw string before validating; other
+  // types (text/plain, etc.) are passed through as the raw string.
+  const contentMediaType = firstContentMediaType(p);
+  if (contentMediaType !== undefined) {
+    const rawStr = Array.isArray(raw) ? raw[0] : raw;
+    if (typeof rawStr !== "string") return null;
+    let parsed: unknown = rawStr;
+    if (isJsonMediaType(contentMediaType)) {
+      try {
+        parsed = JSON.parse(rawStr);
+      } catch (err) {
+        return createLeafError(
+          code,
+          pathPrefix,
+          `${p.in} parameter "${p.name}" is not valid ${contentMediaType}: ${(err as Error).message}`,
+          { name: p.name, in: p.in, mediaType: contentMediaType, reason: "content-parse" },
+        );
+      }
+    }
+    const r = validator.validate(parsed, pathPrefix);
+    if (r.valid || r.error === undefined) return null;
+    return r.error;
+  }
+
+  const value = deserialize(raw, p);
+  const r = validator.validate(value, pathPrefix);
+  if (r.valid || r.error === undefined) return null;
+  return r.error;
+}
+
+/**
+ * Validate the request body against the operation cache's pre-compiled
+ * per-media-type validators. Returns a leaf error for required-missing
+ * or content-type mismatch; delegates shape validation to the compiled
+ * schema and returns its error subtree (or `null` on success).
+ *
+ * @internal
+ */
+export function validateBody(req: HttpRequest, cache: OperationCache): ValidationError | null {
+  const body = cache.requestBody;
+  if (body === undefined) return null;
+  const hasBody = req.body !== undefined && req.body !== null;
+  if (!hasBody) {
+    if (body.required) {
+      return createLeafError("body", ["body"], "missing required request body", {});
+    }
+    return null;
+  }
+  if (cache.bodyValidators.size === 0) return null;
+  const mt = matchMediaType(req.contentType, cache.bodyValidators.keys());
+  if (mt === undefined) {
+    return createLeafError(
+      "content-type",
+      ["body"],
+      `request Content-Type "${req.contentType ?? "<missing>"}" is not accepted`,
+      { contentType: req.contentType, accepted: [...cache.bodyValidators.keys()] },
+    );
+  }
+  const validator = cache.bodyValidators.get(mt);
+  if (validator === undefined) return null;
+  const r = validator.validate(req.body, ["body"]);
+  if (r.valid || r.error === undefined) return null;
+  return r.error;
+}

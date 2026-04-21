@@ -2,16 +2,12 @@ import {
   createBranchError,
   createLeafError,
   detectOpenAPIVersion,
-  type HeaderObject,
   type HttpRequest,
   type HttpResponse,
   type OpenAPIDocument,
   type OpenAPIVersion,
   type OperationObject,
-  type ParameterObject,
   type ReferenceObject,
-  type RequestBodyObject,
-  type ResponseObject,
   type SchemaOrBoolean,
   type ValidationError,
 } from "@oav/core";
@@ -28,7 +24,25 @@ import {
   type Dialect,
   type RefResolver,
 } from "@oav/schema";
-import { resolveJsonPointer } from "@oav/core";
+import { deserialize, matchMediaType, matchResponseKey } from "./deserialize.js";
+import {
+  createDirectionResolver,
+  transformBodySchemaForDirection,
+  type BodyDirection,
+} from "./body-schema-transform.js";
+import {
+  httpRequestFromFetch,
+  httpResponseFromFetch,
+  type FetchRequestOptions,
+} from "./from-fetch.js";
+import {
+  buildOperationCache,
+  resolveOperationRef,
+  type OperationCache,
+} from "./operation-cache.js";
+import { validateBody, validateParameter } from "./validate-step.js";
+
+export { resolveOperationRef } from "./operation-cache.js";
 
 /**
  * Pick the dialect for a given OpenAPI version. 3.1 and 3.2 share the
@@ -47,19 +61,6 @@ function dialectFor(version: OpenAPIVersion): Dialect {
       return oas30Dialect;
   }
 }
-
-import { deserialize, matchMediaType, matchResponseKey } from "./deserialize.js";
-import {
-  createDirectionResolver,
-  transformBodySchemaForDirection,
-  type BodyDirection,
-} from "./body-schema-transform.js";
-import {
-  httpRequestFromFetch,
-  httpResponseFromFetch,
-  type FetchRequestOptions,
-} from "./from-fetch.js";
-import { assembleObjectQueryParam } from "./query-assembly.js";
 
 /**
  * The HTTP validator: after being built from a (resolved) OpenAPI document,
@@ -237,36 +238,6 @@ export interface ValidatorOptions {
   warn?: (message: string) => void;
 }
 
-interface OperationCache {
-  pathParamValidators: Map<string, CompiledSchema>;
-  queryParamValidators: Map<string, CompiledSchema>;
-  headerParamValidators: Map<string, CompiledSchema>;
-  cookieParamValidators: Map<string, CompiledSchema>;
-  parameters: ParameterObject[];
-  requestBody: RequestBodyObject | undefined;
-  bodyValidators: Map<string, CompiledSchema>;
-  responses: Map<string, ResponseCompiled>;
-}
-
-interface ResponseCompiled {
-  object: ResponseObject;
-  /** Keyed by lowercased header name; value preserves the spec-cased name. */
-  headers: Map<string, { name: string; object: HeaderObject }>;
-  /**
-   * Response body schemas, keyed by media type. Each is compiled lazily
-   * on first use and memoized into `bodyValidators`. Eager compilation
-   * of every response schema at `cacheFor` time is expensive on specs
-   * with hundreds of operations (Stripe-shaped), and most validators
-   * are only ever asked about a single status/media-type pairing.
-   */
-  bodySchemas: Map<string, SchemaOrBoolean>;
-  /** Header schemas keyed by lowercased name; compiled lazily. */
-  headerSchemas: Map<string, SchemaOrBoolean>;
-  /** Memoization caches for the lazy compiles. */
-  bodyValidators: Map<string, CompiledSchema>;
-  headerValidators: Map<string, CompiledSchema>;
-}
-
 /**
  * Build an {@link OavValidator} from a resolved OpenAPI 3.1 document.
  *
@@ -392,89 +363,7 @@ export function createValidator(
   const cacheFor = (pathMatch: RouteMatch): OperationCache => {
     const existing = operationCache.get(pathMatch.operation);
     if (existing !== undefined) return existing;
-
-    // OAS 3.x: operation-level parameters replace path-level parameters
-    // of the same (name, in). Push op-level second so later writes win
-    // in the (in, name)-keyed dedup, then materialise the unique list.
-    const rawParams: (ParameterObject | ReferenceObject)[] = [
-      ...(pathMatch.pathItem.parameters ?? []),
-      ...(pathMatch.operation.parameters ?? []),
-    ];
-    const byKey = new Map<string, ParameterObject>();
-    for (const p of rawParams) {
-      const resolved = resolveRef<ParameterObject>(p);
-      if (resolved === undefined) continue;
-      byKey.set(`${resolved.in}\0${resolved.name}`, resolved);
-    }
-    const parameters: ParameterObject[] = [...byKey.values()];
-
-    const pathParamValidators = new Map<string, CompiledSchema>();
-    const queryParamValidators = new Map<string, CompiledSchema>();
-    const headerParamValidators = new Map<string, CompiledSchema>();
-    const cookieParamValidators = new Map<string, CompiledSchema>();
-
-    for (const p of parameters) {
-      const contentSchema = firstContentSchema(p);
-      const schema = contentSchema ?? p.schema;
-      if (schema === undefined) continue;
-      const v = compile(schema);
-      const target =
-        p.in === "path"
-          ? pathParamValidators
-          : p.in === "query"
-            ? queryParamValidators
-            : p.in === "header"
-              ? headerParamValidators
-              : cookieParamValidators;
-      target.set(p.name, v);
-    }
-
-    const bodyValidators = new Map<string, CompiledSchema>();
-    const requestBody = resolveRef<RequestBodyObject>(pathMatch.operation.requestBody);
-    if (requestBody?.content) {
-      for (const [mt, mto] of Object.entries(requestBody.content)) {
-        if (mto.schema) bodyValidators.set(mt, compileForDirection(mto.schema, "request"));
-      }
-    }
-
-    const responses = new Map<string, ResponseCompiled>();
-    const rawResponses = pathMatch.operation.responses ?? {};
-    for (const [status, rawResponse] of Object.entries(rawResponses)) {
-      const response = resolveRef<ResponseObject>(rawResponse);
-      if (response === undefined) continue;
-      const bodySchemas = new Map<string, SchemaOrBoolean>();
-      const headerSchemas = new Map<string, SchemaOrBoolean>();
-      const headersResolved = new Map<string, { name: string; object: HeaderObject }>();
-      for (const [mt, mto] of Object.entries(response.content ?? {})) {
-        if (mto.schema) bodySchemas.set(mt, mto.schema);
-      }
-      for (const [name, rawHdr] of Object.entries(response.headers ?? {})) {
-        const hdr = resolveRef<HeaderObject>(rawHdr);
-        if (hdr === undefined) continue;
-        const lower = name.toLowerCase();
-        headersResolved.set(lower, { name, object: hdr });
-        if (hdr.schema) headerSchemas.set(lower, hdr.schema);
-      }
-      responses.set(status, {
-        object: response,
-        headers: headersResolved,
-        bodySchemas,
-        headerSchemas,
-        bodyValidators: new Map(),
-        headerValidators: new Map(),
-      });
-    }
-
-    const cache: OperationCache = {
-      parameters,
-      pathParamValidators,
-      queryParamValidators,
-      headerParamValidators,
-      cookieParamValidators,
-      requestBody,
-      bodyValidators,
-      responses,
-    };
+    const cache = buildOperationCache(pathMatch, { resolveRef, compile, compileForDirection });
     operationCache.set(pathMatch.operation, cache);
     return cache;
   };
@@ -664,205 +553,4 @@ export function createValidator(
     detectedVersion,
     stats,
   };
-}
-
-function validateParameter(
-  p: ParameterObject,
-  req: HttpRequest,
-  match: RouteMatch,
-  cache: OperationCache,
-): ValidationError | null {
-  let raw: string | string[] | undefined;
-  let validator: CompiledSchema | undefined;
-  let pathPrefix: (string | number)[];
-  let code: string;
-
-  switch (p.in) {
-    case "path":
-      raw = match.pathParams[p.name];
-      validator = cache.pathParamValidators.get(p.name);
-      pathPrefix = ["path", p.name];
-      code = "path-param";
-      break;
-    case "query": {
-      pathPrefix = ["query", p.name];
-      code = "query-param";
-      validator = cache.queryParamValidators.get(p.name);
-      // Object-valued query params with style:form + explode:true, or
-      // style:deepObject, are spread across multiple top-level query
-      // keys rather than living under `query[p.name]`. Assemble a
-      // value from those keys before falling through to the scalar /
-      // array deserialization path.
-      const assembled = assembleObjectQueryParam(p, req.query);
-      if (assembled !== undefined) {
-        if (validator === undefined) return null;
-        if (assembled.value === undefined) {
-          if (p.required) {
-            return createLeafError(
-              code,
-              pathPrefix,
-              `missing required ${p.in} parameter "${p.name}"`,
-              { name: p.name, in: p.in },
-            );
-          }
-          return null;
-        }
-        const r = validator.validate(assembled.value, pathPrefix);
-        if (r.valid || r.error === undefined) return null;
-        return r.error;
-      }
-      raw = req.query?.[p.name];
-      break;
-    }
-    case "header":
-      raw = req.headers?.[p.name.toLowerCase()] ?? req.headers?.[p.name];
-      validator = cache.headerParamValidators.get(p.name);
-      pathPrefix = ["header", p.name];
-      code = "header-param";
-      break;
-    case "cookie":
-      raw = req.cookies?.[p.name];
-      validator = cache.cookieParamValidators.get(p.name);
-      pathPrefix = ["cookie", p.name];
-      code = "cookie-param";
-      break;
-  }
-
-  if (raw === undefined) {
-    if (p.required) {
-      return createLeafError(code, pathPrefix, `missing required ${p.in} parameter "${p.name}"`, {
-        name: p.name,
-        in: p.in,
-      });
-    }
-    return null;
-  }
-  // Empty-string is a legitimate value — `minLength`/`pattern` on the
-  // parameter schema handles rejection where needed. OpenAPI 3.1 §4.8.12.1
-  // explicitly permits `?flag=` on query parameters declaring
-  // `allowEmptyValue: true`; exempt those from validation.
-  if (raw === "" && p.in === "query" && p.allowEmptyValue === true) return null;
-  if (validator === undefined) return null;
-
-  // `parameter.content` takes precedence over `parameter.schema` when both
-  // are present. Spec permits exactly one media-type entry; take it.
-  // For JSON media types, parse the raw string before validating; other
-  // types (text/plain, etc.) are passed through as the raw string.
-  const contentMediaType = firstContentMediaType(p);
-  if (contentMediaType !== undefined) {
-    const rawStr = Array.isArray(raw) ? raw[0] : raw;
-    if (typeof rawStr !== "string") return null;
-    let parsed: unknown = rawStr;
-    if (isJsonMediaType(contentMediaType)) {
-      try {
-        parsed = JSON.parse(rawStr);
-      } catch (err) {
-        return createLeafError(
-          code,
-          pathPrefix,
-          `${p.in} parameter "${p.name}" is not valid ${contentMediaType}: ${(err as Error).message}`,
-          { name: p.name, in: p.in, mediaType: contentMediaType, reason: "content-parse" },
-        );
-      }
-    }
-    const r = validator.validate(parsed, pathPrefix);
-    if (r.valid || r.error === undefined) return null;
-    return r.error;
-  }
-
-  const value = deserialize(raw, p);
-  const r = validator.validate(value, pathPrefix);
-  if (r.valid || r.error === undefined) return null;
-  return r.error;
-}
-
-function firstContentSchema(p: ParameterObject): SchemaOrBoolean | undefined {
-  if (p.content === undefined) return undefined;
-  for (const mto of Object.values(p.content)) {
-    if (mto.schema !== undefined) return mto.schema;
-  }
-  return undefined;
-}
-
-function firstContentMediaType(p: ParameterObject): string | undefined {
-  if (p.content === undefined) return undefined;
-  for (const [mt, mto] of Object.entries(p.content)) {
-    if (mto.schema !== undefined) return mt;
-  }
-  return undefined;
-}
-
-function isJsonMediaType(mediaType: string): boolean {
-  const base = mediaType.split(";")[0]?.trim().toLowerCase() ?? "";
-  return base === "application/json" || base.endsWith("+json");
-}
-
-/**
- * Assemble an object query parameter that's been spread across multiple
- * top-level query keys per OAS `style: form + explode: true` (the default
- * for query params) or `style: deepObject`. Returns `undefined` when the
- * parameter isn't this shape (caller should fall through to the standard
- * scalar/array path). When the parameter IS this shape but no matching
- * keys were present in the request, returns `{ value: undefined }` so
- * the caller can treat it as absent.
- */
-
-function validateBody(req: HttpRequest, cache: OperationCache): ValidationError | null {
-  const body = cache.requestBody;
-  if (body === undefined) return null;
-  const hasBody = req.body !== undefined && req.body !== null;
-  if (!hasBody) {
-    if (body.required) {
-      return createLeafError("body", ["body"], "missing required request body", {});
-    }
-    return null;
-  }
-  if (cache.bodyValidators.size === 0) return null;
-  const mt = matchMediaType(req.contentType, cache.bodyValidators.keys());
-  if (mt === undefined) {
-    return createLeafError(
-      "content-type",
-      ["body"],
-      `request Content-Type "${req.contentType ?? "<missing>"}" is not accepted`,
-      { contentType: req.contentType, accepted: [...cache.bodyValidators.keys()] },
-    );
-  }
-  const validator = cache.bodyValidators.get(mt);
-  if (validator === undefined) return null;
-  const r = validator.validate(req.body, ["body"]);
-  if (r.valid || r.error === undefined) return null;
-  return r.error;
-}
-
-/**
- * Resolve an operation-level `$ref` (requestBody / response / parameter /
- * header) against the spec. Returns the target object with any siblings
- * on the reference itself dropped — per OAS, siblings of a Reference
- * are ignored. Follows chains with a depth guard to catch cycles.
- * External refs must be inlined upstream by @oav/spec.resolveSpec().
- *
- * Lifted to module scope so it can be exercised independently of
- * createValidator.
- *
- * @internal
- */
-export function resolveOperationRef<T>(
-  spec: unknown,
-  value: T | ReferenceObject | undefined,
-): T | undefined {
-  let current: unknown = value;
-  for (let hops = 0; hops < 32; hops++) {
-    if (current === undefined || current === null || typeof current !== "object") {
-      return current as T | undefined;
-    }
-    const ref = (current as ReferenceObject).$ref;
-    if (typeof ref !== "string") return current as T;
-    if (!ref.startsWith("#")) {
-      throw new Error(
-        `external ref "${ref}" not resolved; run @oav/spec's resolveSpec() over the document before passing it to createValidator()`,
-      );
-    }
-    current = resolveJsonPointer(spec, ref.slice(1));
-  }
-  throw new Error(`$ref chain exceeded 32 hops (possible cycle)`);
 }
