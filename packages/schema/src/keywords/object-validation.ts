@@ -75,11 +75,11 @@ export const requiredKeyword: KeywordDefinition = {
   compile(ctx: KeywordCompileContext): void {
     const required = ctx.schema as string[];
     if (required.length === 0) return;
-    const requiredLit = JSON.stringify(required);
+    const requiredVar = ctx.hoistConstant(JSON.stringify(required), "required");
     const missingVar = ctx.gen.scope.name("missing");
     ctx.gen.if(isObjectGuard(ctx.data), (g) => {
       g.const(missingVar, "[]");
-      g.forOf("_req", requiredLit, (gi) => {
+      g.forOf("_req", requiredVar, (gi) => {
         gi.if(`!Object.prototype.hasOwnProperty.call(${ctx.data}, _req)`, (gii) => {
           gii.line(`${missingVar}.push(_req);`);
         });
