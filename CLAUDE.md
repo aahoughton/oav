@@ -38,6 +38,12 @@ Both have their own `package.json` + `pnpm-workspace.yaml` (with empty
   the generated JS source, and `eval`s it through `new Function(deps, src)`.
   Boolean schemas (`true`/`false`) are first-class. `$ref` uses an
   identity-keyed cache so self-recursive refs emit normal recursive calls.
+  The public barrel holds what keyword authors need; codegen mechanics
+  (`NAMES`, `pathJoinExpr`, `rawExpr`, `quoteString`, runtime helpers,
+  `SchemaRegistry`, `SUBSCHEMA_*_POSITIONS`, `createKeywordContext`)
+  live behind the `@aahoughton/oav/schema/internals` subpath — reach
+  for them only when a plugin genuinely needs them (not covered by
+  semver).
 - **`@oav/formats`** — pure string validators; exported as a `Record<string,
 (s: string) => boolean>` suitable for `compileSchema`'s `formats` option.
 - **`@oav/spec`** — `DocumentReader` abstraction (file/http/memory/composite)

@@ -8,7 +8,15 @@ import { resolve } from "node:path";
 const PACKAGES = ["core", "schema", "formats", "spec", "router", "validator", "cli"] as const;
 
 export function workspaceAliases(rootDir: string): Record<string, string> {
-  return Object.fromEntries(
-    PACKAGES.map((pkg) => [`@oav/${pkg}`, resolve(rootDir, "packages", pkg, "src", "index.ts")]),
+  // Sub-path barrel keys (more specific) come first so bundlers that
+  // match on longest prefix / insertion order pick `@oav/schema/internals`
+  // before the base `@oav/schema` alias.
+  const subpathEntries: Array<[string, string]> = [
+    ["@oav/schema/internals", resolve(rootDir, "packages", "schema", "src", "internals.ts")],
+  ];
+  const packageEntries = PACKAGES.map(
+    (pkg) =>
+      [`@oav/${pkg}`, resolve(rootDir, "packages", pkg, "src", "index.ts")] as [string, string],
   );
+  return Object.fromEntries([...subpathEntries, ...packageEntries]);
 }

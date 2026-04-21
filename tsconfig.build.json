@@ -10,6 +10,7 @@
     "paths": {
       "@oav/core": ["./packages/core/src/index.ts"],
       "@oav/schema": ["./packages/schema/src/index.ts"],
+      "@oav/schema/internals": ["./packages/schema/src/internals.ts"],
       "@oav/formats": ["./packages/formats/src/index.ts"],
       "@oav/spec": ["./packages/spec/src/index.ts"],
       "@oav/router": ["./packages/router/src/index.ts"],

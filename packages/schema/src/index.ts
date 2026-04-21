@@ -1,119 +1,165 @@
-export { NAMES, pathJoinExpr, quoteString, rawExpr } from "./codegen/index.js";
-export type {
-  CodeEmitter,
-  NameGenerator,
-  PathSegmentLike,
-  RawExpression,
-} from "./codegen/index.js";
+/**
+ * The public `@aahoughton/oav/schema` surface. Two audiences:
+ *
+ *   1. Compiler consumers — `compileSchema`, `CompiledSchema`,
+ *      `CompileOptions`, dialects. The minimum needed to turn a schema
+ *      into a validator.
+ *   2. Keyword authors — `KeywordDefinition`, `KeywordCompileContext`,
+ *      vocabulary URIs + vocab objects, the built-in keyword constants
+ *      (useful for reusing or composing them into a custom dialect),
+ *      the OAS 3.0 overrides.
+ *
+ * Codegen mechanics, runtime helpers, resolve internals, and the
+ * subschema-position constants live behind
+ * `@aahoughton/oav/schema/internals`. Reach for them when a custom
+ * plugin genuinely needs them, accepting that they're not covered by
+ * semver.
+ *
+ * @packageDocumentation
+ */
+
+// Compiler — turning schemas into validators.
 export {
   compileSchema,
-  createDeps,
-  deepEqual,
-  typeOf,
-  wrapErrors,
   type CompileOptions,
   type CompileStats,
   type CompiledPredicate,
   type CompiledSchema,
   type Validator,
-  type ValidatorDeps,
   type ValidationResult,
 } from "./compiler/index.js";
+
+// Keyword authoring — types + context seen inside `compile(ctx)`.
+export {
+  createCustomKeywordDefinition,
+  customKeywordVocabulary,
+  type CustomKeywordFailure,
+  type CustomKeywordValidator,
+} from "./keywords/custom.js";
+export type {
+  CompileAndCallOptions,
+  CompileRuntime,
+  Dialect,
+  DialectRules,
+  ErrorKind,
+  KeywordCompileContext,
+  KeywordDefinition,
+  ValidateSubschemaOptions,
+  Vocabulary,
+} from "./keywords/types.js";
+
+// Vocabulary URIs + built-in vocabularies + dialects.
 export {
   APPLICATOR_VOCAB,
   CORE_VALIDATION_VOCAB,
   CORE_VOCAB,
   FORMAT_ASSERTION_VOCAB,
   FORMAT_VOCAB,
+  META_DATA_VOCAB,
   OAS30_VOCAB,
   UNEVALUATED_VOCAB,
-  additionalPropertiesKeyword,
-  allOfKeyword,
-  anchorKeyword,
-  anyOfKeyword,
   applicatorVocabulary,
-  commentKeyword,
-  constKeyword,
-  containsKeyword,
   coreVocabulary,
-  createCustomKeywordDefinition,
-  createKeywordContext,
-  customKeywordVocabulary,
   defaultVocabularies,
-  defsKeyword,
+  formatAssertionVocabulary,
+  formatVocabulary,
+  jsonSchemaDialect,
+  metaDataVocabulary,
+  oas30Dialect,
+  oas30Vocabulary,
+  openapi31Dialect,
+  openapiMetaDataVocabulary,
+  unevaluatedVocabulary,
+  validationVocabulary,
+} from "./keywords/vocabulary.js";
+
+// Built-in keyword constants — reusable when composing a custom dialect.
+export {
+  maxItemsKeyword,
+  minItemsKeyword,
+  uniqueItemsKeyword,
+} from "./keywords/array-validation.js";
+export {
+  allOfKeyword,
+  anyOfKeyword,
   dependenciesKeyword,
   dependentRequiredKeyword,
   dependentSchemasKeyword,
-  discriminatorKeyword,
-  dynamicAnchorKeyword,
-  dynamicRefKeyword,
-  enumKeyword,
+  ifThenElseKeyword,
+  notKeyword,
+  oneOfKeyword,
+} from "./keywords/composition.js";
+export { constKeyword, enumKeyword } from "./keywords/equality.js";
+export { containsKeyword, itemsKeyword, prefixItemsKeyword } from "./keywords/items.js";
+export {
+  defaultKeyword,
+  deprecatedKeyword,
+  descriptionKeyword,
+  exampleKeyword,
+  examplesKeyword,
+  readOnlyKeyword,
+  titleKeyword,
+  writeOnlyKeyword,
+} from "./keywords/meta-data.js";
+export {
   exclusiveMaximumKeyword,
   exclusiveMinimumKeyword,
-  formatAssertionKeyword,
-  formatAssertionVocabulary,
-  formatKeyword,
-  formatVocabulary,
-  idKeyword,
-  ifThenElseKeyword,
-  itemsKeyword,
-  maxItemsKeyword,
-  maxLengthKeyword,
-  maxPropertiesKeyword,
   maximumKeyword,
-  minItemsKeyword,
-  minLengthKeyword,
-  minPropertiesKeyword,
   minimumKeyword,
   multipleOfKeyword,
-  notKeyword,
-  jsonSchemaDialect,
-  oas30Dialect,
+} from "./keywords/number.js";
+export {
   oas30ExclusiveMaximumKeyword,
   oas30ExclusiveMinimumKeyword,
   oas30MaximumKeyword,
   oas30MinimumKeyword,
   oas30NullableKeyword,
   oas30TypeKeyword,
-  oas30Vocabulary,
-  openapi31Dialect,
-  oneOfKeyword,
-  patternKeyword,
+} from "./keywords/oas30.js";
+export {
+  maxPropertiesKeyword,
+  minPropertiesKeyword,
+  requiredKeyword,
+} from "./keywords/object-validation.js";
+export {
+  additionalPropertiesKeyword,
   patternPropertiesKeyword,
-  prefixItemsKeyword,
   propertiesKeyword,
   propertyNamesKeyword,
-  refKeyword,
-  requiredKeyword,
-  schemaDialectKeyword,
-  typeKeyword,
-  unevaluatedItemsKeyword,
-  unevaluatedPropertiesKeyword,
-  unevaluatedVocabulary,
-  uniqueItemsKeyword,
-  validationVocabulary,
-  type CustomKeywordFailure,
-  type CustomKeywordValidator,
-  type Dialect,
-  type DialectRules,
-  type ErrorKind,
-  type KeywordCompileContext,
-  type KeywordContextInputs,
-  type KeywordDefinition,
-  type ValidateSubschemaOptions,
-  type Vocabulary,
-} from "./keywords/index.js";
+} from "./keywords/properties.js";
 export {
-  SchemaRegistry,
-  collectDynamicAnchors,
+  anchorKeyword,
+  commentKeyword,
+  defsKeyword,
+  dynamicAnchorKeyword,
+  dynamicRefKeyword,
+  idKeyword,
+  refKeyword,
+  schemaDialectKeyword,
+} from "./keywords/ref.js";
+export {
+  formatAssertionKeyword,
+  formatKeyword,
+  maxLengthKeyword,
+  minLengthKeyword,
+  patternKeyword,
+} from "./keywords/string.js";
+export { typeKeyword } from "./keywords/type.js";
+export { discriminatorKeyword } from "./keywords/discriminator.js";
+export { unevaluatedItemsKeyword, unevaluatedPropertiesKeyword } from "./keywords/unevaluated.js";
+
+// Ref resolution — needed by `@oav/validator` and any consumer wiring
+// up a custom spec loader. The lower-level `SchemaRegistry` /
+// `collectDynamicAnchors` primitives are in `./internals`.
+export {
   createRefResolver,
   resolve,
   type RefResolver,
   type ResolvedGraph,
   type ResolveOptions,
 } from "./resolve/index.js";
-export {
-  SUBSCHEMA_ARRAY_POSITIONS,
-  SUBSCHEMA_MAP_POSITIONS,
-  SUBSCHEMA_SINGLE_POSITIONS,
-} from "./subschema-positions.js";
+
+// Generic subschema walk — intended for linters / introspection /
+// tooling. For rewriting use cases, the raw `SUBSCHEMA_*_POSITIONS`
+// constants are in `./internals`.
+export { walkSubschemas, type SubschemaVisitor } from "./subschema-positions.js";

@@ -19,12 +19,12 @@
  */
 
 import type { SchemaOrBoolean } from "@oav/core";
+import { type RefResolver } from "@oav/schema";
 import {
   SUBSCHEMA_ARRAY_POSITIONS,
   SUBSCHEMA_MAP_POSITIONS,
   SUBSCHEMA_SINGLE_POSITIONS,
-  type RefResolver,
-} from "@oav/schema";
+} from "@oav/schema/internals";
 
 /**
  * Which leg of the HTTP exchange a schema is being validated against.
