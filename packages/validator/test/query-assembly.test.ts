@@ -5,7 +5,7 @@ import {
   assembleFormExplodedObject,
   assembleObjectQueryParam,
   coerceQueryScalar,
-} from "../src/index.js";
+} from "../src/query-assembly.js";
 
 describe("coerceQueryScalar", () => {
   it("returns undefined for missing values", () => {

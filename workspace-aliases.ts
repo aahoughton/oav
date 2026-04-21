@@ -9,10 +9,11 @@ const PACKAGES = ["core", "schema", "formats", "spec", "router", "validator", "c
 
 export function workspaceAliases(rootDir: string): Record<string, string> {
   // Sub-path barrel keys (more specific) come first so bundlers that
-  // match on longest prefix / insertion order pick `@oav/schema/internals`
-  // before the base `@oav/schema` alias.
+  // match on longest prefix / insertion order pick `@oav/<pkg>/internals`
+  // before the base `@oav/<pkg>` alias.
   const subpathEntries: Array<[string, string]> = [
     ["@oav/schema/internals", resolve(rootDir, "packages", "schema", "src", "internals.ts")],
+    ["@oav/validator/internals", resolve(rootDir, "packages", "validator", "src", "internals.ts")],
   ];
   const packageEntries = PACKAGES.map(
     (pkg) =>

@@ -42,8 +42,6 @@ import {
 } from "./operation-cache.js";
 import { validateBody, validateParameter } from "./validate-step.js";
 
-export { resolveOperationRef } from "./operation-cache.js";
-
 /**
  * Pick the dialect for a given OpenAPI version. 3.1 and 3.2 share the
  * 2020-12-based dialect with format-assertion; 3.0 uses the OAS 3.0
