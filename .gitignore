@@ -6,6 +6,7 @@ dist/
 coverage/
 tmp/
 conformance/real-world/specs/
+performance/compiled-dump/
 .DS_Store
 *.log
 oav-*.tgz
