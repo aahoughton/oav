@@ -1,5 +1,5 @@
 import type { SchemaObject, SchemaOrBoolean } from "@oav/core";
-import { NAMES, type CodeGen } from "../codegen/index.js";
+import { NAMES, pathJoinExpr, rawExpr, type CodeGen } from "../codegen/index.js";
 import type {
   ErrorKind,
   KeywordCompileContext,
@@ -205,20 +205,18 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     if (stmt !== "") inputs.gen.line(stmt);
   };
 
-  // Push a path segment onto the shared mutable path array, run `body`,
-  // then pop. Runtime helpers (`createError`, `createLeafError`,
-  // `createBranchError`) snapshot `path` at error-creation time, so
-  // errors emitted inside `body` keep the correct path after the pop.
-  // Predicate mode never emits errors, so the push/pop pair becomes
-  // dead work — skip it entirely.
-  const withPathSegment = (segmentExpr: string, body: () => void): void => {
-    if (predicate) {
-      body();
-      return;
-    }
-    inputs.gen.line(`${inputs.path}.push(${segmentExpr});`);
-    body();
-    inputs.gen.line(`${inputs.path}.pop();`);
+  // No runtime mutation — on the happy path the segment is invisible.
+  // `body` receives the base path and the segment separately so error
+  // constructors can pass them as distinct arguments to
+  // `createLeafError` / `createBranchError` (the runtime allocates the
+  // extended path array once, inside the helper, on the error path).
+  // Predicate mode doesn't emit errors, so the values go unused in
+  // that mode — we pass them anyway for a stable API.
+  const withPathSegment = (
+    segmentExpr: string,
+    body: (basePath: string, segExpr: string) => void,
+  ): void => {
+    body(inputs.path, segmentExpr);
   };
 
   const inlineDepth = inputs.inlineDepth ?? 0;
@@ -238,7 +236,8 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
    *   wrap the new errors in a "schema" branch to match the tree
    *   shape of the would-be function's `wrapErrors` return value.
    */
-  const tryInline = (schema: SchemaObject, dataExpr: string): boolean => {
+  const tryInline = (schema: SchemaObject, dataExpr: string, pathOverride?: string): boolean => {
+    const path = pathOverride ?? inputs.path;
     if (inputs.byKeyword === undefined) return false;
     const allKeys = Object.keys(schema);
     const validationKeys: string[] = [];
@@ -265,7 +264,7 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
         schema: (schema as Record<string, unknown>)[k],
         parentSchema: schema,
         data: dataExpr,
-        path: inputs.path,
+        path,
         errors: inputs.errors,
         compileSubschema: inputs.compileSubschema,
         resolveRef: inputs.resolveRef,
@@ -326,7 +325,7 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
         schema: (schema as Record<string, unknown>)[kwName],
         parentSchema: schema,
         data: dataExpr,
-        path: inputs.path,
+        path,
         errors: inputs.errors,
         compileSubschema: inputs.compileSubschema,
         resolveRef: inputs.resolveRef,
@@ -353,7 +352,7 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
           inputs.gen.const(wrappedVar, `${inputs.errors}.splice(${startVar})`);
           inputs.gen.line(
             `${inputs.errors}.push(${NAMES.DEPS}.createBranchError(` +
-              `"schema", ${inputs.path}, "schema validation failed", ${wrappedVar}));`,
+              `"schema", ${path}, "schema validation failed", ${wrappedVar}));`,
           );
         },
       );
@@ -367,42 +366,51 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     dataExpr: string,
     options?: ValidateSubschemaOptions,
   ): void => {
-    const emitInner = (): void => {
-      if (schema === true) return;
-      if (schema === false) {
-        if (predicate) {
-          inputs.gen.line("return false;");
-          return;
-        }
-        const falseErr =
-          `${NAMES.DEPS}.createLeafError("false", ${inputs.path}, ` +
-          `"schema is false, nothing is valid")`;
-        emitError("leaf", falseErr);
-        return;
-      }
-      if (tryInline(schema, dataExpr)) return;
-      // Fall back: compile subschema to a named function and call it.
-      // In predicate mode the sub returns boolean and takes no path;
-      // any failure short-circuits the caller with `return false;`.
-      const fn = inputs.compileSubschema(schema);
-      if (predicate) {
-        inputs.gen.line(`if (!${fn}(${dataExpr})) return false;`);
-        return;
-      }
-      // Tree mode: call with the SHARED path. The sub-function's error
-      // emissions snapshot the path before committing it to
-      // ValidationError, so the shared-array reuse is safe.
-      const errVar = inputs.gen.scope.name("e");
-      inputs.gen.const(errVar, `${fn}(${dataExpr}, ${inputs.path})`);
-      inputs.gen.if(`${errVar} !== null`, () => {
-        emitError("lift", errVar);
-      });
-    };
     const segment = options?.segment;
-    if (segment === undefined) {
-      emitInner();
-    } else {
-      withPathSegment(segment, emitInner);
+    // Inline path uses a lazy extended-path expression — only evaluated
+    // when an error actually fires. Function-call fallback keeps the
+    // classic push/pop-then-call shape because the callee reads the
+    // (mutated) shared array directly, avoiding a per-call array
+    // allocation for the extended path.
+    if (schema === true) return;
+    if (schema === false) {
+      if (predicate) {
+        inputs.gen.line("return false;");
+        return;
+      }
+      // Use the runtime's `extraSegment` parameter so the extended
+      // path array is built once inside createLeafError rather than
+      // pre-materialized at the call site and then re-snapshotted.
+      const falseErr =
+        segment !== undefined
+          ? `${NAMES.DEPS}.createLeafError("false", ${inputs.path}, ` +
+            `"schema is false, nothing is valid", {}, ${segment})`
+          : `${NAMES.DEPS}.createLeafError("false", ${inputs.path}, ` +
+            `"schema is false, nothing is valid")`;
+      emitError("leaf", falseErr);
+      return;
+    }
+    const inlineExtPath =
+      segment !== undefined ? pathJoinExpr(inputs.path, [rawExpr(segment)]) : undefined;
+    if (tryInline(schema, dataExpr, inlineExtPath)) return;
+    // Function-call fallback — push/pop around the call so the callee
+    // sees the extended path via the shared array (no per-call
+    // allocation just to pass a path).
+    const fn = inputs.compileSubschema(schema);
+    if (predicate) {
+      inputs.gen.line(`if (!${fn}(${dataExpr})) return false;`);
+      return;
+    }
+    if (segment !== undefined) {
+      inputs.gen.line(`${inputs.path}.push(${segment});`);
+    }
+    const errVar = inputs.gen.scope.name("e");
+    inputs.gen.const(errVar, `${fn}(${dataExpr}, ${inputs.path})`);
+    inputs.gen.if(`${errVar} !== null`, () => {
+      emitError("lift", errVar);
+    });
+    if (segment !== undefined) {
+      inputs.gen.line(`${inputs.path}.pop();`);
     }
   };
 

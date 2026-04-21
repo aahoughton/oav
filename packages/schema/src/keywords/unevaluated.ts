@@ -34,16 +34,16 @@ export const unevaluatedPropertiesKeyword: KeywordDefinition = {
           return;
         }
         if (sub === false) {
-          ctx.withPathSegment(key, () => {
+          ctx.withPathSegment(key, (base, seg) => {
             // Offending key name lives in params.unexpected; dropping
             // it from the message turns the emitted string into a
             // constant literal.
             ctx.emitError(
               "leaf",
               `${NAMES.DEPS}.createLeafError(` +
-                `${quoteString("unevaluatedProperties")}, ${ctx.path}, ` +
+                `${quoteString("unevaluatedProperties")}, ${base}, ` +
                 `"property is not evaluated by the schema", ` +
-                `{ unexpected: ${key} })`,
+                `{ unexpected: ${key} }, ${seg})`,
             );
           });
           ctx.emitBudgetBreak();
@@ -82,13 +82,13 @@ export const unevaluatedItemsKeyword: KeywordDefinition = {
           return;
         }
         if (sub === false) {
-          ctx.withPathSegment(i, () => {
+          ctx.withPathSegment(i, (base, seg) => {
             ctx.emitError(
               "leaf",
               `${NAMES.DEPS}.createLeafError(` +
-                `${quoteString("unevaluatedItems")}, ${ctx.path}, ` +
+                `${quoteString("unevaluatedItems")}, ${base}, ` +
                 `"item is not evaluated by the schema", ` +
-                `{ index: ${i} })`,
+                `{ index: ${i} }, ${seg})`,
             );
           });
           ctx.emitBudgetBreak();
