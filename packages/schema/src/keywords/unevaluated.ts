@@ -3,10 +3,6 @@ import type { SchemaOrBoolean } from "@oav/core";
 import type { KeywordCompileContext, KeywordDefinition } from "./types.js";
 import { UNEVALUATED_VOCAB } from "./vocabulary-uris.js";
 
-function isObjectGuard(dataExpr: string): string {
-  return `typeof ${dataExpr} === "object" && ${dataExpr} !== null && !Array.isArray(${dataExpr})`;
-}
-
 /**
  * The `unevaluatedProperties` keyword. Validates every property NOT already
  * evaluated by sibling keywords (`properties`, `patternProperties`,
@@ -21,11 +17,12 @@ export const unevaluatedPropertiesKeyword: KeywordDefinition = {
   keyword: "unevaluatedProperties",
   vocabulary: UNEVALUATED_VOCAB,
   applicator: true,
+  typeGate: "object",
   compile(ctx: KeywordCompileContext): void {
     const sub = ctx.schema as SchemaOrBoolean;
     const evaluatedVar = ctx.evaluatedPropertiesVar;
     if (evaluatedVar === null) return;
-    ctx.gen.if(isObjectGuard(ctx.data), (g) => {
+    ctx.typeGate("object", (g) => {
       const key = g.scope.name("k");
       g.forIn(key, ctx.data, (gi) => {
         gi.if(`${evaluatedVar}.has(${key})`, (gii) => gii.line("continue;"));

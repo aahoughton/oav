@@ -2,10 +2,6 @@ import { NAMES, quoteString } from "../codegen/index.js";
 import type { KeywordCompileContext, KeywordDefinition } from "./types.js";
 import { CORE_VALIDATION_VOCAB } from "./vocabulary-uris.js";
 
-function isObjectGuard(dataExpr: string): string {
-  return `typeof ${dataExpr} === "object" && ${dataExpr} !== null && !Array.isArray(${dataExpr})`;
-}
-
 function keyCountExpr(dataExpr: string): string {
   return `Object.keys(${dataExpr}).length`;
 }
@@ -18,10 +14,11 @@ function keyCountExpr(dataExpr: string): string {
 export const maxPropertiesKeyword: KeywordDefinition = {
   keyword: "maxProperties",
   vocabulary: CORE_VALIDATION_VOCAB,
+  typeGate: "object",
   compile(ctx: KeywordCompileContext): void {
     const limit = ctx.schema as number;
     const count = ctx.gen.scope.name("count");
-    ctx.gen.if(isObjectGuard(ctx.data), (g) => {
+    ctx.typeGate("object", (g) => {
       g.const(count, keyCountExpr(ctx.data));
       g.if(`${count} > ${limit}`, () => {
         ctx.emitError(
@@ -44,10 +41,11 @@ export const maxPropertiesKeyword: KeywordDefinition = {
 export const minPropertiesKeyword: KeywordDefinition = {
   keyword: "minProperties",
   vocabulary: CORE_VALIDATION_VOCAB,
+  typeGate: "object",
   compile(ctx: KeywordCompileContext): void {
     const limit = ctx.schema as number;
     const count = ctx.gen.scope.name("count");
-    ctx.gen.if(isObjectGuard(ctx.data), (g) => {
+    ctx.typeGate("object", (g) => {
       g.const(count, keyCountExpr(ctx.data));
       g.if(`${count} < ${limit}`, () => {
         ctx.emitError(
@@ -72,12 +70,13 @@ export const minPropertiesKeyword: KeywordDefinition = {
 export const requiredKeyword: KeywordDefinition = {
   keyword: "required",
   vocabulary: CORE_VALIDATION_VOCAB,
+  typeGate: "object",
   compile(ctx: KeywordCompileContext): void {
     const required = ctx.schema as string[];
     if (required.length === 0) return;
     const requiredVar = ctx.hoistConstant(JSON.stringify(required), "required");
     const missingVar = ctx.gen.scope.name("missing");
-    ctx.gen.if(isObjectGuard(ctx.data), (g) => {
+    ctx.typeGate("object", (g) => {
       g.const(missingVar, "[]");
       g.forOf("_req", requiredVar, (gi) => {
         gi.if(`!Object.prototype.hasOwnProperty.call(${ctx.data}, _req)`, (gii) => {

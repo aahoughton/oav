@@ -19,6 +19,7 @@ export const discriminatorKeyword: KeywordDefinition = {
   vocabulary: APPLICATOR_VOCAB,
   applicator: true,
   implements: ["oneOf", "anyOf"],
+  typeGate: "object",
   compile(ctx: KeywordCompileContext): void {
     const disc = ctx.schema as { propertyName: string; mapping?: Record<string, string> };
     const propertyName = disc.propertyName;
@@ -59,71 +60,68 @@ export const discriminatorKeyword: KeywordDefinition = {
     }
 
     const propLit = quoteString(propertyName);
-    ctx.gen.if(
-      `typeof ${ctx.data} === "object" && ${ctx.data} !== null && !Array.isArray(${ctx.data})`,
-      (g) => {
-        const discVal = g.scope.name("disc");
-        g.const(discVal, `${ctx.data}[${propLit}]`);
-        g.if(
-          `typeof ${discVal} !== "string"`,
-          () => {
-            if (ctx.predicate) {
-              g.line("return false;");
-              return;
+    ctx.typeGate("object", (g) => {
+      const discVal = g.scope.name("disc");
+      g.const(discVal, `${ctx.data}[${propLit}]`);
+      g.if(
+        `typeof ${discVal} !== "string"`,
+        () => {
+          if (ctx.predicate) {
+            g.line("return false;");
+            return;
+          }
+          ctx.withPathSegment(propLit, () => {
+            ctx.emitError(
+              "leaf",
+              `${NAMES.DEPS}.createLeafError(` +
+                `${quoteString("discriminator")}, ${ctx.path}, ` +
+                `\`discriminator property "${propertyName}" must be a string\`, ` +
+                `{ propertyName: ${propLit} })`,
+            );
+          });
+        },
+        (gi) => {
+          if (ctx.predicate) {
+            // Predicate mode switch: each case calls its branch and
+            // propagates a false return; default returns false.
+            gi.line(`switch (${discVal}) {`);
+            for (const { value, fn } of discFns) {
+              gi.line(
+                `      case ${quoteString(value)}: if (!${fn}(${ctx.data})) return false; break;`,
+              );
             }
-            ctx.withPathSegment(propLit, () => {
-              ctx.emitError(
+            gi.line(`      default: return false;`);
+            gi.line(`    }`);
+            return;
+          }
+          // Discriminator routes to ONE branch. If it returns an error,
+          // that's already a counted leaf from the sub-validator — lift
+          // it (don't re-count). If the discriminator value matches no
+          // branch, THAT error is a fresh leaf — gate it.
+          const switchLines = discFns
+            .map(
+              ({ value, fn }) =>
+                `      case ${quoteString(value)}: { const e = ${fn}(${ctx.data}, ${ctx.path}); if (e !== null) ${ctx.errorStatement("lift", "e")} break; }`,
+            )
+            .join("\n");
+          gi.line(`switch (${discVal}) {`);
+          gi.line(switchLines);
+          gi.line(`      default: {`);
+          ctx.withPathSegment(propLit, () => {
+            gi.line(
+              ctx.errorStatement(
                 "leaf",
                 `${NAMES.DEPS}.createLeafError(` +
                   `${quoteString("discriminator")}, ${ctx.path}, ` +
-                  `\`discriminator property "${propertyName}" must be a string\`, ` +
-                  `{ propertyName: ${propLit} })`,
-              );
-            });
-          },
-          (gi) => {
-            if (ctx.predicate) {
-              // Predicate mode switch: each case calls its branch and
-              // propagates a false return; default returns false.
-              gi.line(`switch (${discVal}) {`);
-              for (const { value, fn } of discFns) {
-                gi.line(
-                  `      case ${quoteString(value)}: if (!${fn}(${ctx.data})) return false; break;`,
-                );
-              }
-              gi.line(`      default: return false;`);
-              gi.line(`    }`);
-              return;
-            }
-            // Discriminator routes to ONE branch. If it returns an error,
-            // that's already a counted leaf from the sub-validator — lift
-            // it (don't re-count). If the discriminator value matches no
-            // branch, THAT error is a fresh leaf — gate it.
-            const switchLines = discFns
-              .map(
-                ({ value, fn }) =>
-                  `      case ${quoteString(value)}: { const e = ${fn}(${ctx.data}, ${ctx.path}); if (e !== null) ${ctx.errorStatement("lift", "e")} break; }`,
-              )
-              .join("\n");
-            gi.line(`switch (${discVal}) {`);
-            gi.line(switchLines);
-            gi.line(`      default: {`);
-            ctx.withPathSegment(propLit, () => {
-              gi.line(
-                ctx.errorStatement(
-                  "leaf",
-                  `${NAMES.DEPS}.createLeafError(` +
-                    `${quoteString("discriminator")}, ${ctx.path}, ` +
-                    `"discriminator value does not match any branch", ` +
-                    `{ propertyName: ${propLit}, value: ${discVal} })`,
-                ),
-              );
-            });
-            gi.line(`      }`);
-            gi.line(`    }`);
-          },
-        );
-      },
-    );
+                  `"discriminator value does not match any branch", ` +
+                  `{ propertyName: ${propLit}, value: ${discVal} })`,
+              ),
+            );
+          });
+          gi.line(`      }`);
+          gi.line(`    }`);
+        },
+      );
+    });
   },
 };

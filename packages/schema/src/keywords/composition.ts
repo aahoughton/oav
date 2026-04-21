@@ -366,30 +366,28 @@ export const dependentSchemasKeyword: KeywordDefinition = {
   keyword: "dependentSchemas",
   vocabulary: APPLICATOR_VOCAB,
   applicator: true,
+  typeGate: "object",
   compile(ctx: KeywordCompileContext): void {
     const deps = ctx.schema as Record<string, SchemaOrBoolean>;
-    ctx.gen.if(
-      `typeof ${ctx.data} === "object" && ${ctx.data} !== null && !Array.isArray(${ctx.data})`,
-      (g) => {
-        const passProps = ctx.evaluatedPropertiesVar ?? "undefined";
-        const passItems = ctx.evaluatedItemsVar ?? "undefined";
-        for (const name of Object.keys(deps)) {
-          const sub = deps[name];
-          if (sub === undefined) continue;
-          const fn = ctx.compileSubschema(sub);
-          const keyLit = quoteString(name);
-          g.if(`Object.prototype.hasOwnProperty.call(${ctx.data}, ${keyLit})`, (gi) => {
-            if (ctx.predicate) {
-              gi.line(`if (!${fn}(${ctx.data}, ${passProps}, ${passItems})) return false;`);
-              return;
-            }
-            const errVar = gi.scope.name("e");
-            gi.const(errVar, `${fn}(${ctx.data}, ${ctx.path}, ${passProps}, ${passItems})`);
-            gi.if(`${errVar} !== null`, () => ctx.emitError("lift", errVar));
-          });
-        }
-      },
-    );
+    ctx.typeGate("object", (g) => {
+      const passProps = ctx.evaluatedPropertiesVar ?? "undefined";
+      const passItems = ctx.evaluatedItemsVar ?? "undefined";
+      for (const name of Object.keys(deps)) {
+        const sub = deps[name];
+        if (sub === undefined) continue;
+        const fn = ctx.compileSubschema(sub);
+        const keyLit = quoteString(name);
+        g.if(`Object.prototype.hasOwnProperty.call(${ctx.data}, ${keyLit})`, (gi) => {
+          if (ctx.predicate) {
+            gi.line(`if (!${fn}(${ctx.data}, ${passProps}, ${passItems})) return false;`);
+            return;
+          }
+          const errVar = gi.scope.name("e");
+          gi.const(errVar, `${fn}(${ctx.data}, ${ctx.path}, ${passProps}, ${passItems})`);
+          gi.if(`${errVar} !== null`, () => ctx.emitError("lift", errVar));
+        });
+      }
+    });
   },
 };
 
@@ -406,49 +404,47 @@ export const dependenciesKeyword: KeywordDefinition = {
   keyword: "dependencies",
   vocabulary: APPLICATOR_VOCAB,
   applicator: true,
+  typeGate: "object",
   compile(ctx: KeywordCompileContext): void {
     const deps = ctx.schema as Record<string, string[] | SchemaOrBoolean>;
-    ctx.gen.if(
-      `typeof ${ctx.data} === "object" && ${ctx.data} !== null && !Array.isArray(${ctx.data})`,
-      (g) => {
-        for (const trigger of Object.keys(deps)) {
-          const entry = deps[trigger];
-          if (entry === undefined) continue;
-          const triggerLit = quoteString(trigger);
-          if (Array.isArray(entry)) {
-            // Array form → required-property semantics.
-            g.if(`Object.prototype.hasOwnProperty.call(${ctx.data}, ${triggerLit})`, (gi) => {
-              for (const prop of entry) {
-                const propLit = quoteString(prop);
-                gi.if(`!Object.prototype.hasOwnProperty.call(${ctx.data}, ${propLit})`, () => {
-                  ctx.withPathSegment(propLit, () => {
-                    ctx.emitError(
-                      "leaf",
-                      `${NAMES.DEPS}.createLeafError(` +
-                        `${quoteString("dependencies")}, ${ctx.path}, ` +
-                        `\`property "${prop}" is required when "${trigger}" is present\`, ` +
-                        `{ trigger: ${triggerLit}, missing: ${propLit} })`,
-                    );
-                  });
+    ctx.typeGate("object", (g) => {
+      for (const trigger of Object.keys(deps)) {
+        const entry = deps[trigger];
+        if (entry === undefined) continue;
+        const triggerLit = quoteString(trigger);
+        if (Array.isArray(entry)) {
+          // Array form → required-property semantics.
+          g.if(`Object.prototype.hasOwnProperty.call(${ctx.data}, ${triggerLit})`, (gi) => {
+            for (const prop of entry) {
+              const propLit = quoteString(prop);
+              gi.if(`!Object.prototype.hasOwnProperty.call(${ctx.data}, ${propLit})`, () => {
+                ctx.withPathSegment(propLit, () => {
+                  ctx.emitError(
+                    "leaf",
+                    `${NAMES.DEPS}.createLeafError(` +
+                      `${quoteString("dependencies")}, ${ctx.path}, ` +
+                      `\`property "${prop}" is required when "${trigger}" is present\`, ` +
+                      `{ trigger: ${triggerLit}, missing: ${propLit} })`,
+                  );
                 });
-              }
-            });
-          } else {
-            // Schema form → dependent-schema semantics.
-            const fn = ctx.compileSubschema(entry);
-            g.if(`Object.prototype.hasOwnProperty.call(${ctx.data}, ${triggerLit})`, (gi) => {
-              if (ctx.predicate) {
-                gi.line(`if (!${fn}(${ctx.data})) return false;`);
-                return;
-              }
-              const errVar = gi.scope.name("e");
-              gi.const(errVar, `${fn}(${ctx.data}, ${ctx.path})`);
-              gi.if(`${errVar} !== null`, () => ctx.emitError("lift", errVar));
-            });
-          }
+              });
+            }
+          });
+        } else {
+          // Schema form → dependent-schema semantics.
+          const fn = ctx.compileSubschema(entry);
+          g.if(`Object.prototype.hasOwnProperty.call(${ctx.data}, ${triggerLit})`, (gi) => {
+            if (ctx.predicate) {
+              gi.line(`if (!${fn}(${ctx.data})) return false;`);
+              return;
+            }
+            const errVar = gi.scope.name("e");
+            gi.const(errVar, `${fn}(${ctx.data}, ${ctx.path})`);
+            gi.if(`${errVar} !== null`, () => ctx.emitError("lift", errVar));
+          });
         }
-      },
-    );
+      }
+    });
   },
 };
 
@@ -461,33 +457,31 @@ export const dependenciesKeyword: KeywordDefinition = {
 export const dependentRequiredKeyword: KeywordDefinition = {
   keyword: "dependentRequired",
   vocabulary: APPLICATOR_VOCAB,
+  typeGate: "object",
   compile(ctx: KeywordCompileContext): void {
     const deps = ctx.schema as Record<string, string[]>;
-    ctx.gen.if(
-      `typeof ${ctx.data} === "object" && ${ctx.data} !== null && !Array.isArray(${ctx.data})`,
-      (g) => {
-        for (const trigger of Object.keys(deps)) {
-          const required = deps[trigger];
-          if (required === undefined) continue;
-          const triggerLit = quoteString(trigger);
-          g.if(`Object.prototype.hasOwnProperty.call(${ctx.data}, ${triggerLit})`, (gi) => {
-            for (const prop of required) {
-              const propLit = quoteString(prop);
-              gi.if(`!Object.prototype.hasOwnProperty.call(${ctx.data}, ${propLit})`, () => {
-                ctx.withPathSegment(propLit, () => {
-                  ctx.emitError(
-                    "leaf",
-                    `${NAMES.DEPS}.createLeafError(` +
-                      `${quoteString("dependentRequired")}, ${ctx.path}, ` +
-                      `\`property "${prop}" is required when "${trigger}" is present\`, ` +
-                      `{ trigger: ${triggerLit}, missing: ${propLit} })`,
-                  );
-                });
+    ctx.typeGate("object", (g) => {
+      for (const trigger of Object.keys(deps)) {
+        const required = deps[trigger];
+        if (required === undefined) continue;
+        const triggerLit = quoteString(trigger);
+        g.if(`Object.prototype.hasOwnProperty.call(${ctx.data}, ${triggerLit})`, (gi) => {
+          for (const prop of required) {
+            const propLit = quoteString(prop);
+            gi.if(`!Object.prototype.hasOwnProperty.call(${ctx.data}, ${propLit})`, () => {
+              ctx.withPathSegment(propLit, () => {
+                ctx.emitError(
+                  "leaf",
+                  `${NAMES.DEPS}.createLeafError(` +
+                    `${quoteString("dependentRequired")}, ${ctx.path}, ` +
+                    `\`property "${prop}" is required when "${trigger}" is present\`, ` +
+                    `{ trigger: ${triggerLit}, missing: ${propLit} })`,
+                );
               });
-            }
-          });
-        }
-      },
-    );
+            });
+          }
+        });
+      }
+    });
   },
 };

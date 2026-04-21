@@ -556,13 +556,38 @@ function compileSchemaKeywords(
   // OAS 3.0: when `$ref` is present, every sibling keyword is ignored.
   const refOnly = state.refSuppressesSiblings && "$ref" in schema;
   const seen = new Set<string>();
+  // Shared per-function map so sibling keywords re-use the same
+  // `const _isObj_N = …;` instead of re-emitting the full guard
+  // (only relevant for custom keywords that still call ctx.typeGate;
+  // the built-in object-keywords are grouped below into one shared
+  // `if` block via the `typeGate` field on their definition).
+  const typeLocals = new Map<string, string>();
+  const hoistConstant = (expr: string, prefix = "C"): string => {
+    const name = `${prefix}_${state.nextHoistId}`;
+    state.nextHoistId += 1;
+    state.hoistedConsts.push(`const ${name} = ${expr};`);
+    return name;
+  };
+
+  // Filter + order up-front so we can group consecutive same-`typeGate`
+  // keywords into a single `if (typeof data === "object" && …) { … }`
+  // block. Same-type keywords share one guard instead of each emitting
+  // its own — the main win on shapes with several object-aware keywords
+  // (required + properties + additionalProperties is typical).
+  const ordered: KeywordDefinition[] = [];
   for (const kw of runOrder) {
     if (seen.has(kw.keyword)) continue;
     if (!(kw.keyword in schema)) continue;
     if (refOnly && kw.keyword !== "$ref") continue;
+    ordered.push(kw);
+    seen.add(kw.keyword);
+    if (kw.implements) for (const impl of kw.implements) seen.add(impl);
+  }
+
+  const emitKeyword = (kw: KeywordDefinition, emitGen: CodeGen, gated: Set<string>): void => {
     const schemaValue = (schema as Record<string, unknown>)[kw.keyword];
     const ctx = createKeywordContext({
-      gen,
+      gen: emitGen,
       schema: schemaValue,
       parentSchema: schema,
       data: NAMES.DATA,
@@ -575,17 +600,53 @@ function compileSchemaKeywords(
       gated: state.gated,
       predicate: state.predicate,
       byKeyword: state.byKeyword,
-      hoistConstant: (expr: string, prefix = "C"): string => {
-        const name = `${prefix}_${state.nextHoistId}`;
-        state.nextHoistId += 1;
-        state.hoistedConsts.push(`const ${name} = ${expr};`);
-        return name;
-      },
+      hoistConstant,
+      typeLocals,
+      alreadyGated: gated,
     });
     kw.compile(ctx);
-    seen.add(kw.keyword);
-    if (kw.implements) for (const impl of kw.implements) seen.add(impl);
+  };
+
+  let i = 0;
+  while (i < ordered.length) {
+    const kw = ordered[i]!;
+    const gate = kw.typeGate;
+    if (gate === undefined) {
+      emitKeyword(kw, gen, EMPTY_GATED);
+      i += 1;
+      continue;
+    }
+    // Grab every consecutive keyword with the same typeGate.
+    let j = i;
+    while (j < ordered.length && ordered[j]!.typeGate === gate) j += 1;
+    const group = ordered.slice(i, j);
+    // Hoist the guard into a local so downstream callers (custom
+    // keywords that still call ctx.typeGate, or the `type` keyword's
+    // negation check) reuse the same boolean instead of re-evaluating
+    // typeof + null-check + Array.isArray.
+    const localName = gen.scope.name(typeGuardLocalPrefix(gate));
+    gen.const(localName, typeGuardExpr(gate, NAMES.DATA));
+    typeLocals.set(`${gate}|${NAMES.DATA}`, localName);
+    const gatedSet: ReadonlySet<string> = new Set([`${gate}|${NAMES.DATA}`]);
+    gen.if(localName, (g) => {
+      for (const gk of group) emitKeyword(gk, g, gatedSet as Set<string>);
+    });
+    i = j;
   }
+}
+
+const EMPTY_GATED: ReadonlySet<string> = new Set();
+
+function typeGuardExpr(type: "object", dataExpr: string): string {
+  if (type === "object") {
+    return `typeof ${dataExpr} === "object" && ${dataExpr} !== null && !Array.isArray(${dataExpr})`;
+  }
+  throw new Error(`unsupported typeGate: ${type as string}`);
+}
+
+function typeGuardLocalPrefix(type: "object"): string {
+  if (type === "object") return "_isObj";
+  throw new Error(`unsupported typeGate: ${type as string}`);
 }
 
 const UNEVALUATED_LAST = new Set(["unevaluatedProperties", "unevaluatedItems"]);

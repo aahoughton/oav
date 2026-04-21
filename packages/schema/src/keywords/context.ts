@@ -1,5 +1,5 @@
 import type { SchemaObject, SchemaOrBoolean } from "@oav/core";
-import { NAMES, type CodeGen } from "../codegen/index.js";
+import { NAMES, type CodeEmitter, type CodeGen } from "../codegen/index.js";
 import type {
   ErrorKind,
   KeywordCompileContext,
@@ -59,6 +59,29 @@ export interface KeywordContextInputs {
    * {@link KeywordCompileContext.hoistConstant}.
    */
   hoistConstant?: (expr: string, prefix?: string) => string;
+  /**
+   * Per-function map (keyword-scope) of already-emitted type-guard
+   * locals, keyed by type name. The compiler creates an empty map
+   * once per validator function and threads it into every keyword
+   * context that shares that function — the first
+   * {@link KeywordCompileContext.typeGate} call emits the local,
+   * subsequent calls reuse it.
+   *
+   * Optional: when omitted, {@link KeywordCompileContext.typeGate}
+   * falls back to emitting the full guard expression inline (correct,
+   * but without deduplication).
+   */
+  typeLocals?: Map<string, string>;
+  /**
+   * Set of `${type}|${dataExpr}` combinations for which the compiler
+   * has already emitted an enclosing type-guard block. When a keyword
+   * declares `typeGate: "object"` (or similar) on its definition, the
+   * compiler groups consecutive same-gate keywords into one shared
+   * `if (typeof X === "object" && …) { … }` block and wires this set
+   * so {@link KeywordCompileContext.typeGate} short-circuits (runs the
+   * body directly) instead of re-emitting a redundant `if`.
+   */
+  alreadyGated?: ReadonlySet<string>;
 }
 
 /**
@@ -174,6 +197,32 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
       return name;
     });
 
+  const typeGate = (type: "object", body: (g: CodeEmitter) => void): void => {
+    // Already inside a compiler-emitted guard for this (type, data) —
+    // run the body directly without re-checking.
+    if (inputs.alreadyGated?.has(`${type}|${inputs.data}`) === true) {
+      body(inputs.gen);
+      return;
+    }
+    const expr = `typeof ${inputs.data} === "object" && ${inputs.data} !== null && !Array.isArray(${inputs.data})`;
+    const cache = inputs.typeLocals;
+    if (cache === undefined) {
+      inputs.gen.if(expr, body);
+      return;
+    }
+    // Key by (type, data) — same schema can have keywords operating on
+    // different data expressions (e.g. an inlined subschema under
+    // properties.foo uses `data["foo"]`, not the outer `data`).
+    const cacheKey = `${type}|${inputs.data}`;
+    let localName = cache.get(cacheKey);
+    if (localName === undefined) {
+      localName = inputs.gen.scope.name("_isObj");
+      inputs.gen.const(localName, expr);
+      cache.set(cacheKey, localName);
+    }
+    inputs.gen.if(localName, body);
+  };
+
   const errorStatement = (kind: ErrorKind, errExpr: string): string => {
     if (predicate) {
       // Predicate mode: we don't construct an error tree, so any
@@ -276,6 +325,8 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
         byKeyword: inputs.byKeyword,
         inlineDepth: inlineDepth + 1,
         hoistConstant: inputs.hoistConstant,
+        typeLocals: inputs.typeLocals,
+        alreadyGated: inputs.alreadyGated,
       });
       kw.compile(innerCtx);
       return true;
@@ -334,6 +385,8 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
         byKeyword: inputs.byKeyword,
         inlineDepth: inlineDepth + 1,
         hoistConstant: inputs.hoistConstant,
+        typeLocals: inputs.typeLocals,
+        alreadyGated: inputs.alreadyGated,
       });
       kw.compile(innerCtx);
     }
@@ -417,6 +470,7 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     withPathSegment,
     validateSubschema,
     hoistConstant,
+    typeGate,
   };
 }
 

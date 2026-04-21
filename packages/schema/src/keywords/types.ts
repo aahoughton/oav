@@ -192,6 +192,20 @@ export interface KeywordCompileContext {
    * debugging of generated source. Defaults to `"C"`.
    */
   hoistConstant(expr: string, prefix?: string): string;
+  /**
+   * Emit `if (<type-guard>) { <body> }` with the guard deduplicated
+   * across every keyword that shares this validator function. The
+   * compiler emits `const _isObj_N = typeof x === "object" && …;`
+   * once at the top of the function, then keywords emit
+   * `if (_isObj_N) { ... }`.
+   *
+   * Use this in place of a hand-rolled object-guard when your keyword
+   * applies to objects only (`required`, `properties`,
+   * `additionalProperties`, `minProperties`, …). Saves repeated
+   * `typeof` / `!== null` / `Array.isArray` evaluations on the hot
+   * path when multiple object-keywords are present on the same schema.
+   */
+  typeGate(type: "object", body: (g: CodeEmitter) => void): void;
 }
 
 /**
@@ -216,6 +230,19 @@ export interface KeywordDefinition {
   evaluates?: { properties?: boolean; items?: boolean };
   /** When `true`, indicates the keyword takes subschemas (applicator). */
   applicator?: boolean;
+  /**
+   * When set, this keyword only applies when the data is of the named
+   * type. The compiler groups consecutive same-`typeGate` keywords into
+   * one shared `if` block, so the redundant type check isn't
+   * re-evaluated per keyword on the hot path.
+   *
+   * Keywords that declare `typeGate` should NOT wrap their body in
+   * their own type-check — the compiler's shared guard already
+   * excludes mismatched types. (If you need a redundant inner guard
+   * for some reason, `ctx.typeGate(type, body)` short-circuits when
+   * already inside a matching compiler-emitted guard.)
+   */
+  typeGate?: "object";
   /**
    * When `true`, declares this keyword to be pure annotation/metadata —
    * it emits no runtime validation code. Annotation keywords can coexist

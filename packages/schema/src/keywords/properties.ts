@@ -3,10 +3,6 @@ import type { SchemaOrBoolean } from "@oav/core";
 import type { KeywordCompileContext, KeywordDefinition } from "./types.js";
 import { APPLICATOR_VOCAB } from "./vocabulary-uris.js";
 
-function isObjectGuard(dataExpr: string): string {
-  return `typeof ${dataExpr} === "object" && ${dataExpr} !== null && !Array.isArray(${dataExpr})`;
-}
-
 /**
  * The `properties` keyword. For each named property present in the data,
  * validate its value against the corresponding subschema.
@@ -17,9 +13,10 @@ export const propertiesKeyword: KeywordDefinition = {
   keyword: "properties",
   vocabulary: APPLICATOR_VOCAB,
   applicator: true,
+  typeGate: "object",
   compile(ctx: KeywordCompileContext): void {
     const props = ctx.schema as Record<string, SchemaOrBoolean>;
-    ctx.gen.if(isObjectGuard(ctx.data), (g) => {
+    ctx.typeGate("object", (g) => {
       for (const name of Object.keys(props)) {
         const subSchema = props[name];
         if (subSchema === undefined) continue;
@@ -47,11 +44,12 @@ export const patternPropertiesKeyword: KeywordDefinition = {
   keyword: "patternProperties",
   vocabulary: APPLICATOR_VOCAB,
   applicator: true,
+  typeGate: "object",
   compile(ctx: KeywordCompileContext): void {
     const patterns = ctx.schema as Record<string, SchemaOrBoolean>;
     const entries = Object.keys(patterns);
     if (entries.length === 0) return;
-    ctx.gen.if(isObjectGuard(ctx.data), (g) => {
+    ctx.typeGate("object", (g) => {
       const subs: Array<{ regex: string; sub: SchemaOrBoolean | undefined }> = entries.map(
         (pattern) => {
           const subSchema = patterns[pattern];
@@ -89,13 +87,14 @@ export const additionalPropertiesKeyword: KeywordDefinition = {
   keyword: "additionalProperties",
   vocabulary: APPLICATOR_VOCAB,
   applicator: true,
+  typeGate: "object",
   compile(ctx: KeywordCompileContext): void {
     const subSchema = ctx.schema as SchemaOrBoolean;
     const knownProps = Object.keys(ctx.parentSchema.properties ?? {});
     const patterns = Object.keys(ctx.parentSchema.patternProperties ?? {});
     const knownSet = knownProps.length > 0 ? JSON.stringify(knownProps) : "[]";
     const patternVars: string[] = [];
-    ctx.gen.if(isObjectGuard(ctx.data), (g) => {
+    ctx.typeGate("object", (g) => {
       for (const p of patterns) {
         const v = g.scope.name("re");
         const lit = quoteString(p);
@@ -149,9 +148,10 @@ export const propertyNamesKeyword: KeywordDefinition = {
   keyword: "propertyNames",
   vocabulary: APPLICATOR_VOCAB,
   applicator: true,
+  typeGate: "object",
   compile(ctx: KeywordCompileContext): void {
     const subSchema = ctx.schema as SchemaOrBoolean;
-    ctx.gen.if(isObjectGuard(ctx.data), (g) => {
+    ctx.typeGate("object", (g) => {
       const key = g.scope.name("key");
       g.forIn(key, ctx.data, () => {
         ctx.validateSubschema(subSchema, key, { segment: key });
