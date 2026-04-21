@@ -188,7 +188,7 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     // kind === "lift": already-counted sub-validator result being
     // propagated, or a branch wrapper around already-counted children.
     // Never interacts with the budget.
-    return `${inputs.errors}.push(${errExpr});`;
+    return `(${inputs.errors} ??= []).push(${errExpr});`;
   };
   const emitError = (kind: ErrorKind, errExpr: string): void => {
     inputs.gen.line(errorStatement(kind, errExpr));
@@ -297,7 +297,10 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     // snapshot/wrap entirely — inlined keywords return `false` on
     // failure so there's nothing to wrap.
     const startVar = predicate ? null : inputs.gen.scope.name("_start");
-    if (startVar !== null) inputs.gen.const(startVar, `${inputs.errors}.length`);
+    // errors may be null (lazy allocation). Treat null as length-0 for
+    // the snapshot; the wrap check below also guards against null.
+    if (startVar !== null)
+      inputs.gen.const(startVar, `${inputs.errors} === null ? 0 : ${inputs.errors}.length`);
 
     // Keyword ordering mirrors the compiler's top-level dispatch: run
     // validation keywords first (leaf checks) in their defined vocab
@@ -339,15 +342,21 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     }
 
     // Wrap if >1 new error actually fired — error-tree mode only.
+    // errors may still be null here if no keyword pushed anything (or
+    // only the budget got exhausted without pushing); the null-check
+    // short-circuits the wrap.
     if (startVar !== null) {
       const wrappedVar = inputs.gen.scope.name("_wrapped");
-      inputs.gen.if(`${inputs.errors}.length - ${startVar} > 1`, () => {
-        inputs.gen.const(wrappedVar, `${inputs.errors}.splice(${startVar})`);
-        inputs.gen.line(
-          `${inputs.errors}.push(${NAMES.DEPS}.createBranchError(` +
-            `"schema", ${inputs.path}, "schema validation failed", ${wrappedVar}));`,
-        );
-      });
+      inputs.gen.if(
+        `${inputs.errors} !== null && ${inputs.errors}.length - ${startVar} > 1`,
+        () => {
+          inputs.gen.const(wrappedVar, `${inputs.errors}.splice(${startVar})`);
+          inputs.gen.line(
+            `${inputs.errors}.push(${NAMES.DEPS}.createBranchError(` +
+              `"schema", ${inputs.path}, "schema validation failed", ${wrappedVar}));`,
+          );
+        },
+      );
     }
 
     return true;
@@ -429,9 +438,9 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
  * @internal
  */
 export function emitPushStatement(errorsVar: string, errExpr: string, gated: boolean): string {
-  if (!gated) return `${errorsVar}.push(${errExpr});`;
+  if (!gated) return `(${errorsVar} ??= []).push(${errExpr});`;
   return (
-    `if (${NAMES.DEPS}.errorsRemaining > 0) { ${errorsVar}.push(${errExpr}); ${NAMES.DEPS}.errorsRemaining -= 1; }` +
+    `if (${NAMES.DEPS}.errorsRemaining > 0) { (${errorsVar} ??= []).push(${errExpr}); ${NAMES.DEPS}.errorsRemaining -= 1; }` +
     ` else { ${NAMES.DEPS}.truncated = true; }`
   );
 }
