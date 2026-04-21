@@ -31,9 +31,9 @@ external dev-dependencies (benchmark runners, competing validators,
 ## Architecture, package by package
 
 - **`@oav/core`** — pure types. `ValidationError` tree (children always an
-  array), path segments as `(string | number)[]`, and four formatters
-  (`formatText` / `formatJson` / `formatFlat` / `formatGithub`). Everything
-  else depends on this.
+  array), path segments as `(string | number)[]`, and three formatters
+  (`formatText` / `formatJson` / `formatFlat`). Everything else depends
+  on this.
 - **`@oav/schema`** — the JSON Schema 2020-12 compiler. Walks a schema,
   dispatches each keyword via `KeywordDefinition.compile(ctx)`, assembles
   the generated JS source, and `eval`s it through `new Function(deps, src)`.

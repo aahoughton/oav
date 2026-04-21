@@ -1,4 +1,4 @@
-import { formatFlat, formatGithub, formatJson, formatText } from "./format.js";
+import { formatFlat, formatJson, formatText } from "./format.js";
 import type { ValidationError } from "./errors.js";
 
 /**
@@ -9,7 +9,7 @@ import type { ValidationError } from "./errors.js";
  *
  * @public
  */
-export const KNOWN_OUTPUT_FORMATS = ["text", "json", "flat", "github"] as const;
+export const KNOWN_OUTPUT_FORMATS = ["text", "json", "flat"] as const;
 
 /**
  * Supported built-in output formats.
@@ -62,8 +62,6 @@ export function formatError(
       return JSON.stringify(formatJson(err), null, 2);
     case "flat":
       return formatFlat(err);
-    case "github":
-      return formatGithub(err);
     case "text":
     default:
       return formatText(err, depth !== undefined ? { maxDepth: depth } : {});

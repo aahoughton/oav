@@ -35,13 +35,13 @@ Pass `-` as the file path to read from stdin (e.g. `--body -`).
 
 ## Flags
 
-| Flag                                | Meaning                                   |
-| ----------------------------------- | ----------------------------------------- |
-| `--format text\|json\|flat\|github` | Error rendering. Default `text`.          |
-| `--depth <n>`                       | Truncate error tree depth (text format).  |
-| `--overlay <file>`                  | Repeatable; applies overlays in order.    |
-| `-o <file>`                         | Write output to a file instead of stdout. |
-| `--quiet`                           | Exit code only, no stdout.                |
+| Flag                        | Meaning                                   |
+| --------------------------- | ----------------------------------------- |
+| `--format text\|json\|flat` | Error rendering. Default `text`.          |
+| `--depth <n>`               | Truncate error tree depth (text format).  |
+| `--overlay <file>`          | Repeatable; applies overlays in order.    |
+| `-o <file>`                 | Write output to a file instead of stdout. |
+| `--quiet`                   | Exit code only, no stdout.                |
 
 ## Exit codes
 

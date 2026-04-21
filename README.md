@@ -132,7 +132,7 @@ oav validate openapi.yaml --path "POST /pets" --body payload.json
 oav validate openapi.yaml --path "GET /pets" --response --status 200 --body resp.json
 ```
 
-Flags: `--format text|json|flat|github`, `--depth n`, `--overlay file`
+Flags: `--format text|json|flat`, `--depth n`, `--overlay file`
 (repeatable), `-o file`, `--quiet`. See
 [packages/cli/README.md](./packages/cli/README.md) for the full surface
 and the `.http` file format.

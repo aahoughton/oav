@@ -59,12 +59,11 @@ declaration merging.
 
 ## Formatters
 
-All four produce strings suitable for stdout / logs.
+All three produce strings suitable for stdout / logs.
 
 - `formatText(err, { maxDepth?, indent? })` — indented human-readable.
 - `formatJson(err)` — deep copy that round-trips through `JSON.stringify`.
 - `formatFlat(err)` — one line per leaf.
-- `formatGithub(err)` — GitHub Actions `::error::` annotations.
 
 `countErrors(err)` returns the total number of nodes in the tree.
 
