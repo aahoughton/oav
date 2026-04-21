@@ -1,6 +1,7 @@
 import type { SchemaObject, SchemaOrBoolean } from "@oav/core";
 import { NAMES, pathJoinExpr, rawExpr, type CodeGen } from "../codegen/index.js";
 import type {
+  CompileAndCallOptions,
   ErrorKind,
   KeywordCompileContext,
   KeywordDefinition,
@@ -490,6 +491,41 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     }
   };
 
+  const compileAndCallSubschema = (
+    schema: SchemaOrBoolean,
+    options: CompileAndCallOptions,
+  ): void => {
+    const fn = inputs.compileSubschema(schema);
+    // When the enclosing scope tracks evaluated props or items, each
+    // call gets its own branch-local Set so annotations from a failing
+    // branch don't leak into the caller. When tracking is off for both,
+    // we can skip the branch vars entirely — the sub-validator's trailing
+    // params default to `undefined`.
+    const needBranchVars = evaluatedPropertiesVar !== null || evaluatedItemsVar !== null;
+    const branchProps = needBranchVars ? inputs.gen.scope.name("bProps") : null;
+    const branchItems = needBranchVars ? inputs.gen.scope.name("bItems") : null;
+    if (branchProps !== null && branchItems !== null) {
+      inputs.gen.const(branchProps, evaluatedPropertiesVar !== null ? "new Set()" : "undefined");
+      inputs.gen.const(branchItems, evaluatedItemsVar !== null ? "new Set()" : "undefined");
+    }
+    const trailingArgs = needBranchVars ? `, ${branchProps!}, ${branchItems!}` : "";
+    if (predicate) {
+      inputs.gen.if(
+        `${fn}(${options.data}${trailingArgs})`,
+        (g) => options.onPass(g, branchProps, branchItems),
+        (g) => options.onFail(g, null, branchProps, branchItems),
+      );
+      return;
+    }
+    const errVar = inputs.gen.scope.name("e");
+    inputs.gen.const(errVar, `${fn}(${options.data}, ${inputs.path}${trailingArgs})`);
+    inputs.gen.if(
+      `${errVar} === null`,
+      (g) => options.onPass(g, branchProps, branchItems),
+      (g) => options.onFail(g, errVar, branchProps, branchItems),
+    );
+  };
+
   return {
     gen: inputs.gen,
     schema: inputs.schema,
@@ -500,6 +536,7 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     effectivePathExpr,
     errors: inputs.errors,
     compileSubschema: inputs.compileSubschema,
+    compileAndCallSubschema,
     resolveRef: inputs.resolveRef,
     evaluatedPropertiesVar,
     evaluatedItemsVar,

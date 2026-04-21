@@ -18,65 +18,41 @@ export const allOfKeyword: KeywordDefinition = {
     if (schemas.length === 0) return;
     const outProps = ctx.evaluatedPropertiesVar;
     const outItems = ctx.evaluatedItemsVar;
-    if (ctx.predicate) {
-      // Predicate mode: every branch must pass. A failure short-
-      // circuits the whole function with `return false;` — no need to
-      // gather per-branch errors or make a decision after the loop.
-      // Evaluated keys from each passing branch merge into the caller
-      // directly; if we ever return false before the merge, the keys
-      // we'd have collected are moot because the caller is about to
-      // return false itself.
-      schemas.forEach((sub) => {
-        const fn = ctx.compileSubschema(sub);
-        if (outProps === null && outItems === null) {
-          ctx.gen.line(`if (!${fn}(${ctx.data})) return false;`);
-          return;
-        }
-        const propsVar = ctx.gen.scope.name("bProps");
-        const itemsVar = ctx.gen.scope.name("bItems");
-        ctx.gen.const(propsVar, outProps !== null ? "new Set()" : "undefined");
-        ctx.gen.const(itemsVar, outItems !== null ? "new Set()" : "undefined");
-        ctx.gen.line(`if (!${fn}(${ctx.data}, ${propsVar}, ${itemsVar})) return false;`);
-        if (outProps !== null) ctx.gen.line(`for (const k of ${propsVar}) ${outProps}.add(k);`);
-        if (outItems !== null) ctx.gen.line(`for (const k of ${itemsVar}) ${outItems}.add(k);`);
-      });
-      return;
-    }
-    const errsVar = ctx.gen.scope.name("allOfErrs");
-    ctx.gen.const(errsVar, "[]");
-    // Annotations (evaluated keys/items) are only collected from
-    // subschemas that pass, per the 2020-12 spec. We give each branch
-    // its own Set and merge them into the enclosing scope only when the
-    // branch returns null.
+    // Tree mode collects per-branch errors; predicate short-circuits
+    // on first failure so there's nothing to collect.
+    const errsVar = ctx.predicate ? null : ctx.gen.scope.name("allOfErrs");
+    if (errsVar !== null) ctx.gen.const(errsVar, "[]");
     schemas.forEach((sub) => {
-      const fn = ctx.compileSubschema(sub);
-      const errVar = ctx.gen.scope.name("e");
-      const propsVar = ctx.gen.scope.name("bProps");
-      const itemsVar = ctx.gen.scope.name("bItems");
-      ctx.gen.const(propsVar, outProps !== null ? "new Set()" : "undefined");
-      ctx.gen.const(itemsVar, outItems !== null ? "new Set()" : "undefined");
-      ctx.gen.const(errVar, `${fn}(${ctx.data}, ${ctx.path}, ${propsVar}, ${itemsVar})`);
-      ctx.gen.if(
-        `${errVar} === null`,
-        (g) => {
-          if (outProps !== null) g.line(`for (const k of ${propsVar}) ${outProps}.add(k);`);
-          if (outItems !== null) g.line(`for (const k of ${itemsVar}) ${outItems}.add(k);`);
+      ctx.compileAndCallSubschema(sub, {
+        data: ctx.data,
+        onPass: (g, bProps, bItems) => {
+          if (outProps !== null && bProps !== null) {
+            g.line(`for (const k of ${bProps}) ${outProps}.add(k);`);
+          }
+          if (outItems !== null && bItems !== null) {
+            g.line(`for (const k of ${bItems}) ${outItems}.add(k);`);
+          }
         },
-        (g) => g.line(`${errsVar}.push(${errVar});`),
-      );
+        onFail: (g, errVar) => {
+          if (errVar === null) g.line("return false;");
+          else g.line(`${errsVar}.push(${errVar});`);
+        },
+      });
     });
-    const n = schemas.length;
-    ctx.gen.if(`${errsVar}.length > 0`, () => {
-      ctx.emitError(
-        "lift",
-        ctx.branchErrorExpr(
-          quoteString("allOf"),
-          `\`must satisfy all ${n} schemas (\${${errsVar}.length} failed)\``,
-          errsVar,
-          `{ total: ${n}, failed: ${errsVar}.length }`,
-        ),
-      );
-    });
+    if (errsVar !== null) {
+      const n = schemas.length;
+      ctx.gen.if(`${errsVar}.length > 0`, () => {
+        ctx.emitError(
+          "lift",
+          ctx.branchErrorExpr(
+            quoteString("allOf"),
+            `\`must satisfy all ${n} schemas (\${${errsVar}.length} failed)\``,
+            errsVar,
+            `{ total: ${n}, failed: ${errsVar}.length }`,
+          ),
+        );
+      });
+    }
   },
 };
 
@@ -95,62 +71,42 @@ export const anyOfKeyword: KeywordDefinition = {
     if (schemas.length === 0) return;
     const outProps = ctx.evaluatedPropertiesVar;
     const outItems = ctx.evaluatedItemsVar;
-    if (ctx.predicate) {
-      // Per 2020-12 annotations from passing branches merge into the
-      // caller; we still run every branch so the evaluated-keys tree
-      // reflects every branch that matched. When the caller isn't
-      // tracking, we stop at the first match.
-      const matched = ctx.gen.scope.name("matched");
-      ctx.gen.let(matched, "false");
-      schemas.forEach((sub) => {
-        const fn = ctx.compileSubschema(sub);
-        if (outProps === null && outItems === null) {
-          ctx.gen.line(`if (!${matched} && ${fn}(${ctx.data})) ${matched} = true;`);
-          return;
-        }
-        const propsVar = ctx.gen.scope.name("bProps");
-        const itemsVar = ctx.gen.scope.name("bItems");
-        ctx.gen.const(propsVar, outProps !== null ? "new Set()" : "undefined");
-        ctx.gen.const(itemsVar, outItems !== null ? "new Set()" : "undefined");
-        ctx.gen.if(`${fn}(${ctx.data}, ${propsVar}, ${itemsVar})`, (g) => {
+    const matched = ctx.gen.scope.name("matched");
+    ctx.gen.let(matched, "false");
+    // Tree mode collects per-branch errors for the final anyOf node;
+    // predicate returns false after the loop if none matched.
+    const errsVar = ctx.predicate ? null : ctx.gen.scope.name("anyOfErrs");
+    if (errsVar !== null) ctx.gen.const(errsVar, "[]");
+    schemas.forEach((sub) => {
+      ctx.compileAndCallSubschema(sub, {
+        data: ctx.data,
+        onPass: (g, bProps, bItems) => {
           g.line(`${matched} = true;`);
-          if (outProps !== null) g.line(`for (const k of ${propsVar}) ${outProps}.add(k);`);
-          if (outItems !== null) g.line(`for (const k of ${itemsVar}) ${outItems}.add(k);`);
-        });
+          if (outProps !== null && bProps !== null) {
+            g.line(`for (const k of ${bProps}) ${outProps}.add(k);`);
+          }
+          if (outItems !== null && bItems !== null) {
+            g.line(`for (const k of ${bItems}) ${outItems}.add(k);`);
+          }
+        },
+        onFail: (g, errVar) => {
+          if (errVar !== null) g.line(`${errsVar}.push(${errVar});`);
+          // predicate mode: no-op, the final `!matched` check handles it
+        },
       });
+    });
+    const n = schemas.length;
+    if (ctx.predicate) {
       ctx.gen.line(`if (!${matched}) return false;`);
       return;
     }
-    const errsVar = ctx.gen.scope.name("anyOfErrs");
-    const matched = ctx.gen.scope.name("matched");
-    ctx.gen.const(errsVar, "[]");
-    ctx.gen.let(matched, "false");
-    schemas.forEach((sub) => {
-      const fn = ctx.compileSubschema(sub);
-      const errVar = ctx.gen.scope.name("e");
-      const propsVar = ctx.gen.scope.name("bProps");
-      const itemsVar = ctx.gen.scope.name("bItems");
-      ctx.gen.const(propsVar, outProps !== null ? "new Set()" : "undefined");
-      ctx.gen.const(itemsVar, outItems !== null ? "new Set()" : "undefined");
-      ctx.gen.const(errVar, `${fn}(${ctx.data}, ${ctx.path}, ${propsVar}, ${itemsVar})`);
-      ctx.gen.if(
-        `${errVar} === null`,
-        (g) => {
-          g.line(`${matched} = true;`);
-          if (outProps !== null) g.line(`for (const k of ${propsVar}) ${outProps}.add(k);`);
-          if (outItems !== null) g.line(`for (const k of ${itemsVar}) ${outItems}.add(k);`);
-        },
-        (g) => g.line(`${errsVar}.push(${errVar});`),
-      );
-    });
-    const n = schemas.length;
     ctx.gen.if(`!${matched}`, () => {
       ctx.emitError(
         "lift",
         ctx.branchErrorExpr(
           quoteString("anyOf"),
           `\`must match at least one of ${n} schemas\``,
-          errsVar,
+          errsVar!,
           `{ total: ${n} }`,
         ),
       );
