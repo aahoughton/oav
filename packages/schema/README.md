@@ -1,9 +1,9 @@
 # @aahoughton/oav/schema
 
-JSON Schema 2020-12 compiler. Emits JavaScript via code generation
-(think Ajv-style) rather than interpreting at runtime. Compiled
-validators return `{ valid, error? }` where `error` is a
-`ValidationError` tree.
+JSON Schema 2020-12 compiler. Walks the schema once at construction
+time and emits a JavaScript function via code generation — no
+schema-walking on the hot path. Compiled validators return
+`{ valid, error? }` where `error` is a `ValidationError` tree.
 
 Use this module directly when you want schema validation without the
 HTTP layer — REST-less RPC bodies, config files, test fixtures, etc.

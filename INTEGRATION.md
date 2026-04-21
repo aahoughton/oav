@@ -30,10 +30,10 @@ wiring where needed. The cost is real. The payoff:
   `{ code, path, message, params, children }`. Downstream code
   narrows on fields — `err.code === "required"` + `err.params.missing`
   — rather than parsing message strings.
-- **Native OpenAPI 3.0 semantics.** `nullable: true`, boolean
-  `exclusiveMaximum`, and `$ref`-suppresses-siblings work by 3.0
-  rules. Most ajv-based validators retrofit these via 2020-12
-  translation and lose edges in the conversion. The
+- **Built-in OpenAPI 3.0 dialect.** `nullable: true`, boolean
+  `exclusiveMaximum`, and `$ref`-suppresses-siblings are baked into
+  the compiler's dialect dispatch — no preprocessing step, no
+  translation layer. The
   [conformance report](./conformance/REPORT.md) covers where we match
   the upstream suites and where we don't.
 - **First-class overlays.** Extend an externally-owned base spec

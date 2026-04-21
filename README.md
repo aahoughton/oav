@@ -60,32 +60,33 @@ rooted at the HTTP frame (e.g. `["body", "pets", 3, "name"]`), a
 human-readable `message`, and a machine-readable `params` object whose
 shape per code is documented in `BuiltInErrorParams`.
 
-## Why this exists
+## Why oav?
 
-Two motivations drive the design.
+Three things weren't available together anywhere else when this repo
+started:
 
-**Native OpenAPI 3.0 semantics.** Most OpenAPI validators are thin
-wrappers over ajv. That works for 3.1 / 3.2, which use JSON Schema
-2020-12 directly, but it translates poorly to 3.0: `type` can't be an
-array, `exclusiveMaximum` is a boolean, `nullable` is its own keyword,
-and siblings of `$ref` are ignored. oav ships a dedicated 3.0 dialect
-alongside the 3.1 / 3.2 one so 3.0 specs validate by 3.0 rules, no
-meta-schema rewrite step, no "mostly 3.1 and hope".
+- **An HTTP-aware validator.** One call checks method + path +
+  parameters + body + content type + status + headers against the
+  spec, not just the JSON body. Every HTTP-level concern — route
+  matching, content-type negotiation, parameter deserialisation,
+  response status matching — lives inside the validator.
+- **Overlays over externally-owned specs.** Projects consuming an
+  OpenAPI document they don't own (Supabase / Directus / Hasura /
+  PocketBase / a gateway's published spec) can extend or override it
+  at load time. `applyOverlays` rewrites the base document in memory;
+  no forking, no preprocessing, no string substitution.
+- **Native OpenAPI 3.0 support and a structured error tree.** 3.0 is
+  a first-class dialect, not a 2020-12 translation: `nullable`,
+  boolean `exclusiveMaximum`, and `$ref`-suppresses-siblings are baked
+  into the compiler's dialect dispatch. Errors come back as a typed
+  tree (`code` / `path` / `params` / `children`) so downstream code
+  can narrow on fields rather than pattern-match on messages.
 
-**First-class overlays.** Many projects consume an OpenAPI document
-they don't own: an upstream framework (Supabase, Directus, Hasura,
-PocketBase, ...) or a gateway's published spec. `applyOverlays`
-patches the base document programmatically at load time — add a
-gateway-required header to every operation, extend a component
-schema, swap a response shape in staging — without forking or
-preprocessing the upstream file. `loadSpec` stitches external `$ref`s
-and applies overlays in a single call.
-
-If you want raw validate-per-second throughput on a spec you already
-own end to end, ajv is still the throughput king. If you want
-correct 3.0, a structured error tree you can narrow against, and an
-overlay model that respects the upstream document, this is the
-library.
+Ajv is the fastest JSON Schema validator for JavaScript and underpins
+most of the OpenAPI ecosystem. For pure validate-per-second throughput
+on a spec you fully own, it's still the right pick. Where the two
+projects overlap and where each does more is written up in
+[`COMPARISON.md`](./COMPARISON.md).
 
 ### Conformance
 
