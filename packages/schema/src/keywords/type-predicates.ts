@@ -23,7 +23,9 @@ export function typePredicate(dataExpr: string, typeName: string): string {
     case "number":
       return `(typeof ${dataExpr} === "number" && Number.isFinite(${dataExpr}))`;
     case "integer":
-      return `(typeof ${dataExpr} === "number" && Number.isFinite(${dataExpr}) && Number.isInteger(${dataExpr}))`;
+      // Number.isInteger already rejects NaN / ±Infinity / non-integers, so
+      // a preceding Number.isFinite is redundant.
+      return `(typeof ${dataExpr} === "number" && Number.isInteger(${dataExpr}))`;
     default:
       return "false";
   }
