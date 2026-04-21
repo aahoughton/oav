@@ -170,25 +170,27 @@ export interface ValidatorStats {
 /**
  * Options for {@link createValidator}.
  *
+ * @remarks
+ * Ordering convention (shared with
+ * {@link @aahoughton/oav/schema!CompileOptions}):
+ *
+ *   1. Compile essentials — `dialect`.
+ *   2. Shared extension points — `formats`, `keywords`.
+ *   3. Error-collection policy — `maxErrors`.
+ *   4. Surface-specific extras last — here, `strictQueryParameters`,
+ *      `onUnknownVersion`, `warn`.
+ *
+ * Options common to both surfaces share names and positions so a
+ * reader of one declaration can predict the other. When adding a new
+ * option, put it in the section that matches its role and use the
+ * same name on the compile-schema side if the concept applies there
+ * too.
+ *
  * @public
  */
 export interface ValidatorOptions {
-  /** Optional extra format validators merged on top of {@link builtInFormats}. */
-  formats?: Record<string, (value: string) => boolean>;
-  /** When `true`, reject unknown query parameters (default: `false`). */
-  strictQueryParameters?: boolean;
-  /**
-   * Cap on the number of leaf schema errors collected per
-   * `validateRequest` / `validateResponse` call. Defaults to uncapped.
-   *
-   * Set to `1` for fast-fail semantics, or to a small number (say 10)
-   * to bound CPU and memory on validation of very large payloads
-   * (e.g. a 10 MB array where every element has the same structural
-   * error). When the cap is hit, the returned error tree is marked
-   * with a `truncated: true` param on the root so consumers can tell
-   * the report was shortened.
-   */
-  maxErrors?: number;
+  // --- 1. Compile essentials ---
+
   /**
    * Override the schema dialect used to compile the spec's schemas.
    * By default the validator reads the spec's `openapi` version and
@@ -197,6 +199,11 @@ export interface ValidatorOptions {
    * {@link Dialect} or force a specific built-in.
    */
   dialect?: Dialect;
+
+  // --- 2. Shared extension points ---
+
+  /** Optional extra format validators merged on top of {@link builtInFormats}. */
+  formats?: Record<string, (value: string) => boolean>;
   /**
    * User-registered schema keywords. The record is keyed by keyword
    * name; each validator is invoked whenever that name appears in a
@@ -214,6 +221,26 @@ export interface ValidatorOptions {
    * ```
    */
   keywords?: Record<string, CustomKeywordValidator>;
+
+  // --- 3. Error-collection policy ---
+
+  /**
+   * Cap on the number of leaf schema errors collected per
+   * `validateRequest` / `validateResponse` call. Defaults to uncapped.
+   *
+   * Set to `1` for fast-fail semantics, or to a small number (say 10)
+   * to bound CPU and memory on validation of very large payloads
+   * (e.g. a 10 MB array where every element has the same structural
+   * error). When the cap is hit, the returned error tree is marked
+   * with a `truncated: true` param on the root so consumers can tell
+   * the report was shortened.
+   */
+  maxErrors?: number;
+
+  // --- 4. HTTP-validator-specific extras ---
+
+  /** When `true`, reject unknown query parameters (default: `false`). */
+  strictQueryParameters?: boolean;
   /**
    * How to handle a spec whose `openapi` field is missing, malformed,
    * or not one of the supported versions (3.0, 3.1, 3.2).
