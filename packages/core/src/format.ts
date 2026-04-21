@@ -104,40 +104,6 @@ export function formatFlat(error: ValidationError): string {
 }
 
 /**
- * Render a {@link ValidationError} tree as a sequence of GitHub Actions
- * workflow commands, one `::error::` line per leaf.
- *
- * @remarks
- * Paths are emitted as the `title` field; the `file` field is left blank
- * because validation errors are data-level, not file-level. Callers who want
- * file annotations should post-process.
- *
- * @param error - Root of the error tree.
- * @returns A newline-separated string ready to print in a GitHub Actions run.
- *
- * @example
- * ```ts
- * console.log(formatGithub(rootError));
- * // ::error title=body.email::must match format "email"
- * ```
- *
- * @public
- */
-export function formatGithub(error: ValidationError): string {
-  const lines: string[] = [];
-  for (const leaf of collectLeaves(error)) {
-    const title = joinPath(leaf.path);
-    const message = escapeGithub(leaf.message);
-    if (title.length > 0) {
-      lines.push(`::error title=${escapeGithubProp(title)}::${message}`);
-    } else {
-      lines.push(`::error::${message}`);
-    }
-  }
-  return lines.join("\n");
-}
-
-/**
  * Count the nodes in a {@link ValidationError} tree (branches + leaves).
  *
  * @param error - Root of the error tree.
@@ -156,12 +122,4 @@ export function countErrors(error: ValidationError): number {
     n += 1;
   });
   return n;
-}
-
-function escapeGithub(value: string): string {
-  return value.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
-}
-
-function escapeGithubProp(value: string): string {
-  return escapeGithub(value).replace(/:/g, "%3A").replace(/,/g, "%2C");
 }

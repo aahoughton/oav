@@ -21,10 +21,6 @@ describe("formatError", () => {
     expect(formatError(sample, "flat").split("\n")).toHaveLength(1);
   });
 
-  it("renders as GitHub Actions annotations", () => {
-    expect(formatError(sample, "github")).toContain("::error title=body.age::");
-  });
-
   it("respects depth truncation in text mode", () => {
     const out = formatError(sample, "text", 0);
     expect(out.split("\n").length).toBeLessThan(3);
@@ -41,10 +37,10 @@ describe("isOutputFormat", () => {
     expect(isOutputFormat("text")).toBe(true);
     expect(isOutputFormat("json")).toBe(true);
     expect(isOutputFormat("flat")).toBe(true);
-    expect(isOutputFormat("github")).toBe(true);
   });
 
   it("rejects unknown names", () => {
+    expect(isOutputFormat("github")).toBe(false);
     expect(isOutputFormat("xml")).toBe(false);
     expect(isOutputFormat("")).toBe(false);
   });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createBranchError, createLeafError, type ValidationError } from "../src/errors.js";
-import { countErrors, formatFlat, formatGithub, formatJson, formatText } from "../src/format.js";
+import { countErrors, formatFlat, formatJson, formatText } from "../src/format.js";
 
 /** A realistic 4-level oneOf failure used by several formatter assertions. */
 function sampleTree(): ValidationError {
@@ -96,25 +96,6 @@ describe("formatFlat", () => {
       node = createBranchError(`level-${i}`, [], "branch", [node]);
     }
     expect(formatFlat(node)).toBe("deep.x — bad [type]");
-  });
-});
-
-describe("formatGithub", () => {
-  it("emits one ::error:: line per leaf with path as title", () => {
-    const out = formatGithub(sampleTree());
-    const lines = out.split("\n");
-    expect(lines).toHaveLength(2);
-    expect(lines[0]).toBe("::error title=body.purr::must be boolean");
-    expect(lines[1]).toBe('::error title=body::must have required property "bark"');
-  });
-
-  it("escapes CR, LF, and % in messages per GHA spec", () => {
-    const tree = createLeafError("x", [], "a\nb%c\rd");
-    expect(formatGithub(tree)).toBe("::error::a%0Ab%25c%0Dd");
-  });
-
-  it("omits the title when the path is empty", () => {
-    expect(formatGithub(createLeafError("x", [], "boom"))).toBe("::error::boom");
   });
 });
 
