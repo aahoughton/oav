@@ -96,10 +96,27 @@ export const containsKeyword: KeywordDefinition = {
     const max = ctx.parentSchema.maxContains;
     ctx.gen.if(`Array.isArray(${ctx.data})`, (g) => {
       const count = g.scope.name("count");
-      const matchedIdx = g.scope.name("matched");
       g.let(count, "0");
-      g.const(matchedIdx, "[]");
       const i = g.scope.name("i");
+      if (ctx.predicate) {
+        // Predicate mode: count passing items via the sub-validator's
+        // boolean return; no path, no error array. The match list
+        // exists only to populate `evaluatedItems` for any sibling
+        // `unevaluatedItems`.
+        g.forRange(i, `${ctx.data}.length`, (gi) => {
+          gi.if(`${fn}(${ctx.data}[${i}])`, (gii) => {
+            gii.line(`${count} += 1;`);
+            if (ctx.evaluatedItemsVar !== null) {
+              gii.line(`${ctx.evaluatedItemsVar}.add(${i});`);
+            }
+          });
+        });
+        if (min > 0) g.line(`if (${count} < ${min}) return false;`);
+        if (max !== undefined) g.line(`if (${count} > ${max}) return false;`);
+        return;
+      }
+      const matchedIdx = g.scope.name("matched");
+      g.const(matchedIdx, "[]");
       g.forRange(i, `${ctx.data}.length`, (gi) => {
         const errVar = gi.scope.name("e");
         ctx.withPathSegment(i, () => {

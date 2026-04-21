@@ -13,6 +13,7 @@ export {
   wrapErrors,
   type CompileOptions,
   type CompileStats,
+  type CompiledPredicate,
   type CompiledSchema,
   type Validator,
   type ValidatorDeps,

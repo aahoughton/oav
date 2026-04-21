@@ -67,6 +67,10 @@ export const discriminatorKeyword: KeywordDefinition = {
         g.if(
           `typeof ${discVal} !== "string"`,
           () => {
+            if (ctx.predicate) {
+              g.line("return false;");
+              return;
+            }
             ctx.withPathSegment(propLit, () => {
               ctx.emitError(
                 "leaf",
@@ -78,6 +82,19 @@ export const discriminatorKeyword: KeywordDefinition = {
             });
           },
           (gi) => {
+            if (ctx.predicate) {
+              // Predicate mode switch: each case calls its branch and
+              // propagates a false return; default returns false.
+              gi.line(`switch (${discVal}) {`);
+              for (const { value, fn } of discFns) {
+                gi.line(
+                  `      case ${quoteString(value)}: if (!${fn}(${ctx.data})) return false; break;`,
+                );
+              }
+              gi.line(`      default: return false;`);
+              gi.line(`    }`);
+              return;
+            }
             // Discriminator routes to ONE branch. If it returns an error,
             // that's already a counted leaf from the sub-validator — lift
             // it (don't re-count). If the discriminator value matches no

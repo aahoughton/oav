@@ -79,6 +79,23 @@ export type CompiledSchema = {
 };
 
 /**
+ * The shape returned by {@link compileSchema} when `predicate: true` is
+ * set. The validator collects no errors, allocates no tree, and
+ * returns a boolean — a true yes/no predicate. Use when consumers only
+ * need to know whether the value conforms (e.g. routing, gating), not
+ * why it doesn't.
+ *
+ * @public
+ */
+export type CompiledPredicate = {
+  validate: (data: unknown) => boolean;
+  /** The generated source. Exposed for debugging/snapshot testing only. */
+  source: string;
+  /** Compile-time stats about the generated validator. */
+  stats: CompileStats;
+};
+
+/**
  * Options accepted by {@link compileSchema}.
  *
  * @public
@@ -110,6 +127,20 @@ export interface CompileOptions {
    * `maxErrors: 1` is the classic fast-fail mode.
    */
   maxErrors?: number;
+  /**
+   * When `true`, compile a boolean predicate rather than an
+   * error-collecting validator. The returned {@link CompiledPredicate}'s
+   * `validate(data)` returns `boolean` — no {@link ValidationError}
+   * tree is ever constructed, so consumers who only need a yes/no
+   * answer pay nothing for error-reporting machinery (leaf allocation,
+   * path snapshot, params object, message string).
+   *
+   * Mutually exclusive with a finite {@link CompileOptions.maxErrors}.
+   * Predicate mode already short-circuits at the first failure;
+   * combining the two is meaningless, so the compiler throws when
+   * both are supplied.
+   */
+  predicate?: boolean;
   /**
    * User-registered keywords, keyed by keyword name. Each validator is
    * invoked whenever its name appears as a property in a schema object.
@@ -147,6 +178,13 @@ export interface CompileState {
    * plain `errors.push` with no runtime overhead.
    */
   readonly gated: boolean;
+  /**
+   * `true` when predicate mode was requested. Compiled subfunctions
+   * return `boolean` (no error tree); leaf-emitting keywords emit
+   * `return false;` instead of pushing into an accumulator. See
+   * {@link CompileOptions.predicate}.
+   */
+  readonly predicate: boolean;
   /**
    * OpenAPI 3.0 semantics. When `true`, schemas containing `$ref`
    * dispatch only `$ref` and ignore every other keyword.
@@ -222,7 +260,22 @@ function schemaUsesUnevaluated(schema: SchemaOrBoolean): boolean {
  *
  * @public
  */
-export function compileSchema(schema: SchemaOrBoolean, options: CompileOptions): CompiledSchema {
+export function compileSchema(
+  schema: SchemaOrBoolean,
+  options: CompileOptions & { predicate: true },
+): CompiledPredicate;
+export function compileSchema(
+  schema: SchemaOrBoolean,
+  options: CompileOptions & { predicate?: false | undefined },
+): CompiledSchema;
+export function compileSchema(
+  schema: SchemaOrBoolean,
+  options: CompileOptions,
+): CompiledSchema | CompiledPredicate;
+export function compileSchema(
+  schema: SchemaOrBoolean,
+  options: CompileOptions,
+): CompiledSchema | CompiledPredicate {
   const byKeyword = new Map<string, KeywordDefinition>();
   const ordered: KeywordDefinition[] = [];
   for (const vocab of options.dialect.vocabularies) {
@@ -246,6 +299,16 @@ export function compileSchema(schema: SchemaOrBoolean, options: CompileOptions):
   }
 
   const maxErrors = options.maxErrors ?? Number.POSITIVE_INFINITY;
+  const predicate = options.predicate === true;
+  if (predicate && Number.isFinite(maxErrors)) {
+    // Predicate mode short-circuits at the first failure by design;
+    // a finite maxErrors cap would be shadowed and callers would be
+    // misled into thinking errors were being counted. Fail loudly.
+    throw new Error(
+      "compileSchema: `predicate: true` is mutually exclusive with a finite `maxErrors` — " +
+        "predicate mode short-circuits on the first failure, so there is nothing to count.",
+    );
+  }
   const deps = createDeps(maxErrors);
   if (options.formats) {
     for (const name of Object.keys(options.formats)) {
@@ -293,6 +356,7 @@ export function compileSchema(schema: SchemaOrBoolean, options: CompileOptions):
     graph,
     nextFn: 0,
     gated: Number.isFinite(maxErrors),
+    predicate,
     refSuppressesSiblings: options.dialect.rules.refSuppressesSiblings,
     unevaluatedTracking,
     unevaluatedEmitted: false,
@@ -304,20 +368,30 @@ export function compileSchema(schema: SchemaOrBoolean, options: CompileOptions):
   const rootName = compileValidator(schema, state);
 
   const wholeSource = assembleSource(state, rootName);
-  const factory = new Function(NAMES.DEPS, wholeSource) as (deps: ValidatorDeps) => CompiledFactory;
-  const { validate } = factory(deps);
-  return {
-    validate,
-    source: wholeSource,
-    stats: {
-      functionCount: state.nextFn,
-      unevaluatedTrackingEmitted: state.unevaluatedEmitted,
-    },
+  const stats: CompileStats = {
+    functionCount: state.nextFn,
+    unevaluatedTrackingEmitted: state.unevaluatedEmitted,
   };
+  if (predicate) {
+    const factory = new Function(NAMES.DEPS, wholeSource) as (
+      deps: ValidatorDeps,
+    ) => CompiledPredicateFactory;
+    const { validate } = factory(deps);
+    return { validate, source: wholeSource, stats };
+  }
+  const factory = new Function(NAMES.DEPS, wholeSource) as (
+    deps: ValidatorDeps,
+  ) => CompiledSchemaFactory;
+  const { validate } = factory(deps);
+  return { validate, source: wholeSource, stats };
 }
 
-interface CompiledFactory {
+interface CompiledSchemaFactory {
   validate: (data: unknown, startPath?: readonly PathSegment[]) => ValidationResult;
+}
+
+interface CompiledPredicateFactory {
+  validate: (data: unknown) => boolean;
 }
 
 function compileValidator(schema: SchemaOrBoolean, state: CompileState): string {
@@ -329,9 +403,14 @@ function compileValidator(schema: SchemaOrBoolean, state: CompileState): string 
   state.compiledFor.set(schema, name);
 
   const body = buildFunctionBody(schema, state);
-  state.functionBodies.push(
-    `function ${name}(${NAMES.DATA}, ${NAMES.PATH}, ${NAMES.OUT_EVAL_PROPS}, ${NAMES.OUT_EVAL_ITEMS}) {\n${body}\n}`,
-  );
+  // Predicate mode drops the `path` parameter: error expressions
+  // (which are the only consumer of `path`) are never emitted.
+  // Callers of these functions (composition keywords, ref, etc.)
+  // therefore omit the path argument in predicate mode as well.
+  const params = state.predicate
+    ? `${NAMES.DATA}, ${NAMES.OUT_EVAL_PROPS}, ${NAMES.OUT_EVAL_ITEMS}`
+    : `${NAMES.DATA}, ${NAMES.PATH}, ${NAMES.OUT_EVAL_PROPS}, ${NAMES.OUT_EVAL_ITEMS}`;
+  state.functionBodies.push(`function ${name}(${params}) {\n${body}\n}`);
   return name;
 }
 
@@ -392,13 +471,19 @@ function needsItemTracking(schema: SchemaObject, state: CompileState): boolean {
 function buildFunctionBody(schema: SchemaOrBoolean, state: CompileState): string {
   const gen = new CodeGen();
   gen.indent();
-  gen.const(NAMES.ERRORS, "[]");
+  if (!state.predicate) {
+    gen.const(NAMES.ERRORS, "[]");
+  }
 
   if (schema === true) {
     // no-op; always valid
   } else if (schema === false) {
-    const falseErr = `${NAMES.DEPS}.createLeafError("false", ${NAMES.PATH}, "schema is false, nothing is valid")`;
-    gen.line(emitPushStatement(NAMES.ERRORS, falseErr, state.gated));
+    if (state.predicate) {
+      gen.line("return false;");
+    } else {
+      const falseErr = `${NAMES.DEPS}.createLeafError("false", ${NAMES.PATH}, "schema is false, nothing is valid")`;
+      gen.line(emitPushStatement(NAMES.ERRORS, falseErr, state.gated));
+    }
   } else {
     const trackProps = needsPropTracking(schema, state);
     const trackItems = needsItemTracking(schema, state);
@@ -418,7 +503,10 @@ function buildFunctionBody(schema: SchemaOrBoolean, state: CompileState): string
     // Merge evaluated-key sets into the caller's out-parameters when the
     // caller is tracking. Runs regardless of errors — a keyword that
     // evaluated a key evaluated it, even if other keywords flagged the
-    // data invalid.
+    // data invalid. In predicate mode any failure has already returned
+    // `false` by this point, so the merge only runs for passing data;
+    // that matches the 2020-12 semantics (annotations from failing
+    // branches are discarded anyway).
     if (evaluatedPropertiesVar !== null) {
       gen.line(
         `if (${NAMES.OUT_EVAL_PROPS} !== undefined) { for (const k of ${evaluatedPropertiesVar}) ${NAMES.OUT_EVAL_PROPS}.add(k); }`,
@@ -431,7 +519,11 @@ function buildFunctionBody(schema: SchemaOrBoolean, state: CompileState): string
     }
   }
 
-  gen.line(`return ${NAMES.DEPS}.wrapErrors("schema", ${NAMES.PATH}, ${NAMES.ERRORS});`);
+  if (state.predicate) {
+    gen.line("return true;");
+  } else {
+    gen.line(`return ${NAMES.DEPS}.wrapErrors("schema", ${NAMES.PATH}, ${NAMES.ERRORS});`);
+  }
   gen.dedent();
   return gen.toString();
 }
@@ -471,6 +563,7 @@ function compileSchemaKeywords(
       evaluatedPropertiesVar,
       evaluatedItemsVar,
       gated: state.gated,
+      predicate: state.predicate,
       byKeyword: state.byKeyword,
     });
     kw.compile(ctx);
@@ -494,24 +587,34 @@ function assembleSource(state: CompileState, rootName: string): string {
   parts.push("");
   parts.push(...state.functionBodies);
   parts.push("");
-  parts.push(`function validate(${NAMES.DATA}, startPath) {`);
-  if (state.gated) {
-    // Reset the per-call budget and truncation flag so consecutive
-    // validate() calls are independent.
-    parts.push(`  ${NAMES.DEPS}.errorsRemaining = ${NAMES.DEPS}.maxErrors;`);
-    parts.push(`  ${NAMES.DEPS}.truncated = false;`);
-  }
-  parts.push(
-    `  const err = ${rootName}(${NAMES.DATA}, startPath !== undefined ? [...startPath] : []);`,
-  );
-  parts.push(`  if (err === null) return { valid: true };`);
-  if (state.gated) {
+  if (state.predicate) {
+    // Predicate mode: root call returns boolean directly; no error
+    // object, no startPath (predicate doesn't expose paths), no budget
+    // reset. Keeping the top-level `validate` arity at 1 means the
+    // V8 JIT only ever sees the monomorphic call site.
+    parts.push(`function validate(${NAMES.DATA}) {`);
+    parts.push(`  return ${rootName}(${NAMES.DATA});`);
+    parts.push(`}`);
+  } else {
+    parts.push(`function validate(${NAMES.DATA}, startPath) {`);
+    if (state.gated) {
+      // Reset the per-call budget and truncation flag so consecutive
+      // validate() calls are independent.
+      parts.push(`  ${NAMES.DEPS}.errorsRemaining = ${NAMES.DEPS}.maxErrors;`);
+      parts.push(`  ${NAMES.DEPS}.truncated = false;`);
+    }
     parts.push(
-      `  if (${NAMES.DEPS}.truncated) return { valid: false, error: err, truncated: true };`,
+      `  const err = ${rootName}(${NAMES.DATA}, startPath !== undefined ? [...startPath] : []);`,
     );
+    parts.push(`  if (err === null) return { valid: true };`);
+    if (state.gated) {
+      parts.push(
+        `  if (${NAMES.DEPS}.truncated) return { valid: false, error: err, truncated: true };`,
+      );
+    }
+    parts.push(`  return { valid: false, error: err };`);
+    parts.push(`}`);
   }
-  parts.push(`  return { valid: false, error: err };`);
-  parts.push(`}`);
   parts.push("return { validate };");
   return parts.join("\n");
 }

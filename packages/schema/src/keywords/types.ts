@@ -88,6 +88,20 @@ export interface KeywordCompileContext {
    */
   readonly gated: boolean;
   /**
+   * `true` when predicate mode is active — the compiled validator
+   * returns `boolean` and constructs no error tree. Most keywords
+   * don't need to read this directly: `emitError`,
+   * `errorStatement`, `withPathSegment`, and `validateSubschema` all
+   * do the right thing automatically. Composition-style keywords
+   * that inspect a sub-validator's return value for their own
+   * control flow (`allOf`, `anyOf`, `oneOf`, `not`, `if/then/else`,
+   * `$ref`, `contains`, `discriminator`, `dependentSchemas`) must
+   * branch on this flag — sub-validators in predicate mode return
+   * `boolean`, not `ValidationError | null`, and don't take a
+   * `path` argument.
+   */
+  readonly predicate: boolean;
+  /**
    * Emit an error-push statement directly into the current code
    * generator. Pick the right `kind` based on where the error
    * expression came from:

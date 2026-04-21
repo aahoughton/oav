@@ -31,6 +31,13 @@ export interface KeywordContextInputs {
    */
   gated?: boolean;
   /**
+   * When `true`, predicate mode is active: the generated function
+   * returns `boolean`, not `ValidationError | null`. Every
+   * error-emission site collapses to `return false;` and the
+   * error-expression argument is discarded.
+   */
+  predicate?: boolean;
+  /**
    * The compiler's full keyword registry. Used by
    * {@link KeywordCompileContext.validateSubschema} to inline a
    * subschema's single keyword directly instead of compiling it to a
@@ -146,8 +153,18 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
   const evaluatedPropertiesVar = inputs.evaluatedPropertiesVar ?? null;
   const evaluatedItemsVar = inputs.evaluatedItemsVar ?? null;
   const gated = inputs.gated ?? false;
+  const predicate = inputs.predicate ?? false;
 
   const errorStatement = (kind: ErrorKind, errExpr: string): string => {
+    if (predicate) {
+      // Predicate mode: we don't construct an error tree, so any
+      // error-emission site just short-circuits. The `errExpr` is
+      // intentionally discarded — its `ctx.path` / `createLeafError`
+      // references never reach the generated source.
+      void kind;
+      void errExpr;
+      return "return false;";
+    }
     if (kind === "leaf") return emitPushStatement(inputs.errors, errExpr, gated);
     // kind === "lift": already-counted sub-validator result being
     // propagated, or a branch wrapper around already-counted children.
@@ -158,9 +175,12 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     inputs.gen.line(errorStatement(kind, errExpr));
   };
   const budgetBreakStatement = (): string =>
-    gated
-      ? `if (${NAMES.DEPS}.errorsRemaining <= 0) { ${NAMES.DEPS}.truncated = true; break; }`
-      : "";
+    // Predicate mode never fills an error budget; its loops short-
+    // circuit with `return false;` directly. Returning `""` keeps
+    // existing `emitBudgetBreak()` callers a no-op.
+    predicate || !gated
+      ? ""
+      : `if (${NAMES.DEPS}.errorsRemaining <= 0) { ${NAMES.DEPS}.truncated = true; break; }`;
   const emitBudgetBreak = (): void => {
     const stmt = budgetBreakStatement();
     if (stmt !== "") inputs.gen.line(stmt);
@@ -170,7 +190,13 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
   // then pop. Runtime helpers (`createError`, `createLeafError`,
   // `createBranchError`) snapshot `path` at error-creation time, so
   // errors emitted inside `body` keep the correct path after the pop.
+  // Predicate mode never emits errors, so the push/pop pair becomes
+  // dead work — skip it entirely.
   const withPathSegment = (segmentExpr: string, body: () => void): void => {
+    if (predicate) {
+      body();
+      return;
+    }
     inputs.gen.line(`${inputs.path}.push(${segmentExpr});`);
     body();
     inputs.gen.line(`${inputs.path}.pop();`);
@@ -227,6 +253,7 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
         evaluatedPropertiesVar: null,
         evaluatedItemsVar: null,
         gated,
+        predicate,
         byKeyword: inputs.byKeyword,
         inlineDepth: inlineDepth + 1,
       });
@@ -246,9 +273,11 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
 
     // Snapshot the errors array length; if >1 new error fires, wrap
     // the new ones in a "schema" branch so the tree shape matches a
-    // named function's `wrapErrors` output.
-    const startVar = inputs.gen.scope.name("_start");
-    inputs.gen.const(startVar, `${inputs.errors}.length`);
+    // named function's `wrapErrors` output. Predicate mode skips the
+    // snapshot/wrap entirely — inlined keywords return `false` on
+    // failure so there's nothing to wrap.
+    const startVar = predicate ? null : inputs.gen.scope.name("_start");
+    if (startVar !== null) inputs.gen.const(startVar, `${inputs.errors}.length`);
 
     // Keyword ordering mirrors the compiler's top-level dispatch: run
     // validation keywords first (leaf checks) in their defined vocab
@@ -281,21 +310,24 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
         evaluatedPropertiesVar: null,
         evaluatedItemsVar: null,
         gated,
+        predicate,
         byKeyword: inputs.byKeyword,
         inlineDepth: inlineDepth + 1,
       });
       kw.compile(innerCtx);
     }
 
-    // Wrap if >1 new error actually fired.
-    const wrappedVar = inputs.gen.scope.name("_wrapped");
-    inputs.gen.if(`${inputs.errors}.length - ${startVar} > 1`, () => {
-      inputs.gen.const(wrappedVar, `${inputs.errors}.splice(${startVar})`);
-      inputs.gen.line(
-        `${inputs.errors}.push(${NAMES.DEPS}.createBranchError(` +
-          `"schema", ${inputs.path}, "schema validation failed", ${wrappedVar}));`,
-      );
-    });
+    // Wrap if >1 new error actually fired — error-tree mode only.
+    if (startVar !== null) {
+      const wrappedVar = inputs.gen.scope.name("_wrapped");
+      inputs.gen.if(`${inputs.errors}.length - ${startVar} > 1`, () => {
+        inputs.gen.const(wrappedVar, `${inputs.errors}.splice(${startVar})`);
+        inputs.gen.line(
+          `${inputs.errors}.push(${NAMES.DEPS}.createBranchError(` +
+            `"schema", ${inputs.path}, "schema validation failed", ${wrappedVar}));`,
+        );
+      });
+    }
 
     return true;
   };
@@ -308,6 +340,10 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     const emitInner = (): void => {
       if (schema === true) return;
       if (schema === false) {
+        if (predicate) {
+          inputs.gen.line("return false;");
+          return;
+        }
         const falseErr =
           `${NAMES.DEPS}.createLeafError("false", ${inputs.path}, ` +
           `"schema is false, nothing is valid")`;
@@ -315,11 +351,17 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
         return;
       }
       if (tryInline(schema, dataExpr)) return;
-      // Fall back: compile subschema to a named function and call it
-      // with the SHARED path. The sub-function's error emissions
-      // snapshot the path before committing it to ValidationError, so
-      // the shared-array reuse is safe.
+      // Fall back: compile subschema to a named function and call it.
+      // In predicate mode the sub returns boolean and takes no path;
+      // any failure short-circuits the caller with `return false;`.
       const fn = inputs.compileSubschema(schema);
+      if (predicate) {
+        inputs.gen.line(`if (!${fn}(${dataExpr})) return false;`);
+        return;
+      }
+      // Tree mode: call with the SHARED path. The sub-function's error
+      // emissions snapshot the path before committing it to
+      // ValidationError, so the shared-array reuse is safe.
       const errVar = inputs.gen.scope.name("e");
       inputs.gen.const(errVar, `${fn}(${dataExpr}, ${inputs.path})`);
       inputs.gen.if(`${errVar} !== null`, () => {
@@ -346,6 +388,7 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     evaluatedPropertiesVar,
     evaluatedItemsVar,
     gated,
+    predicate,
     errorStatement,
     emitError,
     budgetBreakStatement,

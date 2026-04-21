@@ -163,6 +163,15 @@ ajv for parity with oav's always-collect-everything default.
   composition shapes, ~3× on large-array shapes. `maxErrors: 1`
   closes the ajv gap on invalid payloads (apples-to-apples with
   ajv's default fail-fast behaviour).
+- **Predicate mode (`predicate: true`).** When consumers only need a
+  yes/no answer — routing, gating, hot-path filtering — `oav-predicate`
+  brings oav onto parity with ajv's default (fail-fast) mode on invalid
+  paths and typically edges it out on valid paths. The compiler drops
+  error-tree construction entirely: no leaf-allocation, no path
+  snapshot, no params object, no message string, no wrapper. Every
+  failure short-circuits to `return false;`. The mode cannot be
+  combined with `maxErrors` (the two options are semantically
+  incompatible; the compiler throws).
 - **Hyperjump**'s validate throughput sits roughly two orders of
   magnitude below ajv / oav. It's the 2020-12 reference
   implementation, not a speed target.
@@ -173,7 +182,8 @@ ajv for parity with oav's always-collect-everything default.
   hot-loop calls better than massive inline bodies); and oav collects
   complete error trees by default, while ajv defaults to
   `allErrors: false`. Set `maxErrors: 1` on oav for apples-to-apples
-  fast-fail semantics.
+  fast-fail semantics, or `predicate: true` to shed the error
+  infrastructure entirely.
 
 ## Results file
 
@@ -183,10 +193,10 @@ Raw numbers land in `./results.json` after every run. Format:
 type Result = {
   schema: string; // schema name or spec path
   metric: "compile" | "validate";
-  lib: "ajv" | "hyperjump" | "oav";
+  lib: "ajv" | "ajv-fast" | "hyperjump" | "oav" | "oav-predicate";
   hz: number; // ops/sec
   mean: number; // µs per op
-  variant?: string; // e.g. "oav validate (valid)"
+  variant?: string; // e.g. "oav-predicate validate (valid)"
 };
 ```
 

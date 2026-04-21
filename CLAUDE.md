@@ -87,6 +87,15 @@ cli → validator → router
      contributes to evaluated-keys / evaluated-items tracking for
      `unevaluated*`.
 
+   `ctx.predicate` is `true` when the user requested predicate mode
+   (`compileSchema(..., { predicate: true })`). Most keywords don't
+   need to read this — `ctx.emitError`, `ctx.withPathSegment`,
+   `ctx.validateSubschema`, and `ctx.emitBudgetBreak` all do the
+   right thing automatically. Branch on it only when your keyword
+   reads a sub-validator's return value (composition keywords,
+   `$ref`, `contains`, `discriminator`, `dependentSchemas`); see the
+   "Predicate mode" section below.
+
    The context (`KeywordCompileContext`) offers:
    - `ctx.gen` — code emitter (see the `CodeEmitter` interface).
    - `ctx.data`, `ctx.path`, `ctx.errors` — JS expressions for the
@@ -163,6 +172,35 @@ Using the wrong kind silently miscounts errors against the budget.
 The `kind` is a required argument — TypeScript enforces that a choice
 is made at every call site; the correctness of the choice is on the
 author.
+
+### Predicate mode (`compileSchema(schema, { predicate: true })`)
+
+For consumers who only need a yes/no answer (routing, gating,
+bulk-filtering), `predicate: true` compiles a `{ validate: (data) =>
+boolean }` validator. No error tree is ever constructed: leaves don't
+allocate, paths aren't snapshotted, messages aren't formatted, and the
+entire `wrapErrors` pipeline is skipped. Every failure short-circuits
+to `return false;`. Generated subfunctions drop the `path` parameter
+(there's nothing to attach errors to).
+
+Predicate mode is mutually exclusive with a finite `maxErrors`; the
+compiler throws if both are set. The two options are semantically
+incompatible — predicate already short-circuits on the first failure,
+so there is nothing to count.
+
+For **keyword authors**, most keywords get predicate mode for free
+because `ctx.emitError("leaf" | "lift", expr)` collapses to `return
+false;` when `ctx.predicate === true`; `ctx.withPathSegment`,
+`ctx.validateSubschema`, and `ctx.emitBudgetBreak` are similarly
+predicate-aware. You only need to branch on `ctx.predicate` when your
+keyword reads a sub-validator's return value for its own control flow
+— composition keywords (`allOf`, `anyOf`, `oneOf`, `not`,
+`if`/`then`/`else`, `dependentSchemas`), `contains`, `discriminator`,
+`$ref`, and `$dynamicRef` all do this. In predicate mode subfunctions
+return `boolean` (not `ValidationError | null`) and don't take a
+`path` argument, so the call expression shape changes accordingly.
+See `allOfKeyword` in `packages/schema/src/keywords/composition.ts`
+for the canonical two-branch pattern.
 
 ## Version support
 

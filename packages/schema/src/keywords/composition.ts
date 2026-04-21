@@ -16,14 +16,38 @@ export const allOfKeyword: KeywordDefinition = {
   compile(ctx: KeywordCompileContext): void {
     const schemas = ctx.schema as SchemaOrBoolean[];
     if (schemas.length === 0) return;
+    const outProps = ctx.evaluatedPropertiesVar;
+    const outItems = ctx.evaluatedItemsVar;
+    if (ctx.predicate) {
+      // Predicate mode: every branch must pass. A failure short-
+      // circuits the whole function with `return false;` — no need to
+      // gather per-branch errors or make a decision after the loop.
+      // Evaluated keys from each passing branch merge into the caller
+      // directly; if we ever return false before the merge, the keys
+      // we'd have collected are moot because the caller is about to
+      // return false itself.
+      schemas.forEach((sub) => {
+        const fn = ctx.compileSubschema(sub);
+        if (outProps === null && outItems === null) {
+          ctx.gen.line(`if (!${fn}(${ctx.data})) return false;`);
+          return;
+        }
+        const propsVar = ctx.gen.scope.name("bProps");
+        const itemsVar = ctx.gen.scope.name("bItems");
+        ctx.gen.const(propsVar, outProps !== null ? "new Set()" : "undefined");
+        ctx.gen.const(itemsVar, outItems !== null ? "new Set()" : "undefined");
+        ctx.gen.line(`if (!${fn}(${ctx.data}, ${propsVar}, ${itemsVar})) return false;`);
+        if (outProps !== null) ctx.gen.line(`for (const k of ${propsVar}) ${outProps}.add(k);`);
+        if (outItems !== null) ctx.gen.line(`for (const k of ${itemsVar}) ${outItems}.add(k);`);
+      });
+      return;
+    }
     const errsVar = ctx.gen.scope.name("allOfErrs");
     ctx.gen.const(errsVar, "[]");
     // Annotations (evaluated keys/items) are only collected from
     // subschemas that pass, per the 2020-12 spec. We give each branch
     // its own Set and merge them into the enclosing scope only when the
     // branch returns null.
-    const outProps = ctx.evaluatedPropertiesVar;
-    const outItems = ctx.evaluatedItemsVar;
     schemas.forEach((sub) => {
       const fn = ctx.compileSubschema(sub);
       const errVar = ctx.gen.scope.name("e");
@@ -67,12 +91,38 @@ export const anyOfKeyword: KeywordDefinition = {
   compile(ctx: KeywordCompileContext): void {
     const schemas = ctx.schema as SchemaOrBoolean[];
     if (schemas.length === 0) return;
+    const outProps = ctx.evaluatedPropertiesVar;
+    const outItems = ctx.evaluatedItemsVar;
+    if (ctx.predicate) {
+      // Per 2020-12 annotations from passing branches merge into the
+      // caller; we still run every branch so the evaluated-keys tree
+      // reflects every branch that matched. When the caller isn't
+      // tracking, we stop at the first match.
+      const matched = ctx.gen.scope.name("matched");
+      ctx.gen.let(matched, "false");
+      schemas.forEach((sub) => {
+        const fn = ctx.compileSubschema(sub);
+        if (outProps === null && outItems === null) {
+          ctx.gen.line(`if (!${matched} && ${fn}(${ctx.data})) ${matched} = true;`);
+          return;
+        }
+        const propsVar = ctx.gen.scope.name("bProps");
+        const itemsVar = ctx.gen.scope.name("bItems");
+        ctx.gen.const(propsVar, outProps !== null ? "new Set()" : "undefined");
+        ctx.gen.const(itemsVar, outItems !== null ? "new Set()" : "undefined");
+        ctx.gen.if(`${fn}(${ctx.data}, ${propsVar}, ${itemsVar})`, (g) => {
+          g.line(`${matched} = true;`);
+          if (outProps !== null) g.line(`for (const k of ${propsVar}) ${outProps}.add(k);`);
+          if (outItems !== null) g.line(`for (const k of ${itemsVar}) ${outItems}.add(k);`);
+        });
+      });
+      ctx.gen.line(`if (!${matched}) return false;`);
+      return;
+    }
     const errsVar = ctx.gen.scope.name("anyOfErrs");
     const matched = ctx.gen.scope.name("matched");
     ctx.gen.const(errsVar, "[]");
     ctx.gen.let(matched, "false");
-    const outProps = ctx.evaluatedPropertiesVar;
-    const outItems = ctx.evaluatedItemsVar;
     schemas.forEach((sub) => {
       const fn = ctx.compileSubschema(sub);
       const errVar = ctx.gen.scope.name("e");
@@ -117,12 +167,57 @@ export const oneOfKeyword: KeywordDefinition = {
   compile(ctx: KeywordCompileContext): void {
     const schemas = ctx.schema as SchemaOrBoolean[];
     if (schemas.length === 0) return;
+    const outProps = ctx.evaluatedPropertiesVar;
+    const outItems = ctx.evaluatedItemsVar;
+    if (ctx.predicate) {
+      // Predicate mode: count branch matches; bail with `return false`
+      // on the second match (>1 disallowed) or if fewer than 1
+      // succeed. Evaluated keys from the single passing branch merge
+      // into the caller. We buffer them per-branch and only commit
+      // once we know we had exactly one match.
+      const matchCount = ctx.gen.scope.name("oneOfMatched");
+      ctx.gen.let(matchCount, "0");
+      const keepProps = outProps !== null ? ctx.gen.scope.name("oneOfProps") : null;
+      const keepItems = outItems !== null ? ctx.gen.scope.name("oneOfItems") : null;
+      if (keepProps !== null) ctx.gen.let(keepProps, "null");
+      if (keepItems !== null) ctx.gen.let(keepItems, "null");
+      schemas.forEach((sub) => {
+        const fn = ctx.compileSubschema(sub);
+        if (outProps === null && outItems === null) {
+          ctx.gen.if(`${fn}(${ctx.data})`, (g) => {
+            g.line(`${matchCount} += 1;`);
+            g.line(`if (${matchCount} > 1) return false;`);
+          });
+          return;
+        }
+        const propsVar = ctx.gen.scope.name("bProps");
+        const itemsVar = ctx.gen.scope.name("bItems");
+        ctx.gen.const(propsVar, outProps !== null ? "new Set()" : "undefined");
+        ctx.gen.const(itemsVar, outItems !== null ? "new Set()" : "undefined");
+        ctx.gen.if(`${fn}(${ctx.data}, ${propsVar}, ${itemsVar})`, (g) => {
+          g.line(`${matchCount} += 1;`);
+          g.line(`if (${matchCount} > 1) return false;`);
+          if (keepProps !== null) g.line(`${keepProps} = ${propsVar};`);
+          if (keepItems !== null) g.line(`${keepItems} = ${itemsVar};`);
+        });
+      });
+      ctx.gen.line(`if (${matchCount} !== 1) return false;`);
+      if (keepProps !== null && outProps !== null) {
+        ctx.gen.line(
+          `if (${keepProps} !== null) for (const k of ${keepProps}) ${outProps}.add(k);`,
+        );
+      }
+      if (keepItems !== null && outItems !== null) {
+        ctx.gen.line(
+          `if (${keepItems} !== null) for (const k of ${keepItems}) ${outItems}.add(k);`,
+        );
+      }
+      return;
+    }
     const errsVar = ctx.gen.scope.name("oneOfErrs");
     const matchCount = ctx.gen.scope.name("matched");
     ctx.gen.const(errsVar, "[]");
     ctx.gen.let(matchCount, "0");
-    const outProps = ctx.evaluatedPropertiesVar;
-    const outItems = ctx.evaluatedItemsVar;
     schemas.forEach((sub) => {
       const fn = ctx.compileSubschema(sub);
       const errVar = ctx.gen.scope.name("e");
@@ -166,6 +261,11 @@ export const notKeyword: KeywordDefinition = {
   compile(ctx: KeywordCompileContext): void {
     const sub = ctx.schema as SchemaOrBoolean;
     const fn = ctx.compileSubschema(sub);
+    if (ctx.predicate) {
+      // If the sub validates, `not` fails — short-circuit.
+      ctx.gen.line(`if (${fn}(${ctx.data})) return false;`);
+      return;
+    }
     const errVar = ctx.gen.scope.name("notErr");
     ctx.gen.const(errVar, `${fn}(${ctx.data}, ${ctx.path})`);
     ctx.gen.if(`${errVar} === null`, () => {
@@ -196,19 +296,42 @@ export const ifThenElseKeyword: KeywordDefinition = {
     const thenSchema = ctx.parentSchema.then;
     const elseSchema = ctx.parentSchema.else;
     const ifFn = ctx.compileSubschema(ifSchema);
-    const ifErr = ctx.gen.scope.name("ifErr");
     const outProps = ctx.evaluatedPropertiesVar;
     const outItems = ctx.evaluatedItemsVar;
-    // Per 2020-12: annotations from `if` are preserved when `if` passes
-    // and merged into the enclosing scope alongside `then`'s. Give `if`
-    // its own Set so failing runs don't leak keys into `else`'s path.
     const ifProps = ctx.gen.scope.name("ifProps");
     const ifItems = ctx.gen.scope.name("ifItems");
     ctx.gen.const(ifProps, outProps !== null ? "new Set()" : "undefined");
     ctx.gen.const(ifItems, outItems !== null ? "new Set()" : "undefined");
-    ctx.gen.const(ifErr, `${ifFn}(${ctx.data}, ${ctx.path}, ${ifProps}, ${ifItems})`);
     const passProps = outProps ?? "undefined";
     const passItems = outItems ?? "undefined";
+    if (ctx.predicate) {
+      // Predicate mode: `if` never emits an error itself; it branches
+      // into `then` or `else`. When `if` matches, merge its annotations
+      // into the caller before running `then`.
+      ctx.gen.if(
+        `${ifFn}(${ctx.data}, ${ifProps}, ${ifItems})`,
+        (g) => {
+          if (outProps !== null) g.line(`for (const k of ${ifProps}) ${outProps}.add(k);`);
+          if (outItems !== null) g.line(`for (const k of ${ifItems}) ${outItems}.add(k);`);
+          if (thenSchema !== undefined) {
+            const tFn = ctx.compileSubschema(thenSchema);
+            g.line(`if (!${tFn}(${ctx.data}, ${passProps}, ${passItems})) return false;`);
+          }
+        },
+        (g) => {
+          if (elseSchema !== undefined) {
+            const eFn = ctx.compileSubschema(elseSchema);
+            g.line(`if (!${eFn}(${ctx.data}, ${passProps}, ${passItems})) return false;`);
+          }
+        },
+      );
+      return;
+    }
+    const ifErr = ctx.gen.scope.name("ifErr");
+    // Per 2020-12: annotations from `if` are preserved when `if` passes
+    // and merged into the enclosing scope alongside `then`'s. Give `if`
+    // its own Set so failing runs don't leak keys into `else`'s path.
+    ctx.gen.const(ifErr, `${ifFn}(${ctx.data}, ${ctx.path}, ${ifProps}, ${ifItems})`);
     ctx.gen.if(
       `${ifErr} === null`,
       (g) => {
@@ -256,6 +379,10 @@ export const dependentSchemasKeyword: KeywordDefinition = {
           const fn = ctx.compileSubschema(sub);
           const keyLit = quoteString(name);
           g.if(`Object.prototype.hasOwnProperty.call(${ctx.data}, ${keyLit})`, (gi) => {
+            if (ctx.predicate) {
+              gi.line(`if (!${fn}(${ctx.data}, ${passProps}, ${passItems})) return false;`);
+              return;
+            }
             const errVar = gi.scope.name("e");
             gi.const(errVar, `${fn}(${ctx.data}, ${ctx.path}, ${passProps}, ${passItems})`);
             gi.if(`${errVar} !== null`, () => ctx.emitError("lift", errVar));
@@ -310,6 +437,10 @@ export const dependenciesKeyword: KeywordDefinition = {
             // Schema form → dependent-schema semantics.
             const fn = ctx.compileSubschema(entry);
             g.if(`Object.prototype.hasOwnProperty.call(${ctx.data}, ${triggerLit})`, (gi) => {
+              if (ctx.predicate) {
+                gi.line(`if (!${fn}(${ctx.data})) return false;`);
+                return;
+              }
               const errVar = gi.scope.name("e");
               gi.const(errVar, `${fn}(${ctx.data}, ${ctx.path})`);
               gi.if(`${errVar} !== null`, () => ctx.emitError("lift", errVar));

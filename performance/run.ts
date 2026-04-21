@@ -38,7 +38,7 @@ const specPath = specArg?.slice("--spec=".length);
 type Result = {
   schema: string;
   metric: "compile" | "validate";
-  lib: "ajv" | "hyperjump" | "oav";
+  lib: "ajv" | "ajv-fast" | "hyperjump" | "oav" | "oav-predicate";
   hz: number; // ops/sec
   mean: number; // µs/op
   variant?: string; // full task name (e.g. "oav validate (valid)")
@@ -139,6 +139,12 @@ async function benchSchema(s: PerfSchema): Promise<void> {
   const ajv = new Ajv({ allErrors: true, strict: false });
   const ajvValidate = ajv.compile(s.schema);
 
+  // ajv's default (fail-fast) mode — the fair comparison for oav's
+  // predicate mode. Both stop at the first failure and report
+  // yes/no-style rather than building a full error tree.
+  const ajvFast = new Ajv({ allErrors: false, strict: false });
+  const ajvValidateFast = ajvFast.compile(s.schema);
+
   const hjUri = `bench://validate-${s.name}`;
   registerSchema(s.schema, hjUri);
   const hjV = await hjValidate(hjUri);
@@ -146,6 +152,12 @@ async function benchSchema(s: PerfSchema): Promise<void> {
   const oav = compileSchema(s.schema as never, {
     dialect: jsonSchemaDialect,
     formats: builtInFormats,
+  });
+
+  const oavPredicate = compileSchema(s.schema as never, {
+    dialect: jsonSchemaDialect,
+    formats: builtInFormats,
+    predicate: true,
   });
 
   // Measure both the happy path (valid) and the failure path (invalid)
@@ -162,6 +174,12 @@ async function benchSchema(s: PerfSchema): Promise<void> {
     .add("ajv validate (invalid)", () => {
       ajvValidate(invalidSample);
     })
+    .add("ajv-fast validate (valid)", () => {
+      ajvValidateFast(validSample);
+    })
+    .add("ajv-fast validate (invalid)", () => {
+      ajvValidateFast(invalidSample);
+    })
     .add("hyperjump validate (valid)", () => {
       hjV(validSample);
     })
@@ -173,6 +191,12 @@ async function benchSchema(s: PerfSchema): Promise<void> {
     })
     .add("oav validate (invalid)", () => {
       oav.validate(invalidSample);
+    })
+    .add("oav-predicate validate (valid)", () => {
+      oavPredicate.validate(validSample);
+    })
+    .add("oav-predicate validate (invalid)", () => {
+      oavPredicate.validate(invalidSample);
     });
   await validateBench.run();
 
@@ -370,12 +394,18 @@ if (specPath !== undefined) {
   const filtered = filter ? perfSchemas.filter((s) => s.name.includes(filter)) : perfSchemas;
   for (const s of filtered) await benchSchema(s);
 
-  // Relative table: oav ops/sec / ajv ops/sec per row.
+  // Relative table: each library's ops/sec normalised to ajv's.
   console.log("\n=== Relative throughput (vs ajv = 1.00) ===");
   console.log(
-    "schema".padEnd(14) + "metric".padEnd(20) + "ajv".padEnd(10) + "hyperjump".padEnd(12) + "oav",
+    "schema".padEnd(14) +
+      "metric".padEnd(22) +
+      "ajv".padEnd(8) +
+      "ajv-fast".padEnd(10) +
+      "hyperjump".padEnd(12) +
+      "oav".padEnd(8) +
+      "oav-pred",
   );
-  console.log("-".repeat(70));
+  console.log("-".repeat(80));
   const byKey = new Map<string, Record<string, number>>();
   for (const r of results) {
     // Distinguish validate-valid vs validate-invalid when we have variants.
@@ -388,15 +418,20 @@ if (specPath !== undefined) {
   for (const [key, row] of byKey) {
     const [schema, metric] = key.split("|");
     const ajv = row["ajv"] ?? 0;
+    const ajvFast = row["ajv-fast"] ?? 0;
     const hj = row["hyperjump"] ?? 0;
     const oav = row["oav"] ?? 0;
+    const oavPred = row["oav-predicate"] ?? 0;
     const base = ajv || 1;
+    const fmt = (n: number) => (n === 0 ? "—" : (n / base).toFixed(2));
     console.log(
       (schema ?? "").padEnd(14) +
-        (metric ?? "").padEnd(20) +
-        "1.00".padEnd(10) +
-        (hj / base).toFixed(2).padEnd(12) +
-        (oav / base).toFixed(2),
+        (metric ?? "").padEnd(22) +
+        "1.00".padEnd(8) +
+        fmt(ajvFast).padEnd(10) +
+        fmt(hj).padEnd(12) +
+        fmt(oav).padEnd(8) +
+        fmt(oavPred),
     );
   }
 }
