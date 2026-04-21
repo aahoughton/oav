@@ -1,7 +1,7 @@
-import { createMemoryReader, type DocumentReader } from "@oav/spec";
 import { describe, expect, it } from "vitest";
 import { buildProgram } from "../src/cli.js";
 import type { CommandIo } from "../src/commands.js";
+import { memoryIo } from "./fixtures.js";
 
 /**
  * Argv-level coverage of the Commander program. Previously the CLI
@@ -9,32 +9,6 @@ import type { CommandIo } from "../src/commands.js";
  * so argv wiring (deriveMode, --format validation, exit code 3 for
  * usage errors) had no in-process regression guard.
  */
-
-function memoryIo(
-  entries: Array<[string, unknown]>,
-  textFiles: Array<[string, string]> = [],
-): {
-  io: CommandIo;
-  writes: Array<[string, string]>;
-} {
-  const reader: DocumentReader = createMemoryReader(new Map(entries));
-  const textMap = new Map(textFiles);
-  const writes: Array<[string, string]> = [];
-  return {
-    io: {
-      reader,
-      async readText(path: string) {
-        const hit = textMap.get(path);
-        if (hit === undefined) throw new Error(`missing text file: ${path}`);
-        return hit;
-      },
-      async writeText(path: string, content: string) {
-        writes.push([path, content]);
-      },
-    },
-    writes,
-  };
-}
 
 interface Captured {
   stdout: string;

@@ -1,5 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
-import type { JsonValue, ValidationError } from "@oav/core";
+import { formatError, type JsonValue, type OutputFormat, type ValidationError } from "@oav/core";
 import {
   composeReaders,
   createFileReader,
@@ -9,7 +9,6 @@ import {
 } from "@oav/spec";
 import { createValidator } from "@oav/validator";
 import { parseHttpFile } from "./http-parser.js";
-import { formatError, type OutputFormat } from "./format-output.js";
 
 /**
  * Input shared by all CLI commands.

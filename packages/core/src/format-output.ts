@@ -1,4 +1,5 @@
-import { formatFlat, formatGithub, formatJson, formatText, type ValidationError } from "@oav/core";
+import { formatFlat, formatGithub, formatJson, formatText } from "./format.js";
+import type { ValidationError } from "./errors.js";
 
 /**
  * Single source of truth for the CLI's `--format` flag. The
@@ -11,7 +12,7 @@ import { formatFlat, formatGithub, formatJson, formatText, type ValidationError 
 export const KNOWN_OUTPUT_FORMATS = ["text", "json", "flat", "github"] as const;
 
 /**
- * Supported output formats for the CLI.
+ * Supported built-in output formats.
  *
  * @public
  */
@@ -28,17 +29,35 @@ export function isOutputFormat(value: string): value is OutputFormat {
 }
 
 /**
+ * A programmatic renderer: any function that turns a
+ * {@link ValidationError} tree into a string.
+ *
+ * @public
+ */
+export type ErrorRenderer = (err: ValidationError) => string;
+
+/**
  * Format a {@link ValidationError} tree as a string in the requested style.
  *
+ * `renderer` may be one of the built-in format names
+ * ({@link OutputFormat}) or a caller-supplied function, which lets
+ * library consumers plug in SARIF / RFC 7807 / JUnit renderers without
+ * forking the dispatch switch.
+ *
  * @param err - The error tree.
- * @param format - One of `"text" | "json" | "flat" | "github"`.
- * @param depth - Optional max depth (applies to `text` format).
+ * @param renderer - A built-in format name or a custom render function.
+ * @param depth - Optional max depth (applies to `"text"` format only).
  * @returns The rendered string.
  *
  * @public
  */
-export function formatError(err: ValidationError, format: OutputFormat, depth?: number): string {
-  switch (format) {
+export function formatError(
+  err: ValidationError,
+  renderer: OutputFormat | ErrorRenderer,
+  depth?: number,
+): string {
+  if (typeof renderer === "function") return renderer(err);
+  switch (renderer) {
     case "json":
       return JSON.stringify(formatJson(err), null, 2);
     case "flat":

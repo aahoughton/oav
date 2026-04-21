@@ -143,15 +143,20 @@ cli → validator → router
 3. Add it to the `builtInFormats` record.
 4. Test with RFC-sourced valid + invalid examples.
 
-## How to add a new CLI output format
+## How to add a new output format
+
+Output format dispatch lives in `@oav/core` (not the CLI) so library
+consumers can render by format name too. Programmatic callers can also
+pass a renderer function directly — `formatError(err, (e) => ...)` —
+without forking the switch.
 
 1. Add the name to `KNOWN_OUTPUT_FORMATS` in
-   `packages/cli/src/format-output.ts` — the `OutputFormat` type and
-   the Commander `--format` validator are both derived from it.
+   `packages/core/src/format-output.ts` — the `OutputFormat` type and
+   the CLI's Commander `--format` validator are both derived from it.
 2. Add the rendering function to `packages/core/src/format.ts` (or emit
    straight from the leaves).
-3. Add a branch to `formatError()`.
-4. Add a test in `packages/cli/test/format-output.test.ts`.
+3. Add a branch to `formatError()` in `packages/core/src/format-output.ts`.
+4. Add a test in `packages/core/test/format-output.test.ts`.
 
 ## Error-collection modes
 

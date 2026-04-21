@@ -1,35 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createMemoryReader, type DocumentReader } from "@oav/spec";
-import {
-  resolveCommand,
-  validateCommand,
-  type CommandIo,
-  type CommandOptions,
-} from "../src/commands.js";
-
-function memoryIo(
-  entries: Array<[string, unknown]>,
-  textFiles: Array<[string, string]> = [],
-): { io: CommandIo; writes: Array<[string, string]>; textMap: Map<string, string> } {
-  const reader: DocumentReader = createMemoryReader(new Map(entries));
-  const textMap = new Map(textFiles);
-  const writes: Array<[string, string]> = [];
-  return {
-    io: {
-      reader,
-      async readText(path: string) {
-        const hit = textMap.get(path);
-        if (hit === undefined) throw new Error(`missing text file: ${path}`);
-        return hit;
-      },
-      async writeText(path: string, content: string) {
-        writes.push([path, content]);
-      },
-    },
-    writes,
-    textMap,
-  };
-}
+import { resolveCommand, validateCommand, type CommandOptions } from "../src/commands.js";
+import { memoryIo } from "./fixtures.js";
 
 const textOpts: CommandOptions = { format: "text", quiet: false };
 
