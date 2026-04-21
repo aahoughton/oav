@@ -187,9 +187,25 @@ ajv for parity with oav's always-collect-everything default.
 
 ## Results file
 
-Raw numbers land in `./results.json` after every run. Format:
+Each run writes `./results/<iso-timestamp>.json`. The `results/` directory is
+gitignored — benchmark numbers depend on the host machine, so committing them
+across contributors would be misleading. Compare runs locally instead, or roll
+back to a commit and re-run.
+
+Format:
 
 ```ts
+type RunOutput = {
+  meta: {
+    timestamp: string; // ISO 8601
+    commitSha: string;
+    nodeVersion: string;
+    timePerTaskMs: number;
+    mode: "synthetic" | "spec";
+  };
+  results: Result[];
+};
+
 type Result = {
   schema: string; // schema name or spec path
   metric: "compile" | "validate";
@@ -199,5 +215,3 @@ type Result = {
   variant?: string; // e.g. "oav-predicate validate (valid)"
 };
 ```
-
-Each run overwrites the previous file.

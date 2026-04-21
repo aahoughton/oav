@@ -436,9 +436,37 @@ if (specPath !== undefined) {
   }
 }
 
-import { writeFileSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-const outPath = resolve(dirname(fileURLToPath(import.meta.url)), "results.json");
-writeFileSync(outPath, JSON.stringify(results, null, 2));
+import { execSync } from "node:child_process";
+
+const perfDir = dirname(fileURLToPath(import.meta.url));
+
+function gitSha(): string {
+  try {
+    return execSync("git rev-parse HEAD", { cwd: perfDir, stdio: ["ignore", "pipe", "ignore"] })
+      .toString()
+      .trim();
+  } catch {
+    return "unknown";
+  }
+}
+
+const timestamp = new Date().toISOString();
+const meta = {
+  timestamp,
+  commitSha: gitSha(),
+  nodeVersion: process.version,
+  timePerTaskMs: time,
+  mode: specPath !== undefined ? "spec" : "synthetic",
+} as const;
+const payload = JSON.stringify({ meta, results }, null, 2);
+
+const historyDir = resolve(perfDir, "results");
+mkdirSync(historyDir, { recursive: true });
+const fileSafeTs = timestamp.replace(/:/g, "-");
+const outPath = join(historyDir, `${fileSafeTs}.json`);
+writeFileSync(outPath, payload);
+
 console.log(`\nRaw numbers written to ${outPath}`);
