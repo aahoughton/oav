@@ -53,10 +53,11 @@ export const oas30TypeKeyword: KeywordDefinition = {
       const actualExpr = `${NAMES.DEPS}.typeOf(${ctx.data})`;
       ctx.emitError(
         "leaf",
-        `${NAMES.DEPS}.createLeafError(` +
-          `${quoteString("type")}, ${ctx.path}, ` +
-          `"must be " + ${JSON.stringify(nullable ? `${declared} or null` : declared)}, ` +
-          `{ expected: ${expectedLit}, actual: ${actualExpr} })`,
+        ctx.leafErrorExpr(
+          quoteString("type"),
+          `"must be " + ${JSON.stringify(nullable ? `${declared} or null` : declared)}`,
+          `{ expected: ${expectedLit}, actual: ${actualExpr} }`,
+        ),
       );
     });
   },
@@ -97,10 +98,11 @@ export const oas30MaximumKeyword: KeywordDefinition = {
       () => {
         ctx.emitError(
           "leaf",
-          `${NAMES.DEPS}.createLeafError(` +
-            `${quoteString("maximum")}, ${ctx.path}, ` +
-            `\`must be ${exclusive ? "<" : "<="} ${limit}\`, ` +
-            `{ maximum: ${limit}, exclusive: ${exclusive}, actual: ${ctx.data} })`,
+          ctx.leafErrorExpr(
+            quoteString("maximum"),
+            `\`must be ${exclusive ? "<" : "<="} ${limit}\``,
+            `{ maximum: ${limit}, exclusive: ${exclusive}, actual: ${ctx.data} }`,
+          ),
         );
       },
     );
@@ -125,10 +127,11 @@ export const oas30MinimumKeyword: KeywordDefinition = {
       () => {
         ctx.emitError(
           "leaf",
-          `${NAMES.DEPS}.createLeafError(` +
-            `${quoteString("minimum")}, ${ctx.path}, ` +
-            `\`must be ${exclusive ? ">" : ">="} ${limit}\`, ` +
-            `{ minimum: ${limit}, exclusive: ${exclusive}, actual: ${ctx.data} })`,
+          ctx.leafErrorExpr(
+            quoteString("minimum"),
+            `\`must be ${exclusive ? ">" : ">="} ${limit}\``,
+            `{ minimum: ${limit}, exclusive: ${exclusive}, actual: ${ctx.data} }`,
+          ),
         );
       },
     );

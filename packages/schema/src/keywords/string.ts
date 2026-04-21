@@ -17,10 +17,11 @@ export const maxLengthKeyword: KeywordDefinition = {
     ctx.gen.if(`typeof ${ctx.data} === "string" && ${lenExpr} > ${limit}`, () => {
       ctx.emitError(
         "leaf",
-        `${NAMES.DEPS}.createLeafError(` +
-          `${quoteString("maxLength")}, ${ctx.path}, ` +
-          `\`must have at most ${limit} characters\`, ` +
-          `{ maxLength: ${limit}, actual: ${lenExpr} })`,
+        ctx.leafErrorExpr(
+          quoteString("maxLength"),
+          `\`must have at most ${limit} characters\``,
+          `{ maxLength: ${limit}, actual: ${lenExpr} }`,
+        ),
       );
     });
   },
@@ -41,10 +42,11 @@ export const minLengthKeyword: KeywordDefinition = {
     ctx.gen.if(`typeof ${ctx.data} === "string" && ${lenExpr} < ${limit}`, () => {
       ctx.emitError(
         "leaf",
-        `${NAMES.DEPS}.createLeafError(` +
-          `${quoteString("minLength")}, ${ctx.path}, ` +
-          `\`must have at least ${limit} characters\`, ` +
-          `{ minLength: ${limit}, actual: ${lenExpr} })`,
+        ctx.leafErrorExpr(
+          quoteString("minLength"),
+          `\`must have at least ${limit} characters\``,
+          `{ minLength: ${limit}, actual: ${lenExpr} }`,
+        ),
       );
     });
   },
@@ -67,10 +69,11 @@ export const patternKeyword: KeywordDefinition = {
     ctx.gen.if(`typeof ${ctx.data} === "string" && !${patternVar}.test(${ctx.data})`, () => {
       ctx.emitError(
         "leaf",
-        `${NAMES.DEPS}.createLeafError(` +
-          `${quoteString("pattern")}, ${ctx.path}, ` +
-          `\`must match pattern ${escapeMessage(source)}\`, ` +
-          `{ pattern: ${patternLit}, actual: ${ctx.data} })`,
+        ctx.leafErrorExpr(
+          quoteString("pattern"),
+          `\`must match pattern ${escapeMessage(source)}\``,
+          `{ pattern: ${patternLit}, actual: ${ctx.data} }`,
+        ),
       );
     });
   },
@@ -113,10 +116,11 @@ export const formatAssertionKeyword: KeywordDefinition = {
       () => {
         ctx.emitError(
           "leaf",
-          `${NAMES.DEPS}.createLeafError(` +
-            `${quoteString("format")}, ${ctx.path}, ` +
-            `\`must match format ${escapeMessage(formatName)}\`, ` +
-            `{ format: ${formatLit}, actual: ${ctx.data} })`,
+          ctx.leafErrorExpr(
+            quoteString("format"),
+            `\`must match format ${escapeMessage(formatName)}\``,
+            `{ format: ${formatLit}, actual: ${ctx.data} }`,
+          ),
         );
       },
     );

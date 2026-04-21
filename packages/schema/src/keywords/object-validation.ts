@@ -1,4 +1,4 @@
-import { NAMES, quoteString } from "../codegen/index.js";
+import { quoteString } from "../codegen/index.js";
 import type { KeywordCompileContext, KeywordDefinition } from "./types.js";
 import { CORE_VALIDATION_VOCAB } from "./vocabulary-uris.js";
 
@@ -26,10 +26,11 @@ export const maxPropertiesKeyword: KeywordDefinition = {
       g.if(`${count} > ${limit}`, () => {
         ctx.emitError(
           "leaf",
-          `${NAMES.DEPS}.createLeafError(` +
-            `${quoteString("maxProperties")}, ${ctx.path}, ` +
-            `\`must have at most ${limit} properties\`, ` +
-            `{ maxProperties: ${limit}, actual: ${count} })`,
+          ctx.leafErrorExpr(
+            quoteString("maxProperties"),
+            `\`must have at most ${limit} properties\``,
+            `{ maxProperties: ${limit}, actual: ${count} }`,
+          ),
         );
       });
     });
@@ -52,10 +53,11 @@ export const minPropertiesKeyword: KeywordDefinition = {
       g.if(`${count} < ${limit}`, () => {
         ctx.emitError(
           "leaf",
-          `${NAMES.DEPS}.createLeafError(` +
-            `${quoteString("minProperties")}, ${ctx.path}, ` +
-            `\`must have at least ${limit} properties\`, ` +
-            `{ minProperties: ${limit}, actual: ${count} })`,
+          ctx.leafErrorExpr(
+            quoteString("minProperties"),
+            `\`must have at least ${limit} properties\``,
+            `{ minProperties: ${limit}, actual: ${count} }`,
+          ),
         );
       });
     });
@@ -86,15 +88,15 @@ export const requiredKeyword: KeywordDefinition = {
       });
       g.if(`${missingVar}.length > 0`, (gi) => {
         gi.forOf("_m", missingVar, () => {
-          ctx.withPathSegment("_m", (base, seg) => {
-            ctx.emitError(
-              "leaf",
-              `${NAMES.DEPS}.createLeafError(` +
-                `${quoteString("required")}, ${base}, ` +
-                `\`must have required property "\${_m}"\`, ` +
-                `{ missing: _m }, ${seg})`,
-            );
-          });
+          ctx.emitError(
+            "leaf",
+            ctx.leafErrorExpr(
+              quoteString("required"),
+              `\`must have required property "\${_m}"\``,
+              `{ missing: _m }`,
+              ["_m"],
+            ),
+          );
           ctx.emitBudgetBreak();
         });
       });

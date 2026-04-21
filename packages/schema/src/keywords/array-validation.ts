@@ -15,10 +15,11 @@ export const maxItemsKeyword: KeywordDefinition = {
     ctx.gen.if(`Array.isArray(${ctx.data}) && ${ctx.data}.length > ${limit}`, () => {
       ctx.emitError(
         "leaf",
-        `${NAMES.DEPS}.createLeafError(` +
-          `${quoteString("maxItems")}, ${ctx.path}, ` +
-          `\`must have at most ${limit} items\`, ` +
-          `{ maxItems: ${limit}, actual: ${ctx.data}.length })`,
+        ctx.leafErrorExpr(
+          quoteString("maxItems"),
+          `\`must have at most ${limit} items\``,
+          `{ maxItems: ${limit}, actual: ${ctx.data}.length }`,
+        ),
       );
     });
   },
@@ -37,10 +38,11 @@ export const minItemsKeyword: KeywordDefinition = {
     ctx.gen.if(`Array.isArray(${ctx.data}) && ${ctx.data}.length < ${limit}`, () => {
       ctx.emitError(
         "leaf",
-        `${NAMES.DEPS}.createLeafError(` +
-          `${quoteString("minItems")}, ${ctx.path}, ` +
-          `\`must have at least ${limit} items\`, ` +
-          `{ minItems: ${limit}, actual: ${ctx.data}.length })`,
+        ctx.leafErrorExpr(
+          quoteString("minItems"),
+          `\`must have at least ${limit} items\``,
+          `{ minItems: ${limit}, actual: ${ctx.data}.length }`,
+        ),
       );
     });
   },
@@ -80,10 +82,11 @@ export const uniqueItemsKeyword: KeywordDefinition = {
         // concatenation.
         ctx.emitError(
           "leaf",
-          `${NAMES.DEPS}.createLeafError(` +
-            `${quoteString("uniqueItems")}, ${ctx.path}, ` +
-            `"must have unique items", ` +
-            `{ duplicates: [${dup}.a, ${dup}.b] })`,
+          ctx.leafErrorExpr(
+            quoteString("uniqueItems"),
+            `"must have unique items"`,
+            `{ duplicates: [${dup}.a, ${dup}.b] }`,
+          ),
         );
       });
     });

@@ -1,4 +1,4 @@
-import { NAMES, quoteString } from "../codegen/index.js";
+import { quoteString } from "../codegen/index.js";
 import type { KeywordCompileContext, KeywordDefinition } from "./types.js";
 import { APPLICATOR_VOCAB } from "./vocabulary-uris.js";
 
@@ -71,15 +71,15 @@ export const discriminatorKeyword: KeywordDefinition = {
               g.line("return false;");
               return;
             }
-            ctx.withPathSegment(propLit, (base, seg) => {
-              ctx.emitError(
-                "leaf",
-                `${NAMES.DEPS}.createLeafError(` +
-                  `${quoteString("discriminator")}, ${base}, ` +
-                  `\`discriminator property "${propertyName}" must be a string\`, ` +
-                  `{ propertyName: ${propLit} }, ${seg})`,
-              );
-            });
+            ctx.emitError(
+              "leaf",
+              ctx.leafErrorExpr(
+                quoteString("discriminator"),
+                `\`discriminator property "${propertyName}" must be a string\``,
+                `{ propertyName: ${propLit} }`,
+                [propLit],
+              ),
+            );
           },
           (gi) => {
             if (ctx.predicate) {
@@ -108,17 +108,17 @@ export const discriminatorKeyword: KeywordDefinition = {
             gi.line(`switch (${discVal}) {`);
             gi.line(switchLines);
             gi.line(`      default: {`);
-            ctx.withPathSegment(propLit, (base, seg) => {
-              gi.line(
-                ctx.errorStatement(
-                  "leaf",
-                  `${NAMES.DEPS}.createLeafError(` +
-                    `${quoteString("discriminator")}, ${base}, ` +
-                    `"discriminator value does not match any branch", ` +
-                    `{ propertyName: ${propLit}, value: ${discVal} }, ${seg})`,
+            gi.line(
+              ctx.errorStatement(
+                "leaf",
+                ctx.leafErrorExpr(
+                  quoteString("discriminator"),
+                  `"discriminator value does not match any branch"`,
+                  `{ propertyName: ${propLit}, value: ${discVal} }`,
+                  [propLit],
                 ),
-              );
-            });
+              ),
+            );
             gi.line(`      }`);
             gi.line(`    }`);
           },

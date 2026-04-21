@@ -116,15 +116,15 @@ export const additionalPropertiesKeyword: KeywordDefinition = {
           return;
         }
         if (subSchema === false) {
-          ctx.withPathSegment(key, (base, seg) => {
-            ctx.emitError(
-              "leaf",
-              `${NAMES.DEPS}.createLeafError(` +
-                `${quoteString("additionalProperties")}, ${base}, ` +
-                `\`additional property "\${${key}}" is not allowed\`, ` +
-                `{ unexpected: ${key} }, ${seg})`,
-            );
-          });
+          ctx.emitError(
+            "leaf",
+            ctx.leafErrorExpr(
+              quoteString("additionalProperties"),
+              `\`additional property "\${${key}}" is not allowed\``,
+              `{ unexpected: ${key} }`,
+              [key],
+            ),
+          );
           ctx.emitBudgetBreak();
           return;
         }

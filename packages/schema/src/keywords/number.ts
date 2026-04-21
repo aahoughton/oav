@@ -1,4 +1,4 @@
-import { NAMES, quoteString } from "../codegen/index.js";
+import { quoteString } from "../codegen/index.js";
 import type { KeywordCompileContext, KeywordDefinition } from "./types.js";
 import { CORE_VALIDATION_VOCAB } from "./vocabulary-uris.js";
 
@@ -12,11 +12,7 @@ function emitNumericError(
   message: string,
   paramsObj: string,
 ): void {
-  ctx.emitError(
-    "leaf",
-    `${NAMES.DEPS}.createLeafError(` +
-      `${quoteString(code)}, ${ctx.path}, ${message}, ${paramsObj})`,
-  );
+  ctx.emitError("leaf", ctx.leafErrorExpr(quoteString(code), message, paramsObj));
 }
 
 /**
@@ -52,10 +48,11 @@ export const multipleOfKeyword: KeywordDefinition = {
       ctx.gen.if(`Math.abs(${q} - Math.round(${q})) > ${tol}`, () => {
         ctx.emitError(
           "leaf",
-          `${NAMES.DEPS}.createLeafError(` +
-            `${quoteString("multipleOf")}, ${ctx.path}, ` +
-            `\`must be a multiple of ${divisor}\`, ` +
-            `{ multipleOf: ${divisor}, actual: ${ctx.data} })`,
+          ctx.leafErrorExpr(
+            quoteString("multipleOf"),
+            `\`must be a multiple of ${divisor}\``,
+            `{ multipleOf: ${divisor}, actual: ${ctx.data} }`,
+          ),
         );
       });
     });

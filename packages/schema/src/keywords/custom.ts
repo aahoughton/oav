@@ -64,7 +64,7 @@ export function createCustomKeywordDefinition(keyword: string): KeywordDefinitio
       const schemaValueJson = JSON.stringify(ctx.schema);
       const resultVar = ctx.gen.scope.name("custom");
       ctx.gen.line(
-        `const ${resultVar} = ${NAMES.DEPS}.customKeywords.get(${keywordLit})(${ctx.data}, ${schemaValueJson}, ${ctx.path});`,
+        `const ${resultVar} = ${NAMES.DEPS}.customKeywords.get(${keywordLit})(${ctx.data}, ${schemaValueJson}, ${ctx.effectivePathExpr});`,
       );
       ctx.gen.if(`${resultVar} !== true`, () => {
         const messageVar = ctx.gen.scope.name("customMsg");
@@ -75,10 +75,7 @@ export function createCustomKeywordDefinition(keyword: string): KeywordDefinitio
         ctx.gen.line(
           `const ${paramsVar} = (${resultVar} && typeof ${resultVar} === "object" && ${resultVar}.params && typeof ${resultVar}.params === "object") ? ${resultVar}.params : {};`,
         );
-        ctx.emitError(
-          "leaf",
-          `${NAMES.DEPS}.createLeafError(${keywordLit}, ${ctx.path}, ${messageVar}, ${paramsVar})`,
-        );
+        ctx.emitError("leaf", ctx.leafErrorExpr(keywordLit, messageVar, paramsVar));
       });
     },
   };

@@ -1,4 +1,4 @@
-import { NAMES, quoteString } from "../codegen/index.js";
+import { quoteString } from "../codegen/index.js";
 import type { SchemaOrBoolean } from "@oav/core";
 import type { KeywordCompileContext, KeywordDefinition } from "./types.js";
 import { APPLICATOR_VOCAB } from "./vocabulary-uris.js";
@@ -69,10 +69,12 @@ export const allOfKeyword: KeywordDefinition = {
     ctx.gen.if(`${errsVar}.length > 0`, () => {
       ctx.emitError(
         "lift",
-        `${NAMES.DEPS}.createBranchError(` +
-          `${quoteString("allOf")}, ${ctx.path}, ` +
-          `\`must satisfy all ${n} schemas (\${${errsVar}.length} failed)\`, ` +
-          `${errsVar}, { total: ${n}, failed: ${errsVar}.length })`,
+        ctx.branchErrorExpr(
+          quoteString("allOf"),
+          `\`must satisfy all ${n} schemas (\${${errsVar}.length} failed)\``,
+          errsVar,
+          `{ total: ${n}, failed: ${errsVar}.length }`,
+        ),
       );
     });
   },
@@ -145,10 +147,12 @@ export const anyOfKeyword: KeywordDefinition = {
     ctx.gen.if(`!${matched}`, () => {
       ctx.emitError(
         "lift",
-        `${NAMES.DEPS}.createBranchError(` +
-          `${quoteString("anyOf")}, ${ctx.path}, ` +
-          `\`must match at least one of ${n} schemas\`, ` +
-          `${errsVar}, { total: ${n} })`,
+        ctx.branchErrorExpr(
+          quoteString("anyOf"),
+          `\`must match at least one of ${n} schemas\``,
+          errsVar,
+          `{ total: ${n} }`,
+        ),
       );
     });
   },
@@ -240,10 +244,12 @@ export const oneOfKeyword: KeywordDefinition = {
     ctx.gen.if(`${matchCount} !== 1`, () => {
       ctx.emitError(
         "lift",
-        `${NAMES.DEPS}.createBranchError(` +
-          `${quoteString("oneOf")}, ${ctx.path}, ` +
-          `\`must match exactly one of ${n} schemas (matched \${${matchCount}})\`, ` +
-          `${errsVar}, { total: ${n}, matchCount: ${matchCount} })`,
+        ctx.branchErrorExpr(
+          quoteString("oneOf"),
+          `\`must match exactly one of ${n} schemas (matched \${${matchCount}})\``,
+          errsVar,
+          `{ total: ${n}, matchCount: ${matchCount} }`,
+        ),
       );
     });
   },
@@ -271,9 +277,7 @@ export const notKeyword: KeywordDefinition = {
     ctx.gen.if(`${errVar} === null`, () => {
       ctx.emitError(
         "leaf",
-        `${NAMES.DEPS}.createLeafError(` +
-          `${quoteString("not")}, ${ctx.path}, ` +
-          `"must NOT match the schema", {})`,
+        ctx.leafErrorExpr(quoteString("not"), `"must NOT match the schema"`, `{}`),
       );
     });
   },
@@ -421,15 +425,15 @@ export const dependenciesKeyword: KeywordDefinition = {
               for (const prop of entry) {
                 const propLit = quoteString(prop);
                 gi.if(`!Object.prototype.hasOwnProperty.call(${ctx.data}, ${propLit})`, () => {
-                  ctx.withPathSegment(propLit, (base, seg) => {
-                    ctx.emitError(
-                      "leaf",
-                      `${NAMES.DEPS}.createLeafError(` +
-                        `${quoteString("dependencies")}, ${base}, ` +
-                        `\`property "${prop}" is required when "${trigger}" is present\`, ` +
-                        `{ trigger: ${triggerLit}, missing: ${propLit} }, ${seg})`,
-                    );
-                  });
+                  ctx.emitError(
+                    "leaf",
+                    ctx.leafErrorExpr(
+                      quoteString("dependencies"),
+                      `\`property "${prop}" is required when "${trigger}" is present\``,
+                      `{ trigger: ${triggerLit}, missing: ${propLit} }`,
+                      [propLit],
+                    ),
+                  );
                 });
               }
             });
@@ -474,15 +478,15 @@ export const dependentRequiredKeyword: KeywordDefinition = {
             for (const prop of required) {
               const propLit = quoteString(prop);
               gi.if(`!Object.prototype.hasOwnProperty.call(${ctx.data}, ${propLit})`, () => {
-                ctx.withPathSegment(propLit, (base, seg) => {
-                  ctx.emitError(
-                    "leaf",
-                    `${NAMES.DEPS}.createLeafError(` +
-                      `${quoteString("dependentRequired")}, ${base}, ` +
-                      `\`property "${prop}" is required when "${trigger}" is present\`, ` +
-                      `{ trigger: ${triggerLit}, missing: ${propLit} }, ${seg})`,
-                  );
-                });
+                ctx.emitError(
+                  "leaf",
+                  ctx.leafErrorExpr(
+                    quoteString("dependentRequired"),
+                    `\`property "${prop}" is required when "${trigger}" is present\``,
+                    `{ trigger: ${triggerLit}, missing: ${propLit} }`,
+                    [propLit],
+                  ),
+                );
               });
             }
           });
