@@ -53,6 +53,12 @@ export interface KeywordContextInputs {
    * rather than blowing up the compiled source.
    */
   inlineDepth?: number;
+  /**
+   * Callback for hoisting a schema-derived constant out of the
+   * validator body to the module-level prelude. See
+   * {@link KeywordCompileContext.hoistConstant}.
+   */
+  hoistConstant?: (expr: string, prefix?: string) => string;
 }
 
 /**
@@ -154,6 +160,19 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
   const evaluatedItemsVar = inputs.evaluatedItemsVar ?? null;
   const gated = inputs.gated ?? false;
   const predicate = inputs.predicate ?? false;
+  // Fall back to a local-scope const when no compiler-provided hoist sink
+  // is threaded in (for tests or out-of-tree callers that build a
+  // context directly). In that case the "hoisted" value just lives in
+  // the current validator body — correct but not optimized.
+  let localHoistCounter = 0;
+  const hoistConstant =
+    inputs.hoistConstant ??
+    ((expr: string, prefix = "C"): string => {
+      const name = `${prefix}_local${localHoistCounter}`;
+      localHoistCounter += 1;
+      inputs.gen.const(name, expr);
+      return name;
+    });
 
   const errorStatement = (kind: ErrorKind, errExpr: string): string => {
     if (predicate) {
@@ -256,6 +275,7 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
         predicate,
         byKeyword: inputs.byKeyword,
         inlineDepth: inlineDepth + 1,
+        hoistConstant: inputs.hoistConstant,
       });
       kw.compile(innerCtx);
       return true;
@@ -313,6 +333,7 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
         predicate,
         byKeyword: inputs.byKeyword,
         inlineDepth: inlineDepth + 1,
+        hoistConstant: inputs.hoistConstant,
       });
       kw.compile(innerCtx);
     }
@@ -395,6 +416,7 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     emitBudgetBreak,
     withPathSegment,
     validateSubschema,
+    hoistConstant,
   };
 }
 

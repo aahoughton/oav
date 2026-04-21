@@ -168,6 +168,14 @@ export interface CompileState {
   readonly ordered: KeywordDefinition[];
   readonly compiledFor: Map<SchemaOrBoolean, string>;
   readonly functionBodies: string[];
+  /**
+   * `const <name> = <expr>;` lines emitted at module scope above every
+   * validator function. Populated via
+   * {@link KeywordCompileContext.hoistConstant}. Keeps schema-derived
+   * Sets / arrays / regex candidates off the per-call hot path.
+   */
+  readonly hoistedConsts: string[];
+  nextHoistId: number;
   readonly deps: ValidatorDeps;
   readonly refResolver: RefResolver;
   readonly graph: ResolvedGraph;
@@ -351,6 +359,8 @@ export function compileSchema(
     ordered,
     compiledFor: new Map(),
     functionBodies: [],
+    hoistedConsts: [],
+    nextHoistId: 0,
     deps,
     refResolver,
     graph,
@@ -565,6 +575,12 @@ function compileSchemaKeywords(
       gated: state.gated,
       predicate: state.predicate,
       byKeyword: state.byKeyword,
+      hoistConstant: (expr: string, prefix = "C"): string => {
+        const name = `${prefix}_${state.nextHoistId}`;
+        state.nextHoistId += 1;
+        state.hoistedConsts.push(`const ${name} = ${expr};`);
+        return name;
+      },
     });
     kw.compile(ctx);
     seen.add(kw.keyword);
@@ -585,6 +601,10 @@ function assembleSource(state: CompileState, rootName: string): string {
   const parts: string[] = [];
   parts.push(`"use strict";`);
   parts.push("");
+  if (state.hoistedConsts.length > 0) {
+    parts.push(...state.hoistedConsts);
+    parts.push("");
+  }
   parts.push(...state.functionBodies);
   parts.push("");
   if (state.predicate) {

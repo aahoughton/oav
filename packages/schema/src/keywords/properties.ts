@@ -102,8 +102,7 @@ export const additionalPropertiesKeyword: KeywordDefinition = {
         g.line(`const ${v} = ${NAMES.DEPS}.compilePattern(${lit});`);
         patternVars.push(v);
       }
-      const known = g.scope.name("known");
-      g.const(known, `new Set(${knownSet})`);
+      const known = ctx.hoistConstant(`new Set(${knownSet})`, "known");
       const key = g.scope.name("key");
       g.forIn(key, ctx.data, (gi) => {
         gi.if(`${known}.has(${key})`, (gii) => gii.line("continue;"));

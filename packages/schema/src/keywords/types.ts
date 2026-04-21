@@ -176,6 +176,22 @@ export interface KeywordCompileContext {
    * `body` retain the correct path even after the `pop`.
    */
   withPathSegment(segmentExpr: string, body: () => void): void;
+  /**
+   * Emit a `const <name> = <expr>;` declaration at the top of the
+   * generated module (outside every validator function). Returns the
+   * minted identifier so callers can reference the hoisted value from
+   * their validator body.
+   *
+   * Use this for schema-derived constants that would otherwise be
+   * allocated on every validate call — Sets of known property names,
+   * required-name arrays, enum candidates. The hoisted value must be
+   * immutable from the validator's perspective (the validator reads it;
+   * nothing in the generated code mutates it).
+   *
+   * The optional `prefix` is used to name the identifier for easier
+   * debugging of generated source. Defaults to `"C"`.
+   */
+  hoistConstant(expr: string, prefix?: string): string;
 }
 
 /**

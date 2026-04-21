@@ -15,8 +15,7 @@ export const enumKeyword: KeywordDefinition = {
   compile(ctx: KeywordCompileContext): void {
     const values = ctx.schema as JsonValue[];
     const valuesLit = JSON.stringify(values);
-    const valuesVar = ctx.gen.scope.name("enumValues");
-    ctx.gen.const(valuesVar, valuesLit);
+    const valuesVar = ctx.hoistConstant(valuesLit, "enumValues");
     const matched = ctx.gen.scope.name("matched");
     ctx.gen.let(matched, "false");
     ctx.gen.forOf("candidate", valuesVar, (g) => {
