@@ -46,14 +46,7 @@ describe("createLeafError", () => {
   it("appends extraSegment + extraSegment2 when both are provided", () => {
     // Used by the subschema inliner when a caller's pending segment
     // stacks with the leaf keyword's own trailing segment.
-    const err = createLeafError(
-      "required",
-      [],
-      "missing",
-      { missing: "id" },
-      "user",
-      "id",
-    );
+    const err = createLeafError("required", [], "missing", { missing: "id" }, "user", "id");
     expect(err.path).toEqual(["user", "id"]);
   });
 });
