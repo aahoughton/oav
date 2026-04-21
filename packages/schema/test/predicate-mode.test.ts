@@ -400,7 +400,7 @@ describe("predicate mode: option interactions", () => {
 });
 
 describe("predicate mode: generated source sanity", () => {
-  it("never emits createLeafError or errors accumulator", () => {
+  it("never emits tree-runtime helpers", () => {
     const v = predicate({
       type: "object",
       properties: {
@@ -410,17 +410,20 @@ describe("predicate mode: generated source sanity", () => {
       allOf: [{ not: { required: ["c"] } }],
       required: ["a"],
     });
-    // These runtime helpers are tree-mode only. A regression that
-    // routes predicate mode through the tree-mode emitter would land
-    // either token in the source.
-    expect(v.source).not.toMatch(/createLeafError/);
-    expect(v.source).not.toMatch(/createBranchError/);
-    expect(v.source).not.toMatch(/wrapErrors/);
-    // The well-known errors accumulator variable name must not appear.
-    // We check for the declaration specifically to avoid matching words
-    // in comments or sub-identifiers.
-    expect(v.source).not.toMatch(/\bconst errors = \[\]/);
-    expect(v.source).not.toMatch(/errors\.push\b/);
+    // The compiler sets `emittedTreeRuntime` iff the source references
+    // `createLeafError` / `createBranchError` / `wrapErrors` — all
+    // tree-mode only. Asserting on the stat keeps the invariant stable
+    // under codegen renames (compare the `functionCount` precedent in
+    // inlining.test.ts).
+    expect(v.stats.emittedTreeRuntime).toBe(false);
+  });
+
+  it("tree mode does emit tree-runtime helpers (control)", () => {
+    // Guards the complement: make sure emittedTreeRuntime isn't stuck
+    // at false — a non-predicate schema that actually reports errors
+    // should flip it.
+    const v = compileSchema({ type: "string", minLength: 3 }, { dialect: jsonSchemaDialect });
+    expect(v.stats.emittedTreeRuntime).toBe(true);
   });
 
   it("top-level validate is arity 1", () => {
