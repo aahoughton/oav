@@ -60,49 +60,68 @@ rooted at the HTTP frame (e.g. `["body", "pets", 3, "name"]`), a
 human-readable `message`, and a machine-readable `params` object whose
 shape per code is documented in `BuiltInErrorParams`.
 
-## Why this exists
+## Why oav?
 
-Two motivations drive the design.
+Three things weren't available together anywhere else when this repo
+started:
 
-**Native OpenAPI 3.0 semantics.** Most OpenAPI validators are thin
-wrappers over ajv. That works for 3.1 / 3.2, which use JSON Schema
-2020-12 directly, but it translates poorly to 3.0: `type` can't be an
-array, `exclusiveMaximum` is a boolean, `nullable` is its own keyword,
-and siblings of `$ref` are ignored. oav ships a dedicated 3.0 dialect
-alongside the 3.1 / 3.2 one so 3.0 specs validate by 3.0 rules, no
-meta-schema rewrite step, no "mostly 3.1 and hope".
+- **An HTTP-aware validator.** One call checks method + path +
+  parameters + body + content type + status + headers against the
+  spec, not just the JSON body. Every HTTP-level concern — route
+  matching, content-type negotiation, parameter deserialisation,
+  response status matching — lives inside the validator.
+- **Overlays over externally-owned specs.** Projects consuming an
+  OpenAPI document they don't own (Supabase / Directus / Hasura /
+  PocketBase / a gateway's published spec) can extend or override it
+  at load time. `applyOverlays` rewrites the base document in memory;
+  no forking, no preprocessing, no string substitution.
+- **Native OpenAPI 3.0 support and a structured error tree.** 3.0 is
+  a first-class dialect, not a 2020-12 translation: `nullable`,
+  boolean `exclusiveMaximum`, and `$ref`-suppresses-siblings are baked
+  into the compiler's dialect dispatch. Errors come back as a typed
+  tree (`code` / `path` / `params` / `children`) so downstream code
+  can narrow on fields rather than pattern-match on messages.
 
-**First-class overlays.** Many projects consume an OpenAPI document
-they don't own: an upstream framework (Supabase, Directus, Hasura,
-PocketBase, ...) or a gateway's published spec. `applyOverlays`
-patches the base document programmatically at load time — add a
-gateway-required header to every operation, extend a component
-schema, swap a response shape in staging — without forking or
-preprocessing the upstream file. `loadSpec` stitches external `$ref`s
-and applies overlays in a single call.
-
-If you want raw validate-per-second throughput on a spec you already
-own end to end, ajv is still the throughput king. If you want
-correct 3.0, a structured error tree you can narrow against, and an
-overlay model that respects the upstream document, this is the
-library.
+Ajv is the fastest JSON Schema validator for JavaScript and underpins
+most of the OpenAPI ecosystem. For pure validate-per-second throughput
+on a spec you fully own, it's still the right pick. Where the two
+projects overlap and where each does more is written up in
+[`COMPARISON.md`](./COMPARISON.md).
 
 ### Conformance
 
-Published, not claimed. Every number below comes out of
-[`conformance/`](./conformance/README.md) on every build:
+The [`conformance/`](./conformance/README.md) sub-package drives the
+compiler and CLI against the upstream JSON Schema 2020-12 Test Suite,
+a set of OpenAPI 3.0 / 3.1 / 3.2 petstore scenarios, and a handful of
+real-world specs (Stripe, GitHub, DigitalOcean, Twilio, Asana, Box,
+Adyen) that have to load and compile without error. Current pass
+counts: 1271 / 1290 on required JSON Schema cases, 1429 / 1452 with
+optional included, 14 / 14 on OpenAPI cases.
 
-| Suite                                                                | Result                                                  |
-| -------------------------------------------------------------------- | ------------------------------------------------------- |
-| [JSON Schema 2020-12 Test Suite](./conformance/REPORT.md) (required) | 1271 / 1290 passing (98.5%)                             |
-| JSON Schema 2020-12 Test Suite (+ optional)                          | 1429 / 1452 passing (98.4%)                             |
-| OpenAPI request/response scenarios (3.0, 3.1, 3.2 petstores)         | 14 / 14                                                 |
-| Real-world specs loaded + compiled by `createValidator`              | Stripe, GitHub, DigitalOcean, Twilio, Asana, Box, Adyen |
+Categories we're not currently attempting, with details in
+[`conformance/REPORT.md`](./conformance/REPORT.md):
 
-Remaining JSON Schema mismatches (`$dynamicRef` runtime scope and a
-handful of optional-suite edges) are enumerated in
-[`conformance/REPORT.md`](./conformance/REPORT.md). No divergence is
-silent.
+- `$dynamicRef` with runtime dynamic-scope rebinding. Our
+  implementation resolves statically against the anchor map.
+- The `optional/format/*` subtree. Those tests target strict-assertion
+  behaviour; `format` is annotation-only by default per JSON Schema
+  2020-12 §6.3.
+- A small tail of isolated optional cases (float-overflow handling,
+  external-ref loading tied to the dynamic-scope category above).
+
+In practice, OpenAPI specs generated or hand-authored by application
+developers rarely touch any of these. `$dynamicRef` / `$dynamicAnchor`
+are concentrated in meta-schemas and extensible-type libraries (JSON
+Schema's own meta-schema, Hyperjump's type system); a spec that
+describes "POST /pets takes a Pet" doesn't declare them. The strict
+format-assertion gap only surfaces if you rely on RFC-edge behaviour
+in `iri`, IRI-reference, or non-BMP regex content — `date-time`,
+`email`, `uuid`, and the common URI formats pass. Float overflow
+concerns numbers beyond `Number.MAX_SAFE_INTEGER` (~9 × 10¹⁵);
+outside that range, JavaScript's own `Number` precision is the
+limiting factor regardless of validator. If any of these corners
+matter for your use case, the report lays out which tests fail and
+why.
 
 ## CLI
 

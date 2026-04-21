@@ -20,12 +20,13 @@ testing.
 
 - `conformance/` — upstream JSON Schema Test Suite + OpenAPI case
   harness. `cd conformance && pnpm install` to bootstrap.
-- `performance/` — ajv/hyperjump/oav benchmarks. `cd performance &&
-pnpm install` to bootstrap.
+- `performance/` — compile / validate benchmarks against other JSON
+  Schema validators. `cd performance && pnpm install` to bootstrap.
 
 Both have their own `package.json` + `pnpm-workspace.yaml` (with empty
-`packages:` list so pnpm treats them as isolated roots). Their deps
-(ajv, hyperjump, tinybench, tsx) are NOT in the main workspace install.
+`packages:` list so pnpm treats them as isolated roots). Their
+external dev-dependencies (benchmark runners, competing validators,
+`tsx`) are NOT in the main workspace install.
 
 ## Architecture, package by package
 

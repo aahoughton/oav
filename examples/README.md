@@ -19,14 +19,20 @@ instead; the logic translates 1:1.
 
 ## What's in here
 
-| File                  | Shows                                                                |
-| --------------------- | -------------------------------------------------------------------- |
-| `basic-validation.ts` | Inline spec → `createValidator` → request + response checks          |
-| `custom-formats.ts`   | Register a user format (E.164 phone) via the `formats` option        |
-| `custom-keywords.ts`  | Register a schema keyword (`activeTenant`) via the `keywords` option |
-| `max-errors.ts`       | Fast-fail and bounded error collection on a bulk-invalid payload     |
-| `versions.ts`         | 3.0, 3.1, and 3.2 side by side: `nullable`, QUERY method, etc.       |
-| `overlay.ts`          | Merge a gateway-specific header requirement via `applyOverlays`      |
+| File                           | Shows                                                                |
+| ------------------------------ | -------------------------------------------------------------------- |
+| `basic-validation.ts`          | Inline spec → `createValidator` → request + response checks          |
+| `custom-formats.ts`            | Register a user format (E.164 phone) via the `formats` option        |
+| `custom-keywords.ts`           | Register a schema keyword (`activeTenant`) via the `keywords` option |
+| `max-errors.ts`                | Fast-fail and bounded error collection on a bulk-invalid payload     |
+| `versions.ts`                  | 3.0, 3.1, and 3.2 side by side: `nullable`, QUERY method, etc.       |
+| `overlay.ts`                   | Minimal overlay: merge a gateway header requirement into one op      |
+| `overlay-petstore-schema.ts`   | Extend the `Pet` component with a deployment-required field          |
+| `overlay-petstore-endpoint.ts` | Require an `X-Tenant` header on `POST /pets` via an endpoint overlay |
+
+See [`OVERLAYS.md`](../OVERLAYS.md) for a walk-through of the overlay
+shape and when to use each section (`extendSchemas`, `replaceSchemas`,
+`overrides`, `addPaths`).
 
 ## Conventions
 
