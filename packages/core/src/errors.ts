@@ -319,13 +319,23 @@ export function createLeafError(
   path: PathSegment[],
   message: string,
   params: Record<string, unknown> = {},
+  extraSegment?: PathSegment,
 ): ValidationError {
   // Children: a shared frozen empty array rather than a fresh `[]` on
   // every leaf. Saves one allocation per failure on hot invalid paths.
   // Leaves never accumulate children; the type is
   // `ValidationError[]` (mutable) for branch uses, but readers should
   // treat a leaf's array as read-only — which is the existing contract.
-  return { code, path: [...path], message, params, children: EMPTY_CHILDREN };
+  //
+  // The `extraSegment` tail parameter lets generated validators append
+  // one segment (a missing property name, an array index) without
+  // allocating an intermediate array at the call site: we pass the
+  // base `path` plus the extra segment and build the final path here
+  // in one allocation. Absent the extra segment, we snapshot `path`
+  // so mutation by the caller after the error is returned can't
+  // corrupt it.
+  const finalPath = extraSegment !== undefined ? [...path, extraSegment] : [...path];
+  return { code, path: finalPath, message, params, children: EMPTY_CHILDREN };
 }
 
 // Shared frozen empty array so leaf errors reuse one `children` value
@@ -366,9 +376,11 @@ export function createBranchError(
   message: string,
   children: ValidationError[],
   params: Record<string, unknown> = {},
+  extraSegment?: PathSegment,
 ): ValidationError {
-  // See note in {@link createError} on snapshotting.
-  return { code, path: [...path], message, params, children };
+  // See note in {@link createLeafError} on `extraSegment`.
+  const finalPath = extraSegment !== undefined ? [...path, extraSegment] : [...path];
+  return { code, path: finalPath, message, params, children };
 }
 
 /**

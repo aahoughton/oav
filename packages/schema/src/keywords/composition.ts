@@ -421,13 +421,13 @@ export const dependenciesKeyword: KeywordDefinition = {
               for (const prop of entry) {
                 const propLit = quoteString(prop);
                 gi.if(`!Object.prototype.hasOwnProperty.call(${ctx.data}, ${propLit})`, () => {
-                  ctx.withPathSegment(propLit, () => {
+                  ctx.withPathSegment(propLit, (base, seg) => {
                     ctx.emitError(
                       "leaf",
                       `${NAMES.DEPS}.createLeafError(` +
-                        `${quoteString("dependencies")}, ${ctx.path}, ` +
+                        `${quoteString("dependencies")}, ${base}, ` +
                         `\`property "${prop}" is required when "${trigger}" is present\`, ` +
-                        `{ trigger: ${triggerLit}, missing: ${propLit} })`,
+                        `{ trigger: ${triggerLit}, missing: ${propLit} }, ${seg})`,
                     );
                   });
                 });
@@ -474,13 +474,13 @@ export const dependentRequiredKeyword: KeywordDefinition = {
             for (const prop of required) {
               const propLit = quoteString(prop);
               gi.if(`!Object.prototype.hasOwnProperty.call(${ctx.data}, ${propLit})`, () => {
-                ctx.withPathSegment(propLit, () => {
+                ctx.withPathSegment(propLit, (base, seg) => {
                   ctx.emitError(
                     "leaf",
                     `${NAMES.DEPS}.createLeafError(` +
-                      `${quoteString("dependentRequired")}, ${ctx.path}, ` +
+                      `${quoteString("dependentRequired")}, ${base}, ` +
                       `\`property "${prop}" is required when "${trigger}" is present\`, ` +
-                      `{ trigger: ${triggerLit}, missing: ${propLit} })`,
+                      `{ trigger: ${triggerLit}, missing: ${propLit} }, ${seg})`,
                   );
                 });
               });

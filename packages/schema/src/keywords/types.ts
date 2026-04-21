@@ -166,16 +166,20 @@ export interface KeywordCompileContext {
     options?: ValidateSubschemaOptions,
   ): void;
   /**
-   * Emit `path.push(segmentExpr); <body>; path.pop();` into the current
-   * code generator. Use when a keyword needs to emit errors whose path
-   * includes an extra segment (e.g. `required` reports a missing
-   * property at `[...path, missingKey]`).
+   * Run `body` in a scope where the current path logically has an
+   * extra segment appended. `body` receives two JS expression strings:
+   * `basePath` (equivalent to `ctx.path`) and `segExpr` (the extra
+   * segment). Pass them as the 4th and 5th arguments of
+   * `deps.createLeafError(code, basePath, message, params, segExpr)`
+   * — the runtime helper allocates the extended path array once,
+   * avoiding the double-copy that a pre-materialized `[...path, seg]`
+   * would trigger.
    *
-   * Every runtime error-creation helper snapshots `path` before
-   * committing it to the `ValidationError`, so errors emitted inside
-   * `body` retain the correct path even after the `pop`.
+   * Implementation: no runtime mutation on the happy path. The
+   * extended path is only materialized when an error actually fires
+   * (inside the error helper).
    */
-  withPathSegment(segmentExpr: string, body: () => void): void;
+  withPathSegment(segmentExpr: string, body: (basePath: string, segExpr: string) => void): void;
   /**
    * Emit a `const <name> = <expr>;` declaration at the top of the
    * generated module (outside every validator function). Returns the

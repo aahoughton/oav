@@ -86,13 +86,13 @@ export const requiredKeyword: KeywordDefinition = {
       });
       g.if(`${missingVar}.length > 0`, (gi) => {
         gi.forOf("_m", missingVar, () => {
-          ctx.withPathSegment("_m", () => {
+          ctx.withPathSegment("_m", (base, seg) => {
             ctx.emitError(
               "leaf",
               `${NAMES.DEPS}.createLeafError(` +
-                `${quoteString("required")}, ${ctx.path}, ` +
+                `${quoteString("required")}, ${base}, ` +
                 `\`must have required property "\${_m}"\`, ` +
-                `{ missing: _m })`,
+                `{ missing: _m }, ${seg})`,
             );
           });
           ctx.emitBudgetBreak();

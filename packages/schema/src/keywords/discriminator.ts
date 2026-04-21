@@ -71,13 +71,13 @@ export const discriminatorKeyword: KeywordDefinition = {
               g.line("return false;");
               return;
             }
-            ctx.withPathSegment(propLit, () => {
+            ctx.withPathSegment(propLit, (base, seg) => {
               ctx.emitError(
                 "leaf",
                 `${NAMES.DEPS}.createLeafError(` +
-                  `${quoteString("discriminator")}, ${ctx.path}, ` +
+                  `${quoteString("discriminator")}, ${base}, ` +
                   `\`discriminator property "${propertyName}" must be a string\`, ` +
-                  `{ propertyName: ${propLit} })`,
+                  `{ propertyName: ${propLit} }, ${seg})`,
               );
             });
           },
@@ -108,14 +108,14 @@ export const discriminatorKeyword: KeywordDefinition = {
             gi.line(`switch (${discVal}) {`);
             gi.line(switchLines);
             gi.line(`      default: {`);
-            ctx.withPathSegment(propLit, () => {
+            ctx.withPathSegment(propLit, (base, seg) => {
               gi.line(
                 ctx.errorStatement(
                   "leaf",
                   `${NAMES.DEPS}.createLeafError(` +
-                    `${quoteString("discriminator")}, ${ctx.path}, ` +
+                    `${quoteString("discriminator")}, ${base}, ` +
                     `"discriminator value does not match any branch", ` +
-                    `{ propertyName: ${propLit}, value: ${discVal} })`,
+                    `{ propertyName: ${propLit}, value: ${discVal} }, ${seg})`,
                 ),
               );
             });

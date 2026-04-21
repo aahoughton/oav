@@ -53,12 +53,12 @@ export const itemsKeyword: KeywordDefinition = {
           g.line(`${ctx.evaluatedItemsVar}.add(${i});`);
         }
       } else if (subSchema === false) {
-        ctx.withPathSegment(i, () => {
+        ctx.withPathSegment(i, (base, seg) => {
           ctx.emitError(
             "leaf",
             `${NAMES.DEPS}.createLeafError(` +
-              `${quoteString("items")}, ${ctx.path}, ` +
-              `"no additional items allowed", {})`,
+              `${quoteString("items")}, ${base}, ` +
+              `"no additional items allowed", {}, ${seg})`,
           );
         });
       } else {
@@ -119,9 +119,12 @@ export const containsKeyword: KeywordDefinition = {
       g.const(matchedIdx, "[]");
       g.forRange(i, `${ctx.data}.length`, (gi) => {
         const errVar = gi.scope.name("e");
-        ctx.withPathSegment(i, () => {
-          gi.const(errVar, `${fn}(${ctx.data}[${i}], ${ctx.path})`);
-        });
+        // Function-call subschema: push/pop around the call so the
+        // callee sees the extended path via the shared array (avoids
+        // per-call allocation of `[...path, i]`).
+        gi.line(`${ctx.path}.push(${i});`);
+        gi.const(errVar, `${fn}(${ctx.data}[${i}], ${ctx.path})`);
+        gi.line(`${ctx.path}.pop();`);
         gi.if(`${errVar} === null`, (gii) => {
           gii.line(`${count} += 1;`);
           gii.line(`${matchedIdx}.push(${i});`);
