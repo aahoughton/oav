@@ -26,9 +26,9 @@ const responseErr = validator.validateResponse(
 
 Both methods return `null` on success or a `ValidationError` tree on
 failure. Errors are rooted at the HTTP frame (`["body", …]`,
-`["query", name, …]`, `["headers", name, …]` on the response side,
-etc.) so downstream code can group by location. The top-level node's
-`code` (`"request"` vs `"response"`) distinguishes the leg.
+`["query", name, …]`, `["header", name, …]`, etc.) so downstream code
+can group by location. The top-level node's `code` (`"request"` vs
+`"response"`) distinguishes the leg.
 
 `validator.detectedVersion` reflects the `openapi` string that was
 detected on construction (or `undefined` if the field was missing or

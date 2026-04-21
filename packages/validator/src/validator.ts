@@ -548,7 +548,7 @@ export function createValidator(
               children.push(
                 createLeafError(
                   "header-param",
-                  ["headers", name],
+                  ["header", name],
                   `missing required header "${name}"`,
                   {
                     name,
@@ -571,7 +571,7 @@ export function createValidator(
               style: hdr.style,
               explode: hdr.explode,
             });
-            const r = validator.validate(value, ["headers", name]);
+            const r = validator.validate(value, ["header", name]);
             if (!r.valid && r.error !== undefined) {
               children.push(r.error);
             }

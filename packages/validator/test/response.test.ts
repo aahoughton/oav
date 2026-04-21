@@ -47,6 +47,40 @@ describe("validateResponse", () => {
     expect(leafCodes(err)).toContain("status");
   });
 
+  it('response header errors are rooted at ["header", name] (singular, matching request side)', () => {
+    const spec: OpenAPIDocument = {
+      openapi: "3.1.0",
+      info: { title: "t", version: "1" },
+      paths: {
+        "/items": {
+          get: {
+            responses: {
+              "200": {
+                description: "ok",
+                headers: {
+                  "X-Count": { required: true, schema: { type: "integer", minimum: 0 } },
+                },
+              },
+            },
+          },
+        },
+      },
+    };
+    const sv = createValidator(spec);
+
+    const missing = sv.validateResponse(
+      { method: "GET", path: "/items" },
+      { status: 200, headers: {} },
+    );
+    expect(leafAt(missing, "header.X-Count")).toBeDefined();
+
+    const invalid = sv.validateResponse(
+      { method: "GET", path: "/items" },
+      { status: 200, headers: { "x-count": "-1" } },
+    );
+    expect(leafAt(invalid, "header.X-Count")).toBeDefined();
+  });
+
   it("writeOnly properties are rejected in response bodies", () => {
     const spec: OpenAPIDocument = {
       openapi: "3.1.0",
