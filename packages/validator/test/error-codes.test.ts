@@ -214,4 +214,114 @@ describe("BuiltInErrorParams registry cross-check", () => {
     expect(e?.code).toBe("request");
     expect(e?.params).toEqual({ method: "POST", pathPattern: "/items/{id}" });
   });
+
+  it("HTTP-layer emitted params conform to BuiltInErrorParams shapes", () => {
+    // Declared required keys per HTTP-layer code. Runtime assertion
+    // that the validator's emitted params include every documented key.
+    // Errors are emitted imperatively (not through generated JS), so
+    // TypeScript can't enforce the contract — this test is the backstop.
+    const requiredKeys: Record<string, readonly string[]> = {
+      route: ["method", "path"],
+      request: ["method", "pathPattern"],
+      response: ["status"],
+      status: ["status"],
+      "content-type": ["contentType"],
+      body: [],
+      "query-param": ["name", "in"],
+      "header-param": ["name", "in"],
+    };
+
+    const findLeaf = (err: ValidationError | null, code: string): ValidationError | undefined => {
+      if (err === null) return undefined;
+      let hit: ValidationError | undefined;
+      walkErrors(err, (node) => {
+        if (hit === undefined && node.code === code) hit = node;
+      });
+      return hit;
+    };
+
+    const check = (err: ValidationError | null, code: string): void => {
+      const node = findLeaf(err, code);
+      expect(node, `expected code=${code} in fixture`).toBeDefined();
+      for (const key of requiredKeys[code] ?? []) {
+        expect(node?.params, `code=${code} missing param '${key}'`).toHaveProperty(key);
+      }
+    };
+
+    // Fixture corpus that surfaces each HTTP-layer code at least once.
+    const specStrict = sampleSpec();
+    const v = createValidator(specStrict, { strictQueryParameters: true });
+    const vWithResponseHeader = createValidator({
+      openapi: "3.1.0",
+      info: { title: "t", version: "1" },
+      paths: {
+        "/r": {
+          get: {
+            responses: {
+              "200": {
+                description: "ok",
+                headers: { "X-Rate": { required: true, schema: { type: "string" } } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    check(v.validateRequest({ method: "DELETE", path: "/nope" }), "route");
+    check(
+      v.validateRequest({
+        method: "POST",
+        path: "/items/1",
+        contentType: "application/json",
+      }),
+      "body",
+    );
+    check(
+      v.validateRequest({
+        method: "POST",
+        path: "/items/1",
+        contentType: "text/plain",
+        body: "x",
+      }),
+      "content-type",
+    );
+    check(
+      v.validateRequest({
+        method: "POST",
+        path: "/items/abc",
+        contentType: "application/json",
+        body: { name: "x" },
+      }),
+      "request",
+    );
+    // path-param / cookie-param only surface as leaves on missing-
+    // required parameter values. Path params can't be missing on a
+    // matched route (they're in the URL); cookie-param is similarly
+    // unreachable from a simple fixture. Present-but-invalid path /
+    // cookie values bubble up as schema leaves (`type`, etc.), not the
+    // `*-param` wrapper. Declared shape trusted by construction
+    // (same `{ name, in }` builder as the reachable siblings).
+    check(v.validateRequest({ method: "GET", path: "/items/1" }), "header-param");
+    // Strict query parameters — unknown key triggers query-param.
+    check(
+      v.validateRequest({
+        method: "GET",
+        path: "/items/1",
+        headers: { "x-tenant": "t1" },
+        query: { bogus: "x" },
+      }),
+      "query-param",
+    );
+    check(v.validateResponse({ method: "GET", path: "/items/1" }, { status: 500 }), "response");
+    check(v.validateResponse({ method: "GET", path: "/items/1" }, { status: 500 }), "status");
+    // Response-side missing required header — must carry name + in.
+    check(
+      vWithResponseHeader.validateResponse(
+        { method: "GET", path: "/r" },
+        { status: 200, headers: {} },
+      ),
+      "header-param",
+    );
+  });
 });

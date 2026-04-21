@@ -134,10 +134,30 @@ export interface BuiltInErrorParams {
   "query-param": { name: string; in: "query" };
   "header-param": { name: string; in: "header" };
   "cookie-param": { name: string; in: "cookie" };
-
-  /** Catch-all for custom / not-yet-documented codes. */
-  [code: string]: Record<string, unknown>;
 }
+
+/**
+ * Params shape for codes that aren't documented in
+ * {@link BuiltInErrorParams} — custom keywords, consumer-defined
+ * HTTP-layer wrappers, or anything reached via a string variable the
+ * compiler can't narrow.
+ *
+ * @public
+ */
+export type CustomErrorParams = Record<string, unknown>;
+
+/**
+ * The params shape for an arbitrary error `code`. Built-in codes narrow
+ * to the documented {@link BuiltInErrorParams} entry; any other code
+ * widens to {@link CustomErrorParams}. Lets downstream code narrow
+ * through a variable — `ErrorParams<typeof err.code>` — not just a
+ * string literal.
+ *
+ * @public
+ */
+export type ErrorParams<Code extends string> = Code extends keyof BuiltInErrorParams
+  ? BuiltInErrorParams[Code]
+  : CustomErrorParams;
 
 /**
  * Runtime-visible list of every named code documented in

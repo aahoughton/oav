@@ -509,6 +509,7 @@ export function createValidator(
           children.push(
             createLeafError("query-param", ["query", key], `unknown query parameter "${key}"`, {
               name: key,
+              in: "query",
             }),
           );
         }
@@ -561,6 +562,7 @@ export function createValidator(
                   `missing required header "${name}"`,
                   {
                     name,
+                    in: "header",
                   },
                 ),
               );
