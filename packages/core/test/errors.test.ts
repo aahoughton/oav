@@ -6,6 +6,9 @@ import {
   createLeafError,
   joinPath,
   walkErrors,
+  type BuiltInErrorParams,
+  type CustomErrorParams,
+  type ErrorParams,
   type ErrorParamsFor,
   type ValidationError,
 } from "../src/errors.js";
@@ -125,6 +128,27 @@ describe("BuiltInErrorParams", () => {
     }>();
     expectTypeOf<ErrorParamsFor<"required">>().toEqualTypeOf<{ missing: string }>();
     expectTypeOf<ErrorParamsFor<"allOf">>().toEqualTypeOf<{ total: number; failed: number }>();
+  });
+
+  it("keyof BuiltInErrorParams is a finite union, not string", () => {
+    // Without an index signature the union collapses to the actual
+    // documented keys. A regression that re-adds `[code: string]: ...`
+    // would widen this to `string` and the assertion would fail at
+    // compile time.
+    type Keys = keyof BuiltInErrorParams;
+    expectTypeOf<"type">().toExtend<Keys>();
+    expectTypeOf<"required">().toExtend<Keys>();
+    expectTypeOf<"header-param">().toExtend<Keys>();
+    expectTypeOf<string>().not.toExtend<Keys>();
+    // The union can exclude an arbitrary made-up code.
+    expectTypeOf<"not-a-real-code">().not.toExtend<Keys>();
+  });
+
+  it("ErrorParams narrows for built-in codes and widens for custom", () => {
+    expectTypeOf<ErrorParams<"required">>().toEqualTypeOf<{ missing: string }>();
+    expectTypeOf<ErrorParams<"type">>().toEqualTypeOf<{ expected: string[]; actual: string }>();
+    // A custom / unknown code widens to CustomErrorParams.
+    expectTypeOf<ErrorParams<"my-custom-code">>().toEqualTypeOf<CustomErrorParams>();
   });
 
   it("demonstrates the read-side narrowing pattern", () => {

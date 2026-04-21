@@ -8,6 +8,8 @@ export {
   walkErrors,
   type BuiltInErrorParams,
   type CreateErrorParams,
+  type CustomErrorParams,
+  type ErrorParams,
   type ErrorParamsFor,
   type PathSegment,
   type ValidationError,
