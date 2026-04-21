@@ -74,6 +74,7 @@ export const oas30TypeKeyword: KeywordDefinition = {
 export const oas30NullableKeyword: KeywordDefinition = {
   keyword: "nullable",
   vocabulary: OAS30_VOCAB,
+  annotation: true,
   compile(): void {
     // intentionally empty — consumed by oas30TypeKeyword
   },
@@ -147,6 +148,7 @@ export const oas30MinimumKeyword: KeywordDefinition = {
 export const oas30ExclusiveMaximumKeyword: KeywordDefinition = {
   keyword: "exclusiveMaximum",
   vocabulary: OAS30_VOCAB,
+  annotation: true,
   compile(): void {
     // intentionally empty
   },
@@ -161,6 +163,7 @@ export const oas30ExclusiveMaximumKeyword: KeywordDefinition = {
 export const oas30ExclusiveMinimumKeyword: KeywordDefinition = {
   keyword: "exclusiveMinimum",
   vocabulary: OAS30_VOCAB,
+  annotation: true,
   compile(): void {
     // intentionally empty
   },
