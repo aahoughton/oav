@@ -385,18 +385,12 @@ describe("unknown version", () => {
     );
   });
 
-  it("warns on stderr when onUnknownVersion is 'warn'", () => {
+  it("routes the warning through options.warn when onUnknownVersion is 'warn'", () => {
     const chunks: string[] = [];
-    const original = process.stderr.write.bind(process.stderr);
-    process.stderr.write = ((chunk: unknown) => {
-      chunks.push(String(chunk));
-      return true;
-    }) as typeof process.stderr.write;
-    try {
-      createValidator(bareSpec(), { onUnknownVersion: "warn" });
-    } finally {
-      process.stderr.write = original;
-    }
+    createValidator(bareSpec(), {
+      onUnknownVersion: "warn",
+      warn: (msg) => chunks.push(msg),
+    });
     expect(chunks.join("")).toMatch(/falling back to the 3.1 dialect/);
   });
 });
