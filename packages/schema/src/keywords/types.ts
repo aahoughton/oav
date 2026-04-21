@@ -39,6 +39,39 @@ export interface ValidateSubschemaOptions {
 }
 
 /**
+ * Options for
+ * {@link KeywordCompileContext.compileAndCallSubschema}.
+ *
+ * @public
+ */
+export interface CompileAndCallOptions {
+  /** JS expression for the data to pass to the sub-validator. */
+  data: string;
+  /**
+   * Emitted into the "sub passed" branch. Receives the per-branch
+   * evaluated-keys var names when the enclosing scope tracks either;
+   * `null` otherwise. Merge into the caller's `outProps` / `outItems`
+   * here — annotations from failing branches are not merged per the
+   * 2020-12 spec, so the helper only exposes them on the pass side.
+   */
+  onPass: (gen: CodeEmitter, branchProps: string | null, branchItems: string | null) => void;
+  /**
+   * Emitted into the "sub failed" branch. `errVar` is the name of the
+   * local const holding the sub-validator's returned error in tree
+   * mode, or `null` in predicate mode (which has nothing to pass).
+   * Keywords that short-circuit on failure in predicate mode emit
+   * `return false;` via the `gen` here; tree-mode keywords typically
+   * push `errVar` into their own errors array.
+   */
+  onFail: (
+    gen: CodeEmitter,
+    errVar: string | null,
+    branchProps: string | null,
+    branchItems: string | null,
+  ) => void;
+}
+
+/**
  * The narrow context passed to each keyword's `compile()` function. Keyword
  * authors see only these names — no reference to the compiler, the full
  * vocabulary, or the validator instance.
@@ -62,15 +95,32 @@ export interface KeywordCompileContext {
    * Compile a nested subschema to its own function and return the
    * function's identifier. The returned name is callable with
    * `(data, path)` inside generated code. Use this when a keyword
-   * needs the sub-validator's return value for its own logic —
-   * composition keywords (`allOf`, `anyOf`, `oneOf`, `if`/`then`/
-   * `else`) collect results per-branch to decide whether to emit a
-   * top-level error. For the common "validate this subschema against
-   * `dataExpr` and emit any errors" pattern, use
-   * {@link KeywordCompileContext.validateSubschema} — it's simpler
-   * and applies the subschema-inlining optimisation.
+   * needs direct access to the function name — most composition-style
+   * keywords are better served by
+   * {@link KeywordCompileContext.compileAndCallSubschema}, which also
+   * hides the predicate-vs-tree call-signature split.
    */
   compileSubschema(schema: SchemaOrBoolean): string;
+  /**
+   * Compile a subschema and emit a call + pass/fail branch, abstracting
+   * over the two call conventions:
+   *
+   * - Tree mode: `const ev = fn(data, path, bProps, bItems); if (ev === null) { onPass } else { onFail(ev) }`
+   * - Predicate: `if (fn(data, bProps, bItems)) { onPass } else { onFail(null) }`
+   *
+   * When the enclosing scope tracks evaluated properties or items, the
+   * helper allocates per-branch accumulator Sets and passes their names
+   * to the callbacks so the caller can merge them into its own outputs
+   * on the pass branch (the 2020-12 spec discards annotations from
+   * failing branches). When no tracking is active, both callbacks see
+   * `null` for the branch variables.
+   *
+   * The sub-validator is called once; what each branch does is
+   * keyword-specific — composition keywords push the error into a
+   * per-keyword errors array on fail, `not` emits a leaf on pass,
+   * etc. The abstraction deliberately stops at the call shape.
+   */
+  compileAndCallSubschema(schema: SchemaOrBoolean, options: CompileAndCallOptions): void;
   /**
    * Resolve a `$ref` (absolute URI or fragment) to a compiled function
    * name. Used by `$ref` and `$dynamicRef` keywords.
