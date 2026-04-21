@@ -51,7 +51,7 @@ Both have their own `package.json` + `pnpm-workspace.yaml` (with empty
   parameter deserialization (style + explode), and returns a
   `ValidationError` tree. Subtrees returned from sub-validators are
   prefixed with the HTTP location (`body`, `query`, `header`, ...) via
-  `prefixPath`.
+  the `startPath` argument to `validate(data, startPath)`.
 - **`@oav/cli`** — thin commander wrapper. No business logic beyond arg
   parsing, I/O, and exit codes.
 
