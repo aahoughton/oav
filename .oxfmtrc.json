@@ -7,7 +7,7 @@
     "dist/",
     "node_modules/",
     "coverage/",
-    "JSON-Schema-Test-Suite/",
-    "AUTONOMOUS-BUILD-PROMPT.md"
+    "conformance/JSON-Schema-Test-Suite/",
+    "CHANGELOG.md"
   ]
 }
