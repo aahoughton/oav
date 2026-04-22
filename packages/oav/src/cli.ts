@@ -39,6 +39,19 @@ const program = buildProgram({ io });
 try {
   await program.parseAsync(process.argv);
 } catch (err) {
+  // `buildProgram` wires `exitOverride()` so Commander throws rather
+  // than calling `process.exit` directly. That includes "success"
+  // exits like `--help` / `--version` (exitCode 0) and argv parse
+  // errors (non-zero). Honor the attached exitCode when present
+  // rather than surfacing these as exit 3.
+  const e = err as { code?: string; exitCode?: number; message?: string };
+  if (
+    typeof e.exitCode === "number" &&
+    typeof e.code === "string" &&
+    e.code.startsWith("commander.")
+  ) {
+    process.exit(e.exitCode);
+  }
   process.stderr.write(`error: ${(err as Error).message}\n`);
   process.exit(3);
 }
