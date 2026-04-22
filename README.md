@@ -130,12 +130,13 @@ oav resolve openapi.yaml
 oav validate openapi.yaml --request req.http
 oav validate openapi.yaml --path "POST /pets" --body payload.json
 oav validate openapi.yaml --path "GET /pets" --response --status 200 --body resp.json
+oav compile schema.json -o validator.mjs                    # standalone ES module, no runtime `new Function()`
 ```
 
 Flags: `--format text|json|flat`, `--depth n`, `--overlay file`
-(repeatable), `-o file`, `--quiet`. See
-[packages/cli/README.md](./packages/cli/README.md) for the full surface
-and the `.http` file format.
+(repeatable), `-o file`, `--quiet`, `--dialect` (compile only). See
+[packages/cli/README.md](./packages/cli/README.md) for the full surface,
+the `.http` file format, and the `compile` output contract.
 
 ## Versions
 

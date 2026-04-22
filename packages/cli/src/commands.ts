@@ -1,5 +1,11 @@
 import { readFile, writeFile } from "node:fs/promises";
-import { formatError, type JsonValue, type OutputFormat, type ValidationError } from "@oav/core";
+import {
+  formatError,
+  type JsonValue,
+  type OutputFormat,
+  type SchemaOrBoolean,
+  type ValidationError,
+} from "@oav/core";
 import {
   composeReaders,
   createFileReader,
@@ -8,6 +14,7 @@ import {
   type SpecOverlay,
 } from "@oav/spec";
 import { createValidator } from "@oav/validator";
+import { emitStandalone, type StandaloneDialect } from "./emit-standalone.js";
 import { parseHttpFile } from "./http-parser.js";
 
 /**
@@ -176,3 +183,45 @@ export type ValidateMode =
   | { kind: "request"; file: string }
   | { kind: "bodyForPath"; method: string; path: string; body: string }
   | { kind: "responseForPath"; method: string; path: string; status: number; body: string };
+
+/**
+ * Implement the `oav compile <schema>` subcommand. Reads a JSON
+ * Schema from disk (or stdin via `-`), emits an ES module whose
+ * `validate(data)` mirrors `compileSchema(schema).validate(data)`.
+ * The emitted module imports the runtime helpers from
+ * `@aahoughton/oav/core`, `@aahoughton/oav/schema/internals`, and
+ * `@aahoughton/oav/formats` — no `new Function()` at the consumer's
+ * load time, suitable for edge runtimes that forbid it.
+ *
+ * @public
+ */
+export async function compileCommand(
+  args: {
+    schema: string;
+    output?: string;
+    dialect?: StandaloneDialect;
+  },
+  io: CommandIo = defaultCommandIo(),
+): Promise<CommandResult> {
+  const raw = await io.readText(args.schema);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    return {
+      exitCode: 3,
+      output: `compile: ${args.schema} is not valid JSON (${(err as Error).message})`,
+    };
+  }
+  let source: string;
+  try {
+    source = emitStandalone(parsed as SchemaOrBoolean, { dialect: args.dialect ?? "2020-12" });
+  } catch (err) {
+    return { exitCode: 3, output: `compile: ${(err as Error).message}` };
+  }
+  if (args.output !== undefined) {
+    await io.writeText(args.output, source);
+    return { exitCode: 0 };
+  }
+  return { exitCode: 0, output: source };
+}

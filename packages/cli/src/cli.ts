@@ -1,6 +1,18 @@
 import { Command } from "commander";
 import { KNOWN_OUTPUT_FORMATS, isOutputFormat, type OutputFormat } from "@oav/core";
-import { type CommandIo, resolveCommand, validateCommand, type ValidateMode } from "./commands.js";
+import {
+  compileCommand,
+  resolveCommand,
+  validateCommand,
+  type CommandIo,
+  type ValidateMode,
+} from "./commands.js";
+import type { StandaloneDialect } from "./emit-standalone.js";
+
+const STANDALONE_DIALECTS = ["2020-12", "openapi-3.1", "openapi-3.0"] as const;
+function isStandaloneDialect(v: string): v is StandaloneDialect {
+  return (STANDALONE_DIALECTS as readonly string[]).includes(v);
+}
 
 /**
  * Options accepted by {@link buildProgram}.
@@ -119,6 +131,36 @@ export function buildProgram(options: BuildProgramOptions = {}): Command {
         io,
       );
       if (res.output !== undefined && !opts.quiet && res.output !== "") {
+        stdout(res.output + "\n");
+      }
+      exit(res.exitCode);
+    });
+
+  program
+    .command("compile <schema>")
+    .description("Compile a JSON Schema to a standalone ES module (no new Function at runtime).")
+    .option(
+      "--dialect <dialect>",
+      STANDALONE_DIALECTS.join(" | "),
+      (value: string): StandaloneDialect => {
+        if (!isStandaloneDialect(value)) throw new Error(`unknown dialect: ${value}`);
+        return value;
+      },
+      "2020-12" as StandaloneDialect,
+    )
+    .option("-o, --output <file>", "write output to a file instead of stdout")
+    .action(async (schema: string, opts: { dialect: StandaloneDialect; output?: string }) => {
+      const res = await compileCommand(
+        {
+          schema,
+          output: opts.output,
+          dialect: opts.dialect,
+        },
+        io,
+      );
+      if (res.output !== undefined && res.exitCode !== 0) {
+        stderr(res.output + "\n");
+      } else if (res.output !== undefined) {
         stdout(res.output + "\n");
       }
       exit(res.exitCode);

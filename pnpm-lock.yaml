@@ -39,6 +39,12 @@ importers:
       '@oav/core':
         specifier: workspace:*
         version: link:../core
+      '@oav/formats':
+        specifier: workspace:*
+        version: link:../formats
+      '@oav/schema':
+        specifier: workspace:*
+        version: link:../schema
       '@oav/spec':
         specifier: workspace:*
         version: link:../spec

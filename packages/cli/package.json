@@ -14,6 +14,8 @@
   },
   "dependencies": {
     "@oav/core": "workspace:*",
+    "@oav/formats": "workspace:*",
+    "@oav/schema": "workspace:*",
     "@oav/spec": "workspace:*",
     "@oav/validator": "workspace:*",
     "commander": "14.0.3"

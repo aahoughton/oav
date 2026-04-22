@@ -29,11 +29,16 @@ Capabilities that the Ajv stack covers and oav does not.
   strings to numbers, stripping undeclared properties, filling missing
   properties from `default`. oav treats validation as a yes/no
   question and does not mutate inputs.
-- **Standalone code generation.** Ajv can emit a compiled validator
-  as a JavaScript source file for build-time bundling — useful for
-  edge runtimes where `new Function()` at runtime isn't available or
-  ideal. oav compiles at construction and doesn't support
-  ahead-of-time emission.
+- **Standalone code generation.** Ajv ships a programmatic
+  `standaloneCode` API plus Node APIs that emit compiled validators
+  as module source. oav ships a CLI equivalent (`oav compile
+schema.json -o v.mjs`) that covers the edge-runtime / build-time-
+  bundling story for a single JSON Schema at a time. Ajv's
+  programmatic surface is richer — batch emission, multiple schemas
+  per file, CommonJS output — and oav's emitted module still imports
+  runtime helpers from `@aahoughton/oav/*` rather than being fully
+  self-contained. For most "prepare a validator at build time" use
+  cases the CLI is enough.
 - **Named schema registry.** `addSchema` / `getSchema` / `removeSchema`
   give Ajv a name-to-validator map that cross-schema `$ref`s resolve
   through. oav accepts an `external: Map<string, Schema>` on
