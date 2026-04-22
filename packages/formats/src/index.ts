@@ -61,3 +61,55 @@ export const builtInFormats: Record<string, (value: string) => boolean> = {
   regex: validateRegex,
   uuid: validateUuid,
 };
+
+/**
+ * An Ajv-shaped format definition — `{ type, validate }`. oav's
+ * `format` keyword only applies to string values (per JSON Schema
+ * 2020-12 §6.3), so `type` is carried for shape compatibility but
+ * not acted on; non-string values skip format validation regardless.
+ *
+ * Ajv's adjacent `async` / `compare` fields aren't used by oav and
+ * are ignored by {@link fromAjvFormats}.
+ *
+ * @public
+ */
+export interface AjvFormatDef {
+  type?: "string" | "number";
+  validate: (value: unknown) => boolean;
+}
+
+/**
+ * Convert a map of Ajv-shaped format definitions to the plain
+ * predicate shape oav's `formats` option expects. One-way — pass the
+ * result straight into `createValidator` / `compileSchema`.
+ *
+ * Main audience: migrants from `ajv-formats` or
+ * `express-openapi-validator`'s `formats` option, who already have a
+ * `Record<string, { type, validate }>` lying around and would
+ * otherwise hand-roll the three-line conversion on every project.
+ *
+ * Non-boolean truthy returns from the source validator are coerced
+ * to `true` (some adapter packages in the wild return `1` / strings).
+ *
+ * @public
+ *
+ * @example
+ * ```ts
+ * import { createValidator } from "@aahoughton/oav";
+ * import { fromAjvFormats } from "@aahoughton/oav/formats";
+ *
+ * const validator = createValidator(spec, {
+ *   formats: fromAjvFormats(myAjvFormats),
+ * });
+ * ```
+ */
+export function fromAjvFormats(
+  defs: Record<string, AjvFormatDef>,
+): Record<string, (value: string) => boolean> {
+  return Object.fromEntries(
+    Object.entries(defs).map(([name, def]) => [
+      name,
+      (value: string) => Boolean(def.validate(value)),
+    ]),
+  );
+}
