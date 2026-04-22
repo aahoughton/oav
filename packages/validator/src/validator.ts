@@ -242,6 +242,27 @@ export interface ValidatorOptions {
   /** When `true`, reject unknown query parameters (default: `false`). */
   strictQueryParameters?: boolean;
   /**
+   * When `true`, an unmatched path no longer produces a `route` error —
+   * `validateRequest` / `validateResponse` return `null`. Mirrors
+   * `express-openapi-validator`'s `ignoreUndocumented`. Does not affect
+   * the `method` code: a path that matched but whose verb wasn't
+   * declared still surfaces (that's a 405, not an "undocumented route").
+   */
+  ignoreUndocumented?: boolean;
+  /**
+   * Predicate for finer control than {@link ValidatorOptions.ignoreUndocumented}.
+   * Runs before route matching; when it returns `true` for the request's
+   * `path`, the validator short-circuits and returns `null`. Useful for
+   * per-prefix allowlists ("skip anything under `/internal/`"),
+   * regex-driven exclusions, or keeping parts of the surface out of
+   * spec validation for staged rollout.
+   *
+   * When both `ignorePaths` and `ignoreUndocumented` are set,
+   * `ignorePaths` runs first. If the predicate does not skip,
+   * `ignoreUndocumented` still applies to a subsequent route miss.
+   */
+  ignorePaths?: (path: string) => boolean;
+  /**
    * How to handle a spec whose `openapi` field is missing, malformed,
    * or not one of the supported versions (3.0, 3.1, 3.2).
    *
@@ -394,8 +415,10 @@ export function createValidator(
   };
 
   const validateRequest = (req: HttpRequest): ValidationError | null => {
+    if (options.ignorePaths?.(req.path) === true) return null;
     const match = router.match(req.method, req.path);
     if (match === undefined) {
+      if (options.ignoreUndocumented === true) return null;
       return createLeafError(
         "route",
         [],
@@ -449,8 +472,10 @@ export function createValidator(
   };
 
   const validateResponse = (req: HttpRequest, res: HttpResponse): ValidationError | null => {
+    if (options.ignorePaths?.(req.path) === true) return null;
     const match = router.match(req.method, req.path);
     if (match === undefined) {
+      if (options.ignoreUndocumented === true) return null;
       return createLeafError(
         "route",
         [],

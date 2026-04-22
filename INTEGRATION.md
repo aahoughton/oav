@@ -485,6 +485,27 @@ app.use(
 
 ### Ignoring paths not in the spec
 
+Two `createValidator` options cover the common cases directly:
+
+```ts
+// Skip every path the spec doesn't declare: equivalent to
+// express-openapi-validator's `ignoreUndocumented: true`.
+createValidator(spec, { ignoreUndocumented: true });
+
+// Predicate form for prefix / regex / allowlist filtering. Runs
+// before routing; returning `true` short-circuits to null.
+createValidator(spec, {
+  ignorePaths: (p) => p.startsWith("/internal/") || /^\/_debug\//.test(p),
+});
+```
+
+`ignorePaths` runs before the router; `ignoreUndocumented` only
+applies to paths the router couldn't match. Both leave `method`
+errors (405 — path exists, verb doesn't) alone.
+
+If you need branching based on the error rather than the path, fall
+back to the manual pattern:
+
 ```ts
 app.use(async (req, res, next) => {
   const err = validator.validateRequest({
@@ -495,10 +516,6 @@ app.use(async (req, res, next) => {
   // ... 4xx response as usual
 });
 ```
-
-This is the equivalent of `express-openapi-validator`'s
-`ignoreUndocumented: true`. For regex-based exclusions, short-circuit
-before calling the validator.
 
 ## Migration from express-openapi-validator
 

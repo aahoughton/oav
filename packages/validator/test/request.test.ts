@@ -56,6 +56,27 @@ describe("validateRequest", () => {
     });
   });
 
+  it("ignoreUndocumented: true suppresses the route error", () => {
+    const vi = createValidator(petSpec(), { ignoreUndocumented: true });
+    expect(vi.validateRequest({ method: "GET", path: "/nope" })).toBeNull();
+  });
+
+  it("ignoreUndocumented does not suppress the method error (405 still surfaces)", () => {
+    const vi = createValidator(petSpec(), { ignoreUndocumented: true });
+    const err = vi.validateRequest({ method: "DELETE", path: "/pets" });
+    expect(err?.code).toBe("method");
+  });
+
+  it("ignorePaths runs before routing and short-circuits to null", () => {
+    const vi = createValidator(petSpec(), {
+      ignorePaths: (p) => p.startsWith("/internal/"),
+    });
+    // /internal/* isn't in the spec; predicate matches → null
+    expect(vi.validateRequest({ method: "GET", path: "/internal/health" })).toBeNull();
+    // /nope isn't in the spec; predicate doesn't match → route error
+    expect(vi.validateRequest({ method: "GET", path: "/nope" })?.code).toBe("route");
+  });
+
   it("errors for wrong Content-Type", () => {
     const err = v.validateRequest({
       method: "POST",
