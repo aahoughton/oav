@@ -75,8 +75,8 @@ shape per code is documented in `BuiltInErrorParams`.
 
 ## Why oav?
 
-Three things weren't available together anywhere else when this repo
-started:
+Three things `oav` brings together that aren't jointly available
+elsewhere in the JavaScript ecosystem:
 
 - **An HTTP-aware validator.** One call checks method + path +
   parameters + body + content type + status + headers against the

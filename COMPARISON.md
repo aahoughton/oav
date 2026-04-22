@@ -53,7 +53,7 @@ schema.json -o v.mjs`) that covers the edge-runtime / build-time-
   unknown-keyword typos and wrong value shapes (e.g. `minimum: "5"`
   when it should be a number). oav ships a narrower `strict` option
   that catches unknown-keyword typos (`minimumx: 5`) and flags
-  partially-implemented features; it doesn't yet check value shapes
+  partially-implemented features; it doesn't check value shapes
   against the meta-schema.
 - **`$data` references.** Ajv's non-standard extension where one
   keyword's value comes from the data being validated
