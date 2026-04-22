@@ -16,5 +16,5 @@
     "builtin": true,
     "node": true
   },
-  "ignorePatterns": ["dist/", "node_modules/", "coverage/", "JSON-Schema-Test-Suite/"]
+  "ignorePatterns": ["dist/", "node_modules/", "coverage/", "conformance/JSON-Schema-Test-Suite/"]
 }
