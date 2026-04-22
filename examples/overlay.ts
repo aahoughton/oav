@@ -41,7 +41,7 @@ const overlay: SpecOverlay = {
     "/widgets": {
       operations: {
         get: {
-          addParameters: [
+          upsertParameters: [
             { name: "X-Request-Id", in: "header", required: true, schema: { type: "string" } },
           ],
         },

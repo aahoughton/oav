@@ -3,82 +3,136 @@
 Overlays patch an OpenAPI document in memory before the validator is
 constructed. They exist for a specific job: letting you consume a spec
 you don't own — an upstream framework's published document, a
-gateway's spec, a vendor API — and extend or override parts of it to
-match your deployment, without forking the file.
+gateway's spec, a vendor API — and add, augment, replace, or remove
+parts of it to match your deployment, without forking the file.
 
 ## When you want one
 
+- **Your deployment requires headers or query parameters the upstream
+  spec doesn't declare.** Use `overrides` with `upsertParameters`.
 - **The upstream schema is close to what you ship but missing a
   field.** Use `extendSchemas` — adds constraints via `allOf` while
   preserving the original shape.
 - **The upstream schema is wrong for your deployment.** Use
   `replaceSchemas` — swaps the schema out entirely, no merge.
-- **Your gateway requires headers or query parameters the upstream
-  spec doesn't declare.** Use `overrides` to add them to the relevant
-  operations.
 - **You need a route the upstream doesn't expose.** Use `addPaths`.
+- **Upstream declares something you want gone** — a parameter you
+  don't accept, a response status you never return, a path you don't
+  serve. Use one of the `remove*` verbs.
+- **An operation needs a complete rewrite** rather than piecemeal
+  patching. Use `overrides.operations.<method>.replace`.
 
 The alternative — forking the spec, keeping the fork in sync as the
 upstream evolves, rebasing your patches on every update — is what
 overlays exist to avoid.
 
-## Shape
+## Verb matrix
 
-An overlay is a plain object with up to four sections. Each is
-independent; you can use any subset.
+Every overlay verb falls into one of four categories.
+
+| Target                | add                | augment                  | replace                            | remove              |
+| --------------------- | ------------------ | ------------------------ | ---------------------------------- | ------------------- |
+| Paths                 | `addPaths`         | (via `overrides`)        | (via `overrides.replace`)          | `removePaths`       |
+| Component schemas     | —                  | `extendSchemas`          | `replaceSchemas`                   | `removeSchemas`     |
+| Operations            | —                  | (via additive op fields) | `overrides.operations.<m>.replace` | (via `removePaths`) |
+| Parameters (per op)   | `upsertParameters` | —                        | `upsertParameters`                 | `removeParameters`  |
+| Request body (per op) | —                  | —                        | `requestBody`                      | —                   |
+| Responses (per op)    | `responses`        | —                        | `responses`                        | `removeResponses`   |
+
+## Shape
 
 ```ts
 interface SpecOverlay {
   addPaths?: Record<string, PathItem>;
+  removePaths?: string[];
   overrides?: Record<string, PathOverride>;
   extendSchemas?: Record<string, SchemaObject>;
   replaceSchemas?: Record<string, SchemaObject>;
+  removeSchemas?: string[];
+}
+
+interface PathOverride {
+  operations?: Partial<Record<HttpMethod, OperationOverride>>;
+  pathItem?: Partial<PathItem>;
+}
+
+interface OperationOverride {
+  replace?: OperationObject;
+  upsertParameters?: ParameterObject[];
+  removeParameters?: Array<{ name: string; in: ParameterLocation }>;
+  requestBody?: RequestBodyObject;
+  responses?: Record<string, ResponseObject>;
+  removeResponses?: string[];
 }
 ```
 
-### `extendSchemas`
+Each field is independent; use any subset.
 
-Adds constraints to an existing component schema. The extension merges
-in via `allOf`: the original shape still applies, the extension adds
-to it.
+### `addPaths` / `removePaths`
 
-Runnable demo:
-[`examples/overlay-petstore-schema.ts`](./examples/overlay-petstore-schema.ts)
-— extends the upstream `Pet` to require a `vaccinated: boolean`.
+Add new routes or drop upstream ones. Both fail fast: `addPaths`
+throws if a target path already exists; `removePaths` throws if it
+doesn't. The fail-fast choice is deliberate — you want the overlay to
+notice when upstream shifts a path you've referenced instead of
+silently no-op'ing.
 
-### `replaceSchemas`
+### `extendSchemas` / `replaceSchemas` / `removeSchemas`
 
-Replaces a component schema entirely. Use when your deployment's
-shape is not a superset of the upstream's — for example, a field that
-the upstream declares as `string` but your deployment receives as a
-structured object.
+Patch the `components.schemas` map. `extend` wraps the original in
+`allOf`, keeping upstream constraints plus yours. `replace` swaps
+wholesale. `remove` drops the entry (throws if the name isn't
+present). Multiple overlays targeting the same schema via `extend`
+stack — each adds a new `allOf` branch.
 
 ### `overrides`
 
-Modifies existing paths. Two things can be modified:
+Patches existing paths. Two things can be modified:
 
-- `operations` — per-method patches. Each supports:
-  - `addParameters`: append new parameters; replace existing concrete
-    entries (matched by `name` + `in`). `$ref`-shaped parameters in
-    the base are not matched and the new parameter appends alongside.
-  - `requestBody`: replace the request body entirely.
-  - `responses`: merge by status code.
+- `operations` — per-method patches (see below).
 - `pathItem` — fields on the `PathItem` itself (e.g. path-level
   `parameters`).
 
-Wildcards: use `"*"` as an operation key to apply the same override to
-every method on a path, or as a path key at the top of `overrides` to
-apply it to every path.
+Wildcards: use `"*"` as an operation key to apply the same override
+to every method on a path, or as a path key at the top of `overrides`
+to apply it to every path.
+
+#### Per-operation verbs
+
+- **`replace`** — wholesale swap of the `OperationObject`. Cannot be
+  combined with the additive / removal fields below in the same
+  operation override; setting both throws at apply time.
+- **`upsertParameters`** — append new parameters or replace existing
+  concrete entries by (`name`, `in`). `{ $ref: … }` parameters in the
+  base can't be matched without resolution; new parameters with the
+  same key append alongside refs rather than replacing them.
+- **`removeParameters`** — drop parameters by (`name`, `in`). Silent
+  no-op on missing entries (wildcards fan out to many operations).
+- **`requestBody`** — replace the request body entirely.
+- **`responses`** — merge by status code; override wins on clashes.
+- **`removeResponses`** — drop status codes. Silent no-op on missing.
+
+### `replace` — the nuclear option
+
+```ts
+const overlay: SpecOverlay = {
+  overrides: {
+    "/pets": {
+      operations: {
+        post: { replace: { responses: { "201": { description: "created" } } } },
+        // other methods on /pets untouched
+      },
+    },
+  },
+};
+```
+
+Use when the upstream `OperationObject` is so different from what
+your deployment serves that patching it piecewise is noisier than
+starting fresh.
 
 Runnable demo:
 [`examples/overlay-petstore-endpoint.ts`](./examples/overlay-petstore-endpoint.ts)
 — adds a gateway-required `X-Tenant` header to `POST /pets`.
-
-### `addPaths`
-
-Extends the `paths` map with new routes. Throws at apply time if the
-path already exists in the base document — use `overrides` for that
-case.
 
 ## Applying an overlay
 
@@ -118,25 +172,30 @@ document is deep-cloned — the input is never mutated.
   document. `loadSpec` inlines external refs first, then applies
   overlays; if you're calling `applyOverlays` directly, pass in a
   spec that has already been through `resolveSpec`.
-- **Reference-object parameters.** `addParameters` can only match
+- **Internal `$ref`s stay internal.** `#/components/...` refs aren't
+  inlined by the resolver, so editing an operation's response entry
+  in place doesn't affect other operations that reference the same
+  component — a handy way to augment one endpoint's response shape
+  via `allOf` + the shared `$ref` without mutating the shared
+  component for everyone else.
+- **Reference-object parameters.** `upsertParameters` can only match
   against concrete parameter entries for replacement purposes. A
   `{ $ref: "#/components/parameters/Tenant" }` in the base is left
   alone, and any new parameter with the same `name` + `in` appends
-  alongside rather than replacing.
+  alongside rather than replacing. `removeParameters` follows the
+  same rule.
 - **Multiple extensions to one schema.** Each overlay that targets
   the same schema name via `extendSchemas` adds a new `allOf` branch.
   The compiled validator runs every branch; they all have to pass.
-- **Conflicts fail fast.** `addPaths` adding an existing path, or
-  `overrides` targeting a missing path, throws at `applyOverlays`
-  time. This is intentional — you want to notice when the upstream
-  adds or removes a path you've referenced rather than have the
-  overlay silently no-op.
+- **Same-overlay conflicts fail fast.** `addPaths` + `removePaths`
+  naming the same path, or `replaceSchemas` + `removeSchemas` naming
+  the same schema, throws at apply time. Contradictory intents in a
+  single overlay are almost certainly bugs.
 
 ## Related
 
 - [`packages/spec/src/overlay.ts`](./packages/spec/src/overlay.ts) —
-  the implementation, including the full merge rules for each kind
-  of override.
+  the implementation, including the full merge rules for each verb.
 - [`examples/overlay-petstore-schema.ts`](./examples/overlay-petstore-schema.ts)
   and
   [`examples/overlay-petstore-endpoint.ts`](./examples/overlay-petstore-endpoint.ts)

@@ -89,7 +89,7 @@ const overlay: SpecOverlay = {
     "/pets": {
       operations: {
         get: {
-          addParameters: [{ name: "X-Tenant", in: "header", schema: { type: "string" } }],
+          upsertParameters: [{ name: "X-Tenant", in: "header", schema: { type: "string" } }],
         },
       },
     },
@@ -97,7 +97,7 @@ const overlay: SpecOverlay = {
       // wildcard applies to every path
       operations: {
         post: {
-          addParameters: [{ name: "trace", in: "header", schema: { type: "string" } }],
+          upsertParameters: [{ name: "trace", in: "header", schema: { type: "string" } }],
         },
       },
     },
