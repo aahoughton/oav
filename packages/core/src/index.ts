@@ -58,6 +58,8 @@ export type {
   ResponseObject,
   SchemaObject,
   SchemaOrBoolean,
+  SecurityRequirementObject,
+  SecuritySchemeObject,
   ServerObject,
   TagObject,
 } from "./types.js";

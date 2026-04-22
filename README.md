@@ -73,10 +73,10 @@ rooted at the HTTP frame (e.g. `["body", "pets", 3, "name"]`), a
 human-readable `message`, and a machine-readable `params` object whose
 shape per code is documented in `BuiltInErrorParams`.
 
-## Why oav?
+## Why (yet another) OpenAPI validator?
 
-Three things weren't available together anywhere else when this repo
-started:
+Three things `oav` brings together that aren't jointly available
+elsewhere in the JavaScript ecosystem:
 
 - **An HTTP-aware validator.** One call checks method + path +
   parameters + body + content type + status + headers against the

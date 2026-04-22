@@ -141,5 +141,5 @@ document is deep-cloned — the input is never mutated.
   and
   [`examples/overlay-petstore-endpoint.ts`](./examples/overlay-petstore-endpoint.ts)
   — runnable end-to-end demos.
-- [README "Why oav?"](./README.md#why-oav) — overlays as one of the
-  three motivating reasons the project exists.
+- [README "Why (yet another) OpenAPI validator?"](./README.md#why-yet-another-openapi-validator) —
+  overlays as one of the three motivating reasons the project exists.

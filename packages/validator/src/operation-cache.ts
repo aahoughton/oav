@@ -10,6 +10,7 @@ import { resolveJsonPointer } from "@oav/core";
 import type { RouteMatch } from "@oav/router";
 import type { CompiledSchema } from "@oav/schema";
 import type { BodyDirection } from "./body-schema-transform.js";
+import type { CompiledSecurity } from "./security.js";
 
 /**
  * Pre-compiled lookup tables for a single operation. The validator's
@@ -27,6 +28,13 @@ export interface OperationCache {
   requestBody: RequestBodyObject | undefined;
   bodyValidators: Map<string, CompiledSchema>;
   responses: Map<string, ResponseCompiled>;
+  /**
+   * Pre-compiled shape-only security check, or `undefined` when the
+   * operation has no effective security requirement (either because
+   * nothing was declared, it's opted out via `security: []`, or the
+   * `validateSecurity` option is `false`).
+   */
+  security: CompiledSecurity | undefined;
 }
 
 /**
@@ -176,6 +184,11 @@ export function buildOperationCache(
     requestBody,
     bodyValidators,
     responses,
+    // Security is populated by `createValidator` after this call
+    // returns — `buildOperationCache` deliberately doesn't see the full
+    // document (it only needs the `RouteMatch` subtree) so the field
+    // starts out undefined.
+    security: undefined,
   };
 }
 

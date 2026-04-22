@@ -53,7 +53,7 @@ schema.json -o v.mjs`) that covers the edge-runtime / build-time-
   unknown-keyword typos and wrong value shapes (e.g. `minimum: "5"`
   when it should be a number). oav ships a narrower `strict` option
   that catches unknown-keyword typos (`minimumx: 5`) and flags
-  partially-implemented features; it doesn't yet check value shapes
+  partially-implemented features; it doesn't check value shapes
   against the meta-schema.
 - **`$data` references.** Ajv's non-standard extension where one
   keyword's value comes from the data being validated
@@ -63,7 +63,9 @@ schema.json -o v.mjs`) that covers the edge-runtime / build-time-
   are synchronous.
 - **`express-openapi-validator` conveniences.** `req.body` /
   `req.query` type coercion, `res.json` interception for response
-  validation, `fileUploader` (multer integration), `securityHandlers`,
+  validation, `fileUploader` (multer integration), `securityHandlers`
+  (credential-verifying dispatch — oav does shape-only security
+  validation but doesn't verify credentials),
   `operationHandlers` filesystem auto-loading, and `ignorePaths` /
   `ignoreUndocumented` are one-liner options. oav leaves these to the
   adapter — see [`INTEGRATION.md`](./INTEGRATION.md) for recipes.
