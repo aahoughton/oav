@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.0](https://github.com/aahoughton/oav/compare/v2.0.0...v2.1.0) (2026-04-22)
+
+
+### Features
+
+* **cli:** oav compile — standalone ES module emission ([#96](https://github.com/aahoughton/oav/issues/96)) ([e8b3db7](https://github.com/aahoughton/oav/commit/e8b3db70dfcd362009b921e7aec3dcdd62b70bf1)), closes [#81](https://github.com/aahoughton/oav/issues/81)
+
 ## [2.0.0](https://github.com/aahoughton/oav/compare/oav-v1.0.0...oav-v2.0.0) (2026-04-22)
 
 
