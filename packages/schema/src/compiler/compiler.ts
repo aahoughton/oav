@@ -112,49 +112,37 @@ export type CompiledPredicate = {
 /**
  * Options accepted by {@link compileSchema}.
  *
+ * @remarks
+ * Ordering convention (shared with
+ * {@link @aahoughton/oav!ValidatorOptions}):
+ *
+ *   1. Compile essentials — `dialect`.
+ *   2. Shared extension points — `formats`, `keywords`.
+ *   3. Error-collection policy — `maxErrors`.
+ *   4. Surface-specific extras last — here, `external`, `refResolver`,
+ *      `predicate`.
+ *
+ * Options common to both surfaces share names and positions so a
+ * reader of one declaration can predict the other. When adding a new
+ * option, put it in the section that matches its role and use the
+ * same name on the validator side if the concept applies there too.
+ *
  * @public
  */
 export interface CompileOptions {
+  // --- 1. Compile essentials ---
+
   /**
    * The dialect to compile against. Pick one of the built-ins
    * (`jsonSchemaDialect`, `openapi31Dialect`, `oas30Dialect`) or
    * construct a custom {@link Dialect}.
    */
   dialect: Dialect;
-  /** Additional external named schemas that `$ref` can resolve to. */
-  external?: Map<string, SchemaOrBoolean>;
+
+  // --- 2. Shared extension points ---
+
   /** Pre-registered format validators, keyed by format name. */
   formats?: Record<string, (value: string) => boolean>;
-  /** Custom ref resolver — overrides the default (which resolves fragments within the root). */
-  refResolver?: RefResolver;
-  /**
-   * Cap on the number of leaf errors collected per `validate()` call.
-   * Defaults to `Number.POSITIVE_INFINITY` (collect everything).
-   *
-   * When set to a finite value:
-   * - Once the cap is reached, further errors are dropped and
-   *   {@link ValidationResult.truncated} is set on the returned result.
-   * - Hot loops (array items, object properties, `allOf`/`anyOf`
-   *   branches) short-circuit as soon as the budget is exhausted, so
-   *   the CPU and memory cost of validating a huge payload is bounded.
-   *
-   * `maxErrors: 1` is the classic fast-fail mode.
-   */
-  maxErrors?: number;
-  /**
-   * When `true`, compile a boolean predicate rather than an
-   * error-collecting validator. The returned {@link CompiledPredicate}'s
-   * `validate(data)` returns `boolean` — no {@link ValidationError}
-   * tree is ever constructed, so consumers who only need a yes/no
-   * answer pay nothing for error-reporting machinery (leaf allocation,
-   * path snapshot, params object, message string).
-   *
-   * Mutually exclusive with a finite {@link CompileOptions.maxErrors}.
-   * Predicate mode already short-circuits at the first failure;
-   * combining the two is meaningless, so the compiler throws when
-   * both are supplied.
-   */
-  predicate?: boolean;
   /**
    * User-registered keywords, keyed by keyword name. Each validator is
    * invoked whenever its name appears as a property in a schema object.
@@ -173,6 +161,44 @@ export interface CompileOptions {
    * ```
    */
   keywords?: Record<string, CustomKeywordValidator>;
+
+  // --- 3. Error-collection policy ---
+
+  /**
+   * Cap on the number of leaf errors collected per `validate()` call.
+   * Defaults to `Number.POSITIVE_INFINITY` (collect everything).
+   *
+   * When set to a finite value:
+   * - Once the cap is reached, further errors are dropped and
+   *   {@link ValidationResult.truncated} is set on the returned result.
+   * - Hot loops (array items, object properties, `allOf`/`anyOf`
+   *   branches) short-circuit as soon as the budget is exhausted, so
+   *   the CPU and memory cost of validating a huge payload is bounded.
+   *
+   * `maxErrors: 1` is the classic fast-fail mode.
+   */
+  maxErrors?: number;
+
+  // --- 4. Schema-compile-specific extras ---
+
+  /** Additional external named schemas that `$ref` can resolve to. */
+  external?: Map<string, SchemaOrBoolean>;
+  /** Custom ref resolver — overrides the default (which resolves fragments within the root). */
+  refResolver?: RefResolver;
+  /**
+   * When `true`, compile a boolean predicate rather than an
+   * error-collecting validator. The returned {@link CompiledPredicate}'s
+   * `validate(data)` returns `boolean` — no {@link ValidationError}
+   * tree is ever constructed, so consumers who only need a yes/no
+   * answer pay nothing for error-reporting machinery (leaf allocation,
+   * path snapshot, params object, message string).
+   *
+   * Mutually exclusive with a finite {@link CompileOptions.maxErrors}.
+   * Predicate mode already short-circuits at the first failure;
+   * combining the two is meaningless, so the compiler throws when
+   * both are supplied.
+   */
+  predicate?: boolean;
 }
 
 /** @internal */
