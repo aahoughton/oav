@@ -14,4 +14,4 @@
 
 export * from "@oav/validator";
 export * from "@oav/core";
-export { createYamlFileReader, createYamlHttpReader, parseYamlString } from "./yaml.js";
+export { createSmartHttpReader, createYamlFileReader, parseYamlString } from "./yaml.js";

@@ -74,32 +74,66 @@ export function createYamlFileReader(cwd: string = process.cwd()): DocumentReade
   };
 }
 
+function isYamlMime(mime: string): boolean {
+  // application/yaml, application/x-yaml, text/yaml, text/x-yaml.
+  return /^(?:application|text)\/(?:x-)?yaml$/i.test(mime);
+}
+
+function isJsonMime(mime: string): boolean {
+  // application/json, text/json, application/vnd.openapi+json, etc.
+  return /^(?:application|text)\/(?:\w[\w-]*\+)?json$/i.test(mime);
+}
+
 /**
- * Read YAML documents over HTTP/HTTPS. Only claims URIs ending in
- * `.yaml` or `.yml`; compose with the main package's
- * `createHttpReader` for JSON fetches.
+ * Read JSON-or-YAML OpenAPI documents over HTTP/HTTPS. Claims any
+ * `http:` / `https:` URI; dispatches by response `Content-Type` with
+ * URL extension as a fallback.
+ *
+ * Dispatch rules:
+ * 1. `Content-Type` matches a YAML media type (`application/yaml`,
+ *    `application/x-yaml`, `text/yaml`, `text/x-yaml`, any of the
+ *    above with `; charset=...`) → parse as YAML.
+ * 2. `Content-Type` matches a JSON media type (`application/json`,
+ *    `text/json`, any `*+json` suffix like `application/vnd.api+json`)
+ *    → parse as JSON.
+ * 3. Ambiguous Content-Type (missing, `text/plain`,
+ *    `application/octet-stream`, etc.) → fall back to the URL path
+ *    extension: `.yaml` / `.yml` → YAML, else JSON.
+ *
+ * Handles the common case where the user points at
+ * `https://api.example.com/openapi` (no extension) and the server
+ * advertises YAML via its Content-Type.
  *
  * @example
  * ```ts
- * import { composeReaders, createHttpReader } from "@aahoughton/oav/spec";
- * import { createYamlHttpReader } from "@aahoughton/oav";
+ * import { composeReaders, createFileReader } from "@aahoughton/oav/spec";
+ * import { createSmartHttpReader } from "@aahoughton/oav";
  *
- * const reader = composeReaders([createYamlHttpReader(), createHttpReader()]);
+ * const reader = composeReaders([createSmartHttpReader(), createFileReader()]);
  * ```
  *
  * @public
  */
-export function createYamlHttpReader(): DocumentReader {
+export function createSmartHttpReader(): DocumentReader {
   return {
     canRead(uri) {
-      if (!/^https?:/i.test(uri)) return false;
-      return hasYamlExtension(uri);
+      return /^https?:/i.test(uri);
     },
     async read(uri) {
       const res = await fetch(uri);
       if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${uri}`);
       const text = await res.text();
-      return parseYaml(text);
+      const contentType = res.headers.get("content-type") ?? "";
+      const mime = contentType.split(";")[0]?.trim().toLowerCase() ?? "";
+      if (isYamlMime(mime)) return parseYaml(text);
+      if (isJsonMime(mime)) return JSON.parse(text);
+      // Ambiguous Content-Type: use URL extension as the tiebreaker,
+      // defaulting to JSON for extensionless URLs. A misconfigured
+      // server that returns YAML with `text/plain` and a URL like
+      // `/openapi` will fail with a JSON parse error — escape hatch is
+      // to supply a `.yaml` suffix or plug in a custom reader.
+      if (hasYamlExtension(uri)) return parseYaml(text);
+      return JSON.parse(text);
     },
   };
 }

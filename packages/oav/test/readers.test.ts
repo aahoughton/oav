@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { composeReaders, createFileReader, resolveSpec } from "@oav/spec";
-import { createYamlFileReader, createYamlHttpReader, parseYamlString } from "../src/index.js";
+import { createSmartHttpReader, createYamlFileReader, parseYamlString } from "../src/index.js";
 
 describe("createYamlFileReader", () => {
   let dir: string;
@@ -45,41 +45,89 @@ describe("createYamlFileReader", () => {
   });
 });
 
-describe("createYamlHttpReader", () => {
+describe("createSmartHttpReader", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it("claims only http(s) URIs with a yaml extension", () => {
-    const r = createYamlHttpReader();
-    expect(r.canRead("https://example.com/spec.yaml")).toBe(true);
-    expect(r.canRead("http://example.com/spec.yml")).toBe(true);
-    expect(r.canRead("https://example.com/spec.json")).toBe(false);
-    expect(r.canRead("file:///x.yaml")).toBe(false);
-  });
-
-  it("fetches and parses .yaml responses", async () => {
+  function stubFetch(body: string, contentType: string | null, status = 200): void {
     vi.stubGlobal(
       "fetch",
       vi.fn(
         async () =>
-          new Response("openapi: 3.1.0\ninfo: { title: X, version: '1' }", { status: 200 }),
+          new Response(body, {
+            status,
+            headers: contentType === null ? {} : { "Content-Type": contentType },
+          }),
       ),
     );
-    const r = createYamlHttpReader();
-    expect(await r.read("https://example.com/spec.yaml")).toEqual({
-      openapi: "3.1.0",
-      info: { title: "X", version: "1" },
-    });
+  }
+
+  it("claims any http(s) URI regardless of extension", () => {
+    const r = createSmartHttpReader();
+    expect(r.canRead("https://example.com/spec.yaml")).toBe(true);
+    expect(r.canRead("http://example.com/spec.json")).toBe(true);
+    expect(r.canRead("https://api.example.com/openapi")).toBe(true);
+    expect(r.canRead("file:///x.yaml")).toBe(false);
+    expect(r.canRead("memory:spec")).toBe(false);
   });
 
-  it("throws when the response is non-ok, including the status", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response("nope", { status: 404 })),
+  it("parses as YAML when Content-Type advertises yaml (any of the usual spellings)", async () => {
+    for (const ct of [
+      "application/yaml",
+      "application/x-yaml",
+      "text/yaml",
+      "text/x-yaml",
+      "application/yaml; charset=utf-8",
+    ]) {
+      stubFetch("openapi: 3.1.0\ninfo: { title: X, version: '1' }", ct);
+      const r = createSmartHttpReader();
+      // URL has no yaml extension on purpose — Content-Type drives the pick.
+      expect(await r.read("https://api.example.com/openapi"), `ct=${ct}`).toEqual({
+        openapi: "3.1.0",
+        info: { title: "X", version: "1" },
+      });
+    }
+  });
+
+  it("parses as JSON when Content-Type advertises json, including +json suffixes", async () => {
+    for (const ct of [
+      "application/json",
+      "text/json",
+      "application/vnd.openapi+json",
+      "application/json; charset=utf-8",
+    ]) {
+      stubFetch('{"openapi":"3.1.0"}', ct);
+      const r = createSmartHttpReader();
+      expect(await r.read("https://api.example.com/openapi"), `ct=${ct}`).toEqual({
+        openapi: "3.1.0",
+      });
+    }
+  });
+
+  it("falls back to URL extension when Content-Type is ambiguous", async () => {
+    // text/plain + .yaml extension → YAML.
+    stubFetch("openapi: 3.1.0", "text/plain");
+    let r = createSmartHttpReader();
+    expect(await r.read("https://example.com/spec.yaml")).toEqual({ openapi: "3.1.0" });
+
+    // text/plain + no extension → defaults to JSON.
+    stubFetch('{"openapi":"3.1.0"}', "text/plain");
+    r = createSmartHttpReader();
+    expect(await r.read("https://api.example.com/openapi")).toEqual({ openapi: "3.1.0" });
+
+    // Missing Content-Type + .yml extension → YAML.
+    stubFetch("openapi: 3.1.0", null);
+    r = createSmartHttpReader();
+    expect(await r.read("https://example.com/spec.yml")).toEqual({ openapi: "3.1.0" });
+  });
+
+  it("throws when the response is non-ok, including the status in the message", async () => {
+    stubFetch("nope", "application/json", 404);
+    const r = createSmartHttpReader();
+    await expect(r.read("https://example.com/missing.json")).rejects.toThrow(
+      /HTTP 404 fetching https:\/\/example\.com\/missing\.json/,
     );
-    const r = createYamlHttpReader();
-    await expect(r.read("https://example.com/missing.yaml")).rejects.toThrow(/HTTP 404 fetching/);
   });
 });
 
