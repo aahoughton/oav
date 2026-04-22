@@ -579,17 +579,14 @@ formats: {
 }
 ```
 
-A three-line helper handles the conversion if you're migrating a
-map of ajv-shaped definitions without rewriting each one:
+When migrating a map of ajv-shaped definitions without rewriting each
+one, `@aahoughton/oav/formats` exports `fromAjvFormats` for the
+conversion:
 
 ```ts
-type AjvFormatDef = { type?: "string" | "number"; validate: (v: unknown) => boolean };
+import { fromAjvFormats } from "@aahoughton/oav/formats";
 
-function fromAjv(defs: Record<string, AjvFormatDef>): Record<string, (v: string) => boolean> {
-  return Object.fromEntries(Object.entries(defs).map(([k, d]) => [k, (v) => d.validate(v)]));
-}
-
-createValidator(spec, { formats: fromAjv(myAjvFormats) });
+createValidator(spec, { formats: fromAjvFormats(myAjvFormats) });
 ```
 
 `oav`'s `format` keyword only applies to string values (per JSON
