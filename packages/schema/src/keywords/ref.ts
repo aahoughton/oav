@@ -46,6 +46,8 @@ export const refKeyword: KeywordDefinition = {
 export const dynamicRefKeyword: KeywordDefinition = {
   keyword: "$dynamicRef",
   vocabulary: CORE_VOCAB,
+  partial:
+    "resolves statically against the anchor map; runtime dynamic-scope rebinding is not implemented",
   compile(ctx) {
     const ref = ctx.schema as string;
     compileRefCall(ctx, ref);

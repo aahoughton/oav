@@ -77,6 +77,38 @@ describe("validateRequest", () => {
     expect(vi.validateRequest({ method: "GET", path: "/nope" })?.code).toBe("route");
   });
 
+  it('strict: "strict" surfaces unknown-keyword issues through validator.stats', () => {
+    const spec: OpenAPIDocument = {
+      openapi: "3.1.0",
+      info: { title: "t", version: "1" },
+      paths: {
+        "/p": {
+          post: {
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  // minLenght is a typo (the actual keyword is minLength).
+                  schema: {
+                    type: "string",
+                    minLenght: 3,
+                  } as unknown as OpenAPIDocument["components"],
+                },
+              },
+            },
+            responses: { "200": { description: "ok" } },
+          },
+        },
+      },
+    };
+    const vi = createValidator(spec, { strict: "strict" });
+    // Schemas compile lazily — first touch to the route triggers it.
+    vi.validateRequest({ method: "POST", path: "/p", contentType: "application/json", body: "x" });
+    const unknown = vi.stats.strictIssues.find((i) => i.code === "unknown-keyword");
+    expect(unknown).toBeDefined();
+    expect(unknown?.keyword).toBe("minLenght");
+  });
+
   it("errors for wrong Content-Type", () => {
     const err = v.validateRequest({
       method: "POST",

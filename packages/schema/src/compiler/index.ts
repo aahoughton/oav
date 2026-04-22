@@ -4,6 +4,7 @@ export {
   type CompileStats,
   type CompiledPredicate,
   type CompiledSchema,
+  type StrictIssue,
   type ValidationResult,
 } from "./compiler.js";
 export {

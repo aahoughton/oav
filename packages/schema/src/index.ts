@@ -25,6 +25,7 @@ export {
   type CompileStats,
   type CompiledPredicate,
   type CompiledSchema,
+  type StrictIssue,
   type Validator,
   type ValidationResult,
 } from "./compiler/index.js";

@@ -14,6 +14,7 @@ import {
   SUBSCHEMA_ARRAY_POSITIONS,
   SUBSCHEMA_MAP_POSITIONS,
   SUBSCHEMA_SINGLE_POSITIONS,
+  walkSubschemas,
 } from "../subschema-positions.js";
 import { createDeps, type ValidatorDeps } from "./runtime.js";
 
@@ -22,6 +23,61 @@ import { createDeps, type ValidatorDeps } from "./runtime.js";
 // happens to contain "wrapErrors") don't count — every real emission
 // spells the helper as a bare identifier.
 const TREE_RUNTIME_HELPERS = /\b(?:createLeafError|createBranchError|wrapErrors)\b/;
+
+/**
+ * Default mode for {@link CompileOptions.strict}. Warns on partially-
+ * implemented keywords (currently `$dynamicRef`); silent on unknown
+ * keys. Callers opt into stricter behaviour with `"strict"` or opt
+ * out with `"off"`.
+ */
+const DEFAULT_STRICT_MODE = "warn-partial" as const;
+
+function runStrictLint(
+  schema: SchemaOrBoolean,
+  byKeyword: Map<string, KeywordDefinition>,
+  mode: "warn-partial" | "strict",
+): StrictIssue[] {
+  // The full set of names the active dialect recognises, including
+  // `implements` entries on existing definitions (e.g. `if` implements
+  // `then` + `else`; those don't have their own KeywordDefinition but
+  // are legitimate keys).
+  const known = new Set<string>(byKeyword.keys());
+  for (const def of byKeyword.values()) {
+    if (def.implements) for (const k of def.implements) known.add(k);
+  }
+
+  const issues: StrictIssue[] = [];
+  walkSubschemas(schema, (node, path) => {
+    if (typeof node !== "object" || node === null || Array.isArray(node)) return;
+    for (const key of Object.keys(node)) {
+      const def = byKeyword.get(key);
+      if (def?.partial !== undefined) {
+        issues.push({
+          code: "partial-feature",
+          keyword: key,
+          path,
+          message: `"${key}" is partially supported: ${def.partial}`,
+        });
+        continue;
+      }
+      if (mode !== "strict") continue;
+      if (known.has(key)) continue;
+      // `x-*` extensions are tolerated by OpenAPI convention; accept
+      // them in strict mode too.
+      if (key.startsWith("x-")) continue;
+      issues.push({
+        code: "unknown-keyword",
+        keyword: key,
+        path,
+        message:
+          path.length === 0
+            ? `unknown keyword "${key}" at <root>`
+            : `unknown keyword "${key}" at "${path}"`,
+      });
+    }
+  });
+  return issues;
+}
 
 /**
  * Result of compiling a JSON Schema 2020-12 document. The shape mirrors what
@@ -72,6 +128,38 @@ export interface CompileStats {
    * mode contract can be asserted without grepping the generated JS.
    */
   emittedTreeRuntime: boolean;
+  /**
+   * Warnings produced by {@link CompileOptions.strict}. Empty unless
+   * strict mode is active and found something to flag. Never contains
+   * compile-blocking issues — strict mode only reports; the caller
+   * decides whether to treat any entry as fatal.
+   */
+  strictIssues: readonly StrictIssue[];
+}
+
+/**
+ * A single finding from strict-mode schema linting (see
+ * {@link CompileOptions.strict}).
+ *
+ * @public
+ */
+export interface StrictIssue {
+  /**
+   * - `"partial-feature"`: the schema uses a keyword flagged as
+   *   partially-implemented (e.g. `$dynamicRef` without runtime
+   *   dynamic-scope rebinding). Compile still succeeds; the emitted
+   *   validator's semantics for this keyword may not match the spec.
+   * - `"unknown-keyword"`: the schema declares a key that's not in the
+   *   active dialect, not an `x-*` extension, and not a standard
+   *   `$`-prefixed metadata key. Likely a typo.
+   */
+  code: "partial-feature" | "unknown-keyword";
+  /** The offending keyword / key name as written in the schema. */
+  keyword: string;
+  /** Dotted path from the root schema to the subschema holding the key. */
+  path: string;
+  /** Human-readable explanation. */
+  message: string;
 }
 
 /**
@@ -178,6 +266,19 @@ export interface CompileOptions {
    * `maxErrors: 1` is the classic fast-fail mode.
    */
   maxErrors?: number;
+  /**
+   * Compile-time schema linting. All modes collect to
+   * {@link CompileStats.strictIssues} rather than throwing.
+   *
+   * - `"off"`: silence on everything (pre-v-strict behaviour).
+   * - `"warn-partial"` (default): warn on keywords flagged as
+   *   partially-implemented (currently `$dynamicRef` — its runtime
+   *   dynamic-scope rebinding is not emitted).
+   * - `"strict"`: warn on partial features AND unknown keys (keys not
+   *   in the active dialect, not `x-*` extensions, not standard
+   *   `$`-prefixed metadata). Catches typos like `minimumx: 5`.
+   */
+  strict?: "off" | "warn-partial" | "strict";
 
   // --- 4. Schema-compile-specific extras ---
 
@@ -418,10 +519,14 @@ export function compileSchema(
   const rootName = compileValidator(schema, state);
 
   const wholeSource = assembleSource(state, rootName);
+  const strictMode = options.strict ?? DEFAULT_STRICT_MODE;
+  const strictIssues: readonly StrictIssue[] =
+    strictMode === "off" ? [] : runStrictLint(schema, byKeyword, strictMode);
   const stats: CompileStats = {
     functionCount: state.nextFn,
     unevaluatedTrackingEmitted: state.unevaluatedEmitted,
     emittedTreeRuntime: TREE_RUNTIME_HELPERS.test(wholeSource),
+    strictIssues,
   };
   if (predicate) {
     const factory = new Function(NAMES.DEPS, wholeSource) as (

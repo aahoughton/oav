@@ -43,9 +43,13 @@ Capabilities that the Ajv stack covers and oav does not.
   and `$id` base-URI rewrites natively. oav requires external /
   multi-file refs to be pre-inlined by `@aahoughton/oav/spec.resolveSpec()`
   before compile, and accepts fragment-only refs thereafter.
-- **Meta-schema strict mode.** Ajv can optionally validate your schema
-  against the draft's meta-schema at compile time, catching typos like
-  `minimumx: 5`. oav silently tolerates unknown keywords.
+- **Full meta-schema validation.** Ajv can validate your schema
+  against the draft's meta-schema at compile time, catching both
+  unknown-keyword typos and wrong value shapes (e.g. `minimum: "5"`
+  when it should be a number). oav ships a narrower `strict` option
+  that catches unknown-keyword typos (`minimumx: 5`) and flags
+  partially-implemented features; it doesn't yet check value shapes
+  against the meta-schema.
 - **`$data` references.** Ajv's non-standard extension where one
   keyword's value comes from the data being validated
   (`{ minimum: { $data: "1/min" } }`). oav doesn't implement it.
