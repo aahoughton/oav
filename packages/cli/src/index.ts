@@ -1,8 +1,10 @@
 export { buildProgram } from "./cli.js";
 export {
   compileCommand,
+  defaultCommandIo,
   resolveCommand,
   validateCommand,
+  type CommandIo,
   type CommandOptions,
   type CommandResult,
   type ValidateMode,

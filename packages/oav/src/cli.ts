@@ -23,8 +23,19 @@ try {
   throw err;
 }
 
-const { buildProgram } = await import("@oav/cli");
-const program = buildProgram();
+const { buildProgram, defaultCommandIo } = await import("@oav/cli");
+const { composeReaders } = await import("@oav/spec");
+const { createYamlFileReader, createYamlHttpReader } = await import("./yaml.js");
+
+// Default I/O composes the YAML readers shipped with this package in
+// front of the JSON-only readers baked into @oav/cli's defaultCommandIo,
+// so `oav resolve spec.yaml` works out of the box.
+const baseIo = defaultCommandIo();
+const io = {
+  ...baseIo,
+  reader: composeReaders([createYamlFileReader(), createYamlHttpReader(), baseIo.reader]),
+};
+const program = buildProgram({ io });
 try {
   await program.parseAsync(process.argv);
 } catch (err) {

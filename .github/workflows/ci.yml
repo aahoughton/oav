@@ -127,8 +127,9 @@ jobs:
 
   pack-smoke:
     # Catches `exports` map / `files` / bundler regressions that unit
-    # tests don't surface. Packs the publish tarball, installs it into
-    # a fresh sandbox, and imports each documented subpath.
+    # tests don't surface. Packs both publish tarballs
+    # (`@aahoughton/oav-core` + `@aahoughton/oav`), installs them into
+    # fresh sandboxes, and imports each documented subpath.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -141,17 +142,24 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-      - run: pnpm pack
-      - name: smoke-import the packed tarball
+      - name: pack both publishable workspace packages
         run: |
           set -euo pipefail
-          TARBALL="$(ls aahoughton-oav-*.tgz | head -n1)"
-          mkdir -p /tmp/smoke && cd /tmp/smoke
+          mkdir -p "$GITHUB_WORKSPACE/packed"
+          pnpm pack --pack-destination "$GITHUB_WORKSPACE/packed"
+          (cd packages/oav && pnpm pack --pack-destination "$GITHUB_WORKSPACE/packed")
+          ls -1 "$GITHUB_WORKSPACE/packed"
+      - name: smoke-import @aahoughton/oav-core
+        run: |
+          set -euo pipefail
+          CORE_TGZ="$(ls "$GITHUB_WORKSPACE/packed"/aahoughton-oav-core-*.tgz | head -n1)"
+          rm -rf /tmp/smoke-core && mkdir -p /tmp/smoke-core && cd /tmp/smoke-core
           npm init -y > /dev/null
-          npm install "$GITHUB_WORKSPACE/$TARBALL"
+          npm install "$CORE_TGZ"
           cat > smoke.mjs <<'EOF'
-          import { createValidator } from "@aahoughton/oav";
-          import { compileSchema, jsonSchemaDialect } from "@aahoughton/oav/schema";
+          import { createValidator } from "@aahoughton/oav-core";
+          import { compileSchema, jsonSchemaDialect } from "@aahoughton/oav-core/schema";
+          import { createFileReader } from "@aahoughton/oav-core/spec";
           const v = createValidator({
             openapi: "3.1.0",
             info: { title: "t", version: "1" },
@@ -169,6 +177,59 @@ jobs:
           }
           const { validate } = compileSchema({ type: "integer" }, { dialect: jsonSchemaDialect });
           if (!validate(42).valid) throw new Error("expected valid");
-          console.log("smoke ok");
+          // oav-core's JSON-only reader should refuse .yaml paths with an install-hint error.
+          let threw = false;
+          try {
+            await createFileReader().read("dummy.yaml");
+          } catch (e) {
+            threw = /Install @aahoughton\/oav/.test(String(e?.message ?? ""));
+          }
+          if (!threw) throw new Error("expected oav-core's createFileReader to reject .yaml with an install hint");
+          console.log("oav-core smoke ok");
           EOF
           node smoke.mjs
+      - name: smoke-import @aahoughton/oav
+        run: |
+          set -euo pipefail
+          CORE_TGZ="$(ls "$GITHUB_WORKSPACE/packed"/aahoughton-oav-core-*.tgz | head -n1)"
+          OAV_TGZ="$(ls "$GITHUB_WORKSPACE/packed"/aahoughton-oav-[0-9]*.tgz | head -n1)"
+          rm -rf /tmp/smoke-oav && mkdir -p /tmp/smoke-oav && cd /tmp/smoke-oav
+          npm init -y > /dev/null
+          # Install both tarballs in one shot so `@aahoughton/oav`'s
+          # dependency on `@aahoughton/oav-core` resolves against the
+          # locally-packed artifact, not the registry.
+          npm install commander "$CORE_TGZ" "$OAV_TGZ"
+          cat > smoke.mjs <<'EOF'
+          import { createValidator, createYamlFileReader, parseYamlString } from "@aahoughton/oav";
+          import { compileSchema, jsonSchemaDialect } from "@aahoughton/oav/schema";
+          import { composeReaders, createFileReader } from "@aahoughton/oav/spec";
+          const v = createValidator({
+            openapi: "3.1.0",
+            info: { title: "t", version: "1" },
+            paths: {
+              "/x": {
+                post: {
+                  requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["a"] } } } },
+                  responses: { "200": { description: "ok" } },
+                },
+              },
+            },
+          });
+          if (v.validateRequest({ method: "POST", path: "/x", contentType: "application/json", body: {} }) === null) {
+            throw new Error("expected invalid");
+          }
+          const { validate } = compileSchema({ type: "integer" }, { dialect: jsonSchemaDialect });
+          if (!validate(42).valid) throw new Error("expected valid");
+          const parsed = parseYamlString("openapi: 3.1.0\ninfo: { title: t, version: '1' }\npaths: {}");
+          if (parsed.openapi !== "3.1.0") throw new Error("parseYamlString regression");
+          // composeReaders must accept the YAML reader from @aahoughton/oav
+          // alongside oav-core's JSON readers.
+          const reader = composeReaders([createYamlFileReader(), createFileReader()]);
+          if (!reader.canRead("spec.yaml") || !reader.canRead("spec.json")) {
+            throw new Error("composed reader should claim both .yaml and .json");
+          }
+          console.log("oav smoke ok");
+          EOF
+          node smoke.mjs
+          # CLI should be present in bin; verify --help exits 0
+          npx oav --help > /dev/null
