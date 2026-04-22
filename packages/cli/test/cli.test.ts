@@ -131,4 +131,39 @@ describe("buildProgram — argv-level", () => {
       ),
     ).rejects.toThrow(/unknown format: xml/);
   });
+
+  it("compile emits an ESM module for a JSON Schema to stdout", async () => {
+    const schema = { type: "object", required: ["name"], properties: { name: { type: "string" } } };
+    const { io } = memoryIo([], [["schema.json", JSON.stringify(schema)]]);
+    const out = await runCli(["compile", "schema.json"], io);
+    expect(out.exitCode).toBe(0);
+    expect(out.stdout).toContain("export { validate };");
+    expect(out.stdout).toContain("import { builtInFormats");
+  });
+
+  it("compile -o writes the module to the given path", async () => {
+    const schema = { type: "integer" };
+    const { io, writes } = memoryIo([], [["schema.json", JSON.stringify(schema)]]);
+    const out = await runCli(["compile", "schema.json", "-o", "v.mjs"], io);
+    expect(out.exitCode).toBe(0);
+    expect(writes).toHaveLength(1);
+    expect(writes[0]?.[0]).toBe("v.mjs");
+    expect(writes[0]?.[1]).toContain("export { validate };");
+  });
+
+  it("compile rejects an unknown --dialect with a usage error", async () => {
+    const { io } = memoryIo([], [["schema.json", "{}"]]);
+    await expect(runCli(["compile", "schema.json", "--dialect", "draft-07"], io)).rejects.toThrow(
+      /unknown dialect: draft-07/,
+    );
+  });
+
+  it("compile surfaces unknown-format errors on stderr with exit 3", async () => {
+    const schema = { type: "string", format: "phone-number" };
+    const { io } = memoryIo([], [["schema.json", JSON.stringify(schema)]]);
+    const out = await runCli(["compile", "schema.json"], io);
+    expect(out.exitCode).toBe(3);
+    expect(out.stderr).toContain("phone-number");
+    expect(out.stderr).toContain("built-in");
+  });
 });
