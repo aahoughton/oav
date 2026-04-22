@@ -16,7 +16,8 @@
       "@oav/router": ["./packages/router/src/index.ts"],
       "@oav/validator": ["./packages/validator/src/index.ts"],
       "@oav/validator/internals": ["./packages/validator/src/internals.ts"],
-      "@oav/cli": ["./packages/cli/src/index.ts"]
+      "@oav/cli": ["./packages/cli/src/index.ts"],
+      "@oav/oav": ["./packages/oav/src/index.ts"]
     }
   },
   "include": ["src/**/*", "packages/*/src/**/*"],

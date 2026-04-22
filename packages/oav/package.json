@@ -1,7 +1,7 @@
 {
-  "name": "@aahoughton/oav-core",
+  "name": "@aahoughton/oav",
   "version": "0.0.0",
-  "description": "HTTP-aware OpenAPI request/response validator with a JSON Schema codegen compiler. Zero runtime dependencies; install @aahoughton/oav for the batteries-included experience (YAML readers + CLI).",
+  "description": "HTTP-aware OpenAPI request/response validator. Batteries-included distribution: re-exports @aahoughton/oav-core, adds YAML readers, ships the `oav` CLI. For a zero-runtime-dep install, use @aahoughton/oav-core directly.",
   "keywords": [
     "cli",
     "http",
@@ -14,7 +14,8 @@
     "openapi3",
     "schema",
     "validation",
-    "validator"
+    "validator",
+    "yaml"
   ],
   "homepage": "https://github.com/aahoughton/oav#readme",
   "bugs": {
@@ -24,12 +25,15 @@
   "author": "Andrew Houghton <aah@roarmouse.org>",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/aahoughton/oav.git"
+    "url": "git+https://github.com/aahoughton/oav.git",
+    "directory": "packages/oav"
+  },
+  "bin": {
+    "oav": "./dist/cli.js"
   },
   "files": [
     "dist",
-    "README.md",
-    "LICENSE"
+    "README.md"
   ],
   "type": "module",
   "sideEffects": false,
@@ -74,28 +78,40 @@
     },
     "./package.json": "./package.json"
   },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "scripts": {
-    "preinstall": "npx -y only-allow pnpm",
-    "build": "tsup && pnpm --filter @aahoughton/oav build",
+    "build": "tsup",
     "test": "vitest run",
-    "test:watch": "vitest",
-    "lint": "oxlint && oxfmt --check .",
-    "fmt": "oxfmt --write .",
-    "typecheck": "tsc -b",
-    "prepublishOnly": "pnpm build && pnpm test"
+    "typecheck": "tsc -b"
+  },
+  "dependencies": {
+    "@aahoughton/oav-core": "workspace:*",
+    "yaml": "^2.6.0"
   },
   "devDependencies": {
-    "@types/node": "25.6.0",
-    "commander": "14.0.3",
-    "oxfmt": "0.46.0",
-    "oxlint": "1.61.0",
+    "@oav/cli": "workspace:*",
+    "@oav/core": "workspace:*",
+    "@oav/formats": "workspace:*",
+    "@oav/schema": "workspace:*",
+    "@oav/spec": "workspace:*",
+    "@oav/validator": "workspace:*",
+    "commander": "^14.0.0",
     "tsup": "8.5.1",
     "typescript": "5.9.3",
-    "vitest": "4.1.5",
-    "yaml": "2.8.3"
+    "vitest": "4.1.5"
+  },
+  "peerDependencies": {
+    "commander": "^14.0.0"
+  },
+  "peerDependenciesMeta": {
+    "commander": {
+      "optional": true
+    }
   },
   "engines": {
-    "node": ">=22"
-  },
-  "packageManager": "pnpm@10.33.0"
+    "node": ">=20"
+  }
 }

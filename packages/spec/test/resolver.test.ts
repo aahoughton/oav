@@ -73,19 +73,6 @@ describe("resolveSpec", () => {
     expect(sources).toContain("schemas/pet.json");
   });
 
-  it("handles YAML and JSON inputs interchangeably", async () => {
-    const reader = createMemoryReader(
-      new Map<string, unknown>([
-        [
-          "main.yaml",
-          "openapi: 3.1.0\ninfo:\n  title: X\n  version: '1'\npaths:\n  /x: { get: { responses: { '200': { description: ok } } } }",
-        ],
-      ]),
-    );
-    const { document } = await resolveSpec({ reader, entry: "main.yaml" });
-    expect(document.info.title).toBe("X");
-  });
-
   it("detects and short-circuits circular refs without infinite recursion", async () => {
     const reader = createMemoryReader(
       new Map<string, unknown>([

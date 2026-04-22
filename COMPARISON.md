@@ -132,13 +132,15 @@ Ajv 8 has four runtime dependencies:
 | `fast-uri`             | RFC 3986 URI parsing for `$id` / `$ref` resolution              |
 | `require-from-string`  | Load compiled-validator source as a module (standalone codegen) |
 
-oav's compiler and validator have zero runtime dependencies. The
-package publishes `yaml` as a runtime dep for the spec-loading
-sub-package and `commander` as an optional peer for the CLI. The two
-efficiency libraries Ajv pulls in (`fast-deep-equal`,
-`json-schema-traverse`) have equivalents in-tree; the two capability
-libraries (`fast-uri`, `require-from-string`) map to features oav
-doesn't implement (see "Where Ajv does more" above).
+oav's compiler and validator have zero runtime dependencies. The lean
+`@aahoughton/oav-core` package ships exactly that — no runtime deps —
+and accepts JSON specs. The batteries-included `@aahoughton/oav`
+package layers `yaml` on top for `.yaml` spec files and adds the `oav`
+CLI (with `commander` as an optional peer). The two efficiency
+libraries Ajv pulls in (`fast-deep-equal`, `json-schema-traverse`)
+have equivalents in-tree; the two capability libraries (`fast-uri`,
+`require-from-string`) map to features oav doesn't implement (see
+"Where Ajv does more" above).
 
 ## Summary
 

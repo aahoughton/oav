@@ -13,8 +13,7 @@
     }
   },
   "dependencies": {
-    "@oav/core": "workspace:*",
-    "yaml": "2.8.3"
+    "@oav/core": "workspace:*"
   },
   "engines": {
     "node": ">=20"

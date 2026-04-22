@@ -2,22 +2,27 @@ import { defineConfig } from "tsup";
 import { workspaceAliases } from "./workspace-aliases.js";
 
 /**
- * Single-package build for the publishable `oav`.
+ * Build config for the publishable `@aahoughton/oav-core` — the lean
+ * validator tarball with zero runtime dependencies. Each entry
+ * becomes a subpath:
  *
- * Each entry becomes a subpath in the published package:
- *   src/index.ts               →  "oav"
- *   src/schema.ts              →  "oav/schema"
- *   src/schema-internals.ts    →  "oav/schema/internals"
- *   src/spec.ts                →  "oav/spec"
- *   src/formats.ts             →  "oav/formats"
- *   src/core.ts                →  "oav/core"
- *   src/validator-internals.ts →  "oav/validator/internals"
- *   src/cli.ts                 →  "oav" binary
+ *   src/index.ts               →  "oav-core"
+ *   src/schema.ts              →  "oav-core/schema"
+ *   src/schema-internals.ts    →  "oav-core/schema/internals"
+ *   src/spec.ts                →  "oav-core/spec"
+ *   src/formats.ts             →  "oav-core/formats"
+ *   src/core.ts                →  "oav-core/core"
+ *   src/validator-internals.ts →  "oav-core/validator/internals"
  *
  * The internal `@oav/*` workspace packages are redirected to their
  * source via the esbuild `alias` option, then bundled in as normal
- * modules so consumers never see them. Only true runtime dependencies
- * (commander, yaml) stay external.
+ * modules so consumers never see them.
+ *
+ * The companion `@aahoughton/oav` package (`packages/oav/`) builds
+ * separately and carries the YAML readers + CLI — the batteries-
+ * included experience that depends on this package. Keeping the CLI
+ * and YAML parsing out of this tarball is what delivers the zero-
+ * runtime-dependency claim.
  */
 export default defineConfig({
   entry: {
@@ -28,7 +33,6 @@ export default defineConfig({
     formats: "src/formats.ts",
     core: "src/core.ts",
     "validator-internals": "src/validator-internals.ts",
-    cli: "src/cli.ts",
   },
   format: ["esm", "cjs"],
   dts: true,
@@ -37,7 +41,6 @@ export default defineConfig({
   splitting: true,
   target: "es2022",
   tsconfig: "tsconfig.build.json",
-  external: ["commander", "yaml"],
   esbuildOptions(options) {
     options.alias = workspaceAliases(__dirname);
   },

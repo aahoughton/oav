@@ -19,14 +19,27 @@ walk programmatically.
 
 ## Install
 
+`oav` ships in two packages so consumers on constrained runtimes can
+skip what they don't use:
+
+| Package                | When to use                                                                                                                                                                                    |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@aahoughton/oav`      | Default. Batteries-included: adds YAML readers and the `oav` CLI. Depends on `yaml`; `commander` is an optional peer for the CLI.                                                              |
+| `@aahoughton/oav-core` | Lean alternative. Zero runtime dependencies. Same programmatic surface as `@aahoughton/oav`, minus the YAML readers and CLI. Feed it JSON specs (or pre-parsed objects via the memory reader). |
+
 ```bash
 npm install @aahoughton/oav
 # or: pnpm add @aahoughton/oav
 ```
 
-The library has a single runtime dependency (`yaml`). The `oav` CLI
-additionally needs `commander`, declared as an optional peer — if you
-plan to use the CLI, add it explicitly:
+```bash
+npm install @aahoughton/oav-core           # lean install, JSON-only
+```
+
+`@aahoughton/oav` re-exports everything from `@aahoughton/oav-core` at
+matching subpaths, so the code samples below work verbatim against
+either package — just swap the import specifier. If you plan to use the
+CLI, add `commander`:
 
 ```bash
 npm install @aahoughton/oav commander
@@ -35,10 +48,10 @@ npm install @aahoughton/oav commander
 ## Quick start
 
 ```ts
-import { createValidator, formatText } from "@aahoughton/oav";
+import { createValidator, createYamlFileReader, formatText } from "@aahoughton/oav";
 import { composeReaders, createFileReader, loadSpec } from "@aahoughton/oav/spec";
 
-const reader = composeReaders([createFileReader()]);
+const reader = composeReaders([createYamlFileReader(), createFileReader()]);
 const { document } = await loadSpec({ reader, entry: "openapi.yaml" });
 const validator = createValidator(document);
 
@@ -216,7 +229,9 @@ OpenAPI 3.0 semantics, overlays, and no monkey-patching of `req` or
 
 ## Modules
 
-The package publishes a small root and four subpath entrypoints:
+The package publishes a small root and four subpath entrypoints.
+`@aahoughton/oav-core` exposes the same five entrypoints; substitute
+`@aahoughton/oav-core/...` to import from the lean package.
 
 | Import                    | Surface                                                  |
 | ------------------------- | -------------------------------------------------------- |
@@ -226,7 +241,9 @@ The package publishes a small root and four subpath entrypoints:
 | `@aahoughton/oav/formats` | Built-in string format validators                        |
 | `@aahoughton/oav/core`    | Error tree model, shared OpenAPI / HTTP types            |
 
-The `oav` CLI is installed as a `bin` by the same package.
+`@aahoughton/oav` also exports `createYamlFileReader`,
+`createYamlHttpReader`, and `parseYamlString` at the root entry, and
+ships the `oav` CLI as a `bin`.
 
 ## Examples
 

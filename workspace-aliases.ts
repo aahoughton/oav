@@ -5,7 +5,16 @@ import { resolve } from "node:path";
 // has its own copy under "paths" because JSON cannot import TS — keep it
 // in sync when adding a new workspace package.
 
-const PACKAGES = ["core", "schema", "formats", "spec", "router", "validator", "cli"] as const;
+const PACKAGES = [
+  "core",
+  "schema",
+  "formats",
+  "spec",
+  "router",
+  "validator",
+  "cli",
+  "oav",
+] as const;
 
 export function workspaceAliases(rootDir: string): Record<string, string> {
   // Sub-path barrel keys (more specific) come first so bundlers that
