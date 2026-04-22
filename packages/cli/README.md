@@ -38,6 +38,10 @@ oav compile <schema.json> --dialect openapi-3.0              # pick a non-defaul
 
 Pass `-` as the file path to read from stdin (e.g. `--body -`).
 
+`<spec>` and `--overlay <file>` accept local paths, `file://` URIs,
+and `http://` / `https://` URLs (both JSON and YAML over HTTP). Relative
+`$ref`s inside a URL-hosted spec resolve against the URL's base.
+
 ## Flags
 
 | Flag                                          | Command            | Meaning                                               |

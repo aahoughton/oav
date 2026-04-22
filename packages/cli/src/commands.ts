@@ -9,6 +9,7 @@ import {
 import {
   composeReaders,
   createFileReader,
+  createHttpReader,
   loadSpec,
   type DocumentReader,
   type SpecOverlay,
@@ -71,7 +72,13 @@ async function readAllStdin(): Promise<string> {
  */
 export function defaultCommandIo(): CommandIo {
   return {
-    reader: composeReaders([createFileReader()]),
+    // File reader first so `./spec.json` resolves locally without a
+    // stat against the HTTP reader (which would reject it via
+    // canRead anyway, but clearer ordering). HTTP reader accepts
+    // `http:` / `https:` URIs; the YAML-over-HTTP story rides on
+    // top of this chain in `@aahoughton/oav`'s CLI wrapper, which
+    // composes YAML readers in front of whatever we return here.
+    reader: composeReaders([createFileReader(), createHttpReader()]),
     async readText(pathOrDash: string) {
       if (pathOrDash === "-") return readAllStdin();
       return readFile(pathOrDash, "utf8");

@@ -1,8 +1,40 @@
-import { describe, expect, it } from "vitest";
-import { resolveCommand, validateCommand, type CommandOptions } from "../src/commands.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  defaultCommandIo,
+  resolveCommand,
+  validateCommand,
+  type CommandOptions,
+} from "../src/commands.js";
 import { memoryIo } from "./fixtures.js";
 
 const textOpts: CommandOptions = { format: "text", quiet: false };
+
+describe("defaultCommandIo", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("accepts http:// and https:// URIs without extra wiring", async () => {
+    const spec = { openapi: "3.1.0", info: { title: "URL Spec", version: "1" }, paths: {} };
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(spec), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const io = defaultCommandIo();
+    // Bypass io.stdout / process.stdout for the assertion: we only
+    // care that the chain claimed + fetched the URL.
+    expect(io.reader.canRead("https://example.com/spec.json")).toBe(true);
+    const loaded = await io.reader.read("https://example.com/spec.json");
+    expect(loaded).toEqual(spec);
+    expect(fetchMock).toHaveBeenCalledWith("https://example.com/spec.json");
+  });
+
+  it("still rejects .yaml URLs at the JSON reader layer with the install-hint error", async () => {
+    const io = defaultCommandIo();
+    await expect(io.reader.read("https://example.com/spec.yaml")).rejects.toThrow(
+      /Install @aahoughton\/oav/,
+    );
+  });
+});
 
 describe("resolveCommand", () => {
   it("stitches overlays into the resolved spec", async () => {

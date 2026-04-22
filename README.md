@@ -242,8 +242,9 @@ The package publishes a small root and four subpath entrypoints.
 | `@aahoughton/oav/core`    | Error tree model, shared OpenAPI / HTTP types            |
 
 `@aahoughton/oav` also exports `createYamlFileReader`,
-`createYamlHttpReader`, and `parseYamlString` at the root entry, and
-ships the `oav` CLI as a `bin`.
+`createSmartHttpReader` (HTTP reader that handles both JSON and YAML
+by inspecting `Content-Type`), and `parseYamlString` at the root entry,
+and ships the `oav` CLI as a `bin`.
 
 ## Examples
 

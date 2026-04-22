@@ -56,14 +56,21 @@ Built-ins (JSON only — YAML support lives in `@aahoughton/oav`):
 - `composeReaders([...])` — layers readers, dispatching by `canRead`.
 
 `@aahoughton/oav` additionally exports `createYamlFileReader`,
-`createYamlHttpReader`, and `parseYamlString` for YAML-backed specs.
-Compose them ahead of the JSON readers:
+`createSmartHttpReader`, and `parseYamlString` for YAML-backed specs.
+`createSmartHttpReader` supersedes the JSON-only `createHttpReader`
+when composed — it claims every `http(s)` URI and dispatches by
+response `Content-Type` (falling back to URL extension), so JSON and
+YAML endpoints work through the same reader:
 
 ```ts
 import { composeReaders, createFileReader } from "@aahoughton/oav/spec";
-import { createYamlFileReader } from "@aahoughton/oav";
+import { createSmartHttpReader, createYamlFileReader } from "@aahoughton/oav";
 
-const reader = composeReaders([createYamlFileReader(), createFileReader()]);
+const reader = composeReaders([
+  createYamlFileReader(),
+  createSmartHttpReader(),
+  createFileReader(),
+]);
 ```
 
 Write a custom reader (S3, blob store, bundled assets) by implementing
