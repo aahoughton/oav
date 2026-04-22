@@ -2,6 +2,7 @@ import type {
   HttpMethod,
   OpenAPIDocument,
   OperationObject,
+  ParameterLocation,
   ParameterObject,
   PathItem,
   RequestBodyObject,
@@ -22,30 +23,59 @@ export interface PathOverride {
 }
 
 /**
- * Recipe for merging into a single {@link OperationObject}.
+ * Recipe for patching a single {@link OperationObject}. Each field is
+ * independent; use any subset. Supported verbs across the patchable
+ * slots are summarised below.
+ *
+ * Conflict rules applied by {@link applyOverlays}:
+ * - `replace` is wholesale and cannot be combined with the additive /
+ *   removal fields below. Setting both throws at apply time.
+ * - `removeParameters` / `removeResponses` silently no-op when the
+ *   target isn't present — wildcard overrides (`"*"`) fan out to many
+ *   operations and can't assume every target has the same surface.
  *
  * @public
  */
 export interface OperationOverride {
-  /** Parameters to add/replace. Replacement is by (`name`, `in`) pair. */
-  addParameters?: ParameterObject[];
+  /** Replace the whole OperationObject. Mutually exclusive with the additive / remove fields. */
+  replace?: OperationObject;
+  /**
+   * Add-or-replace parameters by (`name`, `in`). Existing entries with
+   * the same key are overwritten; anything else appends.
+   * Reference-object entries (`{ $ref: … }`) in the base can't be
+   * matched without resolution, so new parameters with the same key
+   * append alongside them rather than replacing.
+   */
+  upsertParameters?: ParameterObject[];
+  /** Remove parameters by (`name`, `in`). Silent no-op on missing entries. */
+  removeParameters?: Array<{ name: string; in: ParameterLocation }>;
   /** Replace the request body entirely. */
   requestBody?: RequestBodyObject;
-  /** Merge-by-key (status code) into responses. */
+  /** Merge-by-status-code into responses. Status codes present in both base and override take the override. */
   responses?: Record<string, ResponseObject>;
+  /** Remove response status codes. Silent no-op on missing entries. */
+  removeResponses?: string[];
 }
 
 /**
- * A spec overlay: instructions to patch the base OpenAPI document. Overlays
- * apply in order; later overlays win on conflict.
+ * A spec overlay: instructions to patch the base OpenAPI document.
+ * Overlays apply in order; later overlays win on conflict.
  *
  * @public
  */
 export interface SpecOverlay {
+  /** Add new paths. Throws if a target path already exists in the base document. */
   addPaths?: Record<string, PathItem>;
+  /** Remove paths. Throws if a target path isn't present in the base document. */
+  removePaths?: string[];
+  /** Per-path modifications; see {@link PathOverride}. */
   overrides?: Record<string, PathOverride>;
+  /** Extend a component schema via `allOf` (original + extension both apply). */
   extendSchemas?: Record<string, SchemaObject>;
+  /** Replace a component schema wholesale. */
   replaceSchemas?: Record<string, SchemaObject>;
+  /** Remove component schemas. Throws if a target schema isn't present. */
+  removeSchemas?: string[];
 }
 
 const METHODS: HttpMethod[] = ["get", "put", "post", "delete", "options", "head", "patch", "trace"];
@@ -73,21 +103,32 @@ export function applyOverlays(base: OpenAPIDocument, overlays: SpecOverlay[]): O
 }
 
 function applyOverlay(doc: OpenAPIDocument, overlay: SpecOverlay): OpenAPIDocument {
+  assertNoSelfConflict(overlay);
   const next: OpenAPIDocument = { ...doc };
+  const paths: Record<string, PathItem> = { ...next.paths };
+  let pathsChanged = false;
 
   if (overlay.addPaths) {
-    const paths: Record<string, PathItem> = { ...next.paths };
     for (const [path, item] of Object.entries(overlay.addPaths)) {
       if (paths[path] !== undefined) {
         throw new Error(`overlay conflict: path ${path} already exists in the base document`);
       }
       paths[path] = item;
+      pathsChanged = true;
     }
-    next.paths = paths;
+  }
+
+  if (overlay.removePaths) {
+    for (const path of overlay.removePaths) {
+      if (paths[path] === undefined) {
+        throw new Error(`overlay removePaths targets unknown path ${path}`);
+      }
+      delete paths[path];
+      pathsChanged = true;
+    }
   }
 
   if (overlay.overrides) {
-    const paths: Record<string, PathItem> = { ...next.paths };
     for (const [pathPattern, override] of Object.entries(overlay.overrides)) {
       const matches = pathPattern === "*" ? Object.keys(paths) : [pathPattern];
       for (const path of matches) {
@@ -96,12 +137,14 @@ function applyOverlay(doc: OpenAPIDocument, overlay: SpecOverlay): OpenAPIDocume
           throw new Error(`overlay override targets unknown path ${path}`);
         }
         paths[path] = applyPathOverride(item, override);
+        pathsChanged = true;
       }
     }
-    next.paths = paths;
   }
 
-  if (overlay.extendSchemas || overlay.replaceSchemas) {
+  if (pathsChanged) next.paths = paths;
+
+  if (overlay.extendSchemas || overlay.replaceSchemas || overlay.removeSchemas) {
     const components = { ...next.components };
     const schemas: Record<string, SchemaObject> = {
       ...((components.schemas ?? {}) as Record<string, SchemaObject>),
@@ -117,11 +160,49 @@ function applyOverlay(doc: OpenAPIDocument, overlay: SpecOverlay): OpenAPIDocume
     for (const [name, replacement] of Object.entries(overlay.replaceSchemas ?? {})) {
       schemas[name] = replacement;
     }
+    for (const name of overlay.removeSchemas ?? []) {
+      if (schemas[name] === undefined) {
+        throw new Error(`overlay removeSchemas targets unknown schema ${name}`);
+      }
+      delete schemas[name];
+    }
     components.schemas = schemas;
     next.components = components;
   }
 
   return next;
+}
+
+/**
+ * Hard-reject overlays whose own fields contradict each other before
+ * we start mutating anything. A contradictory overlay is almost
+ * certainly a consumer bug, and silently picking a winner would hide
+ * it; surfacing the conflict with a location message is cheaper.
+ */
+function assertNoSelfConflict(overlay: SpecOverlay): void {
+  if (overlay.addPaths && overlay.removePaths) {
+    for (const p of overlay.removePaths) {
+      if (p in overlay.addPaths) {
+        throw new Error(`overlay self-conflict: addPaths and removePaths both name ${p}`);
+      }
+    }
+  }
+  if (overlay.replaceSchemas && overlay.removeSchemas) {
+    for (const name of overlay.removeSchemas) {
+      if (name in overlay.replaceSchemas) {
+        throw new Error(
+          `overlay self-conflict: replaceSchemas and removeSchemas both name ${name}`,
+        );
+      }
+    }
+  }
+  if (overlay.extendSchemas && overlay.removeSchemas) {
+    for (const name of overlay.removeSchemas) {
+      if (name in overlay.extendSchemas) {
+        throw new Error(`overlay self-conflict: extendSchemas and removeSchemas both name ${name}`);
+      }
+    }
+  }
 }
 
 function applyPathOverride(item: PathItem, override: PathOverride): PathItem {
@@ -144,10 +225,27 @@ function applyPathOverride(item: PathItem, override: PathOverride): PathItem {
 }
 
 function applyOperationOverride(op: OperationObject, override: OperationOverride): OperationObject {
+  if (override.replace !== undefined) {
+    for (const key of [
+      "upsertParameters",
+      "removeParameters",
+      "requestBody",
+      "responses",
+      "removeResponses",
+    ] as const) {
+      if (override[key] !== undefined) {
+        throw new Error(
+          `overlay conflict: OperationOverride.replace cannot be combined with ${key}`,
+        );
+      }
+    }
+    return override.replace;
+  }
+
   const next: OperationObject = { ...op };
-  if (override.addParameters) {
+  if (override.upsertParameters) {
     const existing = [...(op.parameters ?? [])];
-    for (const newParam of override.addParameters) {
+    for (const newParam of override.upsertParameters) {
       // Reference-object entries (`{ $ref: … }`) can't be matched by
       // (name, in) without resolving them; overlays apply pre-resolve
       // so we just skip matching against refs and append / overwrite
@@ -160,9 +258,30 @@ function applyOperationOverride(op: OperationObject, override: OperationOverride
     }
     next.parameters = existing;
   }
+  if (override.removeParameters) {
+    const existing = next.parameters ?? op.parameters ?? [];
+    const filtered = existing.filter(
+      (p) =>
+        !("name" in p) ||
+        !override.removeParameters!.some((r) => r.name === p.name && r.in === p.in),
+    );
+    if (filtered.length !== existing.length) next.parameters = filtered;
+  }
   if (override.requestBody) next.requestBody = override.requestBody;
   if (override.responses) {
     next.responses = { ...op.responses, ...override.responses };
+  }
+  if (override.removeResponses) {
+    const source = next.responses ?? op.responses ?? {};
+    const copy: Record<string, (typeof source)[string]> = { ...source };
+    let removed = false;
+    for (const status of override.removeResponses) {
+      if (status in copy) {
+        delete copy[status];
+        removed = true;
+      }
+    }
+    if (removed) next.responses = copy;
   }
   return next;
 }

@@ -8,8 +8,8 @@
  * you overlay the requirement onto the operation at load time.
  *
  * `overrides` reaches into an existing path's operations and merges
- * per-operation fragments. `addParameters` appends new parameters or
- * replaces (by `name` + `in`) concrete existing ones. The upstream
+ * per-operation fragments. `upsertParameters` appends new parameters
+ * or replaces (by `name` + `in`) concrete existing ones. The upstream
  * body schema is untouched; only the parameter list changes.
  *
  * Run from the repo root:
@@ -51,7 +51,7 @@ const overlay: SpecOverlay = {
     "/pets": {
       operations: {
         post: {
-          addParameters: [
+          upsertParameters: [
             { name: "X-Tenant", in: "header", required: true, schema: { type: "string" } },
           ],
         },
