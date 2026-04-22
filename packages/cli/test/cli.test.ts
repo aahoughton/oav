@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildProgram } from "../src/cli.js";
-import type { CommandIo } from "../src/commands.js";
-import { memoryIo } from "./fixtures.js";
+import { memoryIo, type MemoryIo } from "./fixtures.js";
 
 /**
  * Argv-level coverage of the Commander program. Previously the CLI
@@ -16,7 +15,7 @@ interface Captured {
   exitCode: number | undefined;
 }
 
-async function runCli(argv: string[], io: CommandIo): Promise<Captured> {
+async function runCli(argv: string[], mem: MemoryIo): Promise<Captured> {
   const out: Captured = { stdout: "", stderr: "", exitCode: undefined };
   class ExitTrap extends Error {
     constructor(public code: number) {
@@ -24,13 +23,7 @@ async function runCli(argv: string[], io: CommandIo): Promise<Captured> {
     }
   }
   const program = buildProgram({
-    io,
-    stdout: (c) => {
-      out.stdout += c;
-    },
-    stderr: (c) => {
-      out.stderr += c;
-    },
+    io: mem.io,
     exit: (code) => {
       throw new ExitTrap(code);
     },
@@ -44,6 +37,8 @@ async function runCli(argv: string[], io: CommandIo): Promise<Captured> {
       throw err;
     }
   }
+  out.stdout = mem.stdout.value;
+  out.stderr = mem.stderr.value;
   return out;
 }
 
@@ -73,95 +68,104 @@ const spec = {
 
 describe("buildProgram — argv-level", () => {
   it("resolve prints the stitched document and exits 0", async () => {
-    const { io } = memoryIo([["spec.json", spec]]);
-    const out = await runCli(["resolve", "spec.json"], io);
+    const mem = memoryIo([["spec.json", spec]]);
+    const out = await runCli(["resolve", "spec.json"], mem);
     expect(out.exitCode).toBe(0);
     const doc = JSON.parse(out.stdout);
     expect(doc.paths["/pets"]).toBeDefined();
   });
 
-  it("validate --path/--body happy path exits 0", async () => {
-    const { io } = memoryIo(
-      [["spec.json", spec]],
-      [["body.json", JSON.stringify({ name: "Fido" })]],
-    );
+  it("resolve -o writes to the file and stays silent on stdout", async () => {
+    const mem = memoryIo([["spec.json", spec]]);
+    const out = await runCli(["resolve", "spec.json", "-o", "resolved.json"], mem);
+    expect(out.exitCode).toBe(0);
+    expect(out.stdout).toBe("");
+    expect(mem.writes).toHaveLength(1);
+    expect(mem.writes[0]?.[0]).toBe("resolved.json");
+    expect(mem.writes[0]?.[1]).toContain('"openapi"');
+  });
+
+  it("validate --path/--body happy path exits 0 and stays silent", async () => {
+    const mem = memoryIo([["spec.json", spec]], [["body.json", JSON.stringify({ name: "Fido" })]]);
     const out = await runCli(
       ["validate", "spec.json", "--path", "POST /pets", "--body", "body.json"],
-      io,
+      mem,
     );
     expect(out.stderr, `stderr: ${out.stderr}`).toBe("");
+    expect(out.stdout).toBe("");
     expect(out.exitCode).toBe(0);
   });
 
   it("validate --path/--body failure exits 1 and prints an error", async () => {
-    const { io } = memoryIo([["spec.json", spec]], [["body.json", JSON.stringify({})]]);
+    const mem = memoryIo([["spec.json", spec]], [["body.json", JSON.stringify({})]]);
     const out = await runCli(
       ["validate", "spec.json", "--path", "POST /pets", "--body", "body.json"],
-      io,
+      mem,
     );
     expect(out.exitCode).toBe(1);
     expect(out.stdout).toContain("required");
   });
 
   it("validate without --request or --path is a usage error (exit 3)", async () => {
-    const { io } = memoryIo([["spec.json", spec]]);
-    const out = await runCli(["validate", "spec.json"], io);
+    const mem = memoryIo([["spec.json", spec]]);
+    const out = await runCli(["validate", "spec.json"], mem);
     expect(out.exitCode).toBe(3);
     expect(out.stderr).toContain("provide either --request");
   });
 
   it("validate --response requires --status", async () => {
-    const { io } = memoryIo([["spec.json", spec]], [["body.json", "{}"]]);
+    const mem = memoryIo([["spec.json", spec]], [["body.json", "{}"]]);
     const out = await runCli(
       ["validate", "spec.json", "--path", "POST /pets", "--body", "body.json", "--response"],
-      io,
+      mem,
     );
     expect(out.exitCode).toBe(3);
     expect(out.stderr).toContain("--response requires --status");
   });
 
   it("validate --format rejects unknown formats with a usage error", async () => {
-    const { io } = memoryIo([["spec.json", spec]], [["body.json", "{}"]]);
+    const mem = memoryIo([["spec.json", spec]], [["body.json", "{}"]]);
     // Commander surfaces its own error for argument-validator throws; exit 3
     // is driven by our catch block.
     await expect(
       runCli(
         ["validate", "spec.json", "--path", "POST /pets", "--body", "body.json", "--format", "xml"],
-        io,
+        mem,
       ),
     ).rejects.toThrow(/unknown format: xml/);
   });
 
   it("compile emits an ESM module for a JSON Schema to stdout", async () => {
     const schema = { type: "object", required: ["name"], properties: { name: { type: "string" } } };
-    const { io } = memoryIo([], [["schema.json", JSON.stringify(schema)]]);
-    const out = await runCli(["compile", "schema.json"], io);
+    const mem = memoryIo([], [["schema.json", JSON.stringify(schema)]]);
+    const out = await runCli(["compile", "schema.json"], mem);
     expect(out.exitCode).toBe(0);
     expect(out.stdout).toContain("export { validate };");
     expect(out.stdout).toContain("import { builtInFormats");
   });
 
-  it("compile -o writes the module to the given path", async () => {
+  it("compile -o writes the module to the given path and stays silent on stdout", async () => {
     const schema = { type: "integer" };
-    const { io, writes } = memoryIo([], [["schema.json", JSON.stringify(schema)]]);
-    const out = await runCli(["compile", "schema.json", "-o", "v.mjs"], io);
+    const mem = memoryIo([], [["schema.json", JSON.stringify(schema)]]);
+    const out = await runCli(["compile", "schema.json", "-o", "v.mjs"], mem);
     expect(out.exitCode).toBe(0);
-    expect(writes).toHaveLength(1);
-    expect(writes[0]?.[0]).toBe("v.mjs");
-    expect(writes[0]?.[1]).toContain("export { validate };");
+    expect(out.stdout).toBe("");
+    expect(mem.writes).toHaveLength(1);
+    expect(mem.writes[0]?.[0]).toBe("v.mjs");
+    expect(mem.writes[0]?.[1]).toContain("export { validate };");
   });
 
   it("compile rejects an unknown --dialect with a usage error", async () => {
-    const { io } = memoryIo([], [["schema.json", "{}"]]);
-    await expect(runCli(["compile", "schema.json", "--dialect", "draft-07"], io)).rejects.toThrow(
+    const mem = memoryIo([], [["schema.json", "{}"]]);
+    await expect(runCli(["compile", "schema.json", "--dialect", "draft-07"], mem)).rejects.toThrow(
       /unknown dialect: draft-07/,
     );
   });
 
   it("compile surfaces unknown-format errors on stderr with exit 3", async () => {
     const schema = { type: "string", format: "phone-number" };
-    const { io } = memoryIo([], [["schema.json", JSON.stringify(schema)]]);
-    const out = await runCli(["compile", "schema.json"], io);
+    const mem = memoryIo([], [["schema.json", JSON.stringify(schema)]]);
+    const out = await runCli(["compile", "schema.json"], mem);
     expect(out.exitCode).toBe(3);
     expect(out.stderr).toContain("phone-number");
     expect(out.stderr).toContain("built-in");

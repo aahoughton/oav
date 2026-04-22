@@ -30,18 +30,22 @@ export interface CommandOptions {
 }
 
 /**
- * Output of a command invocation: the exit code + optional rendered text.
+ * Output of a command invocation: just the exit code. Commands write
+ * their primary output through {@link CommandIo.stdout} (or the file
+ * sink when `--output` is set); errors go through
+ * {@link CommandIo.stderr}. Nothing is returned for the CLI layer to
+ * echo.
  *
  * @public
  */
 export interface CommandResult {
   exitCode: number;
-  output?: string;
 }
 
 /**
  * I/O substrate the commands talk to. Defaults to the local
- * filesystem + stdin; tests can pass an in-memory substitute.
+ * filesystem + stdin/stdout/stderr; tests can pass an in-memory
+ * substitute that captures writes for assertion.
  *
  * @public
  */
@@ -49,6 +53,8 @@ export interface CommandIo {
   reader: DocumentReader;
   readText(pathOrDash: string): Promise<string>;
   writeText(path: string, content: string): Promise<void>;
+  stdout: (chunk: string) => void;
+  stderr: (chunk: string) => void;
 }
 
 async function readAllStdin(): Promise<string> {
@@ -73,7 +79,32 @@ export function defaultCommandIo(): CommandIo {
     async writeText(path: string, content: string) {
       await writeFile(path, content);
     },
+    stdout: (chunk) => void process.stdout.write(chunk),
+    stderr: (chunk) => void process.stderr.write(chunk),
   };
+}
+
+/**
+ * Pick the primary output sink for a command:
+ * - `--output FILE` → write to file (unconditional; `--quiet` doesn't
+ *   suppress a deliberate file write).
+ * - else if `--quiet` → swallow.
+ * - else → `io.stdout`.
+ *
+ * Commands write exactly once through this sink, so `-o` naturally
+ * redirects the "would go to stdout" content to a file without
+ * duplicating it.
+ */
+function primarySink(
+  io: CommandIo,
+  opts: { output?: string; quiet: boolean },
+): (content: string) => Promise<void> | void {
+  if (opts.output !== undefined) {
+    const path = opts.output;
+    return (content) => io.writeText(path, content);
+  }
+  if (opts.quiet) return () => {};
+  return io.stdout;
 }
 
 /**
@@ -101,8 +132,8 @@ export async function resolveCommand(
     overlays: overlayDocs,
   });
   const out = JSON.stringify(document, null, 2);
-  if (args.options.output !== undefined) await io.writeText(args.options.output, out + "\n");
-  return { exitCode: 0, output: args.options.quiet ? undefined : out };
+  await primarySink(io, args.options)(out + "\n");
+  return { exitCode: 0 };
 }
 
 /**
@@ -155,13 +186,15 @@ export async function validateCommand(
       { status: args.mode.status, contentType: "application/json", body },
     );
   } else {
-    return { exitCode: 3, output: "validate: no action specified" };
+    io.stderr("validate: no action specified\n");
+    return { exitCode: 3 };
   }
 
-  if (err === null) return { exitCode: 0, output: args.options.quiet ? undefined : "" };
+  // Silence on success — no bare-newline leak, matches Unix convention.
+  if (err === null) return { exitCode: 0 };
   const rendered = formatError(err, args.options.format, args.options.depth);
-  if (args.options.output !== undefined) await io.writeText(args.options.output, rendered + "\n");
-  return { exitCode: 1, output: args.options.quiet ? undefined : rendered };
+  await primarySink(io, args.options)(rendered + "\n");
+  return { exitCode: 1 };
 }
 
 function tryJson(raw: string): unknown {
@@ -208,20 +241,20 @@ export async function compileCommand(
   try {
     parsed = JSON.parse(raw);
   } catch (err) {
-    return {
-      exitCode: 3,
-      output: `compile: ${args.schema} is not valid JSON (${(err as Error).message})`,
-    };
+    io.stderr(`compile: ${args.schema} is not valid JSON (${(err as Error).message})\n`);
+    return { exitCode: 3 };
   }
   let source: string;
   try {
     source = emitStandalone(parsed as SchemaOrBoolean, { dialect: args.dialect ?? "2020-12" });
   } catch (err) {
-    return { exitCode: 3, output: `compile: ${(err as Error).message}` };
+    io.stderr(`compile: ${(err as Error).message}\n`);
+    return { exitCode: 3 };
   }
   if (args.output !== undefined) {
     await io.writeText(args.output, source);
     return { exitCode: 0 };
   }
-  return { exitCode: 0, output: source };
+  io.stdout(source);
+  return { exitCode: 0 };
 }
