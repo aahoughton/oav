@@ -6,7 +6,7 @@ const textOpts: CommandOptions = { format: "text", quiet: false };
 
 describe("resolveCommand", () => {
   it("stitches overlays into the resolved spec", async () => {
-    const { io } = memoryIo([
+    const { io, stdout } = memoryIo([
       [
         "spec.json",
         {
@@ -25,14 +25,13 @@ describe("resolveCommand", () => {
       io,
     );
     expect(result.exitCode).toBe(0);
-    expect(result.output).toBeDefined();
-    const doc = JSON.parse(result.output ?? "");
+    const doc = JSON.parse(stdout.value);
     expect(doc.paths["/pets"]).toBeDefined();
     expect(doc.paths["/health"]).toBeDefined();
   });
 
-  it("writes the resolved spec to the output path when given", async () => {
-    const { io, writes } = memoryIo([
+  it("writes the resolved spec to the output path when given and stays silent on stdout", async () => {
+    const { io, writes, stdout } = memoryIo([
       [
         "spec.json",
         {
@@ -42,17 +41,20 @@ describe("resolveCommand", () => {
         },
       ],
     ]);
-    await resolveCommand(
+    const result = await resolveCommand(
       { spec: "spec.json", overlays: [], options: { ...textOpts, output: "out.json" } },
       io,
     );
+    expect(result.exitCode).toBe(0);
     expect(writes).toHaveLength(1);
     expect(writes[0]?.[0]).toBe("out.json");
     expect(writes[0]?.[1]).toContain('"openapi"');
+    // Regression: `-o` used to write both to the file AND stdout.
+    expect(stdout.value).toBe("");
   });
 
-  it("suppresses stdout output when --quiet is set", async () => {
-    const { io } = memoryIo([
+  it("suppresses stdout when --quiet is set", async () => {
+    const { io, stdout } = memoryIo([
       [
         "spec.json",
         {
@@ -66,7 +68,8 @@ describe("resolveCommand", () => {
       { spec: "spec.json", overlays: [], options: { ...textOpts, quiet: true } },
       io,
     );
-    expect(result.output).toBeUndefined();
+    expect(result.exitCode).toBe(0);
+    expect(stdout.value).toBe("");
   });
 });
 
@@ -93,8 +96,8 @@ describe("validateCommand", () => {
     };
   }
 
-  it("exits 0 when the body satisfies the schema", async () => {
-    const { io } = memoryIo(
+  it("exits 0 when the body satisfies the schema, with nothing on stdout", async () => {
+    const { io, stdout } = memoryIo(
       [["spec.json", specWithRequiredBody()]],
       [["body.json", '{"name":"a"}']],
     );
@@ -108,10 +111,12 @@ describe("validateCommand", () => {
       io,
     );
     expect(result.exitCode).toBe(0);
+    // Silence on success — no bare newline leak.
+    expect(stdout.value).toBe("");
   });
 
   it("exits 1 when the body is missing a required field", async () => {
-    const { io } = memoryIo([["spec.json", specWithRequiredBody()]], [["body.json", "{}"]]);
+    const { io, stdout } = memoryIo([["spec.json", specWithRequiredBody()]], [["body.json", "{}"]]);
     const result = await validateCommand(
       {
         spec: "spec.json",
@@ -122,11 +127,14 @@ describe("validateCommand", () => {
       io,
     );
     expect(result.exitCode).toBe(1);
-    expect(result.output).toMatch(/required/i);
+    expect(stdout.value).toMatch(/required/i);
   });
 
-  it("writes the rendered error to --output when given", async () => {
-    const { io, writes } = memoryIo([["spec.json", specWithRequiredBody()]], [["body.json", "{}"]]);
+  it("writes the rendered error to --output when given and stays silent on stdout", async () => {
+    const { io, writes, stdout } = memoryIo(
+      [["spec.json", specWithRequiredBody()]],
+      [["body.json", "{}"]],
+    );
     const result = await validateCommand(
       {
         spec: "spec.json",
@@ -140,5 +148,7 @@ describe("validateCommand", () => {
     expect(writes).toHaveLength(1);
     expect(writes[0]?.[0]).toBe("err.txt");
     expect(writes[0]?.[1]).toMatch(/required/i);
+    // Regression: `-o` used to write both to the file AND stdout.
+    expect(stdout.value).toBe("");
   });
 });

@@ -2,6 +2,7 @@ import { Command } from "commander";
 import { KNOWN_OUTPUT_FORMATS, isOutputFormat, type OutputFormat } from "@oav/core";
 import {
   compileCommand,
+  defaultCommandIo,
   resolveCommand,
   validateCommand,
   type CommandIo,
@@ -21,20 +22,11 @@ function isStandaloneDialect(v: string): v is StandaloneDialect {
  */
 export interface BuildProgramOptions {
   /**
-   * I/O substrate. Defaults to the real filesystem + stdin via
-   * {@link defaultCommandIo}. Tests can pass an in-memory substitute
-   * so argv-level coverage doesn't need `pnpm build` + `spawnSync`.
+   * I/O substrate. Defaults to the real filesystem + stdin +
+   * process.stdout/stderr via {@link defaultCommandIo}. Tests can pass
+   * an in-memory substitute that captures writes for assertion.
    */
   io?: CommandIo;
-  /**
-   * stdout writer. Defaults to `process.stdout.write`. In-process
-   * tests can capture output by passing a buffered writer.
-   */
-  stdout?: (chunk: string) => void;
-  /**
-   * stderr writer. Defaults to `process.stderr.write`.
-   */
-  stderr?: (chunk: string) => void;
   /**
    * Exit handler. Defaults to `process.exit`. In-process tests should
    * pass a throwing implementation so the test harness observes the
@@ -45,15 +37,16 @@ export interface BuildProgramOptions {
 
 /**
  * Build the Commander program. Exported so tests can invoke the program
- * without spawning a child process; pass `{ io, stdout, stderr, exit }`
- * to route all side-effects through in-process collaborators.
+ * without spawning a child process; pass `{ io, exit }` to route all
+ * side-effects through in-process collaborators. Commands write their
+ * primary output through `io.stdout` (or the file sink when `-o` is
+ * set) and their errors through `io.stderr` — this CLI layer only
+ * handles argv-parsing usage errors + the final `exit` call.
  *
  * @public
  */
 export function buildProgram(options: BuildProgramOptions = {}): Command {
-  const io = options.io;
-  const stdout = options.stdout ?? ((s) => process.stdout.write(s));
-  const stderr = options.stderr ?? ((s) => process.stderr.write(s));
+  const io = options.io ?? defaultCommandIo();
   const exit = options.exit ?? ((code) => process.exit(code));
 
   const program = new Command();
@@ -78,7 +71,6 @@ export function buildProgram(options: BuildProgramOptions = {}): Command {
         },
         io,
       );
-      if (res.output !== undefined && !opts.quiet) stdout(res.output + "\n");
       exit(res.exitCode);
     });
 
@@ -112,7 +104,7 @@ export function buildProgram(options: BuildProgramOptions = {}): Command {
       try {
         mode = deriveMode(opts);
       } catch (err) {
-        stderr(`error: ${(err as Error).message}\n`);
+        io.stderr(`error: ${(err as Error).message}\n`);
         exit(3);
         return;
       }
@@ -130,9 +122,6 @@ export function buildProgram(options: BuildProgramOptions = {}): Command {
         },
         io,
       );
-      if (res.output !== undefined && !opts.quiet && res.output !== "") {
-        stdout(res.output + "\n");
-      }
       exit(res.exitCode);
     });
 
@@ -158,11 +147,6 @@ export function buildProgram(options: BuildProgramOptions = {}): Command {
         },
         io,
       );
-      if (res.output !== undefined && res.exitCode !== 0) {
-        stderr(res.output + "\n");
-      } else if (res.output !== undefined) {
-        stdout(res.output + "\n");
-      }
       exit(res.exitCode);
     });
 
