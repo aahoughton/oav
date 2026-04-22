@@ -141,6 +141,15 @@ export interface BuiltInErrorParams {
   "query-param": { name: string; in: "query" };
   "header-param": { name: string; in: "header" };
   "cookie-param": { name: string; in: "cookie" };
+  /**
+   * No declared security requirement was satisfied by the request
+   * (shape-only check — presence / format of the declared credential
+   * location, not credential verification). `declared` lists the
+   * alternatives tried: each inner array is a single requirement
+   * (AND across its scheme names), the outer array is the OR set.
+   * Maps to HTTP 401.
+   */
+  security: { declared: string[][] };
 }
 
 /**
@@ -219,6 +228,7 @@ export const BUILT_IN_ERROR_CODES = [
   "query-param",
   "header-param",
   "cookie-param",
+  "security",
 ] as const satisfies ReadonlyArray<keyof BuiltInErrorParams>;
 
 /**

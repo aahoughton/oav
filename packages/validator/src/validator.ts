@@ -41,6 +41,7 @@ import {
   resolveOperationRef,
   type OperationCache,
 } from "./operation-cache.js";
+import { checkSecurity, compileOperationSecurity } from "./security.js";
 import { validateBody, validateParameter } from "./validate-step.js";
 
 /**
@@ -264,6 +265,26 @@ export interface ValidatorOptions {
 
   // --- 4. HTTP-validator-specific extras ---
 
+  /**
+   * Reject requests that don't satisfy the declared
+   * {@link OperationObject.security} (or document-level
+   * {@link OpenAPIDocument.security} when the operation doesn't override).
+   * **Shape-only**: the check confirms the request carries the declared
+   * credential (e.g. a `Bearer` token in `Authorization`, the declared
+   * apiKey header) — it does not verify the credential itself. Credential
+   * verification stays with the app's auth middleware.
+   *
+   * Supported schemes: `http` with `scheme: "bearer"` or `"basic"`, and
+   * `apiKey` in header / query / cookie. `oauth2`, `openIdConnect`, and
+   * `mutualTLS` are accepted in the spec but not shape-checked at the
+   * validator layer.
+   *
+   * Defaults to `true` — migrating
+   * `express-openapi-validator`-with-`validateSecurity` consumers get
+   * the behaviour they're used to without extra wiring. Set `false` to
+   * bypass the check entirely.
+   */
+  validateSecurity?: boolean;
   /** When `true`, reject unknown query parameters (default: `false`). */
   strictQueryParameters?: boolean;
   /**
@@ -440,10 +461,15 @@ export function createValidator(
 
   const operationCache = new WeakMap<OperationObject, OperationCache>();
 
+  const validateSecurity = options.validateSecurity !== false;
+
   const cacheFor = (pathMatch: RouteMatch): OperationCache => {
     const existing = operationCache.get(pathMatch.operation);
     if (existing !== undefined) return existing;
     const cache = buildOperationCache(pathMatch, { resolveRef, compile, compileForDirection });
+    if (validateSecurity) {
+      cache.security = compileOperationSecurity(pathMatch.operation, spec, resolveRef);
+    }
     operationCache.set(pathMatch.operation, cache);
     return cache;
   };
@@ -470,6 +496,22 @@ export function createValidator(
     }
     const cache = cacheFor(match);
     const children: ValidationError[] = [];
+
+    // Security check first and short-circuit: an auth failure makes
+    // every parameter / body diagnostic noise, and the client can't act
+    // on the latter without fixing the former.
+    if (cache.security !== undefined) {
+      const securityErr = checkSecurity(cache.security, req);
+      if (securityErr !== null) {
+        return createBranchError(
+          "request",
+          [],
+          `${req.method.toUpperCase()} ${match.pathPattern}: request validation failed`,
+          [securityErr],
+          { method: req.method, pathPattern: match.pathPattern },
+        );
+      }
+    }
 
     for (const p of cache.parameters) {
       const err = validateParameter(p, req, match, cache);

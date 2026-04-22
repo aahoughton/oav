@@ -256,6 +256,8 @@ function httpStatusFor(err: ValidationError): number {
       return 405; // path matched but the verb isn't declared
     case "content-type":
       return 415; // request Content-Type not declared
+    case "security":
+      return 401; // declared security scheme isn't satisfied (shape check)
     case "status":
       return 500; // response-side: spec doesn't declare this status
     default:
@@ -445,21 +447,40 @@ branch.
 
 ### Security / authentication
 
-`oav` has no `securityHandlers` option and does not interpret
-`components.securitySchemes`. Run your auth middleware first and
-treat auth as orthogonal to schema validation:
+`oav` performs **shape-only** security validation: it confirms the
+request carries the credential location declared by the spec (a
+`Bearer` token in `Authorization`, the declared apiKey header / query
+/ cookie, a base64 `Basic user:pass` pair), but it does **not** verify
+the credential itself. That's your auth middleware's job; keep it
+upstream of the validator.
 
 ```ts
-app.use(authenticateJwt); // your own middleware
-app.use(oavMiddleware); // validates schema against the authenticated request
+app.use(authenticateJwt); // verifies tokens, populates req.user
+app.use(oavMiddleware); // shape + schema checks
 ```
 
-`express-openapi-validator`'s `securityHandlers` is a declarative
-dispatch table driven by the spec's `security:` blocks; you still
-supply an auth function per scheme. If that dispatch layer is
-load-bearing for your setup, a ~30-line function that walks the
-matched operation's `security` array and calls your per-scheme
-handlers replaces it.
+The shape check runs automatically against each operation's
+`security:` (or document-level `security:` when the operation doesn't
+override). Supported:
+
+- `http` with `scheme: "bearer"` — requires `Authorization: Bearer <non-empty>`.
+- `http` with `scheme: "basic"` — requires `Authorization: Basic <base64>`; the base64 must decode to a `user:pass` shape (no credential verification).
+- `apiKey` in `header`, `query`, or `cookie` — declared name must be present and non-empty.
+
+`oauth2`, `openIdConnect`, and `mutualTLS` schemes are accepted in the
+spec but not shape-checked at the validator layer. Failures surface as
+a single leaf error with `code: "security"` and `path: ["security"]`,
+mapping to HTTP 401 in the default status recipe.
+
+Disable with `createValidator(spec, { validateSecurity: false })` if
+you want schema checks only.
+
+`express-openapi-validator`'s `securityHandlers` is a _credential-
+verifying_ dispatch table — you supply an auth function per scheme and
+eov calls it. `oav` has no equivalent; that role stays with your auth
+middleware. A ~30-line function that walks the matched operation's
+`security` array and dispatches per scheme replaces it if you want the
+declarative shape.
 
 ### Type coercion on body fields
 
@@ -521,26 +542,27 @@ app.use(async (req, res, next) => {
 
 ### Option map
 
-| `express-openapi-validator` option      | `oav` equivalent                                                                                                |
-| --------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `apiSpec` (path/URL/object)             | `loadSpec({ reader, entry })` + `createValidator(doc)`                                                          |
-| `validateRequests: true`                | `validator.validateRequest(...)` in your middleware                                                             |
-| `validateResponses: true`               | `validator.validateResponse(...)` in handler or a `res.json` wrapper (see recipes)                              |
-| `validateRequests.allErrors`            | Default — `oav` always collects every leaf. Bound cost with `maxErrors: N`.                                     |
-| `validateRequests.coerceTypes`          | Query scalars coerced by default; body coercion not supported.                                                  |
-| `validateRequests.removeAdditional`     | Not supported. `additionalProperties: false` rejects; there is no silent-drop mode.                             |
-| `validateRequests.discriminator`        | Native, always on for OpenAPI specs.                                                                            |
-| `formats`                               | `createValidator(spec, { formats: { ... } })` — see [format-shape note](#format-shape-note) below.              |
-| `validateFormats: "fast" \| "full"`     | N/A — single-pass validation; the built-in formats are RFC-sourced.                                             |
-| `ajvFormats`                            | Pass custom format functions via the `formats` option — see [format-shape note](#format-shape-note) below.      |
-| `serDes`                                | Not supported. Pre- or post-transform the payload in your handler if you need `Date` / `ObjectId` / etc.        |
-| `validateSecurity.handlers`             | Your own auth middleware, run before the validator.                                                             |
-| `fileUploader: true`                    | Your own multer middleware (see [recipe](#file-uploads-with-multer)).                                           |
-| `operationHandlers`                     | Your own Express routes. `oav` doesn't auto-load handlers from the filesystem.                                  |
-| `ignorePaths` (regex/fn)                | Short-circuit in your middleware before calling `validateRequest`.                                              |
-| `ignoreUndocumented`                    | `if (err.code === "route") return next()`.                                                                      |
-| `$refParser: "bundle" \| "dereference"` | `loadSpec` inlines external refs; circulars become internal refs. Use `resolveSpec` directly for finer control. |
-| `validateApiSpec`                       | Run `oav resolve spec.yaml` in CI; no runtime toggle.                                                           |
+| `express-openapi-validator` option      | `oav` equivalent                                                                                                                  |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `apiSpec` (path/URL/object)             | `loadSpec({ reader, entry })` + `createValidator(doc)`                                                                            |
+| `validateRequests: true`                | `validator.validateRequest(...)` in your middleware                                                                               |
+| `validateResponses: true`               | `validator.validateResponse(...)` in handler or a `res.json` wrapper (see recipes)                                                |
+| `validateRequests.allErrors`            | Default — `oav` always collects every leaf. Bound cost with `maxErrors: N`.                                                       |
+| `validateRequests.coerceTypes`          | Query scalars coerced by default; body coercion not supported.                                                                    |
+| `validateRequests.removeAdditional`     | Not supported. `additionalProperties: false` rejects; there is no silent-drop mode.                                               |
+| `validateRequests.discriminator`        | Native, always on for OpenAPI specs.                                                                                              |
+| `formats`                               | `createValidator(spec, { formats: { ... } })` — see [format-shape note](#format-shape-note) below.                                |
+| `validateFormats: "fast" \| "full"`     | N/A — single-pass validation; the built-in formats are RFC-sourced.                                                               |
+| `ajvFormats`                            | Pass custom format functions via the `formats` option — see [format-shape note](#format-shape-note) below.                        |
+| `serDes`                                | Not supported. Pre- or post-transform the payload in your handler if you need `Date` / `ObjectId` / etc.                          |
+| `validateSecurity: true`                | Default — shape-only checks for `bearer` / `basic` / `apiKey`. Opt out with `createValidator(spec, { validateSecurity: false })`. |
+| `validateSecurity.handlers`             | Your own auth middleware, run before the validator — `oav` only checks credential **shape**, not validity.                        |
+| `fileUploader: true`                    | Your own multer middleware (see [recipe](#file-uploads-with-multer)).                                                             |
+| `operationHandlers`                     | Your own Express routes. `oav` doesn't auto-load handlers from the filesystem.                                                    |
+| `ignorePaths` (regex/fn)                | Short-circuit in your middleware before calling `validateRequest`.                                                                |
+| `ignoreUndocumented`                    | `if (err.code === "route") return next()`.                                                                                        |
+| `$refParser: "bundle" \| "dereference"` | `loadSpec` inlines external refs; circulars become internal refs. Use `resolveSpec` directly for finer control.                   |
+| `validateApiSpec`                       | Run `oav resolve spec.yaml` in CI; no runtime toggle.                                                                             |
 
 ### Features not carried over
 

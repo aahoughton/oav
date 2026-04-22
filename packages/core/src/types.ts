@@ -155,11 +155,65 @@ export interface OpenAPIDocument {
   paths?: Record<string, PathItem>;
   components?: ComponentsObject;
   tags?: TagObject[];
+  /**
+   * Top-level security requirement. Each element is an alternative
+   * (OR-connected); schemes within an element are AND-connected. Empty
+   * array means "no authentication required"; operations can override
+   * via their own `security` field. See
+   * {@link SecurityRequirementObject}.
+   */
+  security?: SecurityRequirementObject[];
   /** 3.1+: declared webhooks. Absent in 3.0. */
   webhooks?: Record<string, PathItem | ReferenceObject>;
   /** 3.1+: overrides the default schema dialect URI. Absent in 3.0. */
   jsonSchemaDialect?: string;
   [extension: `x-${string}`]: JsonValue | undefined;
+}
+
+/**
+ * A single security requirement, shared by top-level and operation-level
+ * `security` fields. Maps scheme name (keyed into
+ * `components.securitySchemes`) to required scopes (empty array for
+ * non-OAuth2 schemes).
+ *
+ * An operation's `security` is an array of these; the operation passes
+ * if **any** one of them is satisfied (OR semantics). Within a single
+ * requirement, **all** listed schemes must be satisfied (AND).
+ *
+ * @public
+ */
+export type SecurityRequirementObject = Record<string, string[]>;
+
+/**
+ * A security scheme definition, declared in
+ * {@link ComponentsObject.securitySchemes}. Referenced by name from a
+ * {@link SecurityRequirementObject}.
+ *
+ * oav's validator performs shape-only checks on `http` (bearer / basic)
+ * and `apiKey` schemes — it confirms the request carries the declared
+ * credential location and format, but does not verify the credential
+ * itself. `oauth2`, `openIdConnect`, and `mutualTLS` are accepted in
+ * the spec but not shape-checked at the validator layer; credential
+ * verification (and scope checking for oauth2) is the app's
+ * responsibility.
+ *
+ * @public
+ */
+export interface SecuritySchemeObject {
+  type: "http" | "apiKey" | "oauth2" | "openIdConnect" | "mutualTLS";
+  description?: string;
+  /** `http` schemes: e.g. `"bearer"` or `"basic"`. Required on `http`. */
+  scheme?: string;
+  /** `http` schemes: the token format hint (e.g. `"JWT"`). Informational. */
+  bearerFormat?: string;
+  /** `apiKey` schemes: the parameter name. Required on `apiKey`. */
+  name?: string;
+  /** `apiKey` schemes: where the parameter lives. Required on `apiKey`. */
+  in?: "header" | "query" | "cookie";
+  /** `oauth2` schemes: flow definitions. Not validated at the shape level. */
+  flows?: unknown;
+  /** `openIdConnect` schemes: discovery URL. Not validated at the shape level. */
+  openIdConnectUrl?: string;
 }
 
 /**
@@ -205,6 +259,7 @@ export interface ComponentsObject {
   requestBodies?: Record<string, RequestBodyObject>;
   responses?: Record<string, ResponseObject>;
   headers?: Record<string, HeaderObject>;
+  securitySchemes?: Record<string, SecuritySchemeObject | ReferenceObject>;
 }
 
 /**
@@ -262,6 +317,13 @@ export interface OperationObject {
   parameters?: (ParameterObject | ReferenceObject)[];
   requestBody?: RequestBodyObject | ReferenceObject;
   responses?: Record<string, ResponseObject | ReferenceObject>;
+  /**
+   * Per-operation security requirement. Overrides the document-level
+   * {@link OpenAPIDocument.security}. An explicit empty array opts the
+   * operation out of the top-level requirement. See
+   * {@link SecurityRequirementObject}.
+   */
+  security?: SecurityRequirementObject[];
   deprecated?: boolean;
 }
 
