@@ -15,11 +15,6 @@ describe("memory reader", () => {
     expect(await r.read("x.json")).toEqual({ a: 1 });
   });
 
-  it("returns parsed YAML for .yaml suffix", async () => {
-    const r = createMemoryReader(new Map([["x.yaml", "a: 1\nb:\n  - 2"]]));
-    expect(await r.read("x.yaml")).toEqual({ a: 1, b: [2] });
-  });
-
   it("returns prepared values verbatim", async () => {
     const value = { pre: "parsed" };
     const r = createMemoryReader(new Map<string, unknown>([["x", value]]));
@@ -30,6 +25,11 @@ describe("memory reader", () => {
     const r = createMemoryReader(new Map([["x", "y"]]));
     expect(r.canRead("x")).toBe(true);
     expect(r.canRead("nope")).toBe(false);
+  });
+
+  it("throws the install-hint error for .yaml string sources", async () => {
+    const r = createMemoryReader(new Map([["x.yaml", "a: 1"]]));
+    await expect(r.read("x.yaml")).rejects.toThrow(/Install @aahoughton\/oav/);
   });
 });
 
@@ -54,16 +54,14 @@ describe("http reader", () => {
     expect(fetchMock).toHaveBeenCalledWith("https://example.com/spec.json");
   });
 
-  it("fetches and parses YAML by .yaml extension", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response("openapi: 3.1.0\ninfo:\n  title: X", { status: 200 })),
-    );
+  it("rejects .yaml URIs with the install-hint error (before fetching)", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
     const r = createHttpReader();
-    expect(await r.read("https://example.com/spec.yaml")).toEqual({
-      openapi: "3.1.0",
-      info: { title: "X" },
-    });
+    await expect(r.read("https://example.com/spec.yaml")).rejects.toThrow(
+      /Install @aahoughton\/oav/,
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("throws when the response is non-ok, including the status in the message", async () => {
@@ -95,8 +93,9 @@ describe("file reader", () => {
   beforeAll(() => {
     dir = mkdtempSync(join(tmpdir(), "oav-reader-"));
     writeFileSync(join(dir, "plain.json"), '{"x":1}');
-    writeFileSync(join(dir, "has space.yaml"), "x: 1");
-    writeFileSync(join(dir, "has+plus.yaml"), "x: 2");
+    writeFileSync(join(dir, "has space.json"), '{"x":1}');
+    writeFileSync(join(dir, "has+plus.json"), '{"x":2}');
+    writeFileSync(join(dir, "something.yaml"), "x: 1");
   });
 
   afterAll(() => {
@@ -110,22 +109,27 @@ describe("file reader", () => {
 
   it("decodes percent-escaped spaces in $ref-style paths (#37)", async () => {
     const r = createFileReader(dir);
-    expect(await r.read("has%20space.yaml")).toEqual({ x: 1 });
+    expect(await r.read("has%20space.json")).toEqual({ x: 1 });
   });
 
   it("decodes percent-escaped `+` in paths", async () => {
     const r = createFileReader(dir);
-    expect(await r.read("has%2Bplus.yaml")).toEqual({ x: 2 });
+    expect(await r.read("has%2Bplus.json")).toEqual({ x: 2 });
   });
 
   it("leaves the path alone when it contains a literal unescaped space", async () => {
     const r = createFileReader(dir);
-    expect(await r.read("has space.yaml")).toEqual({ x: 1 });
+    expect(await r.read("has space.json")).toEqual({ x: 1 });
   });
 
   it("accepts file:// URIs", async () => {
     const r = createFileReader(dir);
     expect(await r.read("file://plain.json")).toEqual({ x: 1 });
+  });
+
+  it("throws the install-hint error for .yaml paths (before touching disk)", async () => {
+    const r = createFileReader(dir);
+    await expect(r.read("something.yaml")).rejects.toThrow(/Install @aahoughton\/oav/);
   });
 });
 

@@ -4,6 +4,13 @@ Multi-file OpenAPI loader, `$ref` resolver, and overlay merger. Use
 this when you want to stitch a spec together before handing it to
 `createValidator`.
 
+This module is available at matching subpaths in both
+`@aahoughton/oav/spec` and `@aahoughton/oav-core/spec`. The examples
+below import from `@aahoughton/oav`; substitute `@aahoughton/oav-core`
+if you're on the lean package — with the caveat that `oav-core` ships
+JSON readers only (YAML paths throw an install-hint error; install
+`@aahoughton/oav` or bring your own YAML reader).
+
 ## Loading a spec
 
 `loadSpec` is the recommended entrypoint. It reads the entry document,
@@ -39,12 +46,25 @@ interface DocumentReader {
 }
 ```
 
-Built-ins:
+Built-ins (JSON only — YAML support lives in `@aahoughton/oav`):
 
-- `createFileReader(cwd?)` — filesystem; parses `.json`, `.yaml`, `.yml`.
-- `createHttpReader()` — HTTP / HTTPS.
-- `createMemoryReader(entries)` — in-memory, for tests.
+- `createFileReader(cwd?)` — filesystem JSON. `.yaml` / `.yml` paths
+  throw an install-hint error; compose with `createYamlFileReader` from
+  `@aahoughton/oav` to cover YAML.
+- `createHttpReader()` — HTTP / HTTPS JSON. Same YAML policy.
+- `createMemoryReader(entries)` — in-memory JSON or pre-parsed objects.
 - `composeReaders([...])` — layers readers, dispatching by `canRead`.
+
+`@aahoughton/oav` additionally exports `createYamlFileReader`,
+`createYamlHttpReader`, and `parseYamlString` for YAML-backed specs.
+Compose them ahead of the JSON readers:
+
+```ts
+import { composeReaders, createFileReader } from "@aahoughton/oav/spec";
+import { createYamlFileReader } from "@aahoughton/oav";
+
+const reader = composeReaders([createYamlFileReader(), createFileReader()]);
+```
 
 Write a custom reader (S3, blob store, bundled assets) by implementing
 the two methods; plug it in via `composeReaders`.

@@ -59,6 +59,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: pnpm test
+      # Publish every non-private workspace package. Currently that's
+      # @aahoughton/oav-core (root) and @aahoughton/oav (packages/oav);
+      # the @oav/* workspace packages are private and are skipped.
+      #
       # --no-git-checks: the release-please commit is on main but CI
       # checks it out in detached-HEAD mode, which pnpm otherwise refuses.
       # --access public: required the first time a scoped package publishes;
@@ -66,6 +70,6 @@ jobs:
       # --provenance: attaches a signed build attestation (uses the
       # id-token: write OIDC permission above) so npmjs shows a
       # "verified" badge on the published tarball.
-      - run: pnpm publish --access public --provenance --no-git-checks
+      - run: pnpm -r publish --access public --provenance --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

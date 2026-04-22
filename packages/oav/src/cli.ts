@@ -23,7 +23,7 @@ try {
   throw err;
 }
 
-const { buildProgram } = await import("../packages/cli/src/cli.js");
+const { buildProgram } = await import("@oav/cli");
 const program = buildProgram();
 try {
   await program.parseAsync(process.argv);

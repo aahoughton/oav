@@ -15,7 +15,9 @@ pnpm tsx examples/<example>.ts
 The examples import from `packages/*/src` directly so they work without
 `pnpm build`. Third-party consumers would write
 `import { ... } from "@aahoughton/oav"` / `"@aahoughton/oav/spec"`
-instead; the logic translates 1:1.
+instead; the logic translates 1:1. Consumers on the lean
+`@aahoughton/oav-core` package can substitute `@aahoughton/oav-core`
+in the same import specifiers, provided they stay on JSON specs.
 
 ## What's in here
 

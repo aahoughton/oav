@@ -14,11 +14,13 @@ oav --help
 npx @aahoughton/oav validate openapi.yaml --request req.http
 ```
 
-`commander` is an **optional peer dependency**: the library itself
-doesn't pull it in, so consumers who only use the programmatic API
-stay on a single runtime dep (`yaml`). CLI users install it alongside.
-Running `oav` without `commander` present prints an install hint and
-exits with status 2.
+The CLI lives in the batteries-included `@aahoughton/oav` package,
+not the lean `@aahoughton/oav-core` — `oav-core` doesn't ship a `bin`
+or any CLI glue. `commander` is an **optional peer dependency** on
+`@aahoughton/oav`: the library itself doesn't pull it in, so consumers
+who only use the programmatic API stay on a single runtime dep
+(`yaml`). CLI users install `commander` alongside. Running `oav`
+without it prints an install hint and exits with status 2.
 
 ## Commands
 
