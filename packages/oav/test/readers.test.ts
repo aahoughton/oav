@@ -105,6 +105,20 @@ describe("createSmartHttpReader", () => {
     }
   });
 
+  it("prefers Content-Type over a conflicting URL extension", async () => {
+    // URL ends in .yaml but server advertises JSON → parse as JSON.
+    // A misconfigured URL (e.g. a content-management system serving a
+    // JSON API at a .yaml alias) shouldn't break the reader.
+    stubFetch('{"openapi":"3.1.0"}', "application/json");
+    let r = createSmartHttpReader();
+    expect(await r.read("https://example.com/spec.yaml")).toEqual({ openapi: "3.1.0" });
+
+    // URL ends in .json but server advertises YAML → parse as YAML.
+    stubFetch("openapi: 3.1.0", "application/yaml");
+    r = createSmartHttpReader();
+    expect(await r.read("https://example.com/spec.json")).toEqual({ openapi: "3.1.0" });
+  });
+
   it("falls back to URL extension when Content-Type is ambiguous", async () => {
     // text/plain + .yaml extension → YAML.
     stubFetch("openapi: 3.1.0", "text/plain");
