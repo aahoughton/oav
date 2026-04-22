@@ -23,6 +23,7 @@ import {
   type CustomKeywordValidator,
   type Dialect,
   type RefResolver,
+  type StrictIssue,
 } from "@oav/schema";
 import { deserialize, matchMediaType, matchResponseKey } from "./deserialize.js";
 import {
@@ -165,6 +166,18 @@ export interface ValidatorStats {
    * `createValidator` time, so on a fresh validator this is always `0`.
    */
   responseBodiesCompiled: number;
+  /**
+   * Live array of strict-mode issues surfaced by
+   * {@link ValidatorOptions.strict}. Grows as schemas compile (request
+   * / path / header / query schemas at construction; response-body
+   * schemas lazily on first use). An empty array when `strict: "off"`
+   * or when the linter found nothing to flag.
+   *
+   * Schema paths are the full path inside each compiled schema, not
+   * HTTP-frame-prefixed — the linter runs over raw JSON Schema, not
+   * OpenAPI.
+   */
+  strictIssues: readonly StrictIssue[];
 }
 
 /**
@@ -236,6 +249,18 @@ export interface ValidatorOptions {
    * the report was shortened.
    */
   maxErrors?: number;
+  /**
+   * Compile-time schema linting applied to every schema the validator
+   * compiles (request parameters / body; response headers; response
+   * bodies lazily). Issues surface via
+   * {@link ValidatorStats.strictIssues}; no throws.
+   *
+   * - `"off"`: silence on everything.
+   * - `"warn-partial"` (default): warn on keywords flagged as
+   *   partially-implemented (currently `$dynamicRef`).
+   * - `"strict"`: warn on partial features AND unknown keys.
+   */
+  strict?: "off" | "warn-partial" | "strict";
 
   // --- 4. HTTP-validator-specific extras ---
 
@@ -334,7 +359,14 @@ export function createValidator(
   const graph = resolve(spec as unknown as SchemaOrBoolean);
   const refResolver: RefResolver = createRefResolver(graph);
 
-  const stats: ValidatorStats = { responseBodiesCompiled: 0 };
+  // Live array. Compile closure appends on each miss; consumers read
+  // `validator.stats.strictIssues` at any point to see what's been
+  // flagged so far.
+  const strictIssues: StrictIssue[] = [];
+  const stats: ValidatorStats = {
+    responseBodiesCompiled: 0,
+    strictIssues,
+  };
 
   const compiledCache = new Map<SchemaOrBoolean, CompiledSchema>();
   const compile = (
@@ -349,8 +381,10 @@ export function createValidator(
       refResolver: resolver,
       maxErrors: options.maxErrors,
       keywords: options.keywords,
+      strict: options.strict,
     });
     compiledCache.set(schema, c);
+    for (const issue of c.stats.strictIssues) strictIssues.push(issue);
     return c;
   };
 
