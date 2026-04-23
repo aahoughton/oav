@@ -32,7 +32,10 @@ jobs:
             style
             test
           requireScope: false
-          subjectPattern: ^[a-z].+[^.]$
+          # Lowercase start OR an all-caps acronym run of 2+ letters
+          # (HTTP, API, CLI, JSON, YAML, RFC, …). Still rejects
+          # sentence-case ("Do something") and trailing periods.
+          subjectPattern: ^([a-z]|[A-Z]{2,}).+[^.]$
           subjectPatternError: |
-            Subject must start lowercase and not end with a period.
+            Subject must start with a lowercase letter or an all-caps acronym (e.g. HTTP, API, CLI), and must not end with a period.
             Got: "{subject}"
