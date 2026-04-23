@@ -120,6 +120,24 @@ describe("validateRequest", () => {
     expect(leafCodes(err)).toContain("content-type");
   });
 
+  it("content-type gate short-circuits before parameter validation", () => {
+    // Wrong Content-Type AND missing required X-Tenant header. The gate
+    // fires first, so the tree is a single content-type leaf — no
+    // paired header-param diagnostic. Motivation: a client who fixes
+    // the content-type can't act on a header-param complaint anyway;
+    // surface the upstream problem unambiguously.
+    const err = v.validateRequest({
+      method: "POST",
+      path: "/pets",
+      contentType: "text/plain",
+      body: "raw",
+      // no X-Tenant header
+    });
+    const leaves = collectLeaves(err);
+    expect(leaves).toHaveLength(1);
+    expect(leaves[0]?.code).toBe("content-type");
+  });
+
   it("deserializes path parameters to their declared type", () => {
     expect(v.validateRequest({ method: "GET", path: "/pets/42" })).toBeNull();
     const err = v.validateRequest({ method: "GET", path: "/pets/abc" });

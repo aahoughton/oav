@@ -43,7 +43,7 @@ import {
   type OperationCache,
 } from "./operation-cache.js";
 import { checkSecurity, compileOperationSecurity } from "./security.js";
-import { validateBody, validateParameter } from "./validate-step.js";
+import { checkBodyContentType, validateBody, validateParameter } from "./validate-step.js";
 
 /**
  * Pick the dialect for a given OpenAPI version. 3.1 and 3.2 share the
@@ -541,6 +541,21 @@ export function createValidator(
           { method: req.method, pathPattern: match.pathPattern },
         );
       }
+    }
+
+    // Content-type gate: if the request carries a body whose
+    // Content-Type doesn't match any declared media type, short-circuit
+    // with a single leaf. Parameter / body schema diagnostics against a
+    // request the server can't parse in the first place are noise.
+    const ctErr = checkBodyContentType(req, cache);
+    if (ctErr !== null) {
+      return createBranchError(
+        "request",
+        [],
+        `${req.method.toUpperCase()} ${match.pathPattern}: request validation failed`,
+        [ctErr],
+        { method: req.method, pathPattern: match.pathPattern },
+      );
     }
 
     for (const p of cache.parameters) {
