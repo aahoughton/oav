@@ -10,9 +10,27 @@ oav covers the same ground as Ajv + `express-openapi-validator`
 combined — schema validation plus HTTP-layer checks — and trades
 differently on a handful of specifics, catalogued below.
 
-This document is about behaviour and capabilities. For runtime
-performance, see [`performance/README.md`](./performance/README.md),
-which runs both libraries on the same benchmark fixtures.
+This document is about behaviour and capabilities. For raw numbers
+and methodology see [`performance/README.md`](./performance/README.md);
+the shape of the trade-off is sketched below.
+
+## Performance sketch
+
+Ajv and oav trade differently depending on the workload:
+
+| Workload                                               | Winner                                                             | Notes                                                            |
+| ------------------------------------------------------ | ------------------------------------------------------------------ | ---------------------------------------------------------------- |
+| Validate, simple schemas (tiny / tree)                 | tied                                                               | Within ~5% either way; predicate mode slightly ahead of ajv      |
+| Validate, complex shapes (oneOf / allOf, large arrays) | ajv 2–5× faster                                                    | ajv's codegen excels on deep applicators                         |
+| Validate, predicate mode                               | ≈ ajv                                                              | `compileSchema(..., { predicate: true })` closes most of the gap |
+| Compile, synthetic (per shape)                         | **oav 30–180× faster**                                             | The largest gap in either direction                              |
+| Compile, real-world OpenAPI spec                       | **oav 8× on Stripe** (886 schemas); **5.5× on Adyen** (44 schemas) | Matches the synthetic trend at spec scale                        |
+
+The takeaway: ajv wins steady-state validate throughput on a spec you
+compile once and reuse; oav wins anywhere validator construction is
+part of the hot path (per-request, per-tenant, per-test, edge
+cold-starts). Full methodology, raw numbers, and the benchmark
+harness live in [`performance/README.md`](./performance/README.md).
 
 ## Where Ajv (+ express-openapi-validator) does more
 
@@ -152,11 +170,13 @@ both support custom keywords and formats, both produce
 machine-readable errors. Differences are real but bounded.
 
 Pick Ajv + `express-openapi-validator` when you want the fastest
-validator, a large userbase, multi-draft support, or the one-line
-middleware integration that comes with it. Pick oav when you want a
-structured error tree, overlays over specs you don't own, a bundled
-OpenAPI 3.0 dialect, or explicit control over where validation runs
-in your HTTP stack.
+steady-state validate throughput on a schema you compile once, a
+large userbase, multi-draft support, or the one-line middleware
+integration. Pick oav when you want a structured error tree,
+overlays over specs you don't own, a bundled OpenAPI 3.0 dialect,
+explicit control over where validation runs in your HTTP stack — or
+when compile throughput matters (1–2 orders of magnitude above ajv,
+8× on Stripe's real-world spec; see the performance sketch above).
 
 For benchmark numbers rather than feature comparisons, see
 [`performance/README.md`](./performance/README.md).

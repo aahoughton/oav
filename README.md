@@ -106,11 +106,18 @@ elsewhere in the JavaScript ecosystem:
   tree (`code` / `path` / `params` / `children`) so downstream code
   can narrow on fields rather than pattern-match on messages.
 
-Ajv is the fastest JSON Schema validator for JavaScript and underpins
-most of the OpenAPI ecosystem. For pure validate-per-second throughput
-on a spec you fully own, it's still the right pick. Where the two
-projects overlap and where each does more is written up in
-[`COMPARISON.md`](./COMPARISON.md).
+Ajv is the canonical JSON Schema validator for JavaScript and
+underpins most of the OpenAPI ecosystem. It has the edge on
+steady-state validate throughput — roughly 2–5× on complex shapes in
+`oav`'s default error-tree mode; `oav`'s predicate mode
+(`compileSchema(..., { predicate: true })`) closes most of that gap.
+On _compile_ throughput the ranking flips by 1–2 orders of
+magnitude: on a real-world OpenAPI doc (Stripe, 886 schemas), oav
+compiles **8× faster**; on synthetic schemas, 30–180× faster. If
+you construct validators per-request, per-tenant, or per-test, that
+usually dominates the overall picture. Full numbers in
+[`COMPARISON.md`](./COMPARISON.md) and
+[`performance/README.md`](./performance/README.md).
 
 ## Conformance
 
