@@ -128,9 +128,7 @@ export function buildProgram(options: BuildProgramOptions = {}): Command {
 
   program
     .command("compile-schema <schema>")
-    .description(
-      "AOT-compile a JSON Schema to a standalone ES module (zero imports; requires 'esbuild' as a peer dep).",
-    )
+    .description("AOT-compile a JSON Schema to a standalone ES module (zero imports).")
     .option(
       "--dialect <dialect>",
       STANDALONE_DIALECTS.join(" | "),
@@ -156,7 +154,7 @@ export function buildProgram(options: BuildProgramOptions = {}): Command {
   program
     .command("compile-spec <spec>")
     .description(
-      "AOT-compile an OpenAPI document to a standalone HTTP validator module (zero imports; requires 'esbuild' as a peer dep).",
+      "AOT-compile an OpenAPI document to a standalone HTTP validator module (zero imports).",
     )
     .option("--overlay <file...>", "apply one or more overlays in order", collectOverlays, [])
     .option(

@@ -24,7 +24,7 @@ skip what they don't use:
 
 | Package                | When to use                                                                                                                                                                                    |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@aahoughton/oav`      | Default. Batteries-included: adds YAML readers and the `oav` CLI. Depends on `yaml`; `commander` and `esbuild` are optional peers, both required for CLI use.                                  |
+| `@aahoughton/oav`      | Default. Batteries-included: adds YAML readers and the `oav` CLI. Depends on `yaml`, `commander`, and `esbuild` (the latter two for CLI + AOT compile).                                        |
 | `@aahoughton/oav-core` | Lean alternative. Zero runtime dependencies. Same programmatic surface as `@aahoughton/oav`, minus the YAML readers and CLI. Feed it JSON specs (or pre-parsed objects via the memory reader). |
 
 ```bash
@@ -40,11 +40,8 @@ npm install @aahoughton/oav-core           # lean install, JSON-only
 subpaths. Samples below use `@aahoughton/oav`; on the lean package,
 substitute `@aahoughton/oav-core` in imports that don't touch the
 YAML readers (`createYamlFileReader`, `createSmartHttpReader`) or
-the CLI. For CLI use, add `commander` and `esbuild`:
-
-```bash
-npm install @aahoughton/oav commander esbuild
-```
+the CLI. `@aahoughton/oav` pulls in the CLI's deps (`commander`,
+`esbuild`) so `oav <command>` runs after a single install.
 
 ## Quick start
 

@@ -1,17 +1,11 @@
 #!/usr/bin/env node
 export {};
 
-// `commander` and `esbuild` are declared as optional peer dependencies
-// so programmatic-API consumers don't pull them in. Running `oav`
-// without either would otherwise surface as a cryptic
-// ERR_MODULE_NOT_FOUND. Resolve them up front and print a clear
-// message; the rest of the CLI graph loads dynamically so its static
-// `import` only runs after the check passes.
-//
-// `esbuild` is only touched by `compile-schema` / `compile-spec`, but
-// checking it up front keeps the error surface consistent — a user
-// who wants the CLI at all gets one install hint, not two different
-// failure modes depending on which subcommand they pick.
+// `commander` and `esbuild` are regular dependencies of
+// `@aahoughton/oav`, so a normal install puts them in node_modules.
+// If they're missing, the install is corrupted — catch the dynamic
+// import up front and print a clearer message than the default
+// ERR_MODULE_NOT_FOUND trace.
 for (const { name, purpose } of [
   { name: "commander", purpose: "argv parsing" },
   { name: "esbuild", purpose: "AOT compile-schema / compile-spec bundling" },
@@ -21,10 +15,10 @@ for (const { name, purpose } of [
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ERR_MODULE_NOT_FOUND") {
       process.stderr.write(
-        `error: the oav CLI requires '${name}' (${purpose}).\n` +
-          "  Install it alongside @aahoughton/oav, e.g.:\n" +
-          `    npm install ${name}\n` +
-          `    pnpm add ${name}\n`,
+        `error: the oav CLI can't resolve '${name}' (${purpose}). ` +
+          "It's declared as a dependency of @aahoughton/oav; reinstall the package to repair the node_modules tree:\n" +
+          "    npm install --force @aahoughton/oav\n" +
+          "    pnpm install --force\n",
       );
       process.exit(2);
     }

@@ -7,7 +7,7 @@ scripts, Makefiles, and CI.
 
 ```bash
 # global install
-npm install -g @aahoughton/oav commander esbuild
+npm install -g @aahoughton/oav
 oav --help
 
 # one-off via npx
@@ -16,15 +16,11 @@ npx @aahoughton/oav validate openapi.yaml --request req.http
 
 The CLI lives in the batteries-included `@aahoughton/oav` package, not
 the lean `@aahoughton/oav-core` — `oav-core` doesn't ship a `bin` or
-any CLI glue. Two optional peer dependencies are required for CLI use:
-
-- **`commander`** — argv parsing. Every CLI invocation needs it.
-- **`esbuild`** — bundling for `compile-schema` / `compile-spec`
-  output.
-
-Both are declared as `peerDependenciesMeta.optional = true`, so
-programmatic-API consumers who never touch the CLI don't install
-either. Running `oav` without them exits 2 with an install hint.
+any CLI glue. `@aahoughton/oav` pulls in `commander` (argv parsing)
+and `esbuild` (AOT bundling for `compile-schema` / `compile-spec`) as
+regular dependencies, so the CLI runs out of the box after one
+install. Users who only need the programmatic API and want a smaller
+footprint install `@aahoughton/oav-core` instead.
 
 ## Commands
 

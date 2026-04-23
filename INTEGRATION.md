@@ -792,9 +792,11 @@ app.use(async (req, res, next) => {
   counts by category.
 - **Overlays.** Extend externally-owned specs at load time —
   see [OVERLAYS.md](./OVERLAYS.md).
-- **Smaller install footprint.** Single runtime dep (`yaml`) plus
-  two optional peers (`commander` for the CLI; `esbuild` only for
-  `oav compile --standalone`).
+- **Smaller install footprint.** `@aahoughton/oav` depends on `yaml`,
+  `commander`, and `esbuild` (the latter two for CLI + AOT compile
+  output); `@aahoughton/oav-core` is the lean alternative with zero
+  runtime deps for programmatic-only consumers who don't need the
+  CLI or YAML readers.
 - **No mutation of `req`.** `express-openapi-validator` attaches
   `req.openapi`, coerces types, and replaces `req.body` after
   deserialize. `oav` reads its inputs and returns an error tree;
