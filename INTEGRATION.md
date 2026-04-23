@@ -792,8 +792,9 @@ app.use(async (req, res, next) => {
   counts by category.
 - **Overlays.** Extend externally-owned specs at load time —
   see [OVERLAYS.md](./OVERLAYS.md).
-- **Smaller install footprint.** Single runtime dep (`yaml`) plus an
-  optional peer (`commander`, CLI only).
+- **Smaller install footprint.** Single runtime dep (`yaml`) plus
+  two optional peers (`commander` for the CLI; `esbuild` only for
+  `oav compile --standalone`).
 - **No mutation of `req`.** `express-openapi-validator` attaches
   `req.openapi`, coerces types, and replaces `req.body` after
   deserialize. `oav` reads its inputs and returns an error tree;
