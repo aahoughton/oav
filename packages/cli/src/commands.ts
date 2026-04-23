@@ -225,44 +225,35 @@ export type ValidateMode =
   | { kind: "responseForPath"; method: string; path: string; status: number; body: string };
 
 /**
- * Implement the `oav compile <schema>` subcommand. Reads a JSON
+ * Implement the `oav compile-schema <schema>` subcommand. Reads a JSON
  * Schema from disk (or stdin via `-`), emits an ES module whose
- * `validate(data)` mirrors `compileSchema(schema).validate(data)`.
+ * `validate(data)` mirrors `compileSchema(schema).validate(data)`, then
+ * bundles it via esbuild into a single file with zero imports.
  *
- * By default the emitted module imports runtime helpers from
- * `@aahoughton/oav/core`, `@aahoughton/oav/schema/internals`, and
- * `@aahoughton/oav/formats` — no `new Function()` at the consumer's
- * load time, suitable for edge runtimes that forbid it. Consumers
- * install `@aahoughton/oav` alongside the generated file.
- *
- * With `standalone: true` the emitted module is passed through
- * `esbuild` to inline every runtime helper, producing a bundle with
- * zero imports that runs without `@aahoughton/oav` installed at all
- * — the Lambda / edge / single-file bundling case. `esbuild` is an
- * optional peer dependency; a clear install hint is printed if it's
- * not present.
+ * The output runs without `@aahoughton/oav` installed at all — the
+ * Lambda / edge / single-file deployment case. `esbuild` is a required
+ * peer dependency for this subcommand; a clear install hint prints on
+ * stderr with exit code 3 if it's not resolvable.
  *
  * @public
  */
-export async function compileCommand(
+export async function compileSchemaCommand(
   args: {
     schema: string;
     output?: string;
     dialect?: StandaloneDialect;
-    standalone?: boolean;
     /**
-     * Override the `@aahoughton/oav` prefix used in the emitted
-     * module's imports. Tests pass `"@oav"` so the output resolves
-     * against the in-workspace package aliases rather than the
-     * published package name. Not exposed on the CLI.
+     * Override the `@aahoughton/oav` prefix used in the intermediate
+     * pre-bundle module's imports. Tests pass `"@oav"` so esbuild
+     * resolves against the in-workspace package aliases rather than
+     * the published package name. Not exposed on the CLI.
      */
     importPrefix?: string;
     /**
-     * Override esbuild's resolveDir for `--standalone`. Defaults to
-     * `process.cwd()`, which is where a real consumer's installed
-     * `@aahoughton/oav` sits. Tests point this at
-     * `packages/oav/` where the workspace's `@oav/*` symlinks are
-     * reachable. Not exposed on the CLI.
+     * Override esbuild's resolveDir. Defaults to `process.cwd()`,
+     * which is where a real consumer's installed `@aahoughton/oav`
+     * sits. Tests point this at `packages/oav/` where the workspace's
+     * `@oav/*` symlinks are reachable. Not exposed on the CLI.
      */
     resolveDir?: string;
   },
@@ -273,7 +264,7 @@ export async function compileCommand(
   try {
     parsed = JSON.parse(raw);
   } catch (err) {
-    io.stderr(`compile: ${args.schema} is not valid JSON (${(err as Error).message})\n`);
+    io.stderr(`compile-schema: ${args.schema} is not valid JSON (${(err as Error).message})\n`);
     return { exitCode: 3 };
   }
   let source: string;
@@ -283,16 +274,14 @@ export async function compileCommand(
       importPrefix: args.importPrefix,
     });
   } catch (err) {
-    io.stderr(`compile: ${(err as Error).message}\n`);
+    io.stderr(`compile-schema: ${(err as Error).message}\n`);
     return { exitCode: 3 };
   }
-  if (args.standalone === true) {
-    try {
-      source = await bundleStandalone(source, args.resolveDir ?? process.cwd());
-    } catch (err) {
-      io.stderr(`compile: ${(err as Error).message}\n`);
-      return { exitCode: 3 };
-    }
+  try {
+    source = await bundleEmitted(source, args.resolveDir ?? process.cwd());
+  } catch (err) {
+    io.stderr(`compile-schema: ${(err as Error).message}\n`);
+    return { exitCode: 3 };
   }
   if (args.output !== undefined) {
     await io.writeText(args.output, source);
@@ -303,19 +292,19 @@ export async function compileCommand(
 }
 
 /**
- * Bundle an emitted validator with esbuild so it has no external
- * imports. Lazy-imports esbuild so consumers who don't use
- * `--standalone` don't pay the dependency cost. Throws with an
+ * Bundle an emitted validator source with esbuild so it has no external
+ * imports. Lazy-imports esbuild so programmatic-API consumers who never
+ * invoke the CLI don't pay the dependency cost. Throws with an
  * install-hint message when esbuild isn't resolvable.
  */
-async function bundleStandalone(source: string, resolveDir: string): Promise<string> {
+async function bundleEmitted(source: string, resolveDir: string): Promise<string> {
   let esbuild: typeof import("esbuild");
   try {
     esbuild = await import("esbuild");
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ERR_MODULE_NOT_FOUND") {
       throw new Error(
-        "--standalone requires 'esbuild' as a peer dependency.\n" +
+        "compile-schema / compile-spec require 'esbuild' as a peer dependency.\n" +
           "  Install it alongside @aahoughton/oav, e.g.:\n" +
           "    npm install esbuild\n" +
           "    pnpm add esbuild",

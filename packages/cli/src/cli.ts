@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { KNOWN_OUTPUT_FORMATS, isOutputFormat, type OutputFormat } from "@oav/core";
 import {
-  compileCommand,
+  compileSchemaCommand,
   defaultCommandIo,
   resolveCommand,
   validateCommand,
@@ -126,8 +126,10 @@ export function buildProgram(options: BuildProgramOptions = {}): Command {
     });
 
   program
-    .command("compile <schema>")
-    .description("Compile a JSON Schema to an ES module (no new Function at runtime).")
+    .command("compile-schema <schema>")
+    .description(
+      "AOT-compile a JSON Schema to a standalone ES module (zero imports; requires 'esbuild' as a peer dep).",
+    )
     .option(
       "--dialect <dialect>",
       STANDALONE_DIALECTS.join(" | "),
@@ -137,28 +139,18 @@ export function buildProgram(options: BuildProgramOptions = {}): Command {
       },
       "2020-12" as StandaloneDialect,
     )
-    .option(
-      "--standalone",
-      "bundle runtime helpers into the output via esbuild so it has no imports (requires 'esbuild' as an optional peer dep)",
-    )
     .option("-o, --output <file>", "write output to a file instead of stdout")
-    .action(
-      async (
-        schema: string,
-        opts: { dialect: StandaloneDialect; output?: string; standalone?: boolean },
-      ) => {
-        const res = await compileCommand(
-          {
-            schema,
-            output: opts.output,
-            dialect: opts.dialect,
-            standalone: opts.standalone === true,
-          },
-          io,
-        );
-        exit(res.exitCode);
-      },
-    );
+    .action(async (schema: string, opts: { dialect: StandaloneDialect; output?: string }) => {
+      const res = await compileSchemaCommand(
+        {
+          schema,
+          output: opts.output,
+          dialect: opts.dialect,
+        },
+        io,
+      );
+      exit(res.exitCode);
+    });
 
   return program;
 }
