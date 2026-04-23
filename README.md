@@ -24,10 +24,10 @@ walk programmatically.
 `oav` ships in two packages so consumers on constrained runtimes can
 skip what they don't use:
 
-| Package                | When to use                                                                                                                                                                                    |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@aahoughton/oav`      | Default. Batteries-included: adds YAML readers and the `oav` CLI. Depends on `yaml`, `commander`, and `esbuild` (the latter two for CLI + AOT compile).                                        |
-| `@aahoughton/oav-core` | Lean alternative. Zero runtime dependencies. Same programmatic surface as `@aahoughton/oav`, minus the YAML readers and CLI. Feed it JSON specs (or pre-parsed objects via the memory reader). |
+| Package                | When to use                                                                                                                                                                                                                                                                                               |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@aahoughton/oav`      | Default. Batteries-included: YAML readers + the `oav` CLI. Depends on `yaml`; pulls in `commander` + `esbuild` for the CLI only (never imported from the library entry points, so bundlers tree-shake them out of application bundles; Node server runs load them only when the `oav` binary is invoked). |
+| `@aahoughton/oav-core` | Lean alternative. Zero runtime dependencies. Same programmatic surface as `@aahoughton/oav`, minus the YAML readers and CLI. Feed it JSON specs (or pre-parsed objects via the memory reader).                                                                                                            |
 
 ```bash
 npm install @aahoughton/oav
@@ -42,8 +42,15 @@ npm install @aahoughton/oav-core           # lean install, JSON-only
 subpaths. Samples below use `@aahoughton/oav`; on the lean package,
 substitute `@aahoughton/oav-core` in imports that don't touch the
 YAML readers (`createYamlFileReader`, `createSmartHttpReader`) or
-the CLI. `@aahoughton/oav` pulls in the CLI's deps (`commander`,
-`esbuild`) so `oav <command>` runs after a single install.
+the CLI.
+
+The `commander` + `esbuild` deps `@aahoughton/oav` pulls in are
+reachable only from the `oav` CLI binary (`dist/cli.js`). Application
+code importing from `@aahoughton/oav` hits `dist/index.js`, which
+doesn't reference them — bundlers tree-shake them out of the output,
+and Node servers load them only when the CLI is invoked. Consumers
+who want to skip the ~10 MB of esbuild's native binary on disk can
+install `@aahoughton/oav-core` instead (zero runtime deps, no CLI).
 
 ## Quick start
 
