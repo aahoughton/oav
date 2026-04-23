@@ -68,6 +68,31 @@ more specs and reports:
 Use it to sanity-check a new spec loads end-to-end through oav, or to
 regression-check when you touch `@oav/spec` / `@oav/validator`.
 
+### `mem.ts` — steady-state memory under HTTP load
+
+```bash
+# One-time bootstrap (builds oav, installs both server fixtures):
+pnpm --filter=. build          # from repo root
+cd performance/mem-bench && pnpm install
+cd ..
+
+pnpm bench:mem                                      # default 100 × 500 = 50,000 requests
+BATCHES=20 PER_BATCH=500 WARMUP=250 pnpm bench:mem  # quick smoke
+```
+
+Spawns two Express 4 servers — one wraps `@aahoughton/oav`, the other
+wraps `express-openapi-validator` (which pulls in ajv). Both validate
+a ~40-schema OpenAPI spec with discriminated payment-method unions,
+nested address + amount objects, and array-of-items transfers. The
+driver fires a round-robin mix of 13 request cases (valid + invalid
+POST/GET/404/405 across five endpoints), forcing GC between samples
+via each server's `/__memory?gc=1` endpoint, and reports baseline /
+post-warmup / steady-state / post-idle RSS + heapUsed.
+
+Use it to compare library footprint in a real HTTP backend shape, or
+to regression-check when you change validator construction or cache
+retention.
+
 ## Which entry point when
 
 | You want to know...                                                    | Use                                                                       |
@@ -76,6 +101,7 @@ regression-check when you touch `@oav/spec` / `@oav/validator`.
 | How does library choice scale across a real spec's schemas?            | `run.ts --spec=<path>`                                                    |
 | Does this real spec load cleanly through oav's pipeline?               | `bench-real-world.mjs`                                                    |
 | How long does oav take from spec-on-disk to "first validated request"? | `bench-real-world.mjs`                                                    |
+| What's the steady-state memory cost of each library in an HTTP server? | `mem.ts`                                                                  |
 
 ## Reading the results
 
@@ -114,6 +140,51 @@ compile (per library, aggregated across every schema):
   library that rejects an OAS 3.0-specific keyword like `nullable`
   will show up here; that's a real property of the library, not a
   benchmark artifact).
+
+### Memory mode (`mem.ts`)
+
+```
+=== Steady-state memory: 100 × 500 = 50000 reqs ===
+
+metric                                 oav       eov+ajv   Δ (eov-oav)
+------------------------------------------------------------------------
+baseline  RSS                       77.0MB       108.9MB        31.9MB  (-29%)
+baseline  heapUsed                   8.8MB        12.1MB         3.3MB
+warmup    RSS                       83.4MB       111.6MB        28.2MB
+warmup    heapUsed                  11.5MB        14.4MB         2.9MB
+steady    RSS (avg last 5)          98.3MB       117.1MB        18.8MB  (-16%)
+steady    heapUsed (avg)            11.9MB        14.6MB         2.7MB
+postIdle  RSS                       98.3MB       117.1MB        18.8MB
+postIdle  heapUsed                  11.9MB        14.6MB         2.7MB
+growth    RSS                       14.9MB         5.5MB        -9.4MB
+growth    heapUsed                   0.5MB         0.3MB        -0.2MB
+
+batch throughput (avg ms per 500-req batch): oav 75ms, eov 80ms
+```
+
+What to look at:
+
+- **`baseline RSS`** — the library + validator-set footprint at rest,
+  right after `app.listen`. Stable across runs; typically eov+ajv is
+  ~30 MB higher than oav on the bench spec.
+- **`steady heapUsed`** — V8 heap after 50k requests with GC forced
+  before each sample. Stable; typically eov+ajv is ~2.5–3 MB higher
+  (~15–20%).
+- **`growth` rows** — delta from post-warmup to end-of-run. Both
+  libraries plateau; if either grows without bound the value here
+  diverges and the steady rows keep rising across runs.
+- **`steady RSS`** is noisier than heapUsed — V8 expands the heap in
+  chunks, and when a chunk boundary falls mid-run the final RSS
+  differs by 10–15 MB between runs even though the actual working
+  set is stable. The heapUsed number is the cleaner signal for
+  retention; RSS is what the OS accountancy shows and includes V8's
+  uncommitted-but-reserved pages.
+- **Status-code distribution** is printed above the table; both
+  servers should agree on every batch. A mismatch means the
+  validators diverge on some request shape and the comparison is
+  invalid.
+
+Raw per-batch data lands in `results/mem-<timestamp>.json`.
 
 ### Note on `validate` under `--spec`
 

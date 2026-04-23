@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "bench": "tsx run.ts",
-    "bench:long": "tsx run.ts --time=1500"
+    "bench:long": "tsx run.ts --time=1500",
+    "bench:mem": "tsx mem.ts"
   },
   "devDependencies": {
     "@apidevtools/json-schema-ref-parser": "^15.3.5",
