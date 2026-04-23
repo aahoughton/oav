@@ -1,0 +1,730 @@
+/**
+ * Emit a standalone, AOT-compiled HTTP validator from an OpenAPI
+ * document. The output is an ES module exporting the same surface as
+ * `createValidator(document)` — `validateRequest`, `validateResponse`,
+ * `validateFetchRequest`, `validateFetchResponse`, `getOperation`,
+ * `detectedVersion`, `warnings` — but with every operation's schemas
+ * already compiled into the module. After bundling through esbuild the
+ * module has zero imports.
+ *
+ * Consumers who were doing `createValidator(await loadSpec(...))` at
+ * runtime get the same behaviour with no YAML parse, no `$ref`
+ * resolution, no schema compilation at load. Target use cases:
+ * Cloudflare Workers, Vercel Edge, Lambda@Edge, Lambda cold-start
+ * latency, deno compile, single-file bundles — anywhere runtime
+ * compilation is either disallowed or too expensive.
+ *
+ * @packageDocumentation
+ */
+
+import { builtInFormats } from "@oav/formats";
+import {
+  compileSchema,
+  createRefResolver,
+  jsonSchemaDialect,
+  oas30Dialect,
+  openapi31Dialect,
+  resolve,
+  type CompiledSchema,
+  type Dialect,
+  type RefResolver,
+} from "@oav/schema";
+import type {
+  HeaderObject,
+  OpenAPIDocument,
+  OperationObject,
+  ParameterObject,
+  PathItem,
+  ReferenceObject,
+  RequestBodyObject,
+  ResponseObject,
+  SchemaOrBoolean,
+  SecuritySchemeObject,
+} from "@oav/core";
+import type { StandaloneDialect } from "./emit-standalone.js";
+
+/**
+ * Options for {@link emitSpec}.
+ *
+ * @internal
+ */
+export interface EmitSpecOptions {
+  /** Schema dialect; auto-detected from `document.openapi` if unset. */
+  dialect?: StandaloneDialect;
+  /** Skip response-validator emit. Default false (responses emitted). */
+  requestsOnly?: boolean;
+  /**
+   * Whitelist of `(method, path)` pairs to emit. Empty / undefined
+   * means "emit every operation." Ops not matching any include are
+   * dropped from the router entirely — requests to them come back as
+   * `code: "route"` (404).
+   */
+  only?: Array<{ method: string; path: string }>;
+  /**
+   * Import-path prefix for runtime deps. Defaults to
+   * `"@aahoughton/oav"`. Tests override to `"@oav"` so the output
+   * resolves against the workspace aliases.
+   */
+  importPrefix?: string;
+}
+
+const DIALECT_MAP: Record<StandaloneDialect, Dialect> = {
+  "2020-12": jsonSchemaDialect,
+  "openapi-3.1": openapi31Dialect,
+  "openapi-3.0": oas30Dialect,
+};
+
+/**
+ * Compile every operation's schemas and emit the orchestrated HTTP
+ * validator as ESM source.
+ *
+ * @internal
+ */
+export function emitSpec(document: OpenAPIDocument, options: EmitSpecOptions = {}): string {
+  const importPrefix = options.importPrefix ?? "@aahoughton/oav";
+  const dialect = resolveDialect(document, options.dialect);
+  const graph = resolve(document as unknown as SchemaOrBoolean);
+  const refResolver: RefResolver = createRefResolver(graph);
+
+  // Anything passed through resolveRef comes back with `{ $ref }`
+  // followed — the schema registry handles internal refs transparently.
+  const resolveRef = <T>(v: T | ReferenceObject | undefined): T | undefined => {
+    if (v === undefined) return undefined;
+    if (typeof v !== "object" || v === null) return v as T;
+    const ref = (v as { $ref?: unknown }).$ref;
+    if (typeof ref !== "string") return v as T;
+    return refResolver.resolve(ref) as T | undefined;
+  };
+
+  // Collect every compiled schema, de-duplicated by identity. Each
+  // unique CompiledSchema gets one emitted IIFE; positions reference
+  // it by generated name.
+  const compiled: Array<{ name: string; source: string }> = [];
+  const schemaNames = new Map<CompiledSchema, string>();
+  const named = (schema: SchemaOrBoolean): string => {
+    const c = compileSchema(schema, { dialect, refResolver, formats: builtInFormats });
+    const existing = schemaNames.get(c);
+    if (existing !== undefined) return existing;
+    const name = `S${compiled.length}`;
+    compiled.push({ name, source: c.source });
+    schemaNames.set(c, name);
+    return name;
+  };
+
+  // Operations to emit, honouring `only`. Two parallel structures:
+  //
+  // - `pathMethods`: for each path that has ≥ 1 included op, the FULL
+  //   set of spec-declared methods. Drives the router's paths table.
+  //   A method declared in the spec but dropped by `--only` stays in
+  //   here — the router still sees it and reports method-not-allowed
+  //   only for methods the spec truly doesn't have. That preserves
+  //   405 semantics for unfiltered deployments.
+  // - `opsEmitted`: the FILTERED subset. Drives the ops table.
+  //
+  // At validate time: router.match → if method-not-allowed, 405
+  // (same as unfiltered). If router matches but ops lookup misses,
+  // it's a filtered-out method → 404. Effect: a microservice emit
+  // reports 404 for operations it doesn't serve, including those
+  // that were in the upstream spec but are outside this deployment's
+  // surface.
+  const includeFilter = options.only;
+  const opsEmitted: EmittedOp[] = [];
+  const pathMethods = new Map<string, Set<string>>();
+  const includedPaths = new Set<string>();
+
+  // First pass: identify which paths have ≥ 1 included op.
+  for (const [pathPattern, pathItemRaw] of Object.entries(document.paths ?? {})) {
+    const pathItem = resolveRef<PathItem>(pathItemRaw as PathItem | ReferenceObject);
+    if (pathItem === undefined) continue;
+    for (const method of HTTP_METHODS) {
+      const opRaw = (pathItem as Record<string, unknown>)[method];
+      if (opRaw === undefined) continue;
+      const upperMethod = method.toUpperCase();
+      if (matchesFilter(includeFilter, upperMethod, pathPattern)) {
+        includedPaths.add(pathPattern);
+        break;
+      }
+    }
+  }
+
+  // Second pass: for each included path, record all declared methods
+  // (for the router) and the filtered subset (for the ops table).
+  for (const [pathPattern, pathItemRaw] of Object.entries(document.paths ?? {})) {
+    if (!includedPaths.has(pathPattern)) continue;
+    const pathItem = resolveRef<PathItem>(pathItemRaw as PathItem | ReferenceObject);
+    if (pathItem === undefined) continue;
+
+    const allDeclared = new Set<string>();
+    for (const method of HTTP_METHODS) {
+      const opRaw = (pathItem as Record<string, unknown>)[method];
+      if (opRaw === undefined) continue;
+      const op = resolveRef<OperationObject>(opRaw as OperationObject | ReferenceObject);
+      if (op === undefined) continue;
+      const upperMethod = method.toUpperCase();
+      allDeclared.add(upperMethod);
+
+      if (!matchesFilter(includeFilter, upperMethod, pathPattern)) continue;
+      opsEmitted.push(
+        buildEmittedOp({
+          pathPattern,
+          method: upperMethod,
+          operation: op,
+          pathItem,
+          document,
+          resolveRef,
+          named,
+          requestsOnly: options.requestsOnly === true,
+        }),
+      );
+    }
+    pathMethods.set(pathPattern, allDeclared);
+  }
+
+  // Assemble the module.
+  const opsTableEntries = opsEmitted.map(
+    (o) => `  ${JSON.stringify(`${o.pathPattern}::${o.method}`)}: ${o.stateLiteral},`,
+  );
+
+  const pathsTableEntries = [...pathMethods.entries()].map(
+    ([pattern, methods]) =>
+      `  ${JSON.stringify(pattern)}: { ${[...methods].map((m) => `${m.toLowerCase()}: {}`).join(", ")} },`,
+  );
+
+  return [
+    "// Generated by `oav compile-spec`. Do not edit by hand.",
+    "// Regenerate by running `oav compile-spec <openapi.yaml>` against the source.",
+    "",
+    `import { createLeafError, createBranchError, createError } from "${importPrefix}/core";`,
+    `import { createDeps, deepEqual, typeOf, wrapErrors } from "${importPrefix}/schema/internals";`,
+    `import { builtInFormats } from "${importPrefix}/formats";`,
+    `import { deserialize, matchMediaType, matchResponseKey, httpRequestFromFetch, httpResponseFromFetch, checkSecurity, compileOperationSecurity, resolveOperationRef, createRouter } from "${importPrefix}/validator/internals";`,
+    "",
+    "void createBranchError; void createError; void deepEqual; void typeOf; void wrapErrors;",
+    "void resolveOperationRef;",
+    "",
+    "const deps = createDeps();",
+    "for (const [name, fn] of Object.entries(builtInFormats)) deps.formats.set(name, fn);",
+    "",
+    "// ---- compiled per-operation schemas ----",
+    ...compiled.map((c) => `const ${c.name} = (function (deps) {\n${c.source}\n})(deps);`),
+    "",
+    "// ---- security schemes (for per-op security compile at module load) ----",
+    `const __securitySchemes = ${stringifySecuritySchemes(document, resolveRef)};`,
+    `const __documentSecurity = ${JSON.stringify(document.security ?? [])};`,
+    "const __identityResolver = (v) => v;",
+    "",
+    "// ---- per-operation state ----",
+    "const ops = {",
+    ...opsTableEntries,
+    "};",
+    "",
+    "// Fold security compile across all ops at load time, using the",
+    "// emitted schemes table as resolution context. Cheap; eliminates",
+    "// per-request compile cost.",
+    "for (const [key, op] of Object.entries(ops)) {",
+    "  if (op.__security !== null) {",
+    "    op.compiledSecurity = compileOperationSecurity(",
+    "      { security: op.__security },",
+    "      { components: { securitySchemes: __securitySchemes }, security: __documentSecurity },",
+    "      __identityResolver,",
+    "    );",
+    "  }",
+    "}",
+    "",
+    "// ---- router ----",
+    "const router = createRouter({",
+    ...pathsTableEntries,
+    "});",
+    "",
+    "// ---- detected version + warnings ----",
+    `export const detectedVersion = ${JSON.stringify(detectVersionBucket(document))};`,
+    "export const warnings = Object.freeze([]);",
+    "",
+    renderValidateRequest(),
+    "",
+    options.requestsOnly === true ? renderValidateResponseNoop() : renderValidateResponse(),
+    "",
+    renderValidateFetchRequest(),
+    "",
+    renderValidateFetchResponse(),
+    "",
+    renderGetOperation(),
+    "",
+  ].join("\n");
+}
+
+// ----- building per-op state -----
+
+interface EmittedOp {
+  pathPattern: string;
+  method: string;
+  /** The JSON-stringified state object for `ops[key]`. */
+  stateLiteral: string;
+}
+
+interface BuildEmittedOpArgs {
+  pathPattern: string;
+  method: string;
+  operation: OperationObject;
+  pathItem: PathItem;
+  document: OpenAPIDocument;
+  resolveRef: <T>(v: T | ReferenceObject | undefined) => T | undefined;
+  named: (schema: SchemaOrBoolean) => string;
+  requestsOnly: boolean;
+}
+
+function buildEmittedOp(args: BuildEmittedOpArgs): EmittedOp {
+  const { pathPattern, method, operation, pathItem, document, resolveRef, named, requestsOnly } =
+    args;
+
+  // Parameters: union of path-item-level + operation-level. Operation
+  // wins on `(name, in)` collision.
+  const combined = new Map<string, ParameterObject>();
+  for (const p of (pathItem.parameters ?? []) as Array<ParameterObject | ReferenceObject>) {
+    const resolved = resolveRef<ParameterObject>(p);
+    if (resolved !== undefined) combined.set(`${resolved.name}::${resolved.in}`, resolved);
+  }
+  for (const p of (operation.parameters ?? []) as Array<ParameterObject | ReferenceObject>) {
+    const resolved = resolveRef<ParameterObject>(p);
+    if (resolved !== undefined) combined.set(`${resolved.name}::${resolved.in}`, resolved);
+  }
+
+  // requestBody: per-media-type compiled body validators + required flag.
+  const requestBody = resolveRef<RequestBodyObject>(
+    operation.requestBody as RequestBodyObject | ReferenceObject,
+  );
+  const bodyValidators: Record<string, string> = {};
+  let requestBodyRequired = false;
+  if (requestBody !== undefined) {
+    requestBodyRequired = requestBody.required === true;
+    for (const [mediaType, media] of Object.entries(requestBody.content ?? {})) {
+      if (media.schema !== undefined) {
+        bodyValidators[mediaType] = named(media.schema);
+      }
+    }
+  }
+
+  // Responses: per-status, per-media-type body + header schemas.
+  const responses: Record<
+    string,
+    {
+      bodyValidators: Record<string, string>;
+      headers: Record<string, { required: boolean; schema: unknown; validator: string | null }>;
+    }
+  > = {};
+  if (!requestsOnly) {
+    for (const [statusKey, respRaw] of Object.entries(operation.responses ?? {})) {
+      const resp = resolveRef<ResponseObject>(respRaw as ResponseObject | ReferenceObject);
+      if (resp === undefined) continue;
+      const bodyVs: Record<string, string> = {};
+      for (const [mediaType, media] of Object.entries(resp.content ?? {})) {
+        if (media.schema !== undefined) {
+          bodyVs[mediaType] = named(media.schema);
+        }
+      }
+      const headers: Record<
+        string,
+        { required: boolean; schema: unknown; validator: string | null }
+      > = {};
+      for (const [headerName, hdrRaw] of Object.entries(resp.headers ?? {})) {
+        const hdr = resolveRef<HeaderObject>(hdrRaw as HeaderObject | ReferenceObject);
+        if (hdr === undefined) continue;
+        const schema = (hdr.schema ?? firstContentSchema(hdr)) as SchemaOrBoolean | undefined;
+        headers[headerName] = {
+          required: hdr.required === true,
+          schema: hdr.schema ?? undefined,
+          validator: schema !== undefined ? named(schema) : null,
+        };
+      }
+      responses[statusKey] = { bodyValidators: bodyVs, headers };
+    }
+  }
+
+  const security = operation.security ?? null;
+
+  // Hand-serialise because we need to splice in unquoted references to
+  // the compiled validator names (S0, S1, …). JSON.stringify then
+  // string-replace the sentinel placeholders.
+  const stateLiteral = hydrateValidatorRefs(
+    JSON.stringify(
+      {
+        pathPattern,
+        method,
+        parameters: [...combined.values()].map((p) => ({
+          name: p.name,
+          in: p.in,
+          required: p.required === true,
+          style: p.style,
+          explode: p.explode,
+          schema: p.schema ?? undefined,
+          __validator: paramValidatorName(combined, p, named),
+        })),
+        requestBodyRequired,
+        hasRequestBody: requestBody !== undefined,
+        bodyValidators: toPlaceholderMap(bodyValidators),
+        responses: mapResponsesToPlaceholders(responses),
+        __security: security,
+      },
+      null,
+      2,
+    ),
+  );
+
+  void document; // currently unused; keep in signature for future overlay resolution
+  return { pathPattern, method, stateLiteral };
+}
+
+function paramValidatorName(
+  _combined: Map<string, ParameterObject>,
+  p: ParameterObject,
+  named: (schema: SchemaOrBoolean) => string,
+): string {
+  const schema = (p.schema ?? firstContentSchema(p)) as SchemaOrBoolean | undefined;
+  if (schema === undefined) return "__NULL__";
+  return `__REF:${named(schema)}__`;
+}
+
+function firstContentSchema(p: ParameterObject | HeaderObject): SchemaOrBoolean | undefined {
+  const content = (p as ParameterObject).content;
+  if (content === undefined) return undefined;
+  for (const media of Object.values(content)) {
+    if (media.schema !== undefined) return media.schema;
+  }
+  return undefined;
+}
+
+function toPlaceholderMap(m: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(m)) out[k] = `__REF:${v}__`;
+  return out;
+}
+
+function mapResponsesToPlaceholders(
+  responses: Record<
+    string,
+    {
+      bodyValidators: Record<string, string>;
+      headers: Record<string, { required: boolean; schema: unknown; validator: string | null }>;
+    }
+  >,
+): unknown {
+  const out: Record<string, unknown> = {};
+  for (const [status, r] of Object.entries(responses)) {
+    const headerOut: Record<string, { required: boolean; schema: unknown; __validator: string }> =
+      {};
+    for (const [name, h] of Object.entries(r.headers)) {
+      headerOut[name] = {
+        required: h.required,
+        schema: h.schema,
+        __validator: h.validator === null ? "__NULL__" : `__REF:${h.validator}__`,
+      };
+    }
+    out[status] = { bodyValidators: toPlaceholderMap(r.bodyValidators), headers: headerOut };
+  }
+  return out;
+}
+
+function hydrateValidatorRefs(json: string): string {
+  // Replace "__REF:S0__" → S0 and "__NULL__" → null. Both appear as
+  // strings in the JSON; strip the wrapping quotes when rewriting.
+  return json.replace(/"__REF:(S\d+)__"/g, "$1").replace(/"__NULL__"/g, "null");
+}
+
+// ----- security schemes -----
+
+function stringifySecuritySchemes(
+  document: OpenAPIDocument,
+  resolveRef: <T>(v: T | ReferenceObject | undefined) => T | undefined,
+): string {
+  const raw = document.components?.securitySchemes ?? {};
+  const resolved: Record<string, SecuritySchemeObject> = {};
+  for (const [name, r] of Object.entries(raw)) {
+    const s = resolveRef<SecuritySchemeObject>(r as SecuritySchemeObject | ReferenceObject);
+    if (s !== undefined) resolved[name] = s;
+  }
+  return JSON.stringify(resolved, null, 2);
+}
+
+// ----- filter -----
+
+function matchesFilter(
+  only: Array<{ method: string; path: string }> | undefined,
+  method: string,
+  pathPattern: string,
+): boolean {
+  if (only === undefined || only.length === 0) return true;
+  return only.some((inc) => inc.method.toUpperCase() === method && inc.path === pathPattern);
+}
+
+// ----- version detection -----
+
+function detectVersionBucket(document: OpenAPIDocument): "3.0" | "3.1" | "3.2" | undefined {
+  const v = (document as { openapi?: string }).openapi;
+  if (typeof v !== "string") return undefined;
+  if (v.startsWith("3.0")) return "3.0";
+  if (v.startsWith("3.1")) return "3.1";
+  if (v.startsWith("3.2")) return "3.2";
+  return undefined;
+}
+
+function resolveDialect(
+  document: OpenAPIDocument,
+  override: StandaloneDialect | undefined,
+): Dialect {
+  if (override !== undefined) return DIALECT_MAP[override];
+  const bucket = detectVersionBucket(document);
+  if (bucket === "3.0") return oas30Dialect;
+  return openapi31Dialect; // 3.1, 3.2, or unknown
+}
+
+// ----- orchestration templates -----
+
+const HTTP_METHODS = ["get", "put", "post", "delete", "options", "head", "patch", "trace", "query"];
+
+function renderValidateRequest(): string {
+  // Mirrors validator.ts's validateRequest closely. Differences:
+  //   - state comes from the `ops` table, keyed on
+  //     `${pathPattern}::${method}`, rather than cacheFor+WeakMap
+  //   - security is pre-compiled at module load (op.compiledSecurity)
+  //   - no strict-query-parameter option surfaced yet
+  return `export function validateRequest(req) {
+  const method = (req.method ?? "GET").toUpperCase();
+  const match = router.match(method, req.path);
+  if (match === undefined) {
+    return createLeafError(
+      "route", [],
+      \`no route matches \${method} \${req.path}\`,
+      { method, path: req.path },
+    );
+  }
+  if (match.kind === "method-not-allowed") {
+    return createLeafError(
+      "method", [],
+      \`method \${method} not allowed on \${match.pathPattern}; allowed: \${match.allowed.join(", ")}\`,
+      { method, pathPattern: match.pathPattern, allowed: match.allowed },
+    );
+  }
+  const op = ops[\`\${match.pathPattern}::\${method}\`];
+  if (op === undefined) {
+    // Filtered-out op: treat as route miss.
+    return createLeafError("route", [], \`no route matches \${method} \${req.path}\`, { method, path: req.path });
+  }
+
+  // Security gate.
+  if (op.compiledSecurity !== undefined) {
+    const securityErr = checkSecurity(op.compiledSecurity, req);
+    if (securityErr !== null) {
+      return createBranchError(
+        "request", [],
+        \`\${method} \${match.pathPattern}: request validation failed\`,
+        [securityErr],
+        { method, pathPattern: match.pathPattern },
+      );
+    }
+  }
+
+  // Content-type gate (only if there's a request body).
+  const hasBody = req.body !== undefined && req.body !== null;
+  const bodyMediaTypes = Object.keys(op.bodyValidators);
+  if (op.hasRequestBody && hasBody && bodyMediaTypes.length > 0) {
+    const mt = matchMediaType(req.contentType, bodyMediaTypes);
+    if (mt === undefined) {
+      return createBranchError(
+        "request", [],
+        \`\${method} \${match.pathPattern}: request validation failed\`,
+        [createLeafError(
+          "content-type", ["body"],
+          \`request Content-Type "\${req.contentType ?? "<missing>"}" is not accepted\`,
+          { contentType: req.contentType, accepted: bodyMediaTypes },
+        )],
+        { method, pathPattern: match.pathPattern },
+      );
+    }
+  }
+
+  const children = [];
+
+  // Parameter validation. Mirrors validate-step.ts:validateParameter.
+  for (const p of op.parameters) {
+    const err = __validateParameter(p, req, match);
+    if (err !== null) children.push(err);
+  }
+
+  // Body validation.
+  if (op.hasRequestBody) {
+    if (!hasBody) {
+      if (op.requestBodyRequired) {
+        children.push(createLeafError("body", ["body"], "missing required request body", {}));
+      }
+    } else {
+      const mt = matchMediaType(req.contentType, bodyMediaTypes);
+      if (mt !== undefined) {
+        const v = op.bodyValidators[mt];
+        const r = v.validate(req.body, ["body"]);
+        if (!r.valid && r.error !== undefined) children.push(r.error);
+      }
+    }
+  }
+
+  if (children.length === 0) return null;
+  return createBranchError(
+    "request", [],
+    \`\${method} \${match.pathPattern}: request validation failed\`,
+    children,
+    { method, pathPattern: match.pathPattern },
+  );
+}
+
+function __validateParameter(p, req, match) {
+  const raw = __readParamRaw(p, req, match);
+  if (raw === undefined) {
+    if (p.required) {
+      return createLeafError(
+        p.in === "header" ? "header-param" : p.in === "path" ? "path-param" : p.in === "query" ? "query-param" : "cookie-param",
+        [p.in, p.name],
+        \`missing required \${p.in} parameter "\${p.name}"\`,
+        { name: p.name, in: p.in },
+      );
+    }
+    return null;
+  }
+  if (p.__validator === null) return null;
+  const value = deserialize(raw, p);
+  const r = p.__validator.validate(value, [p.in, p.name]);
+  if (r.valid || r.error === undefined) return null;
+  return r.error;
+}
+
+function __readParamRaw(p, req, match) {
+  if (p.in === "path") return match.pathParams[p.name];
+  if (p.in === "query") return (req.query ?? {})[p.name];
+  if (p.in === "header") {
+    const h = (req.headers ?? {});
+    return h[p.name] ?? h[p.name.toLowerCase()];
+  }
+  if (p.in === "cookie") return (req.cookies ?? {})[p.name];
+  return undefined;
+}
+`;
+}
+
+function renderValidateResponseNoop(): string {
+  return `export function validateResponse(_req, _res) {
+  // compile-spec was run with --requests-only; responses are a pass-through.
+  return null;
+}
+`;
+}
+
+function renderValidateResponse(): string {
+  return `export function validateResponse(req, res) {
+  const method = (req.method ?? "GET").toUpperCase();
+  const match = router.match(method, req.path);
+  if (match === undefined) {
+    return createLeafError(
+      "route", [],
+      \`no route matches \${method} \${req.path}\`,
+      { method, path: req.path },
+    );
+  }
+  if (match.kind === "method-not-allowed") {
+    return createLeafError(
+      "method", [],
+      \`method \${method} not allowed on \${match.pathPattern}; allowed: \${match.allowed.join(", ")}\`,
+      { method, pathPattern: match.pathPattern, allowed: match.allowed },
+    );
+  }
+  const op = ops[\`\${match.pathPattern}::\${method}\`];
+  if (op === undefined) {
+    return createLeafError("route", [], \`no route matches \${method} \${req.path}\`, { method, path: req.path });
+  }
+  const children = [];
+  const statusKeys = Object.keys(op.responses);
+  const statusKey = matchResponseKey(res.status, Object.fromEntries(statusKeys.map((k) => [k, null])));
+  if (statusKey === undefined) {
+    children.push(createLeafError("status", [], \`no response defined for status \${res.status}\`, { status: res.status }));
+  } else {
+    const resp = op.responses[statusKey];
+    if (resp !== undefined) {
+      // Header validation.
+      if (res.headers !== undefined) {
+        for (const [name, hdr] of Object.entries(resp.headers)) {
+          const lowered = name.toLowerCase();
+          const raw = res.headers[lowered] ?? res.headers[name];
+          if (hdr.required && (raw === undefined || raw === "")) {
+            children.push(createLeafError("header-param", ["header", name], \`missing required header "\${name}"\`, { name, in: "header" }));
+            continue;
+          }
+          if (raw === undefined) continue;
+          if (hdr.__validator === null) continue;
+          const value = deserialize(raw, { name, in: "header", schema: hdr.schema, style: undefined, explode: undefined });
+          const r = hdr.__validator.validate(value, ["header", name]);
+          if (!r.valid && r.error !== undefined) children.push(r.error);
+        }
+      }
+      // Body validation.
+      const bodyMediaTypes = Object.keys(resp.bodyValidators);
+      if (bodyMediaTypes.length > 0 && res.body !== undefined) {
+        const mt = matchMediaType(res.contentType, bodyMediaTypes);
+        if (mt === undefined) {
+          children.push(createLeafError("content-type", ["body"], \`response Content-Type "\${res.contentType ?? "<missing>"}" is not accepted\`, { contentType: res.contentType, accepted: bodyMediaTypes }));
+        } else {
+          const v = resp.bodyValidators[mt];
+          const r = v.validate(res.body, ["body"]);
+          if (!r.valid && r.error !== undefined) children.push(r.error);
+        }
+      }
+    }
+  }
+  if (children.length === 0) return null;
+  return createBranchError(
+    "response", [],
+    \`\${method} \${match.pathPattern}: response validation failed\`,
+    children,
+    { method, pathPattern: match.pathPattern, status: res.status },
+  );
+}
+`;
+}
+
+function renderValidateFetchRequest(): string {
+  return `export async function validateFetchRequest(request, options) {
+  const { httpRequest, bodyPresent: _bp, bodyValue } = await httpRequestFromFetch(request, options);
+  const error = validateRequest(httpRequest);
+  if (error !== null) return { ok: false, error };
+  return { ok: true, body: bodyValue };
+}
+`;
+}
+
+function renderValidateFetchResponse(): string {
+  return `export async function validateFetchResponse(request, response) {
+  const requestHttp = await httpRequestFromFetch(request);
+  const { httpResponse, bodyValue } = await httpResponseFromFetch(response);
+  const error = validateResponse(requestHttp.httpRequest, httpResponse);
+  if (error !== null) return { ok: false, error };
+  return { ok: true, body: bodyValue };
+}
+`;
+}
+
+function renderGetOperation(): string {
+  return `export function getOperation({ method, path }) {
+  const m = (method ?? "GET").toUpperCase();
+  const match = router.match(m, path);
+  if (match === undefined || match.kind === "method-not-allowed") return null;
+  const op = ops[\`\${match.pathPattern}::\${m}\`];
+  if (op === undefined) return null;
+  return {
+    pathPattern: match.pathPattern,
+    pathItem: {},
+    operation: {
+      // The AOT output doesn't retain the full OperationObject
+      // literal; we preserve enough for the common introspection
+      // uses (operationId, requestBody content-types, required
+      // headers, security). Extend the emit if you need more.
+    },
+  };
+}
+`;
+}

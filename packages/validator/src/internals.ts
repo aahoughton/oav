@@ -34,3 +34,28 @@ export {
 // builder; exposed so tests can exercise it without constructing a
 // full validator.
 export { resolveOperationRef } from "./operation-cache.js";
+
+// Fetch-adapter primitives: extract an `HttpRequest` / `HttpResponse`
+// from a Web Standards `Request` / `Response`. `oav compile-spec`'s
+// emitted output uses these to provide the `validateFetchRequest` /
+// `validateFetchResponse` helpers without the consumer having to
+// import them themselves.
+export {
+  httpRequestFromFetch,
+  httpResponseFromFetch,
+  readBodyFromFetch,
+  type FetchRequestOptions,
+} from "./from-fetch.js";
+
+// Shape-only security check. `oav compile-spec` pre-compiles the
+// per-op security plan at build time, then calls `checkSecurity` at
+// request time.
+export { checkSecurity, compileOperationSecurity } from "./security.js";
+
+// The router is a workspace-private package (`@oav/router`) that
+// isn't published on its own. `oav compile-spec`'s emitted output
+// needs `createRouter` at module load to build its dispatch table;
+// re-exporting it here keeps all emit-side imports funnelled through
+// `@aahoughton/oav/validator/internals` so the emitted module only
+// has to reach into one subpath.
+export { createRouter, type RouteMatch, type Router } from "@oav/router";

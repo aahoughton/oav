@@ -15,7 +15,9 @@ import {
   type SpecOverlay,
 } from "@oav/spec";
 import { createValidator } from "@oav/validator";
+import type { OpenAPIDocument } from "@oav/core";
 import { emitStandalone, type StandaloneDialect } from "./emit-standalone.js";
+import { emitSpec } from "./emit-spec.js";
 import { parseHttpFile } from "./http-parser.js";
 
 /**
@@ -323,4 +325,73 @@ async function bundleEmitted(source: string, resolveDir: string): Promise<string
   const out = result.outputFiles[0];
   if (out === undefined) throw new Error("esbuild produced no output");
   return out.text;
+}
+
+/**
+ * Implement the `oav compile-spec <spec>` subcommand. Loads an OpenAPI
+ * document (with optional overlays), compiles every operation's
+ * schemas, and emits a standalone ES module exposing the full
+ * `createValidator`-equivalent surface — `validateRequest`,
+ * `validateResponse`, `validateFetchRequest`, `validateFetchResponse`,
+ * `getOperation`, `detectedVersion`, `warnings` — with zero imports
+ * after bundling.
+ *
+ * @public
+ */
+export async function compileSpecCommand(
+  args: {
+    spec: string;
+    overlays: string[];
+    output?: string;
+    dialect?: StandaloneDialect;
+    requestsOnly?: boolean;
+    /** `{ method, path }` include-list; empty = all ops. */
+    only?: Array<{ method: string; path: string }>;
+    /** Test-only: rewrite emit imports to `@oav` so the workspace resolves. */
+    importPrefix?: string;
+    /** Test-only: override esbuild's resolveDir for in-workspace bundle. */
+    resolveDir?: string;
+  },
+  io: CommandIo = defaultCommandIo(),
+): Promise<CommandResult> {
+  const overlayDocs = await Promise.all(
+    args.overlays.map(async (path) => (await io.reader.read(path)) as SpecOverlay),
+  );
+  let document: OpenAPIDocument;
+  try {
+    const loaded = await loadSpec({
+      reader: io.reader,
+      entry: args.spec,
+      overlays: overlayDocs,
+    });
+    document = loaded.document;
+  } catch (err) {
+    io.stderr(`compile-spec: ${(err as Error).message}\n`);
+    return { exitCode: 2 };
+  }
+
+  let source: string;
+  try {
+    source = emitSpec(document, {
+      dialect: args.dialect,
+      requestsOnly: args.requestsOnly === true,
+      only: args.only,
+      importPrefix: args.importPrefix,
+    });
+  } catch (err) {
+    io.stderr(`compile-spec: ${(err as Error).message}\n`);
+    return { exitCode: 3 };
+  }
+  try {
+    source = await bundleEmitted(source, args.resolveDir ?? process.cwd());
+  } catch (err) {
+    io.stderr(`compile-spec: ${(err as Error).message}\n`);
+    return { exitCode: 3 };
+  }
+  if (args.output !== undefined) {
+    await io.writeText(args.output, source);
+    return { exitCode: 0 };
+  }
+  io.stdout(source);
+  return { exitCode: 0 };
 }

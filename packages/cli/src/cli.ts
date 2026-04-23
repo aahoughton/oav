@@ -2,6 +2,7 @@ import { Command } from "commander";
 import { KNOWN_OUTPUT_FORMATS, isOutputFormat, type OutputFormat } from "@oav/core";
 import {
   compileSchemaCommand,
+  compileSpecCommand,
   defaultCommandIo,
   resolveCommand,
   validateCommand,
@@ -152,7 +153,66 @@ export function buildProgram(options: BuildProgramOptions = {}): Command {
       exit(res.exitCode);
     });
 
+  program
+    .command("compile-spec <spec>")
+    .description(
+      "AOT-compile an OpenAPI document to a standalone HTTP validator module (zero imports; requires 'esbuild' as a peer dep).",
+    )
+    .option("--overlay <file...>", "apply one or more overlays in order", collectOverlays, [])
+    .option(
+      "--dialect <dialect>",
+      STANDALONE_DIALECTS.join(" | "),
+      (value: string): StandaloneDialect => {
+        if (!isStandaloneDialect(value)) throw new Error(`unknown dialect: ${value}`);
+        return value;
+      },
+    )
+    .option("--requests-only", "skip response-validator emit (smaller output)", false)
+    .option(
+      "--only <method-path...>",
+      'restrict emit to specified operations, e.g. --only "POST /pets" "GET /pets/{id}"',
+      collectOnly,
+      [],
+    )
+    .option("-o, --output <file>", "write output to a file instead of stdout")
+    .action(
+      async (
+        spec: string,
+        opts: {
+          overlay: string[];
+          dialect?: StandaloneDialect;
+          requestsOnly?: boolean;
+          only: Array<{ method: string; path: string }>;
+          output?: string;
+        },
+      ) => {
+        const res = await compileSpecCommand(
+          {
+            spec,
+            overlays: opts.overlay ?? [],
+            output: opts.output,
+            dialect: opts.dialect,
+            requestsOnly: opts.requestsOnly === true,
+            only: opts.only,
+          },
+          io,
+        );
+        exit(res.exitCode);
+      },
+    );
+
   return program;
+}
+
+function collectOnly(
+  value: string,
+  previous: Array<{ method: string; path: string }>,
+): Array<{ method: string; path: string }> {
+  const parts = value.trim().split(/\s+/);
+  if (parts.length !== 2 || parts[0] === "" || parts[1] === "") {
+    throw new Error(`--only expects "METHOD PATH" (space-delimited), got ${JSON.stringify(value)}`);
+  }
+  return [...previous, { method: parts[0]!.toUpperCase(), path: parts[1]! }];
 }
 
 function collectOverlays(value: string, previous: string[]): string[] {

@@ -44,6 +44,9 @@ importers:
       '@oav/formats':
         specifier: workspace:*
         version: link:../formats
+      '@oav/router':
+        specifier: workspace:*
+        version: link:../router
       '@oav/schema':
         specifier: workspace:*
         version: link:../schema
