@@ -1,45 +1,20 @@
 /**
- * Basic HTTP validation: build a validator from an inline OpenAPI 3.1
- * document and check one valid + one invalid request, then a response.
+ * Basic HTTP validation: load a petstore spec from disk, build a
+ * validator, and check one valid + one invalid request, then a response.
  *
  * Run from the repo root:
  *   pnpm tsx examples/basic-validation.ts
  */
 
-import type { OpenAPIDocument } from "../packages/core/src/index.ts";
+import { fileURLToPath } from "node:url";
 import { formatText } from "../packages/core/src/index.ts";
+import { createYamlFileReader } from "../packages/oav/src/yaml.ts";
+import { loadSpec } from "../packages/spec/src/index.ts";
 import { createValidator } from "../packages/validator/src/index.ts";
 
-const spec: OpenAPIDocument = {
-  openapi: "3.1.0",
-  info: { title: "Pets", version: "1" },
-  paths: {
-    "/pets": {
-      post: {
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                required: ["name"],
-                properties: {
-                  name: { type: "string", minLength: 1 },
-                  tag: { type: "string" },
-                },
-              },
-            },
-          },
-        },
-        responses: {
-          "201": { description: "created" },
-        },
-      },
-    },
-  },
-};
-
-const v = createValidator(spec);
+const specPath = fileURLToPath(new URL("./specs/petstore.yaml", import.meta.url));
+const { document } = await loadSpec({ reader: createYamlFileReader(), entry: specPath });
+const v = createValidator(document);
 
 const valid = v.validateRequest({
   method: "POST",

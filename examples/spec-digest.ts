@@ -18,13 +18,15 @@
  *   pnpm tsx examples/spec-digest.ts
  */
 
+import { fileURLToPath } from "node:url";
 import type {
-  OpenAPIDocument,
   OperationObject,
   ParameterObject,
   SchemaObject,
   SecurityRequirementObject,
 } from "../packages/core/src/index.ts";
+import { createYamlFileReader } from "../packages/oav/src/yaml.ts";
+import { loadSpec } from "../packages/spec/src/index.ts";
 import { createValidator } from "../packages/validator/src/index.ts";
 
 /**
@@ -103,46 +105,13 @@ function declaredMaxBytes(schema: SchemaObject | boolean | undefined): number | 
   return undefined;
 }
 
-// ──── Demo: inline spec, digest, print ────────────────────────────
+// ──── Demo: load spec, digest, print ──────────────────────────────
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const spec: OpenAPIDocument = {
-    openapi: "3.1.0",
-    info: { title: "Uploads", version: "1" },
-    components: {
-      securitySchemes: {
-        bearerAuth: { type: "http", scheme: "bearer" },
-      },
-    },
-    paths: {
-      "/uploads": {
-        post: {
-          operationId: "uploadDocument",
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            { name: "X-Tenant", in: "header", required: true, schema: { type: "string" } },
-          ],
-          requestBody: {
-            required: true,
-            content: {
-              "multipart/form-data": {
-                schema: {
-                  type: "object",
-                  required: ["file"],
-                  properties: {
-                    file: { type: "string", format: "binary", maxLength: 10 * 1024 * 1024 },
-                  },
-                },
-              },
-            },
-          },
-          responses: { "201": { description: "created" } },
-        },
-      },
-    },
-  };
+  const specPath = fileURLToPath(new URL("./specs/uploads.yaml", import.meta.url));
+  const { document } = await loadSpec({ reader: createYamlFileReader(), entry: specPath });
 
-  const validator = createValidator(spec);
+  const validator = createValidator(document);
   const info = validator.getOperation({ method: "POST", path: "/uploads" });
   if (info === null) throw new Error("no matching operation");
 

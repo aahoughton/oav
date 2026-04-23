@@ -40,12 +40,10 @@ Native OpenAPI 3.0 dialect alongside 3.1 / 3.2, so `nullable`,
 boolean `exclusiveMaximum`, and `$ref`-suppresses-siblings work by
 3.0 rules rather than via a 2020-12 translation shim. Pairs with
 [`@aahoughton/oav/spec`](../spec/README.md)'s `applyOverlays` for
-patching externally-owned base specs at load time. Published
-conformance numbers (98.5% on the 1290-case JSON Schema Test Suite,
-100% on the OpenAPI request/response cases) live at
+patching externally-owned base specs at load time. Pass counts against
+the upstream test suites live in
 [`conformance/REPORT.md`](../../conformance/REPORT.md). The
-[top-level README](../../README.md#why-this-exists) has the full
-rationale.
+[top-level README](../../README.md) has the full rationale.
 
 ## Features
 
@@ -67,16 +65,30 @@ rationale.
 - **Format validators**: the `@aahoughton/oav/formats` built-ins merged
   with any extras passed via `options.formats`.
 
+## Validator methods
+
+| Method                                        | Purpose                                                                                                                                 |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `validateRequest(req)`                        | Check an `HttpRequest` against the spec. Returns `null` on success or a `ValidationError` tree.                                         |
+| `validateResponse(req, res)`                  | Check an `HttpResponse` against the spec (request is used only for method + path). Returns `null` or a tree.                            |
+| `validateFetchRequest<T>(request, opts?)`     | Convenience for Web Standards `Request`: reads URL, headers, body; returns a discriminated union with a typed body. See INTEGRATION.md. |
+| `validateFetchResponse<T>(request, response)` | Symmetric Web Standards `Response` check. Useful for contract-testing an upstream.                                                      |
+| `getOperation({ method, path })`              | Startup-time introspection: returns the resolved, overlay-applied `OperationObject` + matched template for a (method, path) pair.       |
+| `detectedVersion`                             | The `openapi` string detected on construction, or `undefined` for an unrecognised / missing version (see `onUnknownVersion`).           |
+
 ## Options
 
-| Option                  | Effect                                                                |
-| ----------------------- | --------------------------------------------------------------------- |
-| `dialect`               | Force a specific {@link Dialect}, bypassing version detection.        |
-| `formats`               | Extra string format validators merged with `@aahoughton/oav/formats`. |
-| `keywords`              | User-registered schema keywords (see below).                          |
-| `maxErrors`             | Cap on leaf errors; `1` is fast-fail. Default: uncapped.              |
-| `strictQueryParameters` | Reject undeclared query parameters. Default `false`.                  |
-| `onUnknownVersion`      | `"fallback31"` \| `"warn"` \| `"throw"` when `openapi` is missing.    |
+| Option                  | Effect                                                                                                             |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `dialect`               | Force a specific {@link Dialect}, bypassing version detection.                                                     |
+| `formats`               | Extra string format validators merged with `@aahoughton/oav/formats`.                                              |
+| `keywords`              | User-registered schema keywords (see below).                                                                       |
+| `maxErrors`             | Cap on leaf errors; `1` is fast-fail. Default: uncapped.                                                           |
+| `strictQueryParameters` | Reject undeclared query parameters. Default `false`.                                                               |
+| `validateSecurity`      | Shape-only security check (bearer / basic / apiKey credential location). Default `true`; set `false` to skip.      |
+| `ignoreUndocumented`    | Return `null` on requests whose path the router can't match. Default `false`.                                      |
+| `ignorePaths`           | `(path: string) => boolean` predicate that short-circuits validation when it returns `true` (runs before routing). |
+| `onUnknownVersion`      | `"fallback31"` \| `"warn"` \| `"throw"` when `openapi` is missing or unsupported. Default `"fallback31"`.          |
 
 ## Custom keywords
 

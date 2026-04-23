@@ -16,34 +16,17 @@
  *   pnpm tsx examples/overlay-petstore-endpoint.ts
  */
 
-import type { OpenAPIDocument } from "../packages/core/src/index.ts";
+import { fileURLToPath } from "node:url";
 import { formatText } from "../packages/core/src/index.ts";
-import { applyOverlays, type SpecOverlay } from "../packages/spec/src/index.ts";
+import { createYamlFileReader } from "../packages/oav/src/yaml.ts";
+import { applyOverlays, loadSpec, type SpecOverlay } from "../packages/spec/src/index.ts";
 import { createValidator } from "../packages/validator/src/index.ts";
 
-const base: OpenAPIDocument = {
-  openapi: "3.1.0",
-  info: { title: "Petstore", version: "1" },
-  paths: {
-    "/pets": {
-      post: {
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                required: ["name"],
-                properties: { name: { type: "string" } },
-              },
-            },
-          },
-        },
-        responses: { "201": { description: "created" } },
-      },
-    },
-  },
-};
+const specPath = fileURLToPath(new URL("./specs/petstore.yaml", import.meta.url));
+const { document: base } = await loadSpec({
+  reader: createYamlFileReader(),
+  entry: specPath,
+});
 
 // Gateway requires `X-Tenant` on POST /pets.
 const overlay: SpecOverlay = {

@@ -1,12 +1,13 @@
-# @aahoughton/oav (router)
+# @oav/router
 
-Trie-based OpenAPI path matcher. Internal dependency of the validator;
-exported for tools that want to resolve `method + path` to an operation
-without running validation.
+> **Internal package — not published.** `@oav/router` is a workspace-private
+> dependency of `@aahoughton/oav`; it does not appear on npm and has no
+> published subpath. This README documents the internal surface for
+> contributors navigating the monorepo. Third-party consumers get the
+> router's functionality transparently via `createValidator`.
 
-Note: the router is not published under its own subpath. Third-party
-consumers typically never need it directly — `createValidator` wires it
-up. The README is here for contributors navigating the monorepo.
+Trie-based OpenAPI path matcher. Resolves `method + path` to the
+matching `OperationObject` in the spec.
 
 ```ts
 // Internal usage inside the monorepo

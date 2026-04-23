@@ -32,7 +32,7 @@ oav validate <spec> --request req.http                       # full HTTP request
 oav validate <spec> --path "POST /pets" --body body.json     # request body for a known route
 oav validate <spec> --path "GET /pets" --response --status 200 --body resp.json
 
-oav compile <schema.json> -o v.mjs                           # emit a standalone validator module
+oav compile <schema.json> -o v.mjs                           # emit a validator module
 oav compile <schema.json> --dialect openapi-3.0              # pick a non-default dialect
 ```
 
@@ -41,6 +41,9 @@ Pass `-` as the file path to read from stdin (e.g. `--body -`).
 `<spec>` and `--overlay <file>` accept local paths, `file://` URIs,
 and `http://` / `https://` URLs (both JSON and YAML over HTTP). Relative
 `$ref`s inside a URL-hosted spec resolve against the URL's base.
+
+`--request` takes a `.http` file — see [`.http` file format](#http-file-format)
+below for the expected shape.
 
 ## Flags
 
@@ -55,12 +58,13 @@ and `http://` / `https://` URLs (both JSON and YAML over HTTP). Relative
 
 ## `compile` output
 
-`oav compile <schema.json>` emits an ESM module that exports a
+`oav compile <schema.json>` emits an ESM module exporting a
 `validate(data)` function whose behaviour matches the dynamic
-`compileSchema(schema).validate(data)`, but which performs no
-`new Function()` call at load time. Useful for edge runtimes
-(Cloudflare Workers, Vercel Edge) where runtime code generation is
-forbidden or undesirable.
+`compileSchema(schema).validate(data)`, but with no `new Function()`
+call at load time. Useful for edge runtimes (Cloudflare Workers,
+Vercel Edge) where runtime code generation is forbidden or undesirable.
+The emitted module imports runtime helpers from `@aahoughton/oav/*`;
+it is not a fully self-contained bundle.
 
 Constraints on the input schema:
 

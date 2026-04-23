@@ -1,0 +1,28 @@
+openapi: "3.0.3"
+info:
+  title: Pets 3.0
+  version: "1"
+paths:
+  /pets:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                tag:
+                  type: string
+                  nullable: true
+                priority:
+                  type: integer
+                  maximum: 10
+                  exclusiveMaximum: true
+      responses:
+        "201":
+          description: created

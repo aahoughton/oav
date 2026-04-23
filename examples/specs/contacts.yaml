@@ -1,0 +1,22 @@
+openapi: "3.1.0"
+info:
+  title: Contacts
+  version: "1"
+paths:
+  /contacts:
+    post:
+      summary: Create a contact
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone]
+              properties:
+                phone:
+                  type: string
+                  format: e164-phone
+      responses:
+        "201":
+          description: created

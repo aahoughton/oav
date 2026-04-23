@@ -3,14 +3,12 @@
 Ajv is the canonical JSON Schema validator for JavaScript, and
 `express-openapi-validator` is the most widely-used middleware built
 on top of it. Together they cover most real-world OpenAPI validation
-in the ecosystem and have done so for years. This document is not a
-pitch against them — it's an honest map of what each project does so
-you can pick the one that fits.
+in the ecosystem and have done so for years. This document maps what
+each project does so you can pick the one that fits.
 
-For most users, oav sits in roughly the same feature territory as
-Ajv + `express-openapi-validator` combined: schema validation plus
-HTTP-layer checks. The two projects pull in different directions on a
-handful of specifics; those are catalogued below.
+oav covers the same ground as Ajv + `express-openapi-validator`
+combined — schema validation plus HTTP-layer checks — and trades
+differently on a handful of specifics, catalogued below.
 
 This document is about behaviour and capabilities. For runtime
 performance, see [`performance/README.md`](./performance/README.md),
@@ -22,23 +20,23 @@ Capabilities that the Ajv stack covers and oav does not.
 
 - **Multiple JSON Schema drafts.** Ajv supports draft-04, draft-06,
   draft-07, draft-2019-09, 2020-12, and JTD. oav compiles 2020-12 and
-  OpenAPI 3.0's constrained dialect; earlier drafts aren't on the
-  roadmap.
+  OpenAPI 3.0's constrained dialect only; earlier drafts and JTD are
+  not supported.
 - **Data-mutating options.** `coerceTypes`, `removeAdditional`, and
   `useDefaults` let Ajv mutate the validated value in place — coercing
   strings to numbers, stripping undeclared properties, filling missing
   properties from `default`. oav treats validation as a yes/no
   question and does not mutate inputs.
-- **Standalone code generation.** Ajv ships a programmatic
+- **Ahead-of-time code generation.** Ajv ships a programmatic
   `standaloneCode` API plus Node APIs that emit compiled validators
   as module source. oav ships a CLI equivalent (`oav compile
 schema.json -o v.mjs`) that covers the edge-runtime / build-time-
   bundling story for a single JSON Schema at a time. Ajv's
   programmatic surface is richer — batch emission, multiple schemas
-  per file, CommonJS output — and oav's emitted module still imports
-  runtime helpers from `@aahoughton/oav/*` rather than being fully
-  self-contained. For most "prepare a validator at build time" use
-  cases the CLI is enough.
+  per file, CommonJS output — and Ajv's output can be made fully
+  self-contained; oav's emitted module imports runtime helpers from
+  `@aahoughton/oav/*`. For most "prepare a validator at build time"
+  use cases the CLI is enough.
 - **Named schema registry.** `addSchema` / `getSchema` / `removeSchema`
   give Ajv a name-to-validator map that cross-schema `$ref`s resolve
   through. oav accepts an `external: Map<string, Schema>` on
@@ -94,10 +92,10 @@ Capabilities oav has that Ajv (alone or with
   without forking or preprocessing the upstream file.
 - **Structured error tree.** Errors preserve the applicator structure
   (`oneOf` with per-branch `children`, `allOf` with failed-conjunct
-  children). HTTP consumers can group by location and inspect which
-  branch of a composition failed. Ajv emits a flat errors array; the
-  tree vs flat choice is a philosophical one, not a capability gap in
-  either direction.
+  children). HTTP consumers can group by HTTP location
+  (`body.items[3].name`, `query.limit`) and inspect which branch of a
+  composition failed without parsing message strings. Ajv emits a
+  flat errors array.
 - **Predicate mode.** `compileSchema(schema, { predicate: true })`
   returns `{ validate: (x) => boolean }`. No error tree construction,
   no path snapshotting, no accumulator allocation. Ajv's
@@ -146,10 +144,10 @@ have equivalents in-tree; the two capability libraries (`fast-uri`,
 
 ## Summary
 
-For most users, oav and Ajv + `express-openapi-validator` are
-substitutable: both validate OpenAPI requests and responses by 3.0 /
-3.1 / 3.2 rules, both support custom keywords and formats, both
-produce machine-readable errors. Differences are real but bounded.
+oav and Ajv + `express-openapi-validator` cover the same ground: both
+validate OpenAPI requests and responses by 3.0 / 3.1 / 3.2 rules,
+both support custom keywords and formats, both produce
+machine-readable errors. Differences are real but bounded.
 
 Pick Ajv + `express-openapi-validator` when you want the fastest
 validator, a large userbase, multi-draft support, or the one-line

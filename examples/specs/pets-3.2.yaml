@@ -1,0 +1,21 @@
+openapi: "3.2.0"
+info:
+  title: Pets 3.2
+  version: "1"
+paths:
+  /pets/search:
+    query:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [filter]
+              properties:
+                filter:
+                  type: string
+                  minLength: 1
+      responses:
+        "200":
+          description: ok

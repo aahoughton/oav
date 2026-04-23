@@ -96,29 +96,16 @@ Return `true` for valid, `false` for a generic failure, or
 `{ message?, params? }` for a custom error leaf. Names that collide
 with a built-in keyword throw at construction.
 
-### Lower-level extensions
+### Advanced: full `KeywordDefinition`
 
-Write a full `KeywordDefinition` for applicator keywords, evaluation
-tracking, or custom emit shapes. The `compile(ctx)` function receives a
-`KeywordCompileContext` with a deliberately narrow surface:
+The function form above covers most custom keywords. For applicator
+keywords (ones that descend into subschemas), evaluation-key tracking,
+or custom emit shapes, pass a full `KeywordDefinition` instead — the
+`compile(ctx)` function receives a `KeywordCompileContext` that lets
+you emit generated code directly.
 
-| Member                                                  | Purpose                                                                                                                         |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `ctx.gen`                                               | Code emitter (`CodeEmitter` interface).                                                                                         |
-| `ctx.schema`, `ctx.parentSchema`                        | The keyword's value and the surrounding object.                                                                                 |
-| `ctx.data`, `ctx.path`, `ctx.errors`                    | JS expressions for the data / path / errors accumulator.                                                                        |
-| `ctx.emitError(kind, expr)`                             | Push a `ValidationError` expression. `kind`: `"leaf"` (counts toward `maxErrors`) or `"lift"` (already-counted, unconditional). |
-| `ctx.errorStatement(kind, expr)`                        | String form of `emitError` for inline source composition.                                                                       |
-| `ctx.validateSubschema(schema, dataExpr, { segment? })` | Descend into a subschema and emit any errors. Inlines when simple.                                                              |
-| `ctx.compileSubschema(schema)`                          | Lower-level: returns a function name. Use when the caller needs the sub-validator's return value (composition keywords).        |
-| `ctx.withPathSegment(seg, () => …)`                     | Scoped path push/pop — errors emitted in the body get the extended path.                                                        |
-| `ctx.resolveRef(ref)`                                   | Resolve a `$ref` to a compiled function name.                                                                                   |
-| `ctx.evaluatedPropertiesVar` / `evaluatedItemsVar`      | Raw variable names (or `null`) for `unevaluated*` tracking.                                                                     |
-| `ctx.emitBudgetBreak()`                                 | Short-circuit hot loops once `maxErrors` is exhausted.                                                                          |
-
-When adding a new built-in keyword, also add an entry to
-`BuiltInErrorParams` in `@aahoughton/oav/core` documenting the shape of
-its `params` object.
+This is a contributor-facing surface; the full compile-context API and
+flag reference live in [`CLAUDE.md`](../../CLAUDE.md#how-to-add-a-new-keyword).
 
 ## Error-collection modes
 
@@ -135,4 +122,3 @@ budget checks.
 `$ref` / `$dynamicRef` compile to function calls through a
 schema-identity-keyed cache, so a self-referential schema emits a
 normal recursive call rather than blowing the stack at compile time.
-See `resolve()` / `createRefResolver()` for the resolution pipeline.

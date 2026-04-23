@@ -39,6 +39,38 @@ Every overlay verb falls into one of four categories.
 | Request body (per op) | —                  | —                        | `requestBody`                      | —                   |
 | Responses (per op)    | `responses`        | —                        | `responses`                        | `removeResponses`   |
 
+## Applying an overlay
+
+Two entry points, same result.
+
+**`applyOverlays`** takes an already-resolved base document:
+
+```ts
+import { applyOverlays } from "@aahoughton/oav/spec";
+import { createValidator } from "@aahoughton/oav";
+
+const patched = applyOverlays(base, [overlay1, overlay2]);
+const validator = createValidator(patched);
+```
+
+**`loadSpec`** resolves external `$ref`s and applies overlays in one
+pass — use this for multi-file specs or remote documents:
+
+```ts
+import { loadSpec, composeReaders, createFileReader } from "@aahoughton/oav/spec";
+
+const reader = composeReaders([createFileReader()]);
+const { document } = await loadSpec({
+  reader,
+  entry: "openapi.yaml",
+  overlays: [overlay1, overlay2],
+});
+const validator = createValidator(document);
+```
+
+Overlays apply in order. Later overlays win on conflict. The base
+document is deep-cloned — the input is never mutated.
+
 ## Shape
 
 ```ts
@@ -111,7 +143,7 @@ to apply it to every path.
 - **`responses`** — merge by status code; override wins on clashes.
 - **`removeResponses`** — drop status codes. Silent no-op on missing.
 
-### `replace` — the nuclear option
+### Full operation replacement
 
 ```ts
 const overlay: SpecOverlay = {
@@ -133,38 +165,6 @@ starting fresh.
 Runnable demo:
 [`examples/overlay-petstore-endpoint.ts`](./examples/overlay-petstore-endpoint.ts)
 — adds a gateway-required `X-Tenant` header to `POST /pets`.
-
-## Applying an overlay
-
-Two entry points, same result.
-
-**`applyOverlays`** takes an already-resolved base document:
-
-```ts
-import { applyOverlays } from "@aahoughton/oav/spec";
-import { createValidator } from "@aahoughton/oav";
-
-const patched = applyOverlays(base, [overlay1, overlay2]);
-const validator = createValidator(patched);
-```
-
-**`loadSpec`** resolves external `$ref`s and applies overlays in one
-pass — use this for multi-file specs or remote documents:
-
-```ts
-import { loadSpec, composeReaders, createFileReader } from "@aahoughton/oav/spec";
-
-const reader = composeReaders([createFileReader()]);
-const { document } = await loadSpec({
-  reader,
-  entry: "openapi.yaml",
-  overlays: [overlay1, overlay2],
-});
-const validator = createValidator(document);
-```
-
-Overlays apply in order. Later overlays win on conflict. The base
-document is deep-cloned — the input is never mutated.
 
 ## Things to know
 
@@ -194,11 +194,7 @@ document is deep-cloned — the input is never mutated.
 
 ## Related
 
-- [`packages/spec/src/overlay.ts`](./packages/spec/src/overlay.ts) —
-  the implementation, including the full merge rules for each verb.
 - [`examples/overlay-petstore-schema.ts`](./examples/overlay-petstore-schema.ts)
   and
   [`examples/overlay-petstore-endpoint.ts`](./examples/overlay-petstore-endpoint.ts)
   — runnable end-to-end demos.
-- [README "Why (yet another) OpenAPI validator?"](./README.md#why-yet-another-openapi-validator) —
-  overlays as one of the three motivating reasons the project exists.

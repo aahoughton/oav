@@ -15,42 +15,17 @@
  *   pnpm tsx examples/overlay-petstore-schema.ts
  */
 
-import type { OpenAPIDocument } from "../packages/core/src/index.ts";
+import { fileURLToPath } from "node:url";
 import { formatText } from "../packages/core/src/index.ts";
-import { applyOverlays, type SpecOverlay } from "../packages/spec/src/index.ts";
+import { createYamlFileReader } from "../packages/oav/src/yaml.ts";
+import { applyOverlays, loadSpec, type SpecOverlay } from "../packages/spec/src/index.ts";
 import { createValidator } from "../packages/validator/src/index.ts";
 
-// Upstream petstore. `Pet` is declared under `components/schemas` so
-// the overlay can target it by name.
-const base: OpenAPIDocument = {
-  openapi: "3.1.0",
-  info: { title: "Petstore", version: "1" },
-  paths: {
-    "/pets": {
-      post: {
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": { schema: { $ref: "#/components/schemas/Pet" } },
-          },
-        },
-        responses: { "201": { description: "created" } },
-      },
-    },
-  },
-  components: {
-    schemas: {
-      Pet: {
-        type: "object",
-        required: ["name"],
-        properties: {
-          name: { type: "string" },
-          tag: { type: "string" },
-        },
-      },
-    },
-  },
-};
+const specPath = fileURLToPath(new URL("./specs/petstore.yaml", import.meta.url));
+const { document: base } = await loadSpec({
+  reader: createYamlFileReader(),
+  entry: specPath,
+});
 
 // Deployment-specific extension: require `vaccinated: boolean`. Because
 // `extendSchemas` merges via allOf, the upstream Pet shape is preserved

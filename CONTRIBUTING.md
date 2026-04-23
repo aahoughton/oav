@@ -65,21 +65,3 @@ Releases are automated. You don't bump versions or tag manually.
 3. When you're ready to release, merge that PR. Release-please tags
    the commit, creates a GitHub Release, and the publish workflow
    pushes the package to npm.
-
-## Manual one-time GitHub setup
-
-Some things can't live in-repo:
-
-- **Branch protection on `main`**: require PR, require status checks
-  (`ci / lint`, `ci / typecheck`, `ci / test (22)`, `ci / test (24)`,
-  `ci / build`, `ci / conformance`, `ci / pack-smoke`,
-  `pr-title / lint`), require branches up-to-date, disallow
-  force-push, linear history.
-- **Secret**: `NPM_TOKEN` — an automation token from
-  `npmjs.com/settings/<you>/tokens` with publish scope for
-  `@aahoughton/*`.
-- **Repo → Settings → Actions → General → Workflow permissions**:
-  default is "Read", plus enable "Allow GitHub Actions to create and
-  approve pull requests" (needed for release-please to open its
-  release PR). Individual workflows grant themselves write scopes via
-  their `permissions:` blocks.

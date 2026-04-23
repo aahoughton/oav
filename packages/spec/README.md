@@ -7,9 +7,12 @@ this when you want to stitch a spec together before handing it to
 This module is available at matching subpaths in both
 `@aahoughton/oav/spec` and `@aahoughton/oav-core/spec`. The examples
 below import from `@aahoughton/oav`; substitute `@aahoughton/oav-core`
-if you're on the lean package — with the caveat that `oav-core` ships
-JSON readers only (YAML paths throw an install-hint error; install
-`@aahoughton/oav` or bring your own YAML reader).
+if you're on the lean package.
+
+> **oav-core ships JSON readers only.** Calling `createFileReader()` or
+> `createHttpReader()` on a `.yaml` / `.yml` path throws an install-hint
+> error. For YAML support, install `@aahoughton/oav` (for the bundled
+> `createYamlFileReader`) or register your own YAML reader.
 
 ## Loading a spec
 
@@ -121,6 +124,5 @@ the validator and schema compiler follow them at runtime via a
 ref-resolution cache keyed on schema identity, so self-recursive
 schemas compile to normal recursive calls.
 
-Circular external references are rewritten to synthetic internal
-refs (`#/$defs/__ext__/<uri>`) during resolution, so the final
-document is always self-contained.
+Circular external references are rewritten to internal anchors
+during resolution, so the final document is always self-contained.
