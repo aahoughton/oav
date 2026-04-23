@@ -1,0 +1,31 @@
+openapi: "3.1.0"
+info:
+  title: Search
+  version: "1"
+paths:
+  /search:
+    post:
+      summary: Search with a numeric range
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [min, max]
+              properties:
+                min:
+                  type: integer
+                  minimum: 0
+                max:
+                  type: integer
+                  minimum: 0
+              # Custom cross-field rule: max must be >= min.
+              # See examples/cross-field-validation.ts for the
+              # keyword registration + validator.
+              x-cross-field:
+                max:
+                  atLeast: min
+      responses:
+        "200":
+          description: ok

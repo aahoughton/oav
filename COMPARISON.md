@@ -71,7 +71,13 @@ Capabilities that the Ajv stack covers and oav does not.
   against the meta-schema.
 - **`$data` references.** Ajv's non-standard extension where one
   keyword's value comes from the data being validated
-  (`{ minimum: { $data: "1/min" } }`). oav doesn't implement it.
+  (`{ minimum: { $data: "1/min" } }`). oav doesn't implement it. The
+  common use case — cross-field constraints like `max >= min` —
+  works in oav via an object-level custom keyword that sees the
+  whole object and reaches siblings directly; see
+  [`examples/cross-field-validation.ts`](./examples/cross-field-validation.ts).
+  Trade-off: the constraint sits on the parent object in the schema
+  rather than inside the constrained field's own subschema.
 - **Async validation.** Ajv supports async formats and keywords (e.g.
   a format that hits a database). oav's formats and custom keywords
   are synchronous.
