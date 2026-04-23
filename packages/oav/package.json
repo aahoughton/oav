@@ -42,39 +42,74 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     },
     "./schema": {
-      "types": "./dist/schema.d.ts",
-      "import": "./dist/schema.js",
-      "require": "./dist/schema.cjs"
+      "import": {
+        "types": "./dist/schema.d.ts",
+        "default": "./dist/schema.js"
+      },
+      "require": {
+        "types": "./dist/schema.d.cts",
+        "default": "./dist/schema.cjs"
+      }
     },
     "./schema/internals": {
-      "types": "./dist/schema-internals.d.ts",
-      "import": "./dist/schema-internals.js",
-      "require": "./dist/schema-internals.cjs"
+      "import": {
+        "types": "./dist/schema-internals.d.ts",
+        "default": "./dist/schema-internals.js"
+      },
+      "require": {
+        "types": "./dist/schema-internals.d.cts",
+        "default": "./dist/schema-internals.cjs"
+      }
     },
     "./spec": {
-      "types": "./dist/spec.d.ts",
-      "import": "./dist/spec.js",
-      "require": "./dist/spec.cjs"
+      "import": {
+        "types": "./dist/spec.d.ts",
+        "default": "./dist/spec.js"
+      },
+      "require": {
+        "types": "./dist/spec.d.cts",
+        "default": "./dist/spec.cjs"
+      }
     },
     "./formats": {
-      "types": "./dist/formats.d.ts",
-      "import": "./dist/formats.js",
-      "require": "./dist/formats.cjs"
+      "import": {
+        "types": "./dist/formats.d.ts",
+        "default": "./dist/formats.js"
+      },
+      "require": {
+        "types": "./dist/formats.d.cts",
+        "default": "./dist/formats.cjs"
+      }
     },
     "./core": {
-      "types": "./dist/core.d.ts",
-      "import": "./dist/core.js",
-      "require": "./dist/core.cjs"
+      "import": {
+        "types": "./dist/core.d.ts",
+        "default": "./dist/core.js"
+      },
+      "require": {
+        "types": "./dist/core.d.cts",
+        "default": "./dist/core.cjs"
+      }
     },
     "./validator/internals": {
-      "types": "./dist/validator-internals.d.ts",
-      "import": "./dist/validator-internals.js",
-      "require": "./dist/validator-internals.cjs"
+      "import": {
+        "types": "./dist/validator-internals.d.ts",
+        "default": "./dist/validator-internals.js"
+      },
+      "require": {
+        "types": "./dist/validator-internals.d.cts",
+        "default": "./dist/validator-internals.cjs"
+      }
     },
     "./package.json": "./package.json"
   },
