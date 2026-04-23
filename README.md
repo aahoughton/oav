@@ -88,8 +88,8 @@ shape per code is documented in `BuiltInErrorParams`.
 
 ## Why (yet another) OpenAPI validator?
 
-Three things `oav` brings together that aren't jointly available
-elsewhere in the JavaScript ecosystem:
+Things `oav` brings together that aren't jointly available elsewhere
+in the JavaScript ecosystem:
 
 - **An HTTP-aware validator.** One call checks method + path +
   parameters + body + content type + status + headers against the
@@ -108,6 +108,14 @@ elsewhere in the JavaScript ecosystem:
   dispatch. Errors come back as a typed
   tree (`code` / `path` / `params` / `children`) so downstream code
   can narrow on fields rather than pattern-match on messages.
+- **AOT compilation for edge runtimes.** `oav compile-spec
+<openapi.yaml>` emits a single ES module — zero imports — exposing
+  the full `validateRequest` / `validateResponse` / `getOperation`
+  surface with every operation's schemas pre-compiled. Runs on
+  Cloudflare Workers / Vercel Edge / Lambda@Edge / Deno Deploy —
+  anywhere runtime code generation is forbidden or dependency
+  footprint matters. Full details in
+  [`packages/cli/README.md`](./packages/cli/README.md#compile-spec-output).
 
 Ajv is the canonical JSON Schema validator for JavaScript and
 underpins most of the OpenAPI ecosystem. It has the edge on
