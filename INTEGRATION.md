@@ -210,10 +210,16 @@ you want `application/problem+json` for those too.
 
 ### Next.js (App Router), Hono, Bun, Deno
 
-These frameworks expose a Web Standards `Request` per route, and there
-is no middleware chain to hang a one-time adapter off. Use
-`validator.validateFetchRequest` directly in each route handler. It
-reads `request.url`, `request.headers`, and the body (dispatching on
+These frameworks dispatch to Web Standards `Request` handlers per
+route. Each also has a cross-cutting hook — Next.js's `proxy.ts`
+(renamed from `middleware.ts` in Next 16; both still work), Hono's
+`app.use('*', ...)`, Bun / Deno framework-specific hooks — so you
+can pick. Use per-route when you want the `<Body>` generic to flow
+into the typed success branch; use the cross-cutting hook when you'd
+rather register the adapter once.
+
+Per-route form with `validator.validateFetchRequest<T>`. It reads
+`request.url`, `request.headers`, and the body (dispatching on
 `Content-Type`: JSON, `*+json`, URL-encoded, multipart, text, or raw
 bytes) and returns a discriminated union.
 
@@ -254,10 +260,40 @@ Three things to know:
   `?ids=1&ids=2` into `query.ids = ["1", "2"]`. Single values stay
   strings.
 
-**Next.js-specific note.** Validate inside the route handler, not
-in the top-level `middleware.ts` — validation needs the matched
-operation and the parsed body, and both are only known once the
-request reaches its route.
+**Next.js — cross-cutting alternative.** `proxy.ts` (or
+`middleware.ts` on Next 15) runs on every request. Since Next 15
+middleware supports the Node runtime and Next buffers the body,
+you can put the adapter there instead:
+
+```ts
+// proxy.ts (Next 16+) / middleware.ts (Next 15)
+import { allowHeaderFor, httpStatusFor, toProblemDetails } from "@aahoughton/oav";
+import { NextResponse, type NextRequest } from "next/server";
+import { validator } from "@/lib/validator";
+
+export const config = {
+  runtime: "nodejs",
+  matcher: "/:path*",
+};
+
+export async function middleware(request: NextRequest) {
+  const result = await validator.validateFetchRequest(request);
+  if (result.ok) return NextResponse.next();
+  const allow = allowHeaderFor(result.error);
+  const headers: Record<string, string> = { "Content-Type": "application/problem+json" };
+  if (allow !== undefined) headers["Allow"] = allow;
+  return new NextResponse(
+    JSON.stringify(toProblemDetails(result.error, { instance: request.url })),
+    { status: httpStatusFor(result.error), headers },
+  );
+}
+```
+
+Pick one: per-route gives you `<T>`-typed bodies; the cross-cutting
+hook gives you one-and-done registration but the handler doesn't see
+a typed body (middleware and handler both read the request, and Next
+clones between them — but the per-route handler can't know what the
+middleware validated).
 
 **Fully bespoke body handling.** If the built-in body parsing doesn't
 fit (e.g. you want to stream-process a large JSON payload or handle
@@ -271,9 +307,40 @@ const { httpRequest } = await httpRequestFromFetch(request);
 const err = validator.validateRequest(httpRequest);
 ```
 
-Hono has `.use()` middleware and can use the Express-style adapter
-above if you prefer a single registration point. The per-route
-`validateFetchRequest` still wins on generic-driven body typing.
+**Hono — cross-cutting alternative.** `app.use('*', mw)` can host
+the adapter. Hono parallels the per-route Standard-Schema validator
+pattern (`@hono/zod-validator` etc.), so per-route with a typed
+`<T>` is the native idiom and `c.req.valid('json')` is the
+community muscle memory; oav's `validateFetchRequest<T>` slots into
+the same shape via `c.req.raw`.
+
+**Hono gotcha**: `c.req.raw.body` is a one-shot stream. Don't run
+`validateFetchRequest` in BOTH global middleware AND a per-route
+handler on the same request — the handler's call sees a consumed
+body and fails. Pick one. If using global middleware, stash the
+validated body for handlers:
+
+```ts
+const app = new Hono<{ Variables: { validatedBody: unknown } }>();
+app.use("*", async (c, next) => {
+  const result = await validator.validateFetchRequest(c.req.raw);
+  if (result.ok) {
+    c.set("validatedBody", result.body);
+    return next();
+  }
+  // ...problem+json response
+});
+app.post("/pets", (c) => {
+  const body = c.get("validatedBody") as CreatePet;
+  return c.json({ id: "pet_1", name: body.name }, 201);
+});
+```
+
+**Bun / Deno.** Pick a framework (Hono, Elysia on Bun; Hono, Oak on
+Deno) and use its hook idiom — same guidance as above, just under a
+different name. For a raw `Bun.serve` / `Deno.serve` handler,
+`validateFetchRequest` is the natural fit; there's no hook layer to
+register against.
 
 **Validating upstream responses.** The symmetric method
 `validateFetchResponse(request, response)` runs the response side of
