@@ -45,13 +45,14 @@ Capabilities that the Ajv stack covers and oav does not.
   strings to numbers, stripping undeclared properties, filling missing
   properties from `default`. oav treats validation as a yes/no
   question and does not mutate inputs.
-- **Schema-level AOT — programmatic surface.** Ajv ships a
-  `standaloneCode` API plus Node APIs that emit one or many compiled
-  schemas as module source, with CommonJS output and named-reference
-  resolution at emit time. oav's schema-level AOT is CLI-only (`oav
-compile-schema <schema> -o v.mjs`); for build tools that want to
-  emit many schemas in a loop, Ajv's API is more ergonomic. oav has
-  no batched programmatic API equivalent.
+- **Schema-level AOT — programmatic surface.** Ajv's `standaloneCode`
+  is a library API that takes a map of named schemas and emits one
+  module with interlinked validators — cross-schema `$ref`s resolve
+  at emit time, CommonJS or ESM output. `oav compile-schema` is
+  CLI-only and single-schema: multi-schema projects need to run it
+  per schema, with a preceding `oav resolve` step to inline any
+  cross-references. For build tools scripting many emits, Ajv's API
+  is more ergonomic; oav has no batched programmatic equivalent.
 - **Named schema registry.** `addSchema` / `getSchema` / `removeSchema`
   give Ajv a name-to-validator map that cross-schema `$ref`s resolve
   through. oav accepts an `external: Map<string, Schema>` on
