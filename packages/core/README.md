@@ -73,8 +73,16 @@ All three produce strings suitable for stdout / logs.
 
 ## HTTP response helpers
 
-For rendering validation failures as an HTTP response body:
+For rendering validation failures as an HTTP response:
 
+- `httpStatusFor(err, overrides?)` — maps a `ValidationError` tree to
+  an HTTP status code. Defaults: `route` → 404, `method` → 405,
+  `security` → 401, `content-type` → 415, `status` → 500, else 400.
+  Correctly inspects the tree shape (some codes appear as leaves
+  under a top-level `"request"` / `"response"` branch, not as
+  `err.code`). Pass `{ default: 422 }` etc. to override a slot.
+- `allowHeaderFor(err)` — returns the comma-joined `Allow` header
+  value for a 405, or `undefined` otherwise (RFC 9110 §15.5.6).
 - `toProblemDetails(err, { type?, title?, status?, instance? })` — RFC
   9457 `application/problem+json` envelope with a typed `issues` array
   as an extension member. Defaults: `about:blank` type,

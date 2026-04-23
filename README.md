@@ -222,18 +222,7 @@ adapter between your framework and `validateRequest` /
 `validateResponse`. An Express 5 adapter is about this long:
 
 ```ts
-import { toProblemDetails, type ValidationError } from "@aahoughton/oav";
-
-const httpStatusFor = (err: ValidationError): number =>
-  err.code === "route"
-    ? 404
-    : err.code === "method"
-      ? 405
-      : err.code === "content-type"
-        ? 415
-        : err.code === "security"
-          ? 401
-          : 400;
+import { allowHeaderFor, httpStatusFor, toProblemDetails } from "@aahoughton/oav";
 
 app.use(async (req, res, next) => {
   const err = validator.validateRequest({
@@ -245,6 +234,8 @@ app.use(async (req, res, next) => {
     body: req.body,
   });
   if (err === null) return next();
+  const allow = allowHeaderFor(err);
+  if (allow !== undefined) res.setHeader("Allow", allow);
   res
     .status(httpStatusFor(err))
     .type("application/problem+json")

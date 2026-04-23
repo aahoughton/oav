@@ -74,38 +74,32 @@ children hang off `body`, `query.<name>`, `headers.<name>`, etc.
 
 ## Supporting helpers used below
 
-The framework adapters share two helpers:
+Both shipped from `@aahoughton/oav`:
 
-- **`httpStatusFor(err)`** — maps a `ValidationError`'s `code` to the
-  right HTTP status. Define it once and reuse across handlers; the
-  [Status-code mapping recipe](#status-code-mapping) shows the full
-  switch. A minimal version:
+- **`httpStatusFor(err, overrides?)`** — maps a `ValidationError`
+  tree to an HTTP status: `route` → 404, `method` → 405, `security`
+  (leaf) → 401, `content-type` (leaf) → 415, `status` (leaf) → 500,
+  everything else → 400. Pass `{ default: 422 }` (or any other key)
+  to override a slot. The helper inspects the tree correctly —
+  writing this switch by hand is a common mistake, because
+  `"content-type"` / `"security"` / `"status"` appear as leaves
+  under a top-level `"request"` / `"response"` branch, not as
+  `err.code` directly.
 
-  ```ts
-  import type { ValidationError } from "@aahoughton/oav";
+- **`allowHeaderFor(err)`** — returns the `Allow` header value for a
+  405 (RFC 9110 §15.5.6 requires it) or `undefined` otherwise.
 
-  const httpStatusFor = (err: ValidationError): number =>
-    err.code === "route"
-      ? 404
-      : err.code === "method"
-        ? 405
-        : err.code === "content-type"
-          ? 415
-          : err.code === "security"
-            ? 401
-            : err.code === "status"
-              ? 500
-              : 400;
-  ```
-
-- **`toProblemDetails(err, opts?)`** — imported from
-  `@aahoughton/oav`; renders the error tree as an
+- **`toProblemDetails(err, opts?)`** — renders the error tree as an
   [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457.html)
   `application/problem+json` body with the failing leaves carried in
   an `issues` field (a non-standard field alongside the required
   ones).
 
-The adapters below assume both are in scope.
+```ts
+import { allowHeaderFor, httpStatusFor, toProblemDetails } from "@aahoughton/oav";
+```
+
+The adapters below assume all three are in scope.
 
 ## Framework adapters
 
@@ -115,7 +109,7 @@ Express 5 is promise-native: async middleware that throws routes to
 the error handler automatically.
 
 ```ts
-import { toProblemDetails } from "@aahoughton/oav";
+import { allowHeaderFor, httpStatusFor, toProblemDetails } from "@aahoughton/oav";
 
 app.use(async (req, res, next) => {
   const err = validator.validateRequest({
@@ -128,6 +122,8 @@ app.use(async (req, res, next) => {
     cookies: req.cookies,
   });
   if (err === null) return next();
+  const allow = allowHeaderFor(err);
+  if (allow !== undefined) res.setHeader("Allow", allow);
   res
     .status(httpStatusFor(err))
     .type("application/problem+json")
@@ -137,6 +133,21 @@ app.use(async (req, res, next) => {
 
 Requires `express.json()` registered before this middleware (and
 `cookie-parser` if you use the `cookies` field).
+
+**Two known sharp edges with stock `express.json()`:**
+
+1. **`express.json()` only parses JSON content-types.** If a client
+   sends `Content-Type: text/plain` (or anything else your spec
+   doesn't declare), `req.body` is left empty and oav reports
+   "missing required request body" rather than a 415. To get
+   accurate 415 responses, register `express.raw({ type: '*/*' })`
+   on the non-JSON content types you want oav to gate, or parse
+   the body yourself in middleware and hand it to `validateRequest`.
+2. **Malformed JSON throws before oav runs.** `express.json()`
+   throws a `SyntaxError` on bad JSON, and Express's default error
+   handler emits an HTML page. Install an Express error middleware
+   to convert it to `application/problem+json` upstream of the
+   validator.
 
 ### Express 4
 
@@ -149,6 +160,8 @@ app.use((req, res, next) => {
   try {
     const err = validator.validateRequest(/* same as Express 5 */);
     if (err === null) return next();
+    const allow = allowHeaderFor(err);
+    if (allow !== undefined) res.setHeader("Allow", allow);
     res
       .status(httpStatusFor(err))
       .type("application/problem+json")
@@ -158,6 +171,8 @@ app.use((req, res, next) => {
   }
 });
 ```
+
+The same two body-parser caveats apply as for Express 5.
 
 ### Fastify
 
@@ -176,6 +191,8 @@ fastify.addHook("preValidation", async (request, reply) => {
     body: request.body,
   });
   if (err !== null) {
+    const allow = allowHeaderFor(err);
+    if (allow !== undefined) reply.header("Allow", allow);
     return reply
       .code(httpStatusFor(err))
       .type("application/problem+json")
@@ -186,7 +203,10 @@ fastify.addHook("preValidation", async (request, reply) => {
 
 Fastify parses JSON bodies automatically; for other formats register
 the appropriate content-type parser (`@fastify/formbody`, etc.)
-ahead of the hook.
+ahead of the hook. Fastify's own JSON-parse-error response (shape:
+`{ statusCode, code: "FST_ERR_CTP_INVALID_JSON_BODY", ... }`) fires
+before `preValidation` runs; register `fastify.setErrorHandler` if
+you want `application/problem+json` for those too.
 
 ### Next.js (App Router), Hono, Bun, Deno
 
@@ -199,18 +219,20 @@ bytes) and returns a discriminated union.
 
 ```ts
 // app/pets/route.ts
-import { toProblemDetails } from "@aahoughton/oav";
+import { allowHeaderFor, httpStatusFor, toProblemDetails } from "@aahoughton/oav";
 import { validator } from "@/lib/validator";
-import { httpStatusFor } from "@/lib/status";
 
 type CreatePet = { name: string; tag?: string };
 
 export async function POST(request: Request) {
   const result = await validator.validateFetchRequest<CreatePet>(request);
   if (!result.ok) {
+    const allow = allowHeaderFor(result.error);
+    const headers: Record<string, string> = { "Content-Type": "application/problem+json" };
+    if (allow !== undefined) headers["Allow"] = allow;
     return Response.json(toProblemDetails(result.error, { instance: request.url }), {
       status: httpStatusFor(result.error),
-      headers: { "Content-Type": "application/problem+json" },
+      headers,
     });
   }
   const { body } = result; // typed as CreatePet
@@ -276,50 +298,60 @@ updating the document.
 
 ### Status-code mapping
 
-`ValidationError.code` is stable and small. Most users can get by
-with this:
+Use `httpStatusFor` from `@aahoughton/oav`:
 
 ```ts
-import type { ValidationError } from "@aahoughton/oav";
+import { httpStatusFor, toProblemDetails } from "@aahoughton/oav";
 
-function httpStatusFor(err: ValidationError): number {
-  switch (err.code) {
-    case "route":
-      return 404; // no path template matched
-    case "method":
-      return 405; // path matched but the verb isn't declared
-    case "content-type":
-      return 415; // request Content-Type not declared
-    case "security":
-      return 401; // declared security scheme isn't satisfied (shape check)
-    case "status":
-      return 500; // response-side: spec doesn't declare this status
-    default:
-      return 400; // schema violation, missing required, etc.
-  }
+const err = validator.validateRequest(httpRequest);
+if (err !== null) {
+  res
+    .status(httpStatusFor(err))
+    .type("application/problem+json")
+    .json(toProblemDetails(err, { instance: req.originalUrl }));
 }
 ```
 
-RFC 9110 requires the `Allow` response header on 405s. The `method`
-error's `params.allowed` is the uppercased list to send back:
+Default mapping:
+
+| `err` shape                     | Status |
+| ------------------------------- | ------ |
+| top-level `code: "route"`       | 404    |
+| top-level `code: "method"`      | 405    |
+| any leaf `code: "security"`     | 401    |
+| any leaf `code: "content-type"` | 415    |
+| any leaf `code: "status"`       | 500    |
+| otherwise                       | 400    |
+
+Override any slot with the second argument — e.g. APIs that use 422
+for schema errors:
 
 ```ts
-if (err.code === "method") {
-  const p = err.params as ErrorParamsFor<"method">;
-  res.setHeader("Allow", p.allowed.join(", "));
-  res
-    .status(405)
-    .type("application/problem+json")
-    .json(toProblemDetails(err, { instance: req.originalUrl }));
-  return;
-}
+httpStatusFor(err, { default: 422 });
+```
+
+Why not write the switch by hand? The obvious `switch (err.code)`
+misses `content-type`, `security`, and `status` — those codes are
+leaves under a top-level `"request"` / `"response"` wrapper, not the
+top-level code itself. `httpStatusFor` handles the tree shape
+correctly.
+
+RFC 9110 requires the `Allow` response header on 405s. Use
+`allowHeaderFor` to get the comma-joined value:
+
+```ts
+import { allowHeaderFor } from "@aahoughton/oav";
+
+const allow = allowHeaderFor(err);
+if (allow !== undefined) res.setHeader("Allow", allow);
 ```
 
 For richer response envelopes, `toProblemDetails` produces
 [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457.html)
 `application/problem+json` with the failing leaves as an `issues`
-extension member. `collectIssues` is the raw flat leaf list if you
-want to roll your own response shape.
+field (a non-standard field alongside the required ones).
+`collectIssues` is the raw flat leaf list if you want to roll your
+own response shape.
 
 ### File uploads with multer
 
@@ -329,7 +361,7 @@ body for the validator call.
 
 ```ts
 import multer from "multer";
-import { createValidator, toProblemDetails } from "@aahoughton/oav";
+import { createValidator, httpStatusFor, toProblemDetails } from "@aahoughton/oav";
 
 const upload = multer({ storage: multer.memoryStorage() });
 
