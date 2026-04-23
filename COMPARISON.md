@@ -115,11 +115,15 @@ Capabilities oav has that Ajv (alone or with
   them.
 - **Built-in OpenAPI 3.0 dialect.** `nullable`, boolean
   `exclusiveMaximum` / `exclusiveMinimum`, and
-  `$ref`-suppresses-siblings are compiled by a dedicated 3.0 dialect
-  selected once at `createValidator` time. Ajv reaches the same
-  semantics via `ajv-draft-04` plus a custom `nullable` keyword — the
-  functionality is equivalent; oav's version is one dependency with
-  no setup step.
+  `$ref`-suppresses-siblings are keyword definitions in the 3.0
+  vocabulary stack, selected once at `createValidator` time. eov
+  reaches the same semantics by a different route: switching to
+  `ajv-draft-04` (draft-04 handles boolean `exclusiveMaximum` and
+  `$ref`-suppresses-siblings natively) and preprocessing `nullable`
+  out of the schema before compile (rewriting `{ nullable: true,
+type: "string" }` to `{ type: ["string", "number", "boolean",
+"object", "array"] }` with an `x-eov-type` side channel to narrow
+  back). Different mechanism, equivalent behaviour.
 - **First-class overlays.** `applyOverlays` rewrites an
   externally-owned base spec at load time — add a required header to
   every operation, extend a component schema, swap a response shape —
@@ -148,8 +152,10 @@ Capabilities oav has that Ajv (alone or with
 - **Discriminator.** First-class OpenAPI discriminator support — a
   single-dispatch alternative to `oneOf` whose error message names the
   offending property and value rather than listing per-branch
-  failures. `express-openapi-validator` supports discriminator via a
-  custom Ajv keyword; the functionality is equivalent.
+  failures. eov supports discriminator by preprocessing the schema
+  (walking `oneOf` / `anyOf` at load time and rewriting the branches
+  into a form ajv can validate). Functionally equivalent, different
+  implementation shape.
 - **Compile-time observability.** `CompiledSchema.stats` exposes
   `functionCount`, `unevaluatedTrackingEmitted`, and
   `emittedTreeRuntime` so tests can assert on compiler optimisations

@@ -11,8 +11,10 @@ walk programmatically.
 - Structured error trees (not flat arrays), so downstream code can
   distinguish a missing `required` property from a `oneOf` branch
   failure from an unsupported `Content-Type`.
-- Real 3.0 support (`nullable`, boolean `exclusiveMaximum`,
-  `$ref`-suppresses-siblings), not "3.1 and hope".
+- OpenAPI 3.0 compiles through its own dialect: `nullable`, boolean
+  `exclusiveMaximum`, and `$ref`-suppresses-siblings are keyword
+  definitions in the 3.0 vocabulary stack. Single compiler pass, no
+  schema preprocessing.
 - Codegen-compiled at construction, cached by schema identity, zero
   per-request version branching. Handles recursive `$ref`, multi-file
   specs, overlays, and custom keywords / formats.
