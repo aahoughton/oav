@@ -328,6 +328,56 @@ rewritten to an "accept anything" schema before compile, so a Buffer
 or Uint8Array passes without a string-type error. `format: "byte"`
 (base64) still validates as a string.
 
+### Deriving middleware config from the spec
+
+Multer's `limits.fileSize` and the spec's `maxLength` on a
+`format: binary` field are two copies of the same number. To keep
+them from drifting, derive the middleware limit from the spec at
+startup:
+
+```ts
+import multer from "multer";
+import { createValidator } from "@aahoughton/oav";
+import { digestOperation } from "./spec-digest"; // copied from examples/spec-digest.ts
+
+const validator = createValidator(spec);
+
+const info = validator.getOperation({ method: "POST", path: "/uploads" });
+if (info === null) throw new Error("no matching operation for /uploads");
+
+const digest = digestOperation(info.operation);
+const maxBytes = digest.bodyLimits["multipart/form-data"]?.maxBytes;
+if (maxBytes === undefined) {
+  throw new Error("spec must declare `maxLength` on the upload's binary field");
+}
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: maxBytes },
+});
+
+app.post("/uploads", upload.any() /* validator + handler as above */);
+```
+
+`getOperation` returns the resolved, overlay-applied
+`OperationObject` for a (method, path) pair. It does the route-match
+
+- `$ref` resolution + overlay application that validation does, but
+  hands the result back as plain OpenAPI shapes — read whatever
+  declaration you need. `digestOperation` (see
+  [`examples/spec-digest.ts`](./examples/spec-digest.ts)) is a ~80-line
+  recipe that pulls the common middleware-config facts into a flat
+  shape: content types, body limits, required headers, security. Copy
+  it into your project and adjust the interpretation choices
+  (`maxLength`-as-bytes vs code points, which `x-*` extensions to
+  recognise, etc.) to fit your domain.
+
+The getter is startup-time introspection, not part of validation. Its
+job is to make the spec the single source of truth for middleware
+configuration — multer's `fileSize`, body-parser content types, auth
+middleware assertions — so duplicated magic numbers can't drift
+against the validator's own view.
+
 ### Streaming bodies, large uploads, and the `readBody` override
 
 The built-in `validateFetchRequest` reads the entire request body into

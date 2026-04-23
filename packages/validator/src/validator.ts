@@ -7,6 +7,7 @@ import {
   type OpenAPIDocument,
   type OpenAPIVersion,
   type OperationObject,
+  type PathItem,
   type ReferenceObject,
   type SchemaOrBoolean,
   type ValidationError,
@@ -137,6 +138,35 @@ export interface OavValidator {
     request: Request,
     response: Response,
   ): Promise<{ ok: true; body: T } | { ok: false; error: ValidationError }>;
+  /**
+   * Look up the effective operation declaration for a method + path.
+   * Returns the resolved (`$ref`s followed) and overlay-applied
+   * {@link OperationObject}, the matched path pattern, and the
+   * enclosing {@link PathItem}. Returns `null` when no operation
+   * matches (either the path doesn't match any template or the
+   * method isn't declared on it).
+   *
+   * Startup-time introspection, not a validation step: the spec is
+   * frozen at `createValidator` time, so this is safe to call once
+   * during application init and cache the result. Callers typically
+   * use it to derive middleware configuration (multer limits,
+   * accepted content types, required headers) from the same source
+   * of truth the validator uses.
+   *
+   * Uses the same per-operation cache the validation path uses;
+   * repeated calls are O(route-match) with no extra compilation.
+   *
+   * @example
+   * ```ts
+   * const info = validator.getOperation({ method: "POST", path: "/uploads" });
+   * const mediaTypes = Object.keys(info?.operation.requestBody?.content ?? {});
+   * ```
+   */
+  getOperation(req: { method: string; path: string }): {
+    pathPattern: string;
+    pathItem: PathItem;
+    operation: OperationObject;
+  } | null;
   /**
    * The OpenAPI version detected from the spec's `openapi` field, or
    * `undefined` when the field was missing/malformed and the validator
@@ -687,11 +717,29 @@ export function createValidator(
     return { ok: false, error };
   };
 
+  const getOperation = (req: {
+    method: string;
+    path: string;
+  }): { pathPattern: string; pathItem: PathItem; operation: OperationObject } | null => {
+    const match = router.match(req.method, req.path);
+    if (match === undefined || match.kind === "method-not-allowed") return null;
+    // Warm the per-operation cache so `getOperation` and subsequent
+    // validation share a single compiled plan. Doesn't force response
+    // compilation (still lazy on first `validateResponse`).
+    cacheFor(match);
+    return {
+      pathPattern: match.pathPattern,
+      pathItem: match.pathItem,
+      operation: match.operation,
+    };
+  };
+
   return {
     validateRequest,
     validateResponse,
     validateFetchRequest,
     validateFetchResponse,
+    getOperation,
     detectedVersion,
     stats,
   };
