@@ -64,6 +64,53 @@ function dialectFor(version: OpenAPIVersion): Dialect {
 }
 
 /**
+ * Why did {@link detectOpenAPIVersion} return `undefined`? Distinguishes
+ * category errors (missing or non-string `openapi` field, wrong major)
+ * from a valid-shaped 3.x spec with an unknown minor (forward-compat).
+ *
+ * @internal
+ */
+type UnknownVersionReason =
+  | { kind: "missing-openapi"; message: string }
+  | { kind: "wrong-major"; message: string }
+  | { kind: "ok-unknown-minor"; raw: string };
+
+function classifyUnknownVersion(rawOpenapi: unknown): UnknownVersionReason {
+  if (typeof rawOpenapi !== "string") {
+    return {
+      kind: "missing-openapi",
+      message:
+        "expected an OpenAPI 3.x document — the `openapi` field must be a string " +
+        `like "3.1.0" (got ${typeof rawOpenapi}). ` +
+        'Swagger 2.0 documents use `swagger: "2.0"` instead and need to be converted ' +
+        "first (e.g. `npx swagger2openapi input.json -o output.json`). " +
+        "AsyncAPI / OpenRPC / other formats are different domains and oav doesn't handle them.",
+    };
+  }
+  const match = /^(\d+)\.(\d+)/.exec(rawOpenapi);
+  if (match === null) {
+    return {
+      kind: "missing-openapi",
+      message: `the \`openapi\` field \`"${rawOpenapi}"\` doesn't look like a semver version`,
+    };
+  }
+  const major = match[1]!;
+  if (major !== "3") {
+    const hint =
+      major === "2"
+        ? " Convert to 3.x first, e.g. `npx swagger2openapi input.json -o output.json`."
+        : "";
+    return {
+      kind: "wrong-major",
+      message: `oav supports OpenAPI 3.x; got openapi: "${rawOpenapi}".${hint}`,
+    };
+  }
+  // Valid 3.x major but unknown minor — forward-compat, not a category
+  // error.
+  return { kind: "ok-unknown-minor", raw: rawOpenapi };
+}
+
+/**
  * The HTTP validator: after being built from a (resolved) OpenAPI document,
  * `validateRequest` / `validateResponse` each return a full
  * {@link ValidationError} tree (or `null`).
@@ -241,6 +288,15 @@ export interface ValidatorOptions {
    * picks a matching built-in dialect (`openapi31Dialect` for 3.1/3.2,
    * `oas30Dialect` for 3.0). Pass this option to plug in a custom
    * {@link Dialect} or force a specific built-in.
+   *
+   * Setting `dialect` is also the universal escape hatch for the
+   * category-error checks that normally throw at construction: a
+   * missing/non-string `openapi` field or a wrong major version
+   * would reject the spec by default, but an explicit `dialect`
+   * signals "I know what I'm doing" and compilation proceeds. A
+   * single warning is emitted via {@link ValidatorOptions.warn}
+   * when the override suppresses a would-be category error, so
+   * accidental misuse is still visible.
    */
   dialect?: Dialect;
 
@@ -339,12 +395,15 @@ export interface ValidatorOptions {
    */
   ignorePaths?: (path: string) => boolean;
   /**
-   * How to handle a spec whose `openapi` field is missing, malformed,
-   * or not one of the supported versions (3.0, 3.1, 3.2).
+   * How to handle a spec with an unknown **minor** version inside the
+   * OpenAPI 3.x line — e.g. `openapi: "3.7.0"` if a future minor ships
+   * before oav is updated. Pure forward-compat control; does not govern
+   * category errors (missing `openapi` field, wrong major), which
+   * always throw unless `dialect` is set.
    *
    * - `"fallback31"` (default) — silently use the 3.1 dialect.
-   * - `"warn"` — emit a warning via {@link ValidatorOptions.warn} (defaults
-   *   to `process.stderr.write`) and use the 3.1 dialect.
+   * - `"warn"` — emit a warning via {@link ValidatorOptions.warn}
+   *   (defaults to `process.stderr.write`) and use the 3.1 dialect.
    * - `"throw"` — throw an `Error`.
    *
    * Regardless of the choice, `OavValidator.detectedVersion` is set to
@@ -386,25 +445,48 @@ export function createValidator(
   // Version detection is pure compile-time: we bake the right
   // dialect into the compiled validator and never branch on version
   // per request.
+  //
+  // Three categories of input:
+  //   (1) valid 3.x spec (3.0 / 3.1 / 3.2)  — pick dialect, compile
+  //   (2) missing openapi field / wrong major — category error, throw
+  //       (unless `dialect` is set, which is the universal override)
+  //   (3) valid 3.x major but unknown minor (e.g. "3.7.0") — forward
+  //       compat, governed by `onUnknownVersion`
   const detectedVersion = detectOpenAPIVersion(spec);
   const dialect: Dialect = (() => {
-    if (options.dialect !== undefined) return options.dialect;
-    if (detectedVersion === undefined) {
+    if (detectedVersion !== undefined) return dialectFor(detectedVersion);
+
+    // Classify the reason detection failed so we can distinguish
+    // category errors from unknown-minor forward-compat.
+    const rawOpenapi = (spec as { openapi?: unknown }).openapi;
+    const reason = classifyUnknownVersion(rawOpenapi);
+    const warn = options.warn ?? ((m: string) => void process.stderr.write(m));
+
+    if (reason.kind === "ok-unknown-minor") {
+      if (options.dialect !== undefined) return options.dialect;
       const policy = options.onUnknownVersion ?? "fallback31";
       if (policy === "throw") {
         throw new Error(
-          "createValidator: spec has a missing or unsupported `openapi` field; set onUnknownVersion to 'warn' or 'fallback31' to accept it",
+          `createValidator: openapi: "${reason.raw}" is an unknown 3.x minor version; ` +
+            "set onUnknownVersion to 'warn' or 'fallback31' to accept it, or pass `dialect` to force a specific compiler",
         );
       }
       if (policy === "warn") {
-        const warn = options.warn ?? ((m: string) => void process.stderr.write(m));
         warn(
-          "createValidator: spec has a missing or unsupported `openapi` field; falling back to the 3.1 dialect\n",
+          `createValidator: openapi: "${reason.raw}" is an unknown 3.x minor version; falling back to the 3.1 dialect\n`,
         );
       }
       return openapi31Dialect;
     }
-    return dialectFor(detectedVersion);
+
+    // Category error: missing field, wrong major, or non-string.
+    // `dialect` is the universal override; emit a warning so the
+    // override is still visible but don't block compilation.
+    if (options.dialect !== undefined) {
+      warn(`createValidator: ${reason.message}; compiling anyway because \`dialect\` was set\n`);
+      return options.dialect;
+    }
+    throw new Error(`createValidator: ${reason.message}`);
   })();
 
   const graph = resolve(spec as unknown as SchemaOrBoolean);

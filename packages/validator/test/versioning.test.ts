@@ -11,6 +11,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { OpenAPIDocument } from "@oav/core";
+import { jsonSchemaDialect } from "@oav/schema";
 import { createValidator } from "../src/validator.js";
 
 function spec32(): OpenAPIDocument {
@@ -343,10 +344,9 @@ describe("3.0 support", () => {
     ).toThrow(/OpenAPI 3\.0 'type' must be a single string/);
   });
 
-  it("an explicit `dialect` option overrides the version dispatch", async () => {
+  it("an explicit `dialect` option overrides the version dispatch", () => {
     // The override path skips version detection entirely and uses the
     // caller's dialect even if the spec declares a different version.
-    const { jsonSchemaDialect } = await import("@oav/schema");
     const spec: OpenAPIDocument = {
       openapi: "3.0.3",
       info: { title: "Old", version: "1" },
@@ -356,41 +356,155 @@ describe("3.0 support", () => {
   });
 });
 
-describe("unknown version", () => {
-  function bareSpec(): OpenAPIDocument {
+describe("category errors", () => {
+  // Missing / non-string `openapi` field and non-3.x major versions
+  // are category errors: "this doesn't look like an OpenAPI 3.x
+  // document at all". Always throw unless `dialect` is set as the
+  // universal escape hatch.
+
+  function specWith(openapi: unknown): OpenAPIDocument {
     return {
-      openapi: "" as unknown as string,
-      info: { title: "bare", version: "1" },
+      openapi: openapi as string,
+      info: { title: "t", version: "1" },
       paths: {},
     };
   }
 
-  it("falls through to the 3.1 dialect for missing `openapi` fields", () => {
-    expect(() => createValidator(bareSpec())).not.toThrow();
+  it("throws when the openapi field is missing", () => {
+    expect(() => createValidator(specWith(undefined))).toThrow(/openapi.*must be a string/);
   });
 
-  it("exposes detectedVersion=undefined when the field is missing", () => {
-    const v = createValidator(bareSpec());
+  it("throws when the openapi field is null", () => {
+    expect(() => createValidator(specWith(null))).toThrow(/openapi.*must be a string/);
+  });
+
+  it("throws when the openapi field isn't semver-shaped", () => {
+    expect(() => createValidator(specWith("yes"))).toThrow(/doesn't look like a semver version/);
+  });
+
+  it("throws on a Swagger 2.0 document (wrong major), hint points at swagger2openapi", () => {
+    const err = (() => {
+      try {
+        createValidator(specWith("2.0.0"));
+      } catch (e) {
+        return e as Error;
+      }
+      return null;
+    })();
+    expect(err?.message).toMatch(/supports OpenAPI 3.x/);
+    expect(err?.message).toMatch(/swagger2openapi/);
+  });
+
+  it("throws on a future major (4.0.0) without the swagger2openapi hint", () => {
+    const err = (() => {
+      try {
+        createValidator(specWith("4.0.0"));
+      } catch (e) {
+        return e as Error;
+      }
+      return null;
+    })();
+    expect(err?.message).toMatch(/supports OpenAPI 3.x/);
+    expect(err?.message).not.toMatch(/swagger2openapi/);
+  });
+
+  it("message for missing openapi mentions the `swagger` sibling-field convention as a hint", () => {
+    // We don't *sniff* the `swagger` field — the check is just
+    // "openapi must be a string." But the error text points the user
+    // at the common sibling-format convention so they know where to
+    // go next.
+    const err = (() => {
+      try {
+        createValidator(specWith(undefined));
+      } catch (e) {
+        return e as Error;
+      }
+      return null;
+    })();
+    expect(err?.message).toMatch(/swagger2openapi/);
+  });
+
+  it("dialect option is the universal override: compiles a bare spec + emits a single warn", () => {
+    const chunks: string[] = [];
+    const v = createValidator(specWith(undefined), {
+      dialect: jsonSchemaDialect,
+      warn: (msg) => chunks.push(msg),
+    });
+    expect(v.detectedVersion).toBeUndefined();
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0]).toMatch(/compiling anyway because `dialect` was set/);
+  });
+
+  it("dialect override also suppresses the wrong-major throw", () => {
+    const chunks: string[] = [];
+    expect(() =>
+      createValidator(specWith("2.0.0"), {
+        dialect: jsonSchemaDialect,
+        warn: (msg) => chunks.push(msg),
+      }),
+    ).not.toThrow();
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0]).toMatch(/supports OpenAPI 3.x/);
+  });
+});
+
+describe("unknown minor version (forward-compat within 3.x)", () => {
+  // Valid 3.x major with an unknown minor — e.g. 3.7.0. Not a
+  // category error; this is the one case `onUnknownVersion` governs.
+
+  function specWith(openapi: string): OpenAPIDocument {
+    return {
+      openapi,
+      info: { title: "t", version: "1" },
+      paths: {},
+    };
+  }
+
+  it("default onUnknownVersion='fallback31' silently accepts 3.7.0", () => {
+    const v = createValidator(specWith("3.7.0"));
     expect(v.detectedVersion).toBeUndefined();
   });
 
-  it("exposes detectedVersion when the field is present", () => {
-    const v = createValidator({ ...bareSpec(), openapi: "3.1.0" });
-    expect(v.detectedVersion).toBe("3.1");
-  });
-
-  it("throws when onUnknownVersion is 'throw'", () => {
-    expect(() => createValidator(bareSpec(), { onUnknownVersion: "throw" })).toThrow(
-      /missing or unsupported `openapi`/,
+  it("onUnknownVersion='throw' rejects 3.7.0 with a message that mentions `dialect`", () => {
+    expect(() => createValidator(specWith("3.7.0"), { onUnknownVersion: "throw" })).toThrow(
+      /unknown 3.x minor/,
+    );
+    expect(() => createValidator(specWith("3.7.0"), { onUnknownVersion: "throw" })).toThrow(
+      /dialect/,
     );
   });
 
-  it("routes the warning through options.warn when onUnknownVersion is 'warn'", () => {
+  it("onUnknownVersion='warn' routes through options.warn and falls back to 3.1", () => {
     const chunks: string[] = [];
-    createValidator(bareSpec(), {
+    createValidator(specWith("3.7.0"), {
       onUnknownVersion: "warn",
       warn: (msg) => chunks.push(msg),
     });
+    expect(chunks.join("")).toMatch(/unknown 3.x minor/);
     expect(chunks.join("")).toMatch(/falling back to the 3.1 dialect/);
+  });
+
+  it("dialect override skips onUnknownVersion entirely", () => {
+    const chunks: string[] = [];
+    const v = createValidator(specWith("3.7.0"), {
+      dialect: jsonSchemaDialect,
+      onUnknownVersion: "throw", // should be ignored
+      warn: (msg) => chunks.push(msg),
+    });
+    expect(v.detectedVersion).toBeUndefined();
+    // No warn here — `dialect` on a valid-shaped 3.x spec is just a
+    // normal override, not a category-error suppression.
+    expect(chunks).toHaveLength(0);
+  });
+});
+
+describe("detectedVersion", () => {
+  it("exposes the detected bucket when the field is a known 3.x version", () => {
+    const spec: OpenAPIDocument = {
+      openapi: "3.1.0",
+      info: { title: "t", version: "1" },
+      paths: {},
+    };
+    expect(createValidator(spec).detectedVersion).toBe("3.1");
   });
 });
