@@ -156,10 +156,47 @@ export function validateParameter(
 }
 
 /**
+ * Content-type gate for the request body. Returns a single leaf when
+ * the request carries a body whose `Content-Type` isn't in the declared
+ * media-type set for the operation; otherwise `null`. Runs before
+ * {@link validateBody} (and before parameter validation) so a
+ * content-type mismatch short-circuits with an unambiguous single-leaf
+ * tree instead of being paired with unrelated parameter diagnostics.
+ *
+ * Returns `null` — deliberately not a content-type error — when:
+ * - the operation declares no `requestBody`,
+ * - the request carries no body (body-missing is a separate concern,
+ *   handled by {@link validateBody}),
+ * - the operation's `requestBody.content` map is empty (nothing to
+ *   match against).
+ *
+ * @internal
+ */
+export function checkBodyContentType(
+  req: HttpRequest,
+  cache: OperationCache,
+): ValidationError | null {
+  if (cache.requestBody === undefined) return null;
+  const hasBody = req.body !== undefined && req.body !== null;
+  if (!hasBody) return null;
+  if (cache.bodyValidators.size === 0) return null;
+  const mt = matchMediaType(req.contentType, cache.bodyValidators.keys());
+  if (mt !== undefined) return null;
+  return createLeafError(
+    "content-type",
+    ["body"],
+    `request Content-Type "${req.contentType ?? "<missing>"}" is not accepted`,
+    { contentType: req.contentType, accepted: [...cache.bodyValidators.keys()] },
+  );
+}
+
+/**
  * Validate the request body against the operation cache's pre-compiled
- * per-media-type validators. Returns a leaf error for required-missing
- * or content-type mismatch; delegates shape validation to the compiled
- * schema and returns its error subtree (or `null` on success).
+ * per-media-type validators. Returns a leaf error for required-missing;
+ * delegates shape validation to the compiled schema and returns its
+ * error subtree (or `null` on success). Content-type matching is the
+ * caller's responsibility via {@link checkBodyContentType}; when
+ * reached here, a matching media-type validator is assumed to exist.
  *
  * @internal
  */
@@ -175,14 +212,7 @@ export function validateBody(req: HttpRequest, cache: OperationCache): Validatio
   }
   if (cache.bodyValidators.size === 0) return null;
   const mt = matchMediaType(req.contentType, cache.bodyValidators.keys());
-  if (mt === undefined) {
-    return createLeafError(
-      "content-type",
-      ["body"],
-      `request Content-Type "${req.contentType ?? "<missing>"}" is not accepted`,
-      { contentType: req.contentType, accepted: [...cache.bodyValidators.keys()] },
-    );
-  }
+  if (mt === undefined) return null; // content-type gate ran upstream; defensive no-op.
   const validator = cache.bodyValidators.get(mt);
   if (validator === undefined) return null;
   const r = validator.validate(req.body, ["body"]);
