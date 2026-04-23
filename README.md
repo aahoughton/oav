@@ -36,10 +36,11 @@ npm install @aahoughton/oav
 npm install @aahoughton/oav-core           # lean install, JSON-only
 ```
 
-`@aahoughton/oav` re-exports everything from `@aahoughton/oav-core` at
-matching subpaths, so the code samples below work verbatim against
-either package — just swap the import specifier. If you plan to use the
-CLI, add `commander`:
+`@aahoughton/oav` re-exports `@aahoughton/oav-core` at matching
+subpaths. Samples below use `@aahoughton/oav`; on the lean package,
+substitute `@aahoughton/oav-core` in imports that don't touch the
+YAML readers (`createYamlFileReader`, `createSmartHttpReader`) or
+the CLI. If you plan to use the CLI, add `commander`:
 
 ```bash
 npm install @aahoughton/oav commander
@@ -49,10 +50,12 @@ npm install @aahoughton/oav commander
 
 ```ts
 import { createValidator, createYamlFileReader, formatText } from "@aahoughton/oav";
-import { composeReaders, createFileReader, loadSpec } from "@aahoughton/oav/spec";
+import { loadSpec } from "@aahoughton/oav/spec";
 
-const reader = composeReaders([createYamlFileReader(), createFileReader()]);
-const { document } = await loadSpec({ reader, entry: "openapi.yaml" });
+const { document } = await loadSpec({
+  reader: createYamlFileReader(),
+  entry: "openapi.yaml",
+});
 const validator = createValidator(document);
 
 const err = validator.validateRequest({
@@ -65,6 +68,10 @@ const err = validator.validateRequest({
 
 if (err !== null) console.error(formatText(err));
 ```
+
+For a multi-file spec or a spec hosted over HTTP, compose readers:
+`composeReaders([createYamlFileReader(), createSmartHttpReader(), createFileReader()])`
+handles local YAML, remote JSON / YAML, and local JSON transparently.
 
 `validateRequest` / `validateResponse` return `null` on success or a
 `ValidationError` tree on failure. Every error carries a stable `code`
@@ -101,21 +108,20 @@ on a spec you fully own, it's still the right pick. Where the two
 projects overlap and where each does more is written up in
 [`COMPARISON.md`](./COMPARISON.md).
 
-### Conformance
+## Conformance
 
 The [`conformance/`](./conformance/README.md) sub-package drives the
 compiler and CLI against the upstream JSON Schema 2020-12 Test Suite,
 a set of OpenAPI 3.0 / 3.1 / 3.2 petstore scenarios, and a handful of
 real-world specs (Stripe, GitHub, DigitalOcean, Twilio, Asana, Box,
-Adyen) that have to load and compile without error. Current pass
-counts: 1271 / 1290 on required JSON Schema cases, 1429 / 1452 with
-optional included, 14 / 14 on OpenAPI cases.
+Adyen) that have to load and compile without error. See
+[`conformance/REPORT.md`](./conformance/REPORT.md) for pass / fail
+counts by category.
 
-Categories we're not currently attempting, with details in
-[`conformance/REPORT.md`](./conformance/REPORT.md):
+Categories oav does not aim to cover:
 
-- `$dynamicRef` with runtime dynamic-scope rebinding. Our
-  implementation resolves statically against the anchor map.
+- `$dynamicRef` with runtime dynamic-scope rebinding. oav resolves
+  statically against the anchor map.
 - The `optional/format/*` subtree. Those tests target strict-assertion
   behaviour; `format` is annotation-only by default per JSON Schema
   2020-12 §6.3.
@@ -128,7 +134,7 @@ are concentrated in meta-schemas and extensible-type libraries (JSON
 Schema's own meta-schema, Hyperjump's type system); a spec that
 describes "POST /pets takes a Pet" doesn't declare them. The strict
 format-assertion gap only surfaces if you rely on RFC-edge behaviour
-in `iri`, IRI-reference, or non-BMP regex content — `date-time`,
+in `iri` / `iri-reference` or non-BMP regex content — `date-time`,
 `email`, `uuid`, and the common URI formats pass. Float overflow
 concerns numbers beyond `Number.MAX_SAFE_INTEGER` (~9 × 10¹⁵);
 outside that range, JavaScript's own `Number` precision is the
@@ -143,7 +149,7 @@ oav resolve openapi.yaml
 oav validate openapi.yaml --request req.http
 oav validate openapi.yaml --path "POST /pets" --body payload.json
 oav validate openapi.yaml --path "GET /pets" --response --status 200 --body resp.json
-oav compile schema.json -o validator.mjs                    # standalone ES module, no runtime `new Function()`
+oav compile schema.json -o validator.mjs                    # ES module with no runtime `new Function()` (imports runtime helpers from @aahoughton/oav)
 ```
 
 Flags: `--format text|json|flat`, `--depth n`, `--overlay file`
@@ -170,14 +176,17 @@ one of the built-in dialects (`jsonSchemaDialect`, `openapi31Dialect`,
 
 ## Configuring the validator
 
-| Option                  | Effect                                                         |
-| ----------------------- | -------------------------------------------------------------- |
-| `dialect`               | Force a specific schema dialect, bypassing version detection.  |
-| `formats`               | Extra string format validators merged on top of the built-ins. |
-| `keywords`              | Register user-defined schema keywords (see below).             |
-| `maxErrors`             | Cap on leaf errors; `1` is fast-fail, default is uncapped.     |
-| `strictQueryParameters` | Reject undeclared query parameters. Default `false`.           |
-| `onUnknownVersion`      | Policy for specs with missing/unsupported `openapi`.           |
+| Option                  | Effect                                                                                                 |
+| ----------------------- | ------------------------------------------------------------------------------------------------------ |
+| `dialect`               | Force a specific schema dialect, bypassing version detection.                                          |
+| `formats`               | Extra string format validators merged on top of the built-ins.                                         |
+| `keywords`              | Register user-defined schema keywords (see below).                                                     |
+| `maxErrors`             | Cap on leaf errors; `1` is fast-fail, default is uncapped.                                             |
+| `strictQueryParameters` | Reject undeclared query parameters. Default `false`.                                                   |
+| `validateSecurity`      | Shape-only security check (bearer / basic / apiKey). Default `true`; set `false` to skip.              |
+| `ignoreUndocumented`    | Return `null` on requests whose path the router can't match. Default `false`.                          |
+| `ignorePaths`           | Predicate `(path) => boolean`; returning `true` short-circuits validation to `null` before routing.    |
+| `onUnknownVersion`      | Policy for specs with missing/unsupported `openapi`: `"fallback31"` (default), `"warn"`, or `"throw"`. |
 
 ### Custom keywords
 
@@ -210,22 +219,44 @@ short-circuit once the budget is exhausted. Results carry
 
 `oav` is a validator, not a middleware package: you write a short
 adapter between your framework and `validateRequest` /
-`validateResponse`. See [**INTEGRATION.md**](./INTEGRATION.md) for:
+`validateResponse`. An Express 5 adapter is about this long:
 
-- Copy-paste adapters for Express 4, Express 5, Fastify, and
-  Next.js / Hono / Bun / Deno.
+```ts
+import { allowHeaderFor, httpStatusFor, toProblemDetails } from "@aahoughton/oav";
+
+app.use(async (req, res, next) => {
+  const err = validator.validateRequest({
+    method: req.method,
+    path: req.path,
+    query: req.query as Record<string, string | string[]>,
+    headers: req.headers as Record<string, string | string[]>,
+    contentType: req.get("content-type") ?? undefined,
+    body: req.body,
+  });
+  if (err === null) return next();
+  const allow = allowHeaderFor(err);
+  if (allow !== undefined) res.setHeader("Allow", allow);
+  res
+    .status(httpStatusFor(err))
+    .type("application/problem+json")
+    .json(toProblemDetails(err, { instance: req.originalUrl }));
+});
+```
+
+See [**INTEGRATION.md**](./INTEGRATION.md) for:
+
+- Adapters for Express 4, Fastify, Next.js, Hono, Bun, and Deno.
 - Recipes for file uploads (multer), response validation, security,
-  ignoring paths, and status-code mapping.
+  ignoring paths, and the full status-code switch.
 - A migration table from `express-openapi-validator`, including
   where oav is stricter or more conformant and where you'll do more
   wiring by hand.
 
-The short version: `oav` is not a drop-in for
-`express-openapi-validator`. You own the error → HTTP mapping, you
-wire up multer if you need file uploads, and you run your own auth
-middleware. In exchange you get a structured error tree, native
-OpenAPI 3.0 semantics, overlays, and no monkey-patching of `req` or
-`res`.
+`oav` is not a drop-in for `express-openapi-validator`: you own the
+error → HTTP mapping, you wire up multer if you need file uploads,
+and you run your own auth middleware. In exchange you get a
+structured error tree, native OpenAPI 3.0 semantics, overlays, and
+no monkey-patching of `req` or `res`.
 
 ## Modules
 
@@ -261,6 +292,10 @@ Runnable, self-contained TypeScript examples in
 | `overlay.ts`          | Apply a spec overlay before validating               |
 
 ## Known limitations
+
+Runtime-behaviour corners. For a feature-scope comparison against
+Ajv (draft versions, `$data`, async validation, etc.) see
+[COMPARISON.md](./COMPARISON.md).
 
 - `$dynamicRef` behaves like `$ref` with anchor lookup — no runtime
   dynamic-scope traversal.

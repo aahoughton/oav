@@ -33,6 +33,13 @@ export {
   type ValidationIssue,
 } from "./problem-details.js";
 
+export {
+  allowHeaderFor,
+  DEFAULT_HTTP_STATUS_MAP,
+  httpStatusFor,
+  type HttpStatusMap,
+} from "./http-status.js";
+
 export { resolveJsonPointer } from "./json-pointer.js";
 
 export { detectOpenAPIVersion, type OpenAPIVersion } from "./version.js";

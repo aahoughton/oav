@@ -8,37 +8,23 @@
  *   pnpm tsx examples/overlay.ts
  */
 
-import type { OpenAPIDocument } from "../packages/core/src/index.ts";
+import { fileURLToPath } from "node:url";
 import { formatText } from "../packages/core/src/index.ts";
-import { applyOverlays, type SpecOverlay } from "../packages/spec/src/index.ts";
+import { createYamlFileReader } from "../packages/oav/src/yaml.ts";
+import { applyOverlays, loadSpec, type SpecOverlay } from "../packages/spec/src/index.ts";
 import { createValidator } from "../packages/validator/src/index.ts";
 
-const base: OpenAPIDocument = {
-  openapi: "3.1.0",
-  info: { title: "Widgets", version: "1" },
-  paths: {
-    "/widgets": {
-      get: {
-        responses: {
-          "200": {
-            description: "ok",
-            content: {
-              "application/json": {
-                schema: { type: "array", items: { type: "object" } },
-              },
-            },
-          },
-        },
-      },
-    },
-  },
-};
+const specPath = fileURLToPath(new URL("./specs/petstore.yaml", import.meta.url));
+const { document: base } = await loadSpec({
+  reader: createYamlFileReader(),
+  entry: specPath,
+});
 
-// Gateway adds `X-Request-Id` to every operation in prod. Rather than
-// edit the base spec, we overlay the requirement in at load time.
+// Gateway adds `X-Request-Id` to every GET in prod. Rather than edit the
+// base spec, overlay the requirement in at load time.
 const overlay: SpecOverlay = {
   overrides: {
-    "/widgets": {
+    "/pets": {
       operations: {
         get: {
           upsertParameters: [
@@ -54,14 +40,14 @@ const merged = applyOverlays(base, [overlay]);
 const v = createValidator(merged);
 
 // Without the header — should fail.
-const missing = v.validateRequest({ method: "GET", path: "/widgets" });
+const missing = v.validateRequest({ method: "GET", path: "/pets" });
 console.log("without X-Request-Id:");
 if (missing !== null) console.log(formatText(missing));
 
 // With the header — clean.
 const ok = v.validateRequest({
   method: "GET",
-  path: "/widgets",
+  path: "/pets",
   headers: { "x-request-id": "abc-123" },
 });
 console.log("\nwith X-Request-Id →", ok === null ? "ok" : "FAIL");

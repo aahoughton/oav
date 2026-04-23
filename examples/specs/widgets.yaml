@@ -1,0 +1,25 @@
+openapi: "3.1.0"
+info:
+  title: Multi-tenant API
+  version: "1"
+paths:
+  /widgets:
+    post:
+      summary: Create a widget
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenantId]
+              properties:
+                tenantId:
+                  type: string
+                  pattern: "^t_[a-z0-9]+$"
+                  activeTenant: true
+                name:
+                  type: string
+      responses:
+        "201":
+          description: created

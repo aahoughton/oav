@@ -8,42 +8,20 @@
  *   pnpm tsx examples/max-errors.ts
  */
 
-import type { OpenAPIDocument } from "../packages/core/src/index.ts";
+import { fileURLToPath } from "node:url";
 import { collectLeaves } from "../packages/core/src/index.ts";
+import { createYamlFileReader } from "../packages/oav/src/yaml.ts";
+import { loadSpec } from "../packages/spec/src/index.ts";
 import { createValidator } from "../packages/validator/src/index.ts";
 
-const spec: OpenAPIDocument = {
-  openapi: "3.1.0",
-  info: { title: "Bulk", version: "1" },
-  paths: {
-    "/items": {
-      post: {
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "array",
-                items: {
-                  type: "object",
-                  required: ["id"],
-                  properties: { id: { type: "integer" } },
-                },
-              },
-            },
-          },
-        },
-        responses: { "201": { description: "created" } },
-      },
-    },
-  },
-};
+const specPath = fileURLToPath(new URL("./specs/items.yaml", import.meta.url));
+const { document } = await loadSpec({ reader: createYamlFileReader(), entry: specPath });
 
 // 50 array items, all missing the required `id` field.
 const bulk = Array.from({ length: 50 }, () => ({ name: "whatever" }));
 
 const runAndCount = (label: string, maxErrors: number | undefined): void => {
-  const v = createValidator(spec, maxErrors === undefined ? {} : { maxErrors });
+  const v = createValidator(document, maxErrors === undefined ? {} : { maxErrors });
   const start = performance.now();
   const err = v.validateRequest({
     method: "POST",

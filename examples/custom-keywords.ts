@@ -8,8 +8,10 @@
  *   pnpm tsx examples/custom-keywords.ts
  */
 
-import type { OpenAPIDocument } from "../packages/core/src/index.ts";
+import { fileURLToPath } from "node:url";
 import { formatText } from "../packages/core/src/index.ts";
+import { createYamlFileReader } from "../packages/oav/src/yaml.ts";
+import { loadSpec } from "../packages/spec/src/index.ts";
 import { createValidator } from "../packages/validator/src/index.ts";
 import type { CustomKeywordValidator } from "../packages/validator/src/index.ts";
 
@@ -21,39 +23,10 @@ const activeTenant: CustomKeywordValidator = (data) => {
   return { message: `tenant "${data}" is not active`, params: { tenantId: data } };
 };
 
-const spec: OpenAPIDocument = {
-  openapi: "3.1.0",
-  info: { title: "Multi-tenant API", version: "1" },
-  paths: {
-    "/widgets": {
-      post: {
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                required: ["tenantId"],
-                properties: {
-                  // Custom keyword in action:
-                  tenantId: {
-                    type: "string",
-                    pattern: "^t_[a-z0-9]+$",
-                    activeTenant: true,
-                  } as Record<string, unknown>,
-                  name: { type: "string" },
-                },
-              },
-            },
-          },
-        },
-        responses: { "201": { description: "created" } },
-      },
-    },
-  },
-};
+const specPath = fileURLToPath(new URL("./specs/widgets.yaml", import.meta.url));
+const { document } = await loadSpec({ reader: createYamlFileReader(), entry: specPath });
 
-const v = createValidator(spec, {
+const v = createValidator(document, {
   keywords: { activeTenant },
 });
 
