@@ -95,10 +95,11 @@ elsewhere in the JavaScript ecosystem:
   PocketBase / a gateway's published spec) can extend or override it
   at load time. `applyOverlays` rewrites the base document in memory;
   no forking, no preprocessing, no string substitution.
-- **Native OpenAPI 3.0 support and a structured error tree.** 3.0 is
-  a first-class dialect, not a 2020-12 translation: `nullable`,
-  boolean `exclusiveMaximum`, and `$ref`-suppresses-siblings are baked
-  into the compiler's dialect dispatch. Errors come back as a typed
+- **Native OpenAPI 3.0 support and a structured error tree.** 3.0 has
+  its own compiler dialect rather than being translated to 2020-12:
+  `nullable`, boolean `exclusiveMaximum`, and
+  `$ref`-suppresses-siblings are baked into the compiler's dialect
+  dispatch. Errors come back as a typed
   tree (`code` / `path` / `params` / `children`) so downstream code
   can narrow on fields rather than pattern-match on messages.
 

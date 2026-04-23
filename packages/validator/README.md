@@ -150,6 +150,6 @@ Two kinds of "unknown":
   ```
 
 `validator.detectedVersion` is `undefined` in the fallback cases so
-callers can introspect what dialect they actually got. Warnings from
+callers can introspect what dialect they got. Warnings from
 any path land on `validator.warnings`; the library never writes to
 `process.stderr` or `console` on its own.
