@@ -446,6 +446,26 @@ describe("category errors", () => {
     expect(chunks).toHaveLength(1);
     expect(chunks[0]).toMatch(/supports OpenAPI 3.x/);
   });
+
+  it("warnings accumulate onto validator.warnings even without a warn callback", () => {
+    // The library never writes to stderr on its own — instead, every
+    // would-warn event lands on validator.warnings so the caller can
+    // inspect post-construction.
+    const v = createValidator(specWith(undefined), { dialect: jsonSchemaDialect });
+    expect(v.warnings).toHaveLength(1);
+    expect(v.warnings[0]).toMatch(/compiling anyway because `dialect` was set/);
+  });
+
+  it("warnings and the warn callback both receive each warning", () => {
+    const chunks: string[] = [];
+    const v = createValidator(specWith("2.0.0"), {
+      dialect: jsonSchemaDialect,
+      warn: (msg) => chunks.push(msg),
+    });
+    expect(chunks).toHaveLength(1);
+    expect(v.warnings).toHaveLength(1);
+    expect(chunks[0]).toBe(v.warnings[0]);
+  });
 });
 
 describe("unknown minor version (forward-compat within 3.x)", () => {
@@ -472,6 +492,12 @@ describe("unknown minor version (forward-compat within 3.x)", () => {
     expect(() => createValidator(specWith("3.7.0"), { onUnknownVersion: "throw" })).toThrow(
       /dialect/,
     );
+  });
+
+  it("onUnknownVersion='warn' populates validator.warnings even without a callback", () => {
+    const v = createValidator(specWith("3.7.0"), { onUnknownVersion: "warn" });
+    expect(v.warnings).toHaveLength(1);
+    expect(v.warnings[0]).toMatch(/unknown 3.x minor/);
   });
 
   it("onUnknownVersion='warn' routes through options.warn and falls back to 3.1", () => {

@@ -9,9 +9,24 @@
       "error",
       { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }
     ],
+    "no-console": "error",
     "unicorn/no-new-array": "off",
     "unicorn/prefer-module": "off"
   },
+  "overrides": [
+    {
+      "files": [
+        "packages/cli/**",
+        "packages/oav/src/cli.ts",
+        "examples/**",
+        "performance/**",
+        "conformance/**"
+      ],
+      "rules": {
+        "no-console": "off"
+      }
+    }
+  ],
   "env": {
     "builtin": true,
     "node": true
