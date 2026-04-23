@@ -67,14 +67,15 @@ the upstream test suites live in
 
 ## Validator methods
 
-| Method                                        | Purpose                                                                                                                                 |
-| --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `validateRequest(req)`                        | Check an `HttpRequest` against the spec. Returns `null` on success or a `ValidationError` tree.                                         |
-| `validateResponse(req, res)`                  | Check an `HttpResponse` against the spec (request is used only for method + path). Returns `null` or a tree.                            |
-| `validateFetchRequest<T>(request, opts?)`     | Convenience for Web Standards `Request`: reads URL, headers, body; returns a discriminated union with a typed body. See INTEGRATION.md. |
-| `validateFetchResponse<T>(request, response)` | Symmetric Web Standards `Response` check. Useful for contract-testing an upstream.                                                      |
-| `getOperation({ method, path })`              | Startup-time introspection: returns the resolved, overlay-applied `OperationObject` + matched template for a (method, path) pair.       |
-| `detectedVersion`                             | The `openapi` string detected on construction, or `undefined` for an unrecognised / missing version (see `onUnknownVersion`).           |
+| Method                                        | Purpose                                                                                                                                                             |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `validateRequest(req)`                        | Check an `HttpRequest` against the spec. Returns `null` on success or a `ValidationError` tree.                                                                     |
+| `validateResponse(req, res)`                  | Check an `HttpResponse` against the spec (request is used only for method + path). Returns `null` or a tree.                                                        |
+| `validateFetchRequest<T>(request, opts?)`     | Convenience for Web Standards `Request`: reads URL, headers, body; returns a discriminated union with a typed body. See INTEGRATION.md.                             |
+| `validateFetchResponse<T>(request, response)` | Symmetric Web Standards `Response` check. Useful for contract-testing an upstream.                                                                                  |
+| `getOperation({ method, path })`              | Startup-time introspection: returns the resolved, overlay-applied `OperationObject` + matched template for a (method, path) pair.                                   |
+| `detectedVersion`                             | The `openapi` string detected on construction, or `undefined` for an unrecognised / missing version (see `onUnknownVersion`).                                       |
+| `warnings`                                    | `readonly string[]` — warnings accumulated at construction time (`onUnknownVersion: "warn"` or `dialect`-suppressed category error). Empty when neither path fires. |
 
 ## Options
 
@@ -131,14 +132,24 @@ true` when the tree was capped.
 
 ## Handling unknown `openapi` versions
 
-Specs in the wild sometimes omit the `openapi` field or declare an
-unsupported value. The default — `onUnknownVersion: "fallback31"` —
-silently uses the 3.1 dialect. For stricter environments:
+Two kinds of "unknown":
 
-```ts
-createValidator(spec, { onUnknownVersion: "throw" }); // refuse to build
-createValidator(spec, { onUnknownVersion: "warn" }); // stderr message, use 3.1
-```
+- **Category errors** — missing / non-string `openapi`, non-semver
+  string, or a major version that isn't `3`. These **throw** at
+  construction by default. Set `dialect` to force a specific
+  compiler; that suppresses the throw and adds an entry to
+  `validator.warnings` so the override is still visible.
+- **Unknown minor within 3.x** — e.g. `"3.7.0"` if a future minor
+  ships before oav is updated. Governed by `onUnknownVersion`:
+
+  ```ts
+  createValidator(spec); // fallback31 default — silent, uses 3.1 dialect
+  createValidator(spec, { onUnknownVersion: "throw" }); // refuse to build
+  createValidator(spec, { onUnknownVersion: "warn" }); // populates validator.warnings, uses 3.1 dialect
+  createValidator(spec, { onUnknownVersion: "warn", warn: (m) => log.info(m) }); // plus live callback
+  ```
 
 `validator.detectedVersion` is `undefined` in the fallback cases so
-callers can introspect what dialect they actually got.
+callers can introspect what dialect they actually got. Warnings from
+any path land on `validator.warnings`; the library never writes to
+`process.stderr` or `console` on its own.
