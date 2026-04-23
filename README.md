@@ -209,6 +209,15 @@ one of the built-in dialects (`jsonSchemaDialect`, `openapi31Dialect`,
 3.1 dialect by default; configure with
 `onUnknownVersion: "throw" | "warn" | "fallback31"`.
 
+**Swagger 2.0 specs** aren't supported directly — `createValidator`
+throws on `swagger: "2.0"` documents. Convert to OpenAPI 3.0 first with
+[`swagger2openapi`](https://github.com/Mermade/oas-kit/tree/main/packages/swagger2openapi)
+and pass the 3.0 output to `createValidator`:
+
+```bash
+npx swagger2openapi swagger.json -o openapi.json
+```
+
 ## Configuring the validator
 
 | Option                  | Effect                                                                                                 |
