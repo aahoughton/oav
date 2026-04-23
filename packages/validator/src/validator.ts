@@ -222,6 +222,21 @@ export interface OavValidator {
    */
   readonly detectedVersion: OpenAPIVersion | undefined;
   /**
+   * Warnings collected during `createValidator`. Populated when
+   * `onUnknownVersion: "warn"` fires, or when the `dialect` escape
+   * hatch suppresses a category error that would otherwise throw
+   * (missing `openapi` field, wrong major). Empty when neither applies.
+   *
+   * The library never writes to `process.stderr` or `console` — this
+   * array is the library's only record of such events. Callers that
+   * want live output pass {@link ValidatorOptions.warn}; the CLI
+   * wrapper does this.
+   *
+   * Frozen after `createValidator` returns; no post-construction
+   * writes happen.
+   */
+  readonly warnings: readonly string[];
+  /**
    * Runtime observability for compile-time-specialisation optimisations.
    * The counters live on the validator, not inside a ValidationError
    * tree, so tests can assert on the optimisation directly rather than
@@ -401,9 +416,10 @@ export interface ValidatorOptions {
    * category errors (missing `openapi` field, wrong major), which
    * always throw unless `dialect` is set.
    *
-   * - `"fallback31"` (default) — silently use the 3.1 dialect.
-   * - `"warn"` — emit a warning via {@link ValidatorOptions.warn}
-   *   (defaults to `process.stderr.write`) and use the 3.1 dialect.
+   * - `"fallback31"` (default) — accept silently; use the 3.1 dialect.
+   * - `"warn"` — add an entry to {@link OavValidator.warnings} (and
+   *   call {@link ValidatorOptions.warn} if provided) and use the 3.1
+   *   dialect.
    * - `"throw"` — throw an `Error`.
    *
    * Regardless of the choice, `OavValidator.detectedVersion` is set to
@@ -411,10 +427,17 @@ export interface ValidatorOptions {
    */
   onUnknownVersion?: "fallback31" | "warn" | "throw";
   /**
-   * Sink for the warning emitted by `onUnknownVersion: "warn"`. Defaults
-   * to `(m) => process.stderr.write(m)`. Inject an alternative when
-   * embedding the validator in workers / edge runtimes / test harnesses
-   * where `process.stderr` isn't the right destination.
+   * Optional live-output sink for warnings — called synchronously
+   * during {@link createValidator} whenever a warning is emitted
+   * (currently: `onUnknownVersion: "warn"` path, and the single
+   * category-error-overridden-by-`dialect` case). Every warning is
+   * _also_ accumulated into {@link OavValidator.warnings} regardless
+   * of whether this callback is set.
+   *
+   * Default: undefined (no live sink). The library never writes to
+   * `process.stderr` or `console` on its own; pass a callback if you
+   * want live output. The CLI wrapper supplies one that prints to
+   * stderr.
    */
   warn?: (message: string) => void;
 }
@@ -442,6 +465,16 @@ export function createValidator(
   const router: Router = createRouter(paths);
   const formats = { ...builtInFormats, ...options.formats };
 
+  // Warnings are accumulated passively (no I/O from the library); a
+  // caller-supplied `options.warn` additionally gets them live. The
+  // CLI wrapper passes a stderr-writing callback; the core library
+  // never does.
+  const warnings: string[] = [];
+  const emitWarn = (message: string): void => {
+    warnings.push(message);
+    options.warn?.(message);
+  };
+
   // Version detection is pure compile-time: we bake the right
   // dialect into the compiled validator and never branch on version
   // per request.
@@ -460,7 +493,6 @@ export function createValidator(
     // category errors from unknown-minor forward-compat.
     const rawOpenapi = (spec as { openapi?: unknown }).openapi;
     const reason = classifyUnknownVersion(rawOpenapi);
-    const warn = options.warn ?? ((m: string) => void process.stderr.write(m));
 
     if (reason.kind === "ok-unknown-minor") {
       if (options.dialect !== undefined) return options.dialect;
@@ -472,8 +504,8 @@ export function createValidator(
         );
       }
       if (policy === "warn") {
-        warn(
-          `createValidator: openapi: "${reason.raw}" is an unknown 3.x minor version; falling back to the 3.1 dialect\n`,
+        emitWarn(
+          `createValidator: openapi: "${reason.raw}" is an unknown 3.x minor version; falling back to the 3.1 dialect`,
         );
       }
       return openapi31Dialect;
@@ -483,7 +515,7 @@ export function createValidator(
     // `dialect` is the universal override; emit a warning so the
     // override is still visible but don't block compilation.
     if (options.dialect !== undefined) {
-      warn(`createValidator: ${reason.message}; compiling anyway because \`dialect\` was set\n`);
+      emitWarn(`createValidator: ${reason.message}; compiling anyway because \`dialect\` was set`);
       return options.dialect;
     }
     throw new Error(`createValidator: ${reason.message}`);
@@ -838,6 +870,7 @@ export function createValidator(
     validateFetchResponse,
     getOperation,
     detectedVersion,
+    warnings,
     stats,
   };
 }
