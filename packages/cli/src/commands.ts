@@ -228,10 +228,19 @@ export type ValidateMode =
  * Implement the `oav compile <schema>` subcommand. Reads a JSON
  * Schema from disk (or stdin via `-`), emits an ES module whose
  * `validate(data)` mirrors `compileSchema(schema).validate(data)`.
- * The emitted module imports the runtime helpers from
+ *
+ * By default the emitted module imports runtime helpers from
  * `@aahoughton/oav/core`, `@aahoughton/oav/schema/internals`, and
  * `@aahoughton/oav/formats` — no `new Function()` at the consumer's
- * load time, suitable for edge runtimes that forbid it.
+ * load time, suitable for edge runtimes that forbid it. Consumers
+ * install `@aahoughton/oav` alongside the generated file.
+ *
+ * With `standalone: true` the emitted module is passed through
+ * `esbuild` to inline every runtime helper, producing a bundle with
+ * zero imports that runs without `@aahoughton/oav` installed at all
+ * — the Lambda / edge / single-file bundling case. `esbuild` is an
+ * optional peer dependency; a clear install hint is printed if it's
+ * not present.
  *
  * @public
  */
@@ -240,6 +249,22 @@ export async function compileCommand(
     schema: string;
     output?: string;
     dialect?: StandaloneDialect;
+    standalone?: boolean;
+    /**
+     * Override the `@aahoughton/oav` prefix used in the emitted
+     * module's imports. Tests pass `"@oav"` so the output resolves
+     * against the in-workspace package aliases rather than the
+     * published package name. Not exposed on the CLI.
+     */
+    importPrefix?: string;
+    /**
+     * Override esbuild's resolveDir for `--standalone`. Defaults to
+     * `process.cwd()`, which is where a real consumer's installed
+     * `@aahoughton/oav` sits. Tests point this at
+     * `packages/oav/` where the workspace's `@oav/*` symlinks are
+     * reachable. Not exposed on the CLI.
+     */
+    resolveDir?: string;
   },
   io: CommandIo = defaultCommandIo(),
 ): Promise<CommandResult> {
@@ -253,10 +278,21 @@ export async function compileCommand(
   }
   let source: string;
   try {
-    source = emitStandalone(parsed as SchemaOrBoolean, { dialect: args.dialect ?? "2020-12" });
+    source = emitStandalone(parsed as SchemaOrBoolean, {
+      dialect: args.dialect ?? "2020-12",
+      importPrefix: args.importPrefix,
+    });
   } catch (err) {
     io.stderr(`compile: ${(err as Error).message}\n`);
     return { exitCode: 3 };
+  }
+  if (args.standalone === true) {
+    try {
+      source = await bundleStandalone(source, args.resolveDir ?? process.cwd());
+    } catch (err) {
+      io.stderr(`compile: ${(err as Error).message}\n`);
+      return { exitCode: 3 };
+    }
   }
   if (args.output !== undefined) {
     await io.writeText(args.output, source);
@@ -264,4 +300,38 @@ export async function compileCommand(
   }
   io.stdout(source);
   return { exitCode: 0 };
+}
+
+/**
+ * Bundle an emitted validator with esbuild so it has no external
+ * imports. Lazy-imports esbuild so consumers who don't use
+ * `--standalone` don't pay the dependency cost. Throws with an
+ * install-hint message when esbuild isn't resolvable.
+ */
+async function bundleStandalone(source: string, resolveDir: string): Promise<string> {
+  let esbuild: typeof import("esbuild");
+  try {
+    esbuild = await import("esbuild");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ERR_MODULE_NOT_FOUND") {
+      throw new Error(
+        "--standalone requires 'esbuild' as a peer dependency.\n" +
+          "  Install it alongside @aahoughton/oav, e.g.:\n" +
+          "    npm install esbuild\n" +
+          "    pnpm add esbuild",
+      );
+    }
+    throw err;
+  }
+  const result = await esbuild.build({
+    stdin: { contents: source, resolveDir, loader: "js" },
+    bundle: true,
+    format: "esm",
+    platform: "neutral",
+    write: false,
+    logLevel: "silent",
+  });
+  const out = result.outputFiles[0];
+  if (out === undefined) throw new Error("esbuild produced no output");
+  return out.text;
 }

@@ -16,11 +16,21 @@ npx @aahoughton/oav validate openapi.yaml --request req.http
 
 The CLI lives in the batteries-included `@aahoughton/oav` package,
 not the lean `@aahoughton/oav-core` — `oav-core` doesn't ship a `bin`
-or any CLI glue. `commander` is an **optional peer dependency** on
-`@aahoughton/oav`: the library itself doesn't pull it in, so consumers
-who only use the programmatic API stay on a single runtime dep
-(`yaml`). CLI users install `commander` alongside. Running `oav`
-without it prints an install hint and exits with status 2.
+or any CLI glue. Two packages are **optional peer dependencies** on
+`@aahoughton/oav`:
+
+- **`commander`** — required by every CLI invocation. Install it
+  alongside `@aahoughton/oav`. Running `oav` without it prints an
+  install hint and exits with status 2.
+- **`esbuild`** — only required by `oav compile --standalone` (see
+  [`compile` output](#compile-output) below). Not needed for any
+  other command. Install it alongside `@aahoughton/oav` if you use
+  `--standalone`, otherwise skip it. Missing-esbuild surfaces as an
+  install hint on stderr with exit code 3 at `compile --standalone`
+  time only.
+
+Neither is pulled in by the library itself, so consumers who only
+use the programmatic API stay on a single runtime dep (`yaml`).
 
 ## Commands
 
@@ -34,6 +44,7 @@ oav validate <spec> --path "GET /pets" --response --status 200 --body resp.json
 
 oav compile <schema.json> -o v.mjs                           # emit a validator module
 oav compile <schema.json> --dialect openapi-3.0              # pick a non-default dialect
+oav compile <schema.json> --standalone -o v.mjs              # inline runtime helpers (needs esbuild)
 ```
 
 Pass `-` as the file path to read from stdin (e.g. `--body -`).
@@ -47,14 +58,15 @@ below for the expected shape.
 
 ## Flags
 
-| Flag                                          | Command            | Meaning                                               |
-| --------------------------------------------- | ------------------ | ----------------------------------------------------- |
-| `--format text\|json\|flat`                   | validate           | Error rendering. Default `text`.                      |
-| `--depth <n>`                                 | validate           | Truncate error tree depth (text format).              |
-| `--overlay <file>`                            | resolve / validate | Repeatable; applies overlays in order.                |
-| `--dialect 2020-12\|openapi-3.1\|openapi-3.0` | compile            | Schema dialect to compile against. Default `2020-12`. |
-| `-o <file>`                                   | all                | Write output to a file instead of stdout.             |
-| `--quiet`                                     | resolve / validate | Exit code only, no stdout.                            |
+| Flag                                          | Command            | Meaning                                                                                   |
+| --------------------------------------------- | ------------------ | ----------------------------------------------------------------------------------------- |
+| `--format text\|json\|flat`                   | validate           | Error rendering. Default `text`.                                                          |
+| `--depth <n>`                                 | validate           | Truncate error tree depth (text format).                                                  |
+| `--overlay <file>`                            | resolve / validate | Repeatable; applies overlays in order.                                                    |
+| `--dialect 2020-12\|openapi-3.1\|openapi-3.0` | compile            | Schema dialect to compile against. Default `2020-12`.                                     |
+| `--standalone`                                | compile            | Bundle runtime helpers via esbuild — emit a module with zero `@aahoughton/oav/*` imports. |
+| `-o <file>`                                   | all                | Write output to a file instead of stdout.                                                 |
+| `--quiet`                                     | resolve / validate | Exit code only, no stdout.                                                                |
 
 ## `compile` output
 
@@ -63,10 +75,23 @@ below for the expected shape.
 `compileSchema(schema).validate(data)`, but with no `new Function()`
 call at load time. Useful for edge runtimes (Cloudflare Workers,
 Vercel Edge) where runtime code generation is forbidden or undesirable.
-The emitted module imports runtime helpers from `@aahoughton/oav/*`;
-it is not a fully self-contained bundle.
 
-Constraints on the input schema:
+Two output modes:
+
+- **Default** — the emitted module imports runtime helpers from
+  `@aahoughton/oav/core`, `@aahoughton/oav/schema/internals`, and
+  `@aahoughton/oav/formats`. Consumers install `@aahoughton/oav`
+  alongside the generated file. Smallest emit, shared runtime across
+  many validators.
+- **`--standalone`** — bundles the runtime helpers into the output via
+  esbuild. The resulting module has zero imports and runs without
+  `@aahoughton/oav` installed at all. Typical output is ~13 KB for a
+  small schema, ~20–40 KB for a schema that touches every built-in
+  format. Use for Lambda zips, edge-runtime bundles, or anywhere a
+  single-file drop-in matters. Requires `esbuild` as an optional peer
+  dependency.
+
+Constraints on the input schema (apply to both modes):
 
 - **Built-in formats only.** If the schema references `format: "..."`
   names not in `@aahoughton/oav/formats`'s built-in set, compile fails
@@ -76,11 +101,6 @@ Constraints on the input schema:
 - **External `$ref`s must be pre-inlined.** Run `oav resolve` over
   your spec first, or use `@aahoughton/oav/spec.resolveSpec`
   programmatically, before piping the schema into `compile`.
-
-The emitted module imports its runtime helpers from
-`@aahoughton/oav/core`, `@aahoughton/oav/schema/internals`, and
-`@aahoughton/oav/formats` — consumers install `@aahoughton/oav`
-alongside the generated file.
 
 ## Exit codes
 

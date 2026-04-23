@@ -171,3 +171,50 @@ describe("buildProgram — argv-level", () => {
     expect(out.stderr).toContain("built-in");
   });
 });
+
+// A separate describe for the --standalone flow because it invokes
+// esbuild to bundle the emit output, which needs to resolve the
+// `@aahoughton/oav/*` imports. In production the consumer's cwd has
+// `@aahoughton/oav` installed; here we override the emit prefix to
+// `@oav` so esbuild resolves against the in-workspace packages.
+describe("compile --standalone", () => {
+  it("inlines runtime helpers and produces an import-free bundle that runs", async () => {
+    const { compileCommand } = await import("../src/commands.js");
+    const { resolve } = await import("node:path");
+    const { fileURLToPath } = await import("node:url");
+    const schema = { type: "object", required: ["name"], properties: { name: { type: "string" } } };
+    const mem = memoryIo([], [["schema.json", JSON.stringify(schema)]]);
+    // Point esbuild at packages/oav/ so the workspace-alias `@oav/*`
+    // resolves via its local node_modules. (In production the
+    // consumer's cwd has `@aahoughton/oav` installed and the default
+    // resolveDir is correct.)
+    const resolveDir = resolve(fileURLToPath(new URL("../../oav", import.meta.url)));
+    const res = await compileCommand(
+      {
+        schema: "schema.json",
+        output: "v.mjs",
+        dialect: "2020-12",
+        standalone: true,
+        importPrefix: "@oav",
+        resolveDir,
+      },
+      mem.io,
+    );
+    if (res.exitCode !== 0) console.error("stderr:", mem.stderr.value);
+    expect(res.exitCode).toBe(0);
+
+    const bundled = mem.writes[0]?.[1] ?? "";
+    // No `@oav/*` or `@aahoughton/oav/*` imports survive the bundle.
+    expect(bundled).not.toMatch(/from\s+["']@aahoughton\/oav/);
+    expect(bundled).not.toMatch(/from\s+["']@oav/);
+    expect(bundled).toMatch(/\bvalidate\b/);
+
+    // Load + run the bundled module via a data URL so the test stays
+    // in-process, no filesystem side-effects.
+    const mod = (await import(
+      `data:text/javascript;base64,${Buffer.from(bundled).toString("base64")}`
+    )) as { validate: (d: unknown) => { valid: boolean } };
+    expect(mod.validate({ name: "Fido" })).toEqual({ valid: true });
+    expect(mod.validate({}).valid).toBe(false);
+  });
+});
