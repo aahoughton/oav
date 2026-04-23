@@ -15,6 +15,7 @@
   "dependencies": {
     "@oav/core": "workspace:*",
     "@oav/formats": "workspace:*",
+    "@oav/router": "workspace:*",
     "@oav/schema": "workspace:*",
     "@oav/spec": "workspace:*",
     "@oav/validator": "workspace:*",

@@ -62,7 +62,7 @@ for a runnable end-to-end.
 In JSON Schema 2020-12, `format` is advisory by default: a validator
 recognises the name but doesn't reject malformed values. OpenAPI 3.0 /
 3.1 / 3.2 treat `format` as assertive; the validator wires up the
-corresponding vocabulary so `format: email` actually rejects non-emails.
+corresponding vocabulary so `format: email` rejects non-emails.
 When compiling directly via `@aahoughton/oav/schema`, use
 `openapi31Dialect` (or the assertive vocabulary explicitly) to get
 assertive semantics.

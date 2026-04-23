@@ -124,6 +124,8 @@
   },
   "dependencies": {
     "@aahoughton/oav-core": "workspace:*",
+    "commander": "^14.0.0",
+    "esbuild": "^0.24.0",
     "yaml": "^2.6.0"
   },
   "devDependencies": {
@@ -133,23 +135,9 @@
     "@oav/schema": "workspace:*",
     "@oav/spec": "workspace:*",
     "@oav/validator": "workspace:*",
-    "commander": "^14.0.0",
-    "esbuild": "^0.24.0",
     "tsup": "8.5.1",
     "typescript": "5.9.3",
     "vitest": "4.1.5"
-  },
-  "peerDependencies": {
-    "commander": "^14.0.0",
-    "esbuild": ">=0.20.0"
-  },
-  "peerDependenciesMeta": {
-    "commander": {
-      "optional": true
-    },
-    "esbuild": {
-      "optional": true
-    }
   },
   "engines": {
     "node": ">=20"

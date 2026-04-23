@@ -1,6 +1,6 @@
 export { buildProgram } from "./cli.js";
 export {
-  compileCommand,
+  compileSchemaCommand,
   defaultCommandIo,
   resolveCommand,
   validateCommand,

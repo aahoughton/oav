@@ -1,7 +1,8 @@
 import { Command } from "commander";
 import { KNOWN_OUTPUT_FORMATS, isOutputFormat, type OutputFormat } from "@oav/core";
 import {
-  compileCommand,
+  compileSchemaCommand,
+  compileSpecCommand,
   defaultCommandIo,
   resolveCommand,
   validateCommand,
@@ -126,8 +127,8 @@ export function buildProgram(options: BuildProgramOptions = {}): Command {
     });
 
   program
-    .command("compile <schema>")
-    .description("Compile a JSON Schema to an ES module (no new Function at runtime).")
+    .command("compile-schema <schema>")
+    .description("AOT-compile a JSON Schema to a standalone ES module (zero imports).")
     .option(
       "--dialect <dialect>",
       STANDALONE_DIALECTS.join(" | "),
@@ -137,22 +138,60 @@ export function buildProgram(options: BuildProgramOptions = {}): Command {
       },
       "2020-12" as StandaloneDialect,
     )
+    .option("-o, --output <file>", "write output to a file instead of stdout")
+    .action(async (schema: string, opts: { dialect: StandaloneDialect; output?: string }) => {
+      const res = await compileSchemaCommand(
+        {
+          schema,
+          output: opts.output,
+          dialect: opts.dialect,
+        },
+        io,
+      );
+      exit(res.exitCode);
+    });
+
+  program
+    .command("compile-spec <spec>")
+    .description(
+      "AOT-compile an OpenAPI document to a standalone HTTP validator module (zero imports).",
+    )
+    .option("--overlay <file...>", "apply one or more overlays in order", collectOverlays, [])
     .option(
-      "--standalone",
-      "bundle runtime helpers into the output via esbuild so it has no imports (requires 'esbuild' as an optional peer dep)",
+      "--dialect <dialect>",
+      STANDALONE_DIALECTS.join(" | "),
+      (value: string): StandaloneDialect => {
+        if (!isStandaloneDialect(value)) throw new Error(`unknown dialect: ${value}`);
+        return value;
+      },
+    )
+    .option("--requests-only", "skip response-validator emit (smaller output)", false)
+    .option(
+      "--only <method-path...>",
+      'restrict emit to specified operations, e.g. --only "POST /pets" "GET /pets/{id}"',
+      collectOnly,
+      [],
     )
     .option("-o, --output <file>", "write output to a file instead of stdout")
     .action(
       async (
-        schema: string,
-        opts: { dialect: StandaloneDialect; output?: string; standalone?: boolean },
+        spec: string,
+        opts: {
+          overlay: string[];
+          dialect?: StandaloneDialect;
+          requestsOnly?: boolean;
+          only: Array<{ method: string; path: string }>;
+          output?: string;
+        },
       ) => {
-        const res = await compileCommand(
+        const res = await compileSpecCommand(
           {
-            schema,
+            spec,
+            overlays: opts.overlay ?? [],
             output: opts.output,
             dialect: opts.dialect,
-            standalone: opts.standalone === true,
+            requestsOnly: opts.requestsOnly === true,
+            only: opts.only,
           },
           io,
         );
@@ -161,6 +200,17 @@ export function buildProgram(options: BuildProgramOptions = {}): Command {
     );
 
   return program;
+}
+
+function collectOnly(
+  value: string,
+  previous: Array<{ method: string; path: string }>,
+): Array<{ method: string; path: string }> {
+  const parts = value.trim().split(/\s+/);
+  if (parts.length !== 2 || parts[0] === "" || parts[1] === "") {
+    throw new Error(`--only expects "METHOD PATH" (space-delimited), got ${JSON.stringify(value)}`);
+  }
+  return [...previous, { method: parts[0]!.toUpperCase(), path: parts[1]! }];
 }
 
 function collectOverlays(value: string, previous: string[]): string[] {

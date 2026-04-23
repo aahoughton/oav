@@ -7,44 +7,37 @@ scripts, Makefiles, and CI.
 
 ```bash
 # global install
-npm install -g @aahoughton/oav commander
+npm install -g @aahoughton/oav
 oav --help
 
-# one-off via npx (npx installs commander as needed)
+# one-off via npx
 npx @aahoughton/oav validate openapi.yaml --request req.http
 ```
 
-The CLI lives in the batteries-included `@aahoughton/oav` package,
-not the lean `@aahoughton/oav-core` — `oav-core` doesn't ship a `bin`
-or any CLI glue. Two packages are **optional peer dependencies** on
-`@aahoughton/oav`:
-
-- **`commander`** — required by every CLI invocation. Install it
-  alongside `@aahoughton/oav`. Running `oav` without it prints an
-  install hint and exits with status 2.
-- **`esbuild`** — only required by `oav compile --standalone` (see
-  [`compile` output](#compile-output) below). Not needed for any
-  other command. Install it alongside `@aahoughton/oav` if you use
-  `--standalone`, otherwise skip it. Missing-esbuild surfaces as an
-  install hint on stderr with exit code 3 at `compile --standalone`
-  time only.
-
-Neither is pulled in by the library itself, so consumers who only
-use the programmatic API stay on a single runtime dep (`yaml`).
+The CLI lives in the batteries-included `@aahoughton/oav` package, not
+the lean `@aahoughton/oav-core` — `oav-core` doesn't ship a `bin` or
+any CLI glue. `@aahoughton/oav` pulls in `commander` (argv parsing)
+and `esbuild` (AOT bundling for `compile-schema` / `compile-spec`) as
+regular dependencies, so the CLI runs out of the box after one
+install. Users who only need the programmatic API and want a smaller
+footprint install `@aahoughton/oav-core` instead.
 
 ## Commands
 
 ```bash
-oav resolve <spec>                                           # stitch a multi-file spec
+oav resolve <spec>                                       # stitch a multi-file spec
 oav resolve <spec> --overlay overlay1.json --overlay overlay2.json
 
-oav validate <spec> --request req.http                       # full HTTP request from a .http file
-oav validate <spec> --path "POST /pets" --body body.json     # request body for a known route
+oav validate <spec> --request req.http                   # full HTTP request from a .http file
+oav validate <spec> --path "POST /pets" --body body.json
 oav validate <spec> --path "GET /pets" --response --status 200 --body resp.json
 
-oav compile <schema.json> -o v.mjs                           # emit a validator module
-oav compile <schema.json> --dialect openapi-3.0              # pick a non-default dialect
-oav compile <schema.json> --standalone -o v.mjs              # inline runtime helpers (needs esbuild)
+oav compile-schema <schema.json> -o v.mjs                # single JSON Schema → standalone validator
+oav compile-schema <schema.json> --dialect openapi-3.0
+
+oav compile-spec <openapi.yaml> -o v.mjs                 # OpenAPI spec → standalone HTTP validator
+oav compile-spec <openapi.yaml> --requests-only -o v.mjs
+oav compile-spec <openapi.yaml> --only "POST /pets" -o v.mjs
 ```
 
 Pass `-` as the file path to read from stdin (e.g. `--body -`).
@@ -58,49 +51,120 @@ below for the expected shape.
 
 ## Flags
 
-| Flag                                          | Command            | Meaning                                                                                   |
-| --------------------------------------------- | ------------------ | ----------------------------------------------------------------------------------------- |
-| `--format text\|json\|flat`                   | validate           | Error rendering. Default `text`.                                                          |
-| `--depth <n>`                                 | validate           | Truncate error tree depth (text format).                                                  |
-| `--overlay <file>`                            | resolve / validate | Repeatable; applies overlays in order.                                                    |
-| `--dialect 2020-12\|openapi-3.1\|openapi-3.0` | compile            | Schema dialect to compile against. Default `2020-12`.                                     |
-| `--standalone`                                | compile            | Bundle runtime helpers via esbuild — emit a module with zero `@aahoughton/oav/*` imports. |
-| `-o <file>`                                   | all                | Write output to a file instead of stdout.                                                 |
-| `--quiet`                                     | resolve / validate | Exit code only, no stdout.                                                                |
+| Flag                                          | Command                           | Meaning                                                                                              |
+| --------------------------------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `--format text\|json\|flat`                   | validate                          | Error rendering. Default `text`.                                                                     |
+| `--depth <n>`                                 | validate                          | Truncate error tree depth (text format).                                                             |
+| `--overlay <file>`                            | resolve / validate / compile-spec | Repeatable; applies overlays in order.                                                               |
+| `--dialect 2020-12\|openapi-3.1\|openapi-3.0` | compile-schema / compile-spec     | Schema dialect. Defaults: 2020-12 (compile-schema), auto-detect from `openapi` field (compile-spec). |
+| `--requests-only`                             | compile-spec                      | Skip response-validator emit. Smaller output.                                                        |
+| `--only <method-path...>`                     | compile-spec                      | Repeatable; restrict emit to given ops, e.g. `--only "POST /pets"`.                                  |
+| `-o <file>`                                   | all                               | Write output to a file instead of stdout.                                                            |
+| `--quiet`                                     | resolve / validate                | Exit code only, no stdout.                                                                           |
 
-## `compile` output
+## `compile-schema` output
 
-`oav compile <schema.json>` emits an ESM module exporting a
-`validate(data)` function whose behaviour matches the dynamic
-`compileSchema(schema).validate(data)`, but with no `new Function()`
-call at load time. Useful for edge runtimes (Cloudflare Workers,
-Vercel Edge) where runtime code generation is forbidden or undesirable.
+`oav compile-schema <schema.json>` emits an ESM module exporting a
+`validate(data)` function matching `compileSchema(schema).validate(data)`.
+esbuild bundles the runtime helpers into the output, so the resulting
+module has zero imports. Typical output is ~13 KB for a small schema,
+~20–40 KB for a schema that touches every built-in format.
 
-Two output modes:
+Use for Lambda zips, Cloudflare Workers, Vercel Edge, single-file
+deployments — anywhere `new Function()` is forbidden or the runtime
+library footprint is unwanted.
 
-- **Default** — the emitted module imports runtime helpers from
-  `@aahoughton/oav/core`, `@aahoughton/oav/schema/internals`, and
-  `@aahoughton/oav/formats`. Consumers install `@aahoughton/oav`
-  alongside the generated file. Smallest emit, shared runtime across
-  many validators.
-- **`--standalone`** — bundles the runtime helpers into the output via
-  esbuild. The resulting module has zero imports and runs without
-  `@aahoughton/oav` installed at all. Typical output is ~13 KB for a
-  small schema, ~20–40 KB for a schema that touches every built-in
-  format. Use for Lambda zips, edge-runtime bundles, or anywhere a
-  single-file drop-in matters. Requires `esbuild` as an optional peer
-  dependency.
-
-Constraints on the input schema (apply to both modes):
+Constraints on the input schema:
 
 - **Built-in formats only.** If the schema references `format: "..."`
-  names not in `@aahoughton/oav/formats`'s built-in set, compile fails
-  with exit code 3 and a listing of the unknown names.
-- **No custom keywords.** Custom-keyword serialisation is out of scope;
-  compile the schema dynamically if you need them.
+  names outside `@aahoughton/oav/formats`, compile fails with exit
+  code 3 and a listing of the unknown names. Custom formats aren't
+  serialisable to standalone source.
+- **No custom keywords.** Same reason — the keyword's validator
+  function can't be serialised.
 - **External `$ref`s must be pre-inlined.** Run `oav resolve` over
-  your spec first, or use `@aahoughton/oav/spec.resolveSpec`
-  programmatically, before piping the schema into `compile`.
+  a multi-file input first, or use `@aahoughton/oav/spec.resolveSpec`
+  programmatically, before piping the schema into `compile-schema`.
+
+## `compile-spec` output
+
+`oav compile-spec <openapi.yaml>` emits an ESM module exposing the
+same surface as `createValidator(document)`: `validateRequest`,
+`validateResponse`, `validateFetchRequest`, `validateFetchResponse`,
+`getOperation`, `detectedVersion`, `warnings`. Every operation's
+parameter / body / response schemas are pre-compiled and inlined.
+esbuild bundles everything; the resulting module has zero imports.
+
+Consumers who were running `createValidator(await loadSpec(...))` at
+application boot get the same behaviour with no YAML parse, no
+`$ref` walk, no schema compilation at load time. Target use cases:
+
+- **Cloudflare Workers / Vercel Edge** — the runtime sandbox
+  forbids `new Function()`, which rules out `ajv.compile()` at
+  runtime. Pre-compiled output sidesteps it.
+- **Lambda@Edge / viewer functions** — 1 MB zipped; the full
+  library + YAML parser graph doesn't fit. A compile-spec output for
+  a small-to-medium spec does.
+- **Lambda + API Gateway** — shaves 5–50 ms off cold starts by
+  removing spec parse + schema compile from the critical path.
+- **Single-file drops** (Deno subhosting, Val.town, `deno compile`,
+  `bun build --compile`) — one `.mjs`, no node_modules.
+
+### Flags
+
+- **`--overlay <file>`** (repeatable) — applies overlays at build
+  time. Same semantics as `oav resolve`.
+- **`--dialect <name>`** — forces a specific schema dialect. Default
+  is auto-detected from the spec's `openapi` field.
+- **`--requests-only`** — skips response-validator emit.
+  `validateResponse` / `validateFetchResponse` are still exported
+  but return `null`. Output shrinks significantly on response-heavy
+  specs (rough rule of thumb: ~50% smaller on Stripe-shape, ~20–30%
+  on petstore-shape).
+- **`--only "METHOD PATH"`** (repeatable) — restricts emit to
+  specified operations. OR-combined across multiple flags. Paths not
+  matching any `--only` are dropped from the router. Methods dropped
+  from a partially-filtered path return `code: "route"` (404) —
+  treating the filtered emit as "this deployment's surface" rather
+  than "a partial view of the full spec". Gateway-routing layers
+  that expect 405 (method not implemented here, try another
+  service) need to account for this.
+
+### Bundle size
+
+Output size scales with op count and schema complexity:
+
+| Spec shape     | Ops  | Output (bundled) |
+| -------------- | ---- | ---------------- |
+| petstore       | 2    | ~20 KB           |
+| Adyen Checkout | 23   | ~200 KB          |
+| Stripe         | 400+ | ~2–3 MB          |
+
+Fits Cloudflare Workers' 10 MB compressed limit through Stripe-scale.
+Fits Lambda@Edge's 1 MB viewer-function limit through low-hundreds
+of ops. `--requests-only` and `--only` both shrink output materially.
+
+### Not serialised
+
+Same limits as `compile-schema`, plus:
+
+- **Custom formats / custom keywords** — the validator function
+  can't be serialised. Compile dynamically with `createValidator`
+  if you need them.
+- **External `$ref`s** — internal refs within the document compile
+  fine; multi-file external refs must be pre-inlined via `oav
+resolve` or `resolveSpec` before running `compile-spec`.
+
+### Relationship to ajv's `standaloneCode`
+
+Ajv's `standaloneCode` covers the schema layer — it emits a compiled
+JSON Schema validator as module source. `compile-schema` does the
+same thing. `compile-spec` covers the HTTP layer on top: router
+matching, content-type dispatch, parameter deserialisation
+(style / explode), response status matching, and shape-only
+security checks. Rebuilding that layer on top of ajv's standalone
+output is essentially re-implementing `express-openapi-validator`
+from scratch; `compile-spec` emits it directly.
 
 ## Exit codes
 

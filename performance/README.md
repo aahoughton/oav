@@ -43,7 +43,7 @@ Two modes, one script:
   library's compile across the whole set with plain
   `performance.now()`. Validate is skipped in this mode: real-world
   schemas don't come with paired valid/invalid fixtures, so there's
-  no honest apples-to-apples way to measure it here. Use the
+  no apples-to-apples way to measure it here. Use the
   synthetic mode if you need validate throughput numbers.
 
 Output lands on stdout and as JSON at `./results.json`.

@@ -24,7 +24,7 @@ skip what they don't use:
 
 | Package                | When to use                                                                                                                                                                                    |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@aahoughton/oav`      | Default. Batteries-included: adds YAML readers and the `oav` CLI. Depends on `yaml`; `commander` and `esbuild` are optional peers (CLI; `esbuild` only for `oav compile --standalone`).        |
+| `@aahoughton/oav`      | Default. Batteries-included: adds YAML readers and the `oav` CLI. Depends on `yaml`, `commander`, and `esbuild` (the latter two for CLI + AOT compile).                                        |
 | `@aahoughton/oav-core` | Lean alternative. Zero runtime dependencies. Same programmatic surface as `@aahoughton/oav`, minus the YAML readers and CLI. Feed it JSON specs (or pre-parsed objects via the memory reader). |
 
 ```bash
@@ -40,15 +40,8 @@ npm install @aahoughton/oav-core           # lean install, JSON-only
 subpaths. Samples below use `@aahoughton/oav`; on the lean package,
 substitute `@aahoughton/oav-core` in imports that don't touch the
 YAML readers (`createYamlFileReader`, `createSmartHttpReader`) or
-the CLI. If you plan to use the CLI, add `commander`; if you plan to
-use `oav compile --standalone` (self-contained validator bundles),
-also add `esbuild`:
-
-```bash
-npm install @aahoughton/oav commander
-# or, if you also need --standalone:
-npm install @aahoughton/oav commander esbuild
-```
+the CLI. `@aahoughton/oav` pulls in the CLI's deps (`commander`,
+`esbuild`) so `oav <command>` runs after a single install.
 
 ## Quick start
 
@@ -99,10 +92,11 @@ elsewhere in the JavaScript ecosystem:
   PocketBase / a gateway's published spec) can extend or override it
   at load time. `applyOverlays` rewrites the base document in memory;
   no forking, no preprocessing, no string substitution.
-- **Native OpenAPI 3.0 support and a structured error tree.** 3.0 is
-  a first-class dialect, not a 2020-12 translation: `nullable`,
-  boolean `exclusiveMaximum`, and `$ref`-suppresses-siblings are baked
-  into the compiler's dialect dispatch. Errors come back as a typed
+- **Native OpenAPI 3.0 support and a structured error tree.** 3.0 has
+  its own compiler dialect rather than being translated to 2020-12:
+  `nullable`, boolean `exclusiveMaximum`, and
+  `$ref`-suppresses-siblings are baked into the compiler's dialect
+  dispatch. Errors come back as a typed
   tree (`code` / `path` / `params` / `children`) so downstream code
   can narrow on fields rather than pattern-match on messages.
 
@@ -160,13 +154,26 @@ oav resolve openapi.yaml
 oav validate openapi.yaml --request req.http
 oav validate openapi.yaml --path "POST /pets" --body payload.json
 oav validate openapi.yaml --path "GET /pets" --response --status 200 --body resp.json
-oav compile schema.json -o validator.mjs                    # ES module with no runtime `new Function()` (imports runtime helpers from @aahoughton/oav)
+oav compile-schema schema.json -o validator.mjs             # JSON Schema → standalone validator
+oav compile-spec openapi.yaml  -o validator.mjs             # OpenAPI   → standalone HTTP validator (edge / Lambda)
 ```
 
 Flags: `--format text|json|flat`, `--depth n`, `--overlay file`
-(repeatable), `-o file`, `--quiet`, `--dialect` (compile only). See
-[packages/cli/README.md](./packages/cli/README.md) for the full surface,
-the `.http` file format, and the `compile` output contract.
+(repeatable), `-o file`, `--quiet`, `--dialect` (compile-schema /
+compile-spec), `--requests-only` (compile-spec), `--only METHOD PATH`
+(compile-spec, repeatable). See
+[packages/cli/README.md](./packages/cli/README.md) for the full
+surface, the `.http` file format, and both compile commands' output
+contracts.
+
+`compile-schema` and `compile-spec` emit ES modules with zero imports
+after the esbuild bundle step. `compile-spec`'s output exposes the
+same `validateRequest` / `validateResponse` / `getOperation` surface
+as `createValidator(document)` but with every schema already compiled
+into the file — suited for Cloudflare Workers / Vercel Edge /
+Lambda@Edge where runtime `ajv.compile()` is forbidden, or for
+Lambda cold-start latency where skipping 10–50 ms of spec parse +
+compile pays back.
 
 ## Versions
 

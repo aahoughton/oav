@@ -45,18 +45,13 @@ Capabilities that the Ajv stack covers and oav does not.
   strings to numbers, stripping undeclared properties, filling missing
   properties from `default`. oav treats validation as a yes/no
   question and does not mutate inputs.
-- **Ahead-of-time code generation — programmatic surface.** Ajv
-  ships a `standaloneCode` API plus Node APIs that emit compiled
-  validators as module source. oav's AOT story is CLI-only (`oav
-compile schema.json -o v.mjs`, with `--standalone` for a
-  zero-import bundle). Ajv's programmatic surface is richer: batch
-  emission across many schemas in one file, CommonJS output,
-  named-schema references resolved at emit time. If you're running
-  emit as a library call inside a build tool, Ajv is more ergonomic.
-  oav's CLI covers the "compile one schema at build time" case
-  directly (including self-contained output for Lambda / edge-runtime
-  deployments via `--standalone`, which uses esbuild to inline the
-  runtime helpers) but doesn't expose a batched programmatic API.
+- **Schema-level AOT — programmatic surface.** Ajv ships a
+  `standaloneCode` API plus Node APIs that emit one or many compiled
+  schemas as module source, with CommonJS output and named-reference
+  resolution at emit time. oav's schema-level AOT is CLI-only (`oav
+compile-schema <schema> -o v.mjs`); for build tools that want to
+  emit many schemas in a loop, Ajv's API is more ergonomic. oav has
+  no batched programmatic API equivalent.
 - **Named schema registry.** `addSchema` / `getSchema` / `removeSchema`
   give Ajv a name-to-validator map that cross-schema `$ref`s resolve
   through. oav accepts an `external: Map<string, Schema>` on
@@ -99,6 +94,25 @@ Capabilities oav has that Ajv (alone or with
   `validateRequest` / `validateResponse` call. Ajv is a JSON Schema
   validator; wiring the HTTP layer on top of it is what
   `express-openapi-validator` does, and only for Express.
+- **AOT-compiled HTTP validator.** `oav compile-spec <openapi.yaml>`
+  emits a single ES module exposing the full `validateRequest` /
+  `validateResponse` / `getOperation` surface with every operation's
+  schemas pre-compiled. Runs on Cloudflare Workers, Vercel Edge,
+  Lambda@Edge, Deno Deploy, or as a drop-in `.mjs`. The ajv +
+  `express-openapi-validator` stack has no equivalent at this layer:
+  ajv's `standaloneCode` covers the schema layer, and reassembling the
+  HTTP layer on top of it (router, content-type dispatch, parameter
+  deserialisation, response-status matching, security-shape checks)
+  is reimplementing `express-openapi-validator` from scratch. Ajv's
+  runtime `.compile()` also doesn't run on edge runtimes: it uses
+  `new Function()`, which the Workers / Edge sandbox forbids.
+  compile-spec skips runtime compile, so the output runs on those
+  sandboxes directly. Bundle-size tradeoff: fits
+  Cloudflare Workers' 10 MB limit through Stripe-scale specs
+  (~2–3 MB output); fits Lambda@Edge's 1 MB viewer-function limit for
+  low-hundreds of ops. Custom formats and custom keywords aren't
+  serialised; compile dynamically with `createValidator` if you need
+  them.
 - **Built-in OpenAPI 3.0 dialect.** `nullable`, boolean
   `exclusiveMaximum` / `exclusiveMinimum`, and
   `$ref`-suppresses-siblings are compiled by a dedicated 3.0 dialect
