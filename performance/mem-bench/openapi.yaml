@@ -1,0 +1,352 @@
+openapi: "3.1.0"
+info:
+  title: Core Banking API
+  version: "1.0"
+paths:
+  /transactions:
+    post:
+      operationId: createTransaction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Transaction" }
+      responses:
+        "201":
+          description: created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id]
+                properties: { id: { type: string, format: uuid } }
+    get:
+      operationId: listTransactions
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100 } }
+        - { name: cursor, in: query, schema: { type: string, maxLength: 256 } }
+        - { name: status, in: query, schema: { type: string, enum: [pending, completed, failed] } }
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Transaction" }
+                  nextCursor: { type: string }
+  /transfers:
+    post:
+      parameters:
+        - name: X-Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, pattern: "^[A-Za-z0-9_-]{16,64}$" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Transfer" }
+      responses:
+        "201":
+          description: created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, status]
+                properties:
+                  id: { type: string, format: uuid }
+                  status: { type: string, enum: [pending, completed, failed] }
+  /accounts:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Account" }
+      responses:
+        "201":
+          description: created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id]
+                properties: { id: { type: string, format: uuid } }
+  /invoices:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Invoice" }
+      responses:
+        "201":
+          description: created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, total]
+                properties:
+                  id: { type: string, format: uuid }
+                  total: { $ref: "#/components/schemas/Money" }
+  /subscriptions:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Subscription" }
+      responses:
+        "201":
+          description: created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id]
+                properties: { id: { type: string, format: uuid } }
+components:
+  schemas:
+    Money:
+      type: object
+      required: [value, currency]
+      properties:
+        value: { type: integer, minimum: 1, maximum: 100000000 }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
+    Address:
+      type: object
+      required: [line1, city, country]
+      properties:
+        line1: { type: string, minLength: 1, maxLength: 200 }
+        line2: { type: string, maxLength: 200 }
+        city: { type: string, minLength: 1, maxLength: 100 }
+        region: { type: string, maxLength: 100 }
+        postalCode: { type: string, pattern: "^[A-Za-z0-9 -]{2,12}$" }
+        country: { type: string, pattern: "^[A-Z]{2}$" }
+        email: { type: string, format: email }
+    # ------- Transaction surface -------
+    Transaction:
+      type: object
+      required: [id, amount, currency, createdAt, paymentMethod]
+      properties:
+        id: { type: string, format: uuid }
+        amount: { $ref: "#/components/schemas/Money" }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
+        createdAt: { type: string, format: date-time }
+        memo: { type: string, maxLength: 140 }
+        status: { type: string, enum: [pending, completed, failed] }
+        tags:
+          type: array
+          maxItems: 20
+          items: { type: string, minLength: 1, maxLength: 50 }
+        paymentMethod:
+          oneOf:
+            - $ref: "#/components/schemas/CardPayment"
+            - $ref: "#/components/schemas/BankPayment"
+            - $ref: "#/components/schemas/CryptoPayment"
+        billingAddress: { $ref: "#/components/schemas/Address" }
+    CardPayment:
+      type: object
+      required: [type, card]
+      properties:
+        type: { type: string, enum: [card] }
+        card:
+          type: object
+          required: [last4, brand, expMonth, expYear]
+          properties:
+            last4: { type: string, pattern: "^[0-9]{4}$" }
+            brand: { type: string, enum: [visa, mastercard, amex, discover] }
+            expMonth: { type: integer, minimum: 1, maximum: 12 }
+            expYear: { type: integer, minimum: 2024, maximum: 2100 }
+            holderName: { type: string, minLength: 1, maxLength: 100 }
+    BankPayment:
+      type: object
+      required: [type, bank]
+      properties:
+        type: { type: string, enum: [bank] }
+        bank:
+          type: object
+          required: [accountLast4, routingNumber]
+          properties:
+            accountLast4: { type: string, pattern: "^[0-9]{4}$" }
+            routingNumber: { type: string, pattern: "^[0-9]{9}$" }
+            accountType: { type: string, enum: [checking, savings] }
+    CryptoPayment:
+      type: object
+      required: [type, crypto]
+      properties:
+        type: { type: string, enum: [crypto] }
+        crypto:
+          type: object
+          required: [network, txHash]
+          properties:
+            network: { type: string, enum: [btc, eth, sol, matic] }
+            txHash: { type: string, pattern: "^0x[a-fA-F0-9]{40,66}$" }
+            confirmations: { type: integer, minimum: 0 }
+    # ------- Transfer surface -------
+    Transfer:
+      type: object
+      required: [from, to, items]
+      properties:
+        from: { $ref: "#/components/schemas/AccountRef" }
+        to: { $ref: "#/components/schemas/AccountRef" }
+        items:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            type: object
+            required: [sku, quantity, price]
+            properties:
+              sku: { type: string, pattern: "^SKU-[A-Z0-9]{6,12}$" }
+              quantity: { type: integer, minimum: 1, maximum: 10000 }
+              price: { $ref: "#/components/schemas/Money" }
+              metadata:
+                type: object
+                additionalProperties: { type: string, maxLength: 500 }
+        note: { type: string, maxLength: 500 }
+    AccountRef:
+      type: object
+      required: [accountId]
+      properties:
+        accountId: { type: string, format: uuid }
+        displayName: { type: string, maxLength: 80 }
+    # ------- Account surface -------
+    Account:
+      type: object
+      required: [type, owner, balance]
+      properties:
+        type: { type: string, enum: [checking, savings, brokerage] }
+        owner:
+          oneOf:
+            - $ref: "#/components/schemas/Individual"
+            - $ref: "#/components/schemas/Business"
+        balance: { $ref: "#/components/schemas/Money" }
+        openedAt: { type: string, format: date-time }
+        preferences:
+          type: object
+          properties:
+            notifications:
+              type: array
+              maxItems: 10
+              items: { type: string, enum: [email, sms, push] }
+            currency: { type: string, pattern: "^[A-Z]{3}$" }
+            locale: { type: string, pattern: "^[a-z]{2}(-[A-Z]{2})?$" }
+        addresses:
+          type: array
+          maxItems: 5
+          items: { $ref: "#/components/schemas/Address" }
+    Individual:
+      type: object
+      required: [kind, firstName, lastName, dob]
+      properties:
+        kind: { type: string, enum: [individual] }
+        firstName: { type: string, minLength: 1, maxLength: 60 }
+        lastName: { type: string, minLength: 1, maxLength: 60 }
+        dob: { type: string, format: date }
+        ssn: { type: string, pattern: "^\\d{3}-\\d{2}-\\d{4}$" }
+    Business:
+      type: object
+      required: [kind, legalName, ein]
+      properties:
+        kind: { type: string, enum: [business] }
+        legalName: { type: string, minLength: 1, maxLength: 200 }
+        ein: { type: string, pattern: "^\\d{2}-\\d{7}$" }
+        website: { type: string, format: uri }
+    # ------- Invoice surface -------
+    Invoice:
+      type: object
+      required: [customer, lineItems, issuedAt]
+      properties:
+        customer: { $ref: "#/components/schemas/AccountRef" }
+        issuedAt: { type: string, format: date-time }
+        dueAt: { type: string, format: date-time }
+        currency: { type: string, pattern: "^[A-Z]{3}$" }
+        lineItems:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items:
+            type: object
+            required: [description, quantity, unitPrice]
+            properties:
+              description: { type: string, minLength: 1, maxLength: 300 }
+              quantity: { type: integer, minimum: 1, maximum: 100000 }
+              unitPrice: { $ref: "#/components/schemas/Money" }
+              taxCategory: { type: string, enum: [standard, reduced, zero, exempt] }
+              discount:
+                type: object
+                properties:
+                  kind: { type: string, enum: [percent, absolute] }
+                  value: { type: number, minimum: 0 }
+        taxBreakdown:
+          type: array
+          maxItems: 10
+          items:
+            type: object
+            required: [rate, amount]
+            properties:
+              rate: { type: number, minimum: 0, maximum: 1 }
+              amount: { $ref: "#/components/schemas/Money" }
+              jurisdiction: { type: string, maxLength: 80 }
+        notes: { type: string, maxLength: 1000 }
+    # ------- Subscription surface -------
+    Subscription:
+      type: object
+      required: [plan, billingCycle, startDate]
+      properties:
+        plan:
+          oneOf:
+            - $ref: "#/components/schemas/FlatRatePlan"
+            - $ref: "#/components/schemas/TieredPlan"
+            - $ref: "#/components/schemas/MeteredPlan"
+        billingCycle:
+          type: object
+          required: [interval, intervalCount]
+          properties:
+            interval: { type: string, enum: [day, week, month, year] }
+            intervalCount: { type: integer, minimum: 1, maximum: 36 }
+            anchorDay: { type: integer, minimum: 1, maximum: 28 }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        trialDays: { type: integer, minimum: 0, maximum: 365 }
+        metadata:
+          type: object
+          additionalProperties: { type: string, maxLength: 500 }
+    FlatRatePlan:
+      type: object
+      required: [kind, amount]
+      properties:
+        kind: { type: string, enum: [flat] }
+        amount: { $ref: "#/components/schemas/Money" }
+        name: { type: string, maxLength: 100 }
+    TieredPlan:
+      type: object
+      required: [kind, tiers]
+      properties:
+        kind: { type: string, enum: [tiered] }
+        tiers:
+          type: array
+          minItems: 1
+          maxItems: 10
+          items:
+            type: object
+            required: [upTo, amount]
+            properties:
+              upTo: { type: integer, minimum: 1 }
+              amount: { $ref: "#/components/schemas/Money" }
+    MeteredPlan:
+      type: object
+      required: [kind, unitAmount, meter]
+      properties:
+        kind: { type: string, enum: [metered] }
+        unitAmount: { $ref: "#/components/schemas/Money" }
+        meter: { type: string, enum: [api-call, storage-gb, compute-second, bandwidth-gb] }
+        includedUnits: { type: integer, minimum: 0 }
