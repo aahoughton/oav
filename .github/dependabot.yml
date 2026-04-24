@@ -9,6 +9,12 @@ updates:
       prefix: chore
       prefix-development: chore
       include: scope
+    ignore:
+      # TypeScript majors cross every file in the tree at once and
+      # routinely land breaking type-narrowing changes. Opt out of
+      # auto-PRs; bump it deliberately when the time is right.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
     groups:
       types:
         patterns:
@@ -27,6 +33,12 @@ updates:
       prefix: chore
       prefix-development: chore
       include: scope
+    ignore:
+      # TypeScript majors cross every file in the tree at once and
+      # routinely land breaking type-narrowing changes. Opt out of
+      # auto-PRs; bump it deliberately when the time is right.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
     groups:
       dev-minor-and-patch:
         dependency-type: development
@@ -42,6 +54,12 @@ updates:
       prefix: chore
       prefix-development: chore
       include: scope
+    ignore:
+      # TypeScript majors cross every file in the tree at once and
+      # routinely land breaking type-narrowing changes. Opt out of
+      # auto-PRs; bump it deliberately when the time is right.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
     groups:
       dev-minor-and-patch:
         dependency-type: development
