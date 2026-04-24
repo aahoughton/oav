@@ -131,11 +131,12 @@ export const formatAssertionKeyword: KeywordDefinition = {
  * Emit an expression that returns the Unicode code-point count of a string.
  * JSON Schema 2020-12 §6.3 specifies that `minLength` / `maxLength` count
  * code points, so surrogate pairs (emoji, astral CJK, ...) count as one.
- * Spreading a string invokes its `[Symbol.iterator]`, which yields code
- * points — not the UTF-16 code units that `str.length` returns.
+ * Delegates to the `countCodePoints` runtime helper, which iterates without
+ * allocating an intermediate array — `[...s].length` would spike memory on
+ * large strings before the length check could reject them.
  */
 function codePointLengthExpr(dataExpr: string): string {
-  return `[...${dataExpr}].length`;
+  return `${NAMES.DEPS}.countCodePoints(${dataExpr})`;
 }
 
 function escapeMessage(value: string): string {

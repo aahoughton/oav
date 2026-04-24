@@ -21,6 +21,25 @@ describe("string keywords", () => {
     expect(v.validate("ab").valid).toBe(false);
   });
 
+  it("maxLength rejects a large string without allocating a code-point array", () => {
+    // Regression for #143. The legacy `[...s].length` implementation
+    // materialised one string-per-code-point for the whole input before
+    // the length check could refuse it — trivially OOM-able. Validate
+    // the fix: a multi-megabyte string against a 10-char cap returns a
+    // failure quickly and without crashing.
+    const big = "a".repeat(5_000_000);
+    const v = compile({ maxLength: 10 });
+    const start = Date.now();
+    const res = v.validate(big);
+    const elapsed = Date.now() - start;
+    expect(res.valid).toBe(false);
+    // Generous ceiling — the for...of walk is O(N) in time but O(1) in
+    // memory. 2 s is orders of magnitude above the expected runtime
+    // (~50 ms on modern hardware) and still catches a regression to
+    // the allocating implementation.
+    expect(elapsed).toBeLessThan(2000);
+  });
+
   it("pattern matches against an ECMA-262 regex (unicode)", () => {
     const v = compile({ pattern: "^[a-z]+$" });
     expect(v.validate("abc").valid).toBe(true);
