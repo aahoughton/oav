@@ -125,7 +125,7 @@
   "dependencies": {
     "@aahoughton/oav-core": "workspace:*",
     "commander": "^14.0.0",
-    "esbuild": "^0.25.0",
+    "esbuild": "^0.28.0",
     "yaml": "^2.6.0"
   },
   "devDependencies": {
