@@ -115,13 +115,54 @@ describe("router", () => {
     expect(rc.match("get", "/users/me%3Afollow")?.operation.operationId).toBe("follow");
   });
 
-  it("rejects two path templates that differ only in parameter names", () => {
+  it("rejects two path templates that differ only in parameter names when methods overlap", () => {
     expect(() =>
       createRouter({
         "/items/{id}": { get: op("byId") },
         "/items/{slug}": { get: op("bySlug") },
       }),
-    ).toThrow(/ambiguous/);
+    ).toThrow(/both declare GET/);
+  });
+
+  it("allows structurally-identical templates with disjoint methods", () => {
+    // Real-world pattern from GitHub / Jira / Gmail / several AWS specs:
+    // two paths describing the same URL shape but disjoint HTTP methods
+    // (e.g. one declares only DELETE, the other only GET). They never
+    // collide at match time, so construction must not throw.
+    const rc = createRouter({
+      "/orgs/{org}/attestations/{attestation_id}": { delete: op("deleteById") },
+      "/orgs/{org}/attestations/{subject_digest}": { get: op("listByDigest") },
+    });
+    const del = rc.match("delete", "/orgs/acme/attestations/42");
+    expect(del?.operation.operationId).toBe("deleteById");
+    expect(del?.pathParams).toEqual({ org: "acme", attestation_id: "42" });
+    const get = rc.match("get", "/orgs/acme/attestations/sha256:abc");
+    expect(get?.operation.operationId).toBe("listByDigest");
+    expect(get?.pathParams).toEqual({ org: "acme", subject_digest: "sha256:abc" });
+  });
+
+  it("flags GET-vs-explicit-HEAD as ambiguous on identical structure", () => {
+    // GET implicitly answers HEAD via the runtime fallback (RFC 9110).
+    // A sibling pattern declaring explicit HEAD on the same structure
+    // would silently win at match time depending on sort order — surface
+    // it at construction.
+    expect(() =>
+      createRouter({
+        "/things/{id}": { get: op("get") },
+        "/things/{slug}": { head: op("head") },
+      }),
+    ).toThrow(/both declare HEAD/);
+  });
+
+  it("ignores path items declaring no methods when checking ambiguity", () => {
+    // A PathItem with only `parameters` and no methods can never match
+    // a request, so it shouldn't conflict with a sibling that does.
+    expect(() =>
+      createRouter({
+        "/things/{id}": { get: op("get") },
+        "/things/{slug}": { parameters: [] } as PathItem,
+      }),
+    ).not.toThrow();
   });
 
   it("returns method-not-allowed with an allowed set (405 shape)", () => {
