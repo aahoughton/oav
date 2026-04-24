@@ -82,6 +82,23 @@ interface Route {
 }
 
 /**
+ * Methods a `PathItem` declares, including HEAD when only GET is
+ * declared (RFC 9110 §9.3.2: GET implicitly answers HEAD via the
+ * runtime fallback below). Used by the per-(method, structure)
+ * ambiguity check so a pattern declaring GET reserves the HEAD slot
+ * too — a structurally-identical sibling declaring explicit HEAD would
+ * otherwise slip past the check and silently win at match time.
+ */
+function methodsDeclaredOn(item: PathItem): Set<HttpMethod> {
+  const declared = new Set<HttpMethod>();
+  for (const m of ALL_METHODS) {
+    if (item[m] !== undefined) declared.add(m);
+  }
+  if (declared.has("get")) declared.add("head");
+  return declared;
+}
+
+/**
  * Parse an OpenAPI path template into segments.
  *
  * @param template - The path template (e.g. `"/pets/{petId}"`).
@@ -130,22 +147,26 @@ export function parseTemplate(template: string): Segment[] {
  */
 export function createRouter(paths: Record<string, PathItem>): Router {
   const routes: Route[] = [];
-  const bySignature = new Map<string, string>();
+  // Per-(method, structure) ambiguity index. Two patterns that differ
+  // only in parameter names are an ill-formed document only when they
+  // also overlap on at least one HTTP method — disjoint-method siblings
+  // (e.g. `/items/{id}` GET and `/items/{slug}` POST) describe disjoint
+  // routing cells and would never collide at match time. Real-world
+  // specs (GitHub, Jira, Gmail, several AWS APIs) declare such pairs.
+  const byMethodSignature = new Map<string, string>();
   for (const [pattern, item] of Object.entries(paths)) {
     const segments = parseTemplate(pattern);
-    // Detect routes that are structurally identical except for template
-    // parameter names — e.g. `/items/{id}` vs `/items/{slug}`. These are
-    // an ill-formed document per OAS (two paths that would always match
-    // the same request), so surface that at construction rather than
-    // silently dropping every request into whichever sort order wins.
     const signature = segments.map((s) => (s.kind === "literal" ? s.value : "\0{}")).join("/");
-    const existing = bySignature.get(signature);
-    if (existing !== undefined) {
-      throw new Error(
-        `createRouter: path templates "${existing}" and "${pattern}" are ambiguous — they differ only in parameter names. Rename one or merge them.`,
-      );
+    for (const method of methodsDeclaredOn(item)) {
+      const key = `${method}\t${signature}`;
+      const existing = byMethodSignature.get(key);
+      if (existing !== undefined) {
+        throw new Error(
+          `createRouter: path templates "${existing}" and "${pattern}" both declare ${method.toUpperCase()} on the same path structure (parameter names differ but every ${method.toUpperCase()} request would match both). Rename one or merge them.`,
+        );
+      }
+      byMethodSignature.set(key, pattern);
     }
-    bySignature.set(signature, pattern);
     routes.push({ segments, pathPattern: pattern, pathItem: item });
   }
   // Sort by specificity: more literal segments win, longer paths win on ties.
