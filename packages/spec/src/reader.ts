@@ -27,7 +27,7 @@ const YAML_HINT =
 /**
  * Read files from the local filesystem. JSON only — `.yaml` / `.yml`
  * paths throw with a clear install hint. Pair with
- * `@aahoughton/oav`' `createYamlFileReader` via
+ * `oav`' `createYamlFileReader` via
  * {@link composeReaders} for YAML support.
  *
  * @param cwd - Optional base directory. Defaults to `process.cwd()`.
@@ -68,7 +68,7 @@ export function createFileReader(cwd: string = process.cwd()): DocumentReader {
 
 /**
  * Read documents over HTTP/HTTPS. JSON only; pair with
- * `@aahoughton/oav`'s `createSmartHttpReader` for YAML (it claims all
+ * `oav`'s `createSmartHttpReader` for YAML (it claims all
  * `http(s)` URIs and dispatches by `Content-Type`, so it shadows this
  * reader in a compose chain — that's fine; JSON endpoints still parse
  * as JSON there).
@@ -102,7 +102,7 @@ export function createHttpReader(): DocumentReader {
  * In-memory reader, keyed by string URI. Primarily used in tests.
  * String sources are parsed as JSON; pre-parsed object sources pass
  * through. YAML strings need pre-parsing via
- * `@aahoughton/oav`' `parseYamlString` before they're added to
+ * `oav`' `parseYamlString` before they're added to
  * the map.
  *
  * @param sources - Map of URI → JSON string (or already-parsed value).
@@ -135,7 +135,7 @@ export function createMemoryReader(sources: Map<string, string | unknown>): Docu
 /**
  * Try each reader in order until one accepts the URI. Useful for mixing
  * file / HTTP / memory sources in a single resolver, and for layering
- * the YAML readers from `@aahoughton/oav` ahead of the
+ * the YAML readers from `oav` ahead of the
  * JSON-only ones here.
  *
  * @param readers - Ordered list of readers.

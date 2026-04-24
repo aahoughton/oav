@@ -32,7 +32,7 @@ export interface EmitStandaloneOptions {
   dialect: StandaloneDialect;
   /**
    * Import-path prefix for runtime deps in the emitted module.
-   * Defaults to `"@aahoughton/oav"` — the published name. Tests
+   * Defaults to `"oav"` — the published name. Tests
    * override to `"@oav"` so the output resolves against the
    * workspace aliases instead of a published tarball.
    */

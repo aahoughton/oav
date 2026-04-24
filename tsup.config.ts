@@ -2,7 +2,7 @@ import { defineConfig } from "tsup";
 import { workspaceAliases } from "./workspace-aliases.js";
 
 /**
- * Build config for the publishable `@aahoughton/oav-core` — the lean
+ * Build config for the publishable `oav-core` — the lean
  * validator tarball with zero runtime dependencies. Each entry
  * becomes a subpath:
  *
@@ -18,7 +18,7 @@ import { workspaceAliases } from "./workspace-aliases.js";
  * source via the esbuild `alias` option, then bundled in as normal
  * modules so consumers never see them.
  *
- * The companion `@aahoughton/oav` package (`packages/oav/`) builds
+ * The companion `oav` package (`packages/oav/`) builds
  * separately and carries the YAML readers + CLI — the batteries-
  * included experience that depends on this package. Keeping the CLI
  * and YAML parsing out of this tarball is what delivers the zero-

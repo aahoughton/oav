@@ -1,7 +1,7 @@
 /**
  * Steady-state HTTP-server memory benchmark.
  *
- * Spawns two Express 4 servers — one wraps @aahoughton/oav, the other
+ * Spawns two Express 4 servers — one wraps oav, the other
  * wraps express-openapi-validator (which uses ajv under the hood) —
  * against the same 40-schema OpenAPI spec. Hits each with 500 warmup
  * requests + 100 × 500 = 50,000 workload requests round-robin across

@@ -78,7 +78,7 @@ export function defaultCommandIo(): CommandIo {
     // stat against the HTTP reader (which would reject it via
     // canRead anyway, but clearer ordering). HTTP reader accepts
     // `http:` / `https:` URIs; the YAML-over-HTTP story rides on
-    // top of this chain in `@aahoughton/oav`'s CLI wrapper, which
+    // top of this chain in `oav`'s CLI wrapper, which
     // composes YAML readers in front of whatever we return here.
     reader: composeReaders([createFileReader(), createHttpReader()]),
     async readText(pathOrDash: string) {
@@ -232,7 +232,7 @@ export type ValidateMode =
  * `validate(data)` mirrors `compileSchema(schema).validate(data)`, then
  * bundles it via esbuild into a single file with zero imports.
  *
- * The output runs without `@aahoughton/oav` installed at all — the
+ * The output runs without `oav` installed at all — the
  * Lambda / edge / single-file deployment case. `esbuild` is a required
  * peer dependency for this subcommand; a clear install hint prints on
  * stderr with exit code 3 if it's not resolvable.
@@ -245,7 +245,7 @@ export async function compileSchemaCommand(
     output?: string;
     dialect?: StandaloneDialect;
     /**
-     * Override the `@aahoughton/oav` prefix used in the intermediate
+     * Override the `oav` prefix used in the intermediate
      * pre-bundle module's imports. Tests pass `"@oav"` so esbuild
      * resolves against the in-workspace package aliases rather than
      * the published package name. Not exposed on the CLI.
@@ -253,7 +253,7 @@ export async function compileSchemaCommand(
     importPrefix?: string;
     /**
      * Override esbuild's resolveDir. Defaults to `process.cwd()`,
-     * which is where a real consumer's installed `@aahoughton/oav`
+     * which is where a real consumer's installed `oav`
      * sits. Tests point this at `packages/oav/` where the workspace's
      * `@oav/*` symlinks are reachable. Not exposed on the CLI.
      */

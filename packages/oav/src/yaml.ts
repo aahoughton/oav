@@ -1,15 +1,15 @@
 /**
  * YAML + HTTP readers shipped by the batteries-included
- * `@aahoughton/oav` distribution. Each implements
+ * `oav` distribution. Each implements
  * {@link @aahoughton/oav/spec!DocumentReader} and is designed to be
  * composed via
  * {@link @aahoughton/oav/spec!composeReaders} — order YAML readers
- * first so the JSON-only readers in `@aahoughton/oav-core/spec` act
+ * first so the JSON-only readers in `oav-core/spec` act
  * as the fallback for `.json` paths.
  *
- * The lean `@aahoughton/oav-core` package intentionally doesn't carry
+ * The lean `oav-core` package intentionally doesn't carry
  * YAML parsing so it can advertise zero runtime dependencies; this
- * module lives in `@aahoughton/oav` (which depends on oav-core plus
+ * module lives in `oav` (which depends on oav-core plus
  * `yaml`).
  *
  * @example

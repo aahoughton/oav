@@ -1,6 +1,6 @@
 # oav (CLI)
 
-The `oav` binary — a thin wrapper around `@aahoughton/oav` for shell
+The `oav` binary — a thin wrapper around the oav library for shell
 scripts, Makefiles, and CI.
 
 ## Install
@@ -14,13 +14,13 @@ oav --help
 npx @aahoughton/oav validate openapi.yaml --request req.http
 ```
 
-The CLI lives in the batteries-included `@aahoughton/oav` package, not
-the lean `@aahoughton/oav-core` — `oav-core` doesn't ship a `bin` or
-any CLI glue. `@aahoughton/oav` pulls in `commander` (argv parsing)
+The CLI lives in the batteries-included `oav` package, not
+the lean `oav-core` — `oav-core` doesn't ship a `bin` or
+any CLI glue. `oav` pulls in `commander` (argv parsing)
 and `esbuild` (AOT bundling for `compile-schema` / `compile-spec`) as
 regular dependencies, so the CLI runs out of the box after one
 install. Users who only need the programmatic API and want a smaller
-footprint install `@aahoughton/oav-core` instead.
+footprint install `oav-core` instead.
 
 ## Commands
 
@@ -77,13 +77,13 @@ library footprint is unwanted.
 Constraints on the input schema:
 
 - **Built-in formats only.** If the schema references `format: "..."`
-  names outside `@aahoughton/oav/formats`, compile fails with exit
+  names outside `oav/formats`, compile fails with exit
   code 3 and a listing of the unknown names. Custom formats aren't
   serialisable to standalone source.
 - **No custom keywords.** Same reason — the keyword's validator
   function can't be serialised.
 - **External `$ref`s must be pre-inlined.** Run `oav resolve` over
-  a multi-file input first, or use `@aahoughton/oav/spec.resolveSpec`
+  a multi-file input first, or use `oav/spec.resolveSpec`
   programmatically, before piping the schema into `compile-schema`.
 
 ## `compile-spec` output

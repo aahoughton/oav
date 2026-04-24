@@ -1,11 +1,11 @@
 /**
- * Internal re-exports for `@aahoughton/oav/validator/internals`. Exposes
+ * Internal re-exports for `oav/validator/internals`. Exposes
  * the parameter-deserialisation and query-assembly primitives that the
  * validator uses to prepare values before schema compilation, plus the
  * operation-level `$ref` resolver. Reachable when you need them —
  * tests, advanced plugins, tooling that reuses the same style /
  * explode rules outside the normal validator flow — but deliberately
- * separated from the main `@aahoughton/oav/validator` barrel so the
+ * separated from the main `oav/validator` barrel so the
  * public surface matches what request/response-validation consumers
  * actually need.
  *
@@ -56,6 +56,6 @@ export { checkSecurity, compileOperationSecurity } from "./security.js";
 // isn't published on its own. `oav compile-spec`'s emitted output
 // needs `createRouter` at module load to build its dispatch table;
 // re-exporting it here keeps all emit-side imports funnelled through
-// `@aahoughton/oav/validator/internals` so the emitted module only
+// `oav/validator/internals` so the emitted module only
 // has to reach into one subpath.
 export { createRouter, type RouteMatch, type Router } from "@oav/router";

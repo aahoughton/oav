@@ -62,7 +62,7 @@ export interface EmitSpecOptions {
   only?: Array<{ method: string; path: string }>;
   /**
    * Import-path prefix for runtime deps. Defaults to
-   * `"@aahoughton/oav"`. Tests override to `"@oav"` so the output
+   * `"oav"`. Tests override to `"@oav"` so the output
    * resolves against the workspace aliases.
    */
   importPrefix?: string;

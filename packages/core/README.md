@@ -1,4 +1,4 @@
-# @aahoughton/oav/core
+# oav/core
 
 Error tree model, shared OpenAPI / HTTP types, and output formatters.
 Imported by every other module in the package and — because the error

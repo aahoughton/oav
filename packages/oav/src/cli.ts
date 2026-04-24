@@ -2,7 +2,7 @@
 export {};
 
 // `commander` and `esbuild` are regular dependencies of
-// `@aahoughton/oav`, so a normal install puts them in node_modules.
+// `oav`, so a normal install puts them in node_modules.
 // If they're missing, the install is corrupted — catch the dynamic
 // import up front and print a clearer message than the default
 // ERR_MODULE_NOT_FOUND trace.

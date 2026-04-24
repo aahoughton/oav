@@ -60,7 +60,7 @@ Capabilities that the Ajv stack covers and oav does not.
   that build up a schema collection incrementally.
 - **Full RFC 3986 URI resolution.** Ajv handles absolute-URI `$ref`s
   and `$id` base-URI rewrites natively. oav requires external /
-  multi-file refs to be pre-inlined by `@aahoughton/oav/spec.resolveSpec()`
+  multi-file refs to be pre-inlined by `oav/spec.resolveSpec()`
   before compile, and accepts fragment-only refs thereafter.
 - **Full meta-schema validation.** Ajv can validate your schema
   against the draft's meta-schema at compile time, catching both
@@ -180,8 +180,8 @@ Ajv 8 has four runtime dependencies:
 | `require-from-string`  | Load compiled-validator source as a module (standalone codegen) |
 
 oav's compiler and validator have zero runtime dependencies. The lean
-`@aahoughton/oav-core` package ships exactly that — no runtime deps —
-and accepts JSON specs. The batteries-included `@aahoughton/oav`
+`oav-core` package ships exactly that — no runtime deps —
+and accepts JSON specs. The batteries-included `oav`
 package layers `yaml` on top for `.yaml` spec files and adds the `oav`
 CLI (with `commander` as an optional peer). The two efficiency
 libraries Ajv pulls in (`fast-deep-equal`, `json-schema-traverse`)

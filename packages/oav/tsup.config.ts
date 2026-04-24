@@ -3,19 +3,19 @@ import type { Plugin } from "esbuild";
 import { defineConfig } from "tsup";
 
 /**
- * Build config for `@aahoughton/oav` — the batteries-included tarball.
- * Emits subpath shims that re-export `@aahoughton/oav-core/*`, adds
+ * Build config for `oav` — the batteries-included tarball.
+ * Emits subpath shims that re-export `oav-core/*`, adds
  * the YAML readers at the root entry, and bundles the `oav` CLI.
  *
  * Dependency shape:
- * - `@aahoughton/oav-core` and `yaml` are external runtime deps the
+ * - `oav-core` and `yaml` are external runtime deps the
  *   consumer's install already provides.
  * - `commander` is an external optional-peer — resolved at CLI run
  *   time with a clear error when missing.
  * - `@oav/cli` (the workspace package that owns the CLI logic) is
  *   bundled in, along with everything it transitively imports from
  *   `@oav/*`. Those transitive imports are rewritten to the
- *   corresponding `@aahoughton/oav-core/*` subpaths AND marked
+ *   corresponding `oav-core/*` subpaths AND marked
  *   external by the plugin below, so the final bundles still import
  *   the compiler / validator from oav-core at run time rather than
  *   inlining a second copy.
@@ -28,7 +28,7 @@ import { defineConfig } from "tsup";
  */
 const repoRoot = resolve(__dirname, "..", "..");
 
-// `@oav/*` → `@aahoughton/oav-core[/*]`: kept external (resolved at
+// `@oav/*` → `oav-core[/*]`: kept external (resolved at
 // run time from the consumer's install of oav-core).
 const oavCoreRewrite: Record<string, string> = {
   "@oav/core": "@aahoughton/oav-core/core",
@@ -51,7 +51,7 @@ const bundledWorkspace: Record<string, string> = {
 // the originally-imported specifier. Doing the rewrite+external in a
 // single onResolve hook is the reliable way to get imports like
 // `@oav/schema` emitted into the bundle as
-// `import ... from "@aahoughton/oav-core/schema"`.
+// `import ... from "oav-core/schema"`.
 function rewriteOavCore(): Plugin {
   return {
     name: "oav-core-rewrite",
