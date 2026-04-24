@@ -68,7 +68,10 @@ const petstore: OpenAPIDocument = {
 interface AotValidator {
   validateRequest: (req: unknown) => ValidationError | null;
   validateResponse: (req: unknown, res: unknown) => ValidationError | null;
-  getOperation: (req: { method: string; path: string }) => { pathPattern: string } | null;
+  getOperation: (req: {
+    method: string;
+    path: string;
+  }) => { pathPattern: string; pathItem: unknown; operation: unknown } | null;
   detectedVersion: string | undefined;
   warnings: readonly string[];
 }
@@ -209,6 +212,30 @@ describe("compile-spec — equivalence vs createValidator", () => {
     const aot = await buildAot(petstore);
     expect(aot.getOperation({ method: "POST", path: "/pets" })?.pathPattern).toBe("/pets");
     expect(aot.getOperation({ method: "GET", path: "/unknown" })).toBe(null);
+  });
+
+  it("getOperation returns the full pathItem and operation objects", async () => {
+    const aot = await buildAot(petstore);
+    const info = aot.getOperation({ method: "POST", path: "/pets" });
+    expect(info).not.toBe(null);
+    const op = info?.operation as { operationId?: string; requestBody?: { required?: boolean } };
+    expect(op.operationId).toBe("createPet");
+    expect(op.requestBody?.required).toBe(true);
+    const pathItem = info?.pathItem as { post?: { operationId?: string }; get?: unknown };
+    expect(pathItem.post?.operationId).toBe("createPet");
+    expect(pathItem.get).toBeDefined();
+  });
+
+  it("getOperation shape matches createValidator().getOperation", async () => {
+    const runtime = createValidator(petstore);
+    const aot = await buildAot(petstore);
+    const target = { method: "POST", path: "/pets" };
+    const rt = runtime.getOperation(target);
+    const at = aot.getOperation(target);
+    expect(at?.pathPattern).toBe(rt?.pathPattern);
+    const rtOp = rt?.operation as { operationId?: string } | undefined;
+    const atOp = at?.operation as { operationId?: string } | undefined;
+    expect(atOp?.operationId).toBe(rtOp?.operationId);
   });
 });
 

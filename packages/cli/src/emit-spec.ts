@@ -185,6 +185,10 @@ export function emitSpec(document: OpenAPIDocument, options: EmitSpecOptions = {
     (o) => `  ${JSON.stringify(`${o.pathPattern}::${o.method}`)}: ${o.stateLiteral},`,
   );
 
+  const metaTableEntries = opsEmitted.map(
+    (o) => `  ${JSON.stringify(`${o.pathPattern}::${o.method}`)}: ${o.introspectionLiteral},`,
+  );
+
   const pathsTableEntries = [...pathMethods.entries()].map(
     ([pattern, methods]) =>
       `  ${JSON.stringify(pattern)}: { ${[...methods].map((m) => `${m.toLowerCase()}: {}`).join(", ")} },`,
@@ -236,6 +240,15 @@ export function emitSpec(document: OpenAPIDocument, options: EmitSpecOptions = {
     ...pathsTableEntries,
     "});",
     "",
+    "// ---- introspection (getOperation) ----",
+    "// Resolved OpenAPI objects for each emitted operation, mirroring the",
+    "// runtime's match.pathItem / match.operation references. Kept out of",
+    "// the `ops` table so the __REF:Sn__ placeholder rewrite never touches",
+    "// raw spec content.",
+    "const __meta = {",
+    ...metaTableEntries,
+    "};",
+    "",
     "// ---- detected version + warnings ----",
     `export const detectedVersion = ${JSON.stringify(detectVersionBucket(document))};`,
     "export const warnings = Object.freeze([]);",
@@ -260,6 +273,12 @@ interface EmittedOp {
   method: string;
   /** The JSON-stringified state object for `ops[key]`. */
   stateLiteral: string;
+  /**
+   * JSON blob of `{ pathItem, operation }` for the module's `__meta`
+   * table. Kept separate from `stateLiteral` so the raw OpenAPI objects
+   * never pass through the `__REF:Sn__` placeholder rewrite.
+   */
+  introspectionLiteral: string;
 }
 
 interface BuildEmittedOpArgs {
@@ -370,8 +389,15 @@ function buildEmittedOp(args: BuildEmittedOpArgs): EmittedOp {
     ),
   );
 
+  // Introspection payload for `getOperation`. Matches the runtime's
+  // `match.pathItem` / `match.operation` references — the resolved
+  // top-level objects from the document. Nested `$ref`s (e.g. inside a
+  // `requestBody` or `responses[status]`) are left intact, same as
+  // runtime.
+  const introspectionLiteral = JSON.stringify({ pathItem, operation }, null, 2);
+
   void document; // currently unused; keep in signature for future overlay resolution
-  return { pathPattern, method, stateLiteral };
+  return { pathPattern, method, stateLiteral, introspectionLiteral };
 }
 
 function paramValidatorName(
@@ -713,17 +739,14 @@ function renderGetOperation(): string {
   const m = (method ?? "GET").toUpperCase();
   const match = router.match(m, path);
   if (match === undefined || match.kind === "method-not-allowed") return null;
-  const op = ops[\`\${match.pathPattern}::\${m}\`];
+  const key = \`\${match.pathPattern}::\${m}\`;
+  const op = ops[key];
   if (op === undefined) return null;
+  const meta = __meta[key];
   return {
     pathPattern: match.pathPattern,
-    pathItem: {},
-    operation: {
-      // The AOT output doesn't retain the full OperationObject
-      // literal; we preserve enough for the common introspection
-      // uses (operationId, requestBody content-types, required
-      // headers, security). Extend the emit if you need more.
-    },
+    pathItem: meta?.pathItem ?? {},
+    operation: meta?.operation ?? {},
   };
 }
 `;
