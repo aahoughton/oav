@@ -255,7 +255,7 @@ describe("buildProgram — argv-level", () => {
 // invoke the command directly (not through runCli) so they can override
 // the esbuild resolveDir to point at packages/oav/, which has the
 // workspace-alias `@oav/*` symlinks. In production the consumer's cwd
-// has `@aahoughton/oav` installed and the default resolveDir is
+// has `oav` installed and the default resolveDir is
 // correct.
 describe("compile-schema output", () => {
   it("produces an import-free bundle that runs", async () => {

@@ -1,4 +1,4 @@
-# @aahoughton/oav/formats
+# oav/formats
 
 Built-in string format validators for the `format` keyword. Each is a
 pure `(value: string) => boolean`; `builtInFormats` is the keyed map
@@ -63,6 +63,6 @@ In JSON Schema 2020-12, `format` is advisory by default: a validator
 recognises the name but doesn't reject malformed values. OpenAPI 3.0 /
 3.1 / 3.2 treat `format` as assertive; the validator wires up the
 corresponding vocabulary so `format: email` rejects non-emails.
-When compiling directly via `@aahoughton/oav/schema`, use
+When compiling directly via `oav/schema`, use
 `openapi31Dialect` (or the assertive vocabulary explicitly) to get
 assertive semantics.

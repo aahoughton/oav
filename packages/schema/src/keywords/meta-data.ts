@@ -26,7 +26,7 @@ function annotationKeyword(name: string, vocabulary: string = META_DATA_VOCAB): 
  * `title` — a short human-readable label for the schema. Annotation-
  * only; emits no validation code. Bundled into
  * {@link metaDataVocabulary} and reachable alongside it from
- * `@aahoughton/oav/schema`.
+ * `oav/schema`.
  *
  * @public
  */

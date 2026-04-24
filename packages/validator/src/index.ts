@@ -1,5 +1,5 @@
 /**
- * The public `@aahoughton/oav/validator` surface. One audience: callers
+ * The public `oav/validator` surface. One audience: callers
  * building a request/response validator from a resolved OpenAPI
  * document — `createValidator`, the `OavValidator` instance it returns,
  * the options, and the Fetch-API adapters for consumers plugging the
@@ -7,7 +7,7 @@
  *
  * Parameter deserialisation primitives, query-assembly helpers, and
  * the operation-level `$ref` resolver live behind
- * `@aahoughton/oav/validator/internals`. Reach for them only when a
+ * `oav/validator/internals`. Reach for them only when a
  * tool needs the same style/explode or `$ref` rules outside the normal
  * validator flow; nothing there is covered by semver.
  *

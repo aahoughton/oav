@@ -14,7 +14,7 @@ Please include:
 
 - A description of the issue and its impact.
 - Steps to reproduce, or a minimal proof of concept.
-- The affected version(s) of `@aahoughton/oav`.
+- The affected version(s) of `oav`.
 - Any mitigations or workarounds you're aware of.
 
 You should receive an acknowledgement within a few business days.

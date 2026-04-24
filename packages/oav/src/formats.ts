@@ -1,2 +1,2 @@
-// Re-export of `@aahoughton/oav-core/formats`.
+// Re-export of `oav-core/formats`.
 export * from "@oav/formats";

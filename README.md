@@ -38,19 +38,19 @@ npm install @aahoughton/oav
 npm install @aahoughton/oav-core           # lean install, JSON-only
 ```
 
-`@aahoughton/oav` re-exports `@aahoughton/oav-core` at matching
-subpaths. Samples below use `@aahoughton/oav`; on the lean package,
-substitute `@aahoughton/oav-core` in imports that don't touch the
+`oav` re-exports `oav-core` at matching
+subpaths. Samples below use `oav`; on the lean package,
+substitute `oav-core` in imports that don't touch the
 YAML readers (`createYamlFileReader`, `createSmartHttpReader`) or
 the CLI.
 
-The `commander` + `esbuild` deps `@aahoughton/oav` pulls in are
+The `commander` + `esbuild` deps `oav` pulls in are
 reachable only from the `oav` CLI binary (`dist/cli.js`). Application
-code importing from `@aahoughton/oav` hits `dist/index.js`, which
+code importing from `oav` hits `dist/index.js`, which
 doesn't reference them — bundlers tree-shake them out of the output,
 and Node servers load them only when the CLI is invoked. Consumers
 who want to skip the ~10 MB of esbuild's native binary on disk can
-install `@aahoughton/oav-core` instead (zero runtime deps, no CLI).
+install `oav-core` instead (zero runtime deps, no CLI).
 
 ## Quick start
 
@@ -305,8 +305,8 @@ no monkey-patching of `req` or `res`.
 ## Modules
 
 The package publishes a small root and four subpath entrypoints.
-`@aahoughton/oav-core` exposes the same five entrypoints; substitute
-`@aahoughton/oav-core/...` to import from the lean package.
+`oav-core` exposes the same five entrypoints; substitute
+`oav-core/...` to import from the lean package.
 
 | Import                    | Surface                                                  |
 | ------------------------- | -------------------------------------------------------- |
@@ -316,7 +316,7 @@ The package publishes a small root and four subpath entrypoints.
 | `@aahoughton/oav/formats` | Built-in string format validators                        |
 | `@aahoughton/oav/core`    | Error tree model, shared OpenAPI / HTTP types            |
 
-`@aahoughton/oav` also exports `createYamlFileReader`,
+`oav` also exports `createYamlFileReader`,
 `createSmartHttpReader` (HTTP reader that handles both JSON and YAML
 by inspecting `Content-Type`), and `parseYamlString` at the root entry,
 and ships the `oav` CLI as a `bin`.

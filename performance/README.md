@@ -80,7 +80,7 @@ pnpm bench:mem                                      # default 100 × 500 = 50,00
 BATCHES=20 PER_BATCH=500 WARMUP=250 pnpm bench:mem  # quick smoke
 ```
 
-Spawns two Express 4 servers — one wraps `@aahoughton/oav`, the other
+Spawns two Express 4 servers — one wraps `oav`, the other
 wraps `express-openapi-validator` (which pulls in ajv). Both validate
 a ~40-schema OpenAPI spec with discriminated payment-method unions,
 nested address + amount objects, and array-of-items transfers. The

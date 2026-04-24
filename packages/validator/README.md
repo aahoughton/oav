@@ -1,4 +1,4 @@
-# @aahoughton/oav (validator)
+# oav (validator)
 
 HTTP request/response validator for OpenAPI 3.0, 3.1, and 3.2. This is
 the headline surface of the package — `createValidator` is re-exported
@@ -39,7 +39,7 @@ unsupported and a fallback was used — see `onUnknownVersion` below).
 Native OpenAPI 3.0 dialect alongside 3.1 / 3.2, so `nullable`,
 boolean `exclusiveMaximum`, and `$ref`-suppresses-siblings work by
 3.0 rules rather than via a 2020-12 translation shim. Pairs with
-[`@aahoughton/oav/spec`](../spec/README.md)'s `applyOverlays` for
+[`oav/spec`](../spec/README.md)'s `applyOverlays` for
 patching externally-owned base specs at load time. Pass counts against
 the upstream test suites live in
 [`conformance/REPORT.md`](../../conformance/REPORT.md). The
@@ -62,7 +62,7 @@ the upstream test suites live in
 - **Content-type negotiation**: against the request / response
   `Content-Type`, including wildcards (`application/*`, `*/*`).
 - **Response status matching**: exact → `NXX` class → `default`.
-- **Format validators**: the `@aahoughton/oav/formats` built-ins merged
+- **Format validators**: the `oav/formats` built-ins merged
   with any extras passed via `options.formats`.
 
 ## Validator methods
@@ -82,7 +82,7 @@ the upstream test suites live in
 | Option                  | Effect                                                                                                             |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | `dialect`               | Force a specific {@link Dialect}, bypassing version detection.                                                     |
-| `formats`               | Extra string format validators merged with `@aahoughton/oav/formats`.                                              |
+| `formats`               | Extra string format validators merged with `oav/formats`.                                                          |
 | `keywords`              | User-registered schema keywords (see below).                                                                       |
 | `maxErrors`             | Cap on leaf errors; `1` is fast-fail. Default: uncapped.                                                           |
 | `strictQueryParameters` | Reject undeclared query parameters. Default `false`.                                                               |

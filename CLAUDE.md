@@ -42,7 +42,7 @@ external dev-dependencies (benchmark runners, competing validators,
   The public barrel holds what keyword authors need; codegen mechanics
   (`NAMES`, `pathJoinExpr`, `rawExpr`, `quoteString`, runtime helpers,
   `SchemaRegistry`, `SUBSCHEMA_*_POSITIONS`, `createKeywordContext`)
-  live behind the `@aahoughton/oav/schema/internals` subpath — reach
+  live behind the `oav/schema/internals` subpath — reach
   for them only when a plugin genuinely needs them (not covered by
   semver).
 - **`@oav/formats`** — pure string validators; exported as a `Record<string,

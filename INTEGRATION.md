@@ -74,7 +74,7 @@ children hang off `body`, `query.<name>`, `headers.<name>`, etc.
 
 ## Supporting helpers used below
 
-Both shipped from `@aahoughton/oav`:
+Both shipped from `oav`:
 
 - **`httpStatusFor(err, overrides?)`** — maps a `ValidationError`
   tree to an HTTP status: `route` → 404, `method` → 405, `security`
@@ -365,7 +365,7 @@ updating the document.
 
 ### Status-code mapping
 
-Use `httpStatusFor` from `@aahoughton/oav`:
+Use `httpStatusFor` from `oav`:
 
 ```ts
 import { httpStatusFor, toProblemDetails } from "@aahoughton/oav";
@@ -792,9 +792,9 @@ app.use(async (req, res, next) => {
   counts by category.
 - **Overlays.** Extend externally-owned specs at load time —
   see [OVERLAYS.md](./OVERLAYS.md).
-- **Smaller install footprint.** `@aahoughton/oav` depends on `yaml`,
+- **Smaller install footprint.** `oav` depends on `yaml`,
   `commander`, and `esbuild` (the latter two for CLI + AOT compile
-  output); `@aahoughton/oav-core` is the lean alternative with zero
+  output); `oav-core` is the lean alternative with zero
   runtime deps for programmatic-only consumers who don't need the
   CLI or YAML readers.
 - **No mutation of `req`.** `express-openapi-validator` attaches
@@ -826,7 +826,7 @@ formats: {
 ```
 
 When migrating a map of ajv-shaped definitions without rewriting each
-one, `@aahoughton/oav/formats` exports `fromAjvFormats` for the
+one, `oav/formats` exports `fromAjvFormats` for the
 conversion:
 
 ```ts

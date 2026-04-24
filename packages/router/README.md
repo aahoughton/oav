@@ -1,7 +1,7 @@
 # @oav/router
 
 > **Internal package — not published.** `@oav/router` is a workspace-private
-> dependency of `@aahoughton/oav`; it does not appear on npm and has no
+> dependency of `oav`; it does not appear on npm and has no
 > published subpath. This README documents the internal surface for
 > contributors navigating the monorepo. Third-party consumers get the
 > router's functionality transparently via `createValidator`.

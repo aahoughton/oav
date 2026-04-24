@@ -1,4 +1,4 @@
 # Changelog
 
-Release notes for `@aahoughton/oav-core` and `@aahoughton/oav` land here,
+Release notes for `oav-core` and `oav` land here,
 appended by release-please on every merged release PR.
