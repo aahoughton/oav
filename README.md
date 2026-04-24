@@ -11,8 +11,10 @@ walk programmatically.
 - Structured error trees (not flat arrays), so downstream code can
   distinguish a missing `required` property from a `oneOf` branch
   failure from an unsupported `Content-Type`.
-- Real 3.0 support (`nullable`, boolean `exclusiveMaximum`,
-  `$ref`-suppresses-siblings), not "3.1 and hope".
+- OpenAPI 3.0 compiles through its own dialect: `nullable`, boolean
+  `exclusiveMaximum`, and `$ref`-suppresses-siblings are keyword
+  definitions in the 3.0 vocabulary stack. Single compiler pass, no
+  schema preprocessing.
 - Codegen-compiled at construction, cached by schema identity, zero
   per-request version branching. Handles recursive `$ref`, multi-file
   specs, overlays, and custom keywords / formats.
@@ -22,10 +24,10 @@ walk programmatically.
 `oav` ships in two packages so consumers on constrained runtimes can
 skip what they don't use:
 
-| Package                | When to use                                                                                                                                                                                    |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@aahoughton/oav`      | Default. Batteries-included: adds YAML readers and the `oav` CLI. Depends on `yaml`, `commander`, and `esbuild` (the latter two for CLI + AOT compile).                                        |
-| `@aahoughton/oav-core` | Lean alternative. Zero runtime dependencies. Same programmatic surface as `@aahoughton/oav`, minus the YAML readers and CLI. Feed it JSON specs (or pre-parsed objects via the memory reader). |
+| Package                | When to use                                                                                                                                                                                                                                                                                               |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@aahoughton/oav`      | Default. Batteries-included: YAML readers + the `oav` CLI. Depends on `yaml`; pulls in `commander` + `esbuild` for the CLI only (never imported from the library entry points, so bundlers tree-shake them out of application bundles; Node server runs load them only when the `oav` binary is invoked). |
+| `@aahoughton/oav-core` | Lean alternative. Zero runtime dependencies. Same programmatic surface as `@aahoughton/oav`, minus the YAML readers and CLI. Feed it JSON specs (or pre-parsed objects via the memory reader).                                                                                                            |
 
 ```bash
 npm install @aahoughton/oav
@@ -40,8 +42,15 @@ npm install @aahoughton/oav-core           # lean install, JSON-only
 subpaths. Samples below use `@aahoughton/oav`; on the lean package,
 substitute `@aahoughton/oav-core` in imports that don't touch the
 YAML readers (`createYamlFileReader`, `createSmartHttpReader`) or
-the CLI. `@aahoughton/oav` pulls in the CLI's deps (`commander`,
-`esbuild`) so `oav <command>` runs after a single install.
+the CLI.
+
+The `commander` + `esbuild` deps `@aahoughton/oav` pulls in are
+reachable only from the `oav` CLI binary (`dist/cli.js`). Application
+code importing from `@aahoughton/oav` hits `dist/index.js`, which
+doesn't reference them — bundlers tree-shake them out of the output,
+and Node servers load them only when the CLI is invoked. Consumers
+who want to skip the ~10 MB of esbuild's native binary on disk can
+install `@aahoughton/oav-core` instead (zero runtime deps, no CLI).
 
 ## Quick start
 
@@ -79,8 +88,8 @@ shape per code is documented in `BuiltInErrorParams`.
 
 ## Why (yet another) OpenAPI validator?
 
-Three things `oav` brings together that aren't jointly available
-elsewhere in the JavaScript ecosystem:
+Things `oav` brings together that aren't jointly available elsewhere
+in the JavaScript ecosystem:
 
 - **An HTTP-aware validator.** One call checks method + path +
   parameters + body + content type + status + headers against the
@@ -99,6 +108,14 @@ elsewhere in the JavaScript ecosystem:
   dispatch. Errors come back as a typed
   tree (`code` / `path` / `params` / `children`) so downstream code
   can narrow on fields rather than pattern-match on messages.
+- **AOT compilation for edge runtimes.** `oav compile-spec
+<openapi.yaml>` emits a single ES module — zero imports — exposing
+  the full `validateRequest` / `validateResponse` / `getOperation`
+  surface with every operation's schemas pre-compiled. Runs on
+  Cloudflare Workers / Vercel Edge / Lambda@Edge / Deno Deploy —
+  anywhere runtime code generation is forbidden or dependency
+  footprint matters. Full details in
+  [`packages/cli/README.md`](./packages/cli/README.md#compile-spec-output).
 
 Ajv is the canonical JSON Schema validator for JavaScript and
 underpins most of the OpenAPI ecosystem. It has the edge on
@@ -191,6 +208,15 @@ one of the built-in dialects (`jsonSchemaDialect`, `openapi31Dialect`,
 `oas30Dialect`). Unknown / missing `openapi` strings fall back to the
 3.1 dialect by default; configure with
 `onUnknownVersion: "throw" | "warn" | "fallback31"`.
+
+**Swagger 2.0 specs** aren't supported directly — `createValidator`
+throws on `swagger: "2.0"` documents. Convert to OpenAPI 3.0 first with
+[`swagger2openapi`](https://github.com/Mermade/oas-kit/tree/main/packages/swagger2openapi)
+and pass the 3.0 output to `createValidator`:
+
+```bash
+npx swagger2openapi swagger.json -o openapi.json
+```
 
 ## Configuring the validator
 

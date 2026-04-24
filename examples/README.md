@@ -28,6 +28,7 @@ for `@aahoughton/oav` in import specifiers that don't touch
 | `basic-validation.ts`          | `petstore.yaml`       | Load a spec → `createValidator` → request + response checks                         |
 | `custom-formats.ts`            | `contacts.yaml`       | Register a user format (E.164 phone) via the `formats` option                       |
 | `custom-keywords.ts`           | `widgets.yaml`        | Register a schema keyword (`activeTenant`) via the `keywords` option                |
+| `cross-field-validation.ts`    | `ranges.yaml`         | Cross-field constraint (`max >= min`) via an object-level custom keyword            |
 | `max-errors.ts`                | `items.yaml`          | Fast-fail and bounded error collection on a bulk-invalid payload                    |
 | `versions.ts`                  | `pets-3.{0,1,2}.yaml` | 3.0, 3.1, and 3.2 side by side: `nullable`, QUERY method, etc.                      |
 | `overlay.ts`                   | `petstore.yaml`       | Minimal overlay: merge a gateway header requirement into one op                     |
