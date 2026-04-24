@@ -349,6 +349,10 @@ export interface ValidatorOptions {
    * error). When the cap is hit, the returned error tree is marked
    * with a `truncated: true` param on the root so consumers can tell
    * the report was shortened.
+   *
+   * Must be a positive integer (>= 1). `createValidator` throws on
+   * non-integer or zero/negative values; the compiler surfaces the
+   * error eagerly at construction time.
    */
   maxErrors?: number;
   /**
@@ -461,6 +465,19 @@ export function createValidator(
   spec: OpenAPIDocument,
   options: ValidatorOptions = {},
 ): OavValidator {
+  if (
+    options.maxErrors !== undefined &&
+    Number.isFinite(options.maxErrors) &&
+    (!Number.isInteger(options.maxErrors) || options.maxErrors < 1)
+  ) {
+    // `Infinity` is degenerate (equivalent to omitting) but harmless;
+    // existing callers may pass it explicitly. Reject the values that
+    // would silently break validation: 0, negatives, non-integers.
+    throw new Error(
+      `createValidator: \`maxErrors\` must be a positive integer (got ${String(options.maxErrors)}). ` +
+        "Use `maxErrors: 1` for fast-fail, or omit the option for uncapped error collection.",
+    );
+  }
   const paths = spec.paths ?? {};
   const router: Router = createRouter(paths);
   const formats = { ...builtInFormats, ...options.formats };
