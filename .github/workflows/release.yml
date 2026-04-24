@@ -35,13 +35,11 @@ jobs:
 
   publish:
     needs: release-please
-    # Intentionally gated off until the package is ready for npm. The
-    # release-please job above still creates git tags, GitHub Releases,
-    # and CHANGELOG entries on every merged release PR — only the
-    # actual `pnpm publish` step is suppressed. To ship to npm, change
-    # the condition back to:
-    #   needs.release-please.outputs.release_created == 'true'
-    if: false
+    # Fires only when release-please merges a release PR (tag + GitHub
+    # Release just created). Regular pushes to main still trigger the
+    # release-please job above, but it exits without `release_created`
+    # when all it did was update the in-flight release PR.
+    if: needs.release-please.outputs.release_created == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read

@@ -109,6 +109,10 @@
     },
     "./package.json": "./package.json"
   },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "scripts": {
     "preinstall": "npx -y only-allow pnpm",
     "build": "tsup && pnpm --filter @aahoughton/oav build",
