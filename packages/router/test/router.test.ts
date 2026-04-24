@@ -17,6 +17,23 @@ describe("parseTemplate", () => {
   it("returns [] for root path", () => {
     expect(parseTemplate("/")).toEqual([]);
   });
+
+  it("recognises compound segments with multiple {name} parts and a literal separator", () => {
+    const segs = parseTemplate("/commits/{sha}.{ext}");
+    expect(segs).toHaveLength(2);
+    expect(segs[0]).toEqual({ kind: "literal", value: "commits" });
+    expect(segs[1]?.kind).toBe("compound");
+    if (segs[1]?.kind === "compound") {
+      expect(segs[1].names).toEqual(["sha", "ext"]);
+      expect(segs[1].raw).toBe("{sha}.{ext}");
+    }
+  });
+
+  it("treats unterminated `{` in a segment as a literal rather than throwing", () => {
+    // path-to-regexp tolerates malformed templates; mirror that.
+    const segs = parseTemplate("/files/{name");
+    expect(segs[1]).toEqual({ kind: "literal", value: "{name" });
+  });
 });
 
 describe("router", () => {
@@ -152,6 +169,65 @@ describe("router", () => {
         "/things/{slug}": { head: op("head") },
       }),
     ).toThrow(/both declare HEAD/);
+  });
+
+  it("routes compound segments and captures both parameters", () => {
+    // Real-world Gitea-style spec: `{sha}` and `{sha}.{diffType}` are
+    // distinct structures and must coexist; both have to route.
+    const rc = createRouter({
+      "/repos/{owner}/{repo}/git/commits/{sha}": { get: op("commit") },
+      "/repos/{owner}/{repo}/git/commits/{sha}.{diffType}": { get: op("commitDiff") },
+    });
+    const plain = rc.match("get", "/repos/foo/bar/git/commits/abc123");
+    expect(plain?.operation.operationId).toBe("commit");
+    expect(plain?.pathParams).toEqual({ owner: "foo", repo: "bar", sha: "abc123" });
+    const diff = rc.match("get", "/repos/foo/bar/git/commits/abc123.diff");
+    expect(diff?.operation.operationId).toBe("commitDiff");
+    expect(diff?.pathParams).toEqual({
+      owner: "foo",
+      repo: "bar",
+      sha: "abc123",
+      diffType: "diff",
+    });
+  });
+
+  it("compound segment captures resolve left-to-right (lazy) when params could span the separator", () => {
+    // `{x}.{y}` against `a.b.c` → x="a", y="b.c" (path-to-regexp /
+    // hono / find-my-way / werkzeug all share this rule).
+    const rc = createRouter({ "/x/{x}.{y}": { get: op("xy") } });
+    const m = rc.match("get", "/x/a.b.c");
+    expect(m?.pathParams).toEqual({ x: "a", y: "b.c" });
+  });
+
+  it("compound segment with three params resolves to one capture per part", () => {
+    const rc = createRouter({ "/v/{a}.{b}.{c}": { get: op("abc") } });
+    const m = rc.match("get", "/v/x.y.z");
+    expect(m?.pathParams).toEqual({ a: "x", b: "y", c: "z" });
+  });
+
+  it("compound segment with non-matching literal separator returns 404", () => {
+    const rc = createRouter({ "/v/{a}.{b}": { get: op("ab") } });
+    expect(rc.match("get", "/v/xy")).toBeUndefined();
+  });
+
+  it("two compound siblings differing only in parameter names flag as ambiguous on overlapping methods", () => {
+    expect(() =>
+      createRouter({
+        "/x/{a}.{b}": { get: op("ab") },
+        "/x/{p}.{q}": { get: op("pq") },
+      }),
+    ).toThrow(/both declare GET/);
+  });
+
+  it("compound and pure-template siblings are distinct structures (signatures differ)", () => {
+    // `{sha}` and `{sha}.{ext}` are different shapes. Both must compile
+    // even when they declare overlapping methods.
+    expect(() =>
+      createRouter({
+        "/c/{sha}": { get: op("plain") },
+        "/c/{sha}.{ext}": { get: op("withExt") },
+      }),
+    ).not.toThrow();
   });
 
   it("ignores path items declaring no methods when checking ambiguity", () => {

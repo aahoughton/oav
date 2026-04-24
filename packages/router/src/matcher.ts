@@ -1,11 +1,29 @@
 import type { HttpMethod, OperationObject, PathItem } from "@oav/core";
 
 /**
- * Segments of a parsed OpenAPI path template.
+ * Segments of a parsed OpenAPI path template. Three kinds:
+ *
+ * - `literal` — a fixed substring (`pets`).
+ * - `template` — a single `{name}` parameter occupying the whole
+ *   segment (`{petId}`).
+ * - `compound` — multiple `{name}` parameters interleaved with literal
+ *   text inside one segment (`{sha}.{diffType}`,
+ *   `{year}-{month}.json`). Carries a pre-compiled regex with one
+ *   non-greedy capture group per template part so the matcher stays a
+ *   single `.exec` per segment in the hot path.
+ *
+ * Spec basis: OpenAPI 3.0 / 3.1 / 3.2 path templating only requires
+ * that template expressions be delimited by `{}`; multiple per segment
+ * with literal separators are spec-legal (cf. RFC 6570). Mainstream
+ * routers (path-to-regexp, hono, find-my-way, gorilla/mux, werkzeug)
+ * all use the non-greedy left-to-right rule modelled here.
  *
  * @public
  */
-export type Segment = { kind: "literal"; value: string } | { kind: "template"; name: string };
+export type Segment =
+  | { kind: "literal"; value: string }
+  | { kind: "template"; name: string }
+  | { kind: "compound"; regex: RegExp; names: string[]; raw: string };
 
 /**
  * Result of a successful route match: the path template matched *and*
@@ -102,11 +120,13 @@ function methodsDeclaredOn(item: PathItem): Set<HttpMethod> {
  * Parse an OpenAPI path template into segments.
  *
  * @param template - The path template (e.g. `"/pets/{petId}"`).
- * @returns An array of literal/template segments.
+ * @returns An array of literal / template / compound segments.
  *
  * @example
  * ```ts
  * parseTemplate("/pets/{id}"); // [{literal "pets"}, {template "id"}]
+ * parseTemplate("/commits/{sha}.{ext}");
+ * // [{literal "commits"}, {compound regex /^([^/]+?)\.([^/]+?)$/ names ["sha","ext"]}]
  * ```
  *
  * @public
@@ -114,12 +134,80 @@ function methodsDeclaredOn(item: PathItem): Set<HttpMethod> {
 export function parseTemplate(template: string): Segment[] {
   const trimmed = template.replace(/^\/+/, "").replace(/\/+$/, "");
   if (trimmed === "") return [];
-  return trimmed.split("/").map((seg): Segment => {
-    if (seg.startsWith("{") && seg.endsWith("}")) {
-      return { kind: "template", name: seg.slice(1, -1) };
-    }
+  return trimmed.split("/").map((seg) => parseSegment(seg));
+}
+
+function parseSegment(seg: string): Segment {
+  // Pure literal — no template syntax at all. Common case; skip parsing.
+  if (!seg.includes("{")) {
     return { kind: "literal", value: decodeURIComponent(seg) };
-  });
+  }
+  // Pure template — the whole segment is one `{name}`.
+  const pure = /^\{([^{}]+)\}$/.exec(seg);
+  if (pure !== null) {
+    return { kind: "template", name: pure[1]! };
+  }
+  // Compound — alternating literal and `{name}` parts. Build a regex
+  // with one non-greedy `[^/]+?` capture per template part; the trailing
+  // `$` anchor + lazy capture resolves multi-param ambiguity left-to-right
+  // (e.g. `{x}.{y}` against `a.b.c` captures `x="a"`, `y="b.c"`), matching
+  // path-to-regexp / hono / find-my-way / werkzeug behaviour.
+  const names: string[] = [];
+  let regexSrc = "^";
+  let i = 0;
+  let pendingLiteral = "";
+  while (i < seg.length) {
+    const ch = seg[i];
+    if (ch === "{") {
+      const end = seg.indexOf("}", i);
+      if (end === -1) {
+        // Unterminated `{` — treat the rest as literal so we don't throw
+        // on a malformed template; match `path-to-regexp`'s tolerance.
+        pendingLiteral += seg.slice(i);
+        break;
+      }
+      if (pendingLiteral !== "") {
+        regexSrc += escapeRegex(pendingLiteral);
+        pendingLiteral = "";
+      }
+      const name = seg.slice(i + 1, end);
+      names.push(name);
+      regexSrc += "([^/]+?)";
+      i = end + 1;
+    } else {
+      pendingLiteral += ch;
+      i += 1;
+    }
+  }
+  if (pendingLiteral !== "") {
+    regexSrc += escapeRegex(pendingLiteral);
+  }
+  regexSrc += "$";
+  // No template parts ended up in the segment despite a `{` — degenerate.
+  // Fall back to literal so behaviour matches the !includes("{") branch.
+  if (names.length === 0) {
+    return { kind: "literal", value: decodeURIComponent(seg) };
+  }
+  return { kind: "compound", regex: new RegExp(regexSrc), names, raw: seg };
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Stable signature of a segment for the per-(method, structure)
+ * ambiguity index. Two segments share a signature iff they would match
+ * the same set of tokens for any choice of parameter names. Compound
+ * segments emit their literal skeleton with `\0{}` markers replacing
+ * each `{name}`, so `{a}.{b}` and `{x}.{y}` both produce `\0{}.\0{}`
+ * (correctly flagged as ambiguous on overlapping methods); `{a}.{b}`
+ * vs `{a}-{b}` produce different signatures (correctly distinct).
+ */
+function segmentSignature(s: Segment): string {
+  if (s.kind === "literal") return s.value;
+  if (s.kind === "template") return "\0{}";
+  return s.raw.replaceAll(/\{[^{}]+\}/g, "\0{}");
 }
 
 /**
@@ -156,7 +244,7 @@ export function createRouter(paths: Record<string, PathItem>): Router {
   const byMethodSignature = new Map<string, string>();
   for (const [pattern, item] of Object.entries(paths)) {
     const segments = parseTemplate(pattern);
-    const signature = segments.map((s) => (s.kind === "literal" ? s.value : "\0{}")).join("/");
+    const signature = segments.map(segmentSignature).join("/");
     for (const method of methodsDeclaredOn(item)) {
       const key = `${method}\t${signature}`;
       const existing = byMethodSignature.get(key);
@@ -169,11 +257,19 @@ export function createRouter(paths: Record<string, PathItem>): Router {
     }
     routes.push({ segments, pathPattern: pattern, pathItem: item });
   }
-  // Sort by specificity: more literal segments win, longer paths win on ties.
+  // Sort by specificity:
+  //   1. more pure-literal segments win
+  //   2. more compound segments win (compounds carry literal anchors,
+  //      so they're stricter than a bare `{name}` at the same position)
+  //   3. longer paths win
+  //   4. alphabetical tie-break for stability
   routes.sort((a, b) => {
     const aLit = a.segments.filter((s) => s.kind === "literal").length;
     const bLit = b.segments.filter((s) => s.kind === "literal").length;
     if (aLit !== bLit) return bLit - aLit;
+    const aComp = a.segments.filter((s) => s.kind === "compound").length;
+    const bComp = b.segments.filter((s) => s.kind === "compound").length;
+    if (aComp !== bComp) return bComp - aComp;
     if (a.segments.length !== b.segments.length) return b.segments.length - a.segments.length;
     return a.pathPattern.localeCompare(b.pathPattern);
   });
@@ -209,8 +305,17 @@ export function createRouter(paths: Record<string, PathItem>): Router {
               matched = false;
               break;
             }
-          } else {
+          } else if (seg.kind === "template") {
             params[seg.name] = tok;
+          } else {
+            const m = seg.regex.exec(tok);
+            if (m === null) {
+              matched = false;
+              break;
+            }
+            for (let j = 0; j < seg.names.length; j += 1) {
+              params[seg.names[j]!] = m[j + 1]!;
+            }
           }
         }
         if (!matched) continue;
