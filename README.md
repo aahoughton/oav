@@ -326,14 +326,18 @@ and ships the `oav` CLI as a `bin`.
 Runnable, self-contained TypeScript examples in
 [`examples/`](./examples/README.md):
 
-| File                  | Shows                                                |
-| --------------------- | ---------------------------------------------------- |
-| `basic-validation.ts` | Inline spec → validator → request & response checks  |
-| `custom-formats.ts`   | Register a string format                             |
-| `custom-keywords.ts`  | Register a schema keyword with dynamic runtime state |
-| `max-errors.ts`       | Fast-fail and bounded error collection               |
-| `versions.ts`         | 3.0 / 3.1 / 3.2 side by side                         |
-| `overlay.ts`          | Apply a spec overlay before validating               |
+| File                           | Shows                                                                |
+| ------------------------------ | -------------------------------------------------------------------- |
+| `basic-validation.ts`          | Load a spec → `createValidator` → request and response checks        |
+| `custom-formats.ts`            | Register a user string format (E.164 phone)                          |
+| `custom-keywords.ts`           | Register a schema keyword that reads dynamic runtime state           |
+| `cross-field-validation.ts`    | Cross-field constraint (`max >= min`) via an object-level keyword    |
+| `max-errors.ts`                | Fast-fail and bounded error collection on a bulk-invalid payload     |
+| `versions.ts`                  | 3.0, 3.1, 3.2 side by side (`nullable`, QUERY method)                |
+| `overlay.ts`                   | Merge a gateway header requirement into one operation                |
+| `overlay-petstore-schema.ts`   | Extend the `Pet` component with a deployment-required field          |
+| `overlay-petstore-endpoint.ts` | Require an `X-Tenant` header on `POST /pets` via an endpoint overlay |
+| `spec-digest.ts`               | Derive middleware config (multer limits, required headers) at boot   |
 
 ## Known limitations
 
