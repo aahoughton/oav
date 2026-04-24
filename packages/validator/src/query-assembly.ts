@@ -71,7 +71,9 @@ export function coerceQueryScalar(value: string | undefined, schema: SchemaOrBoo
 
 /**
  * Gather `name[key]=value` pairs from the top-level query into an
- * object — the `style: deepObject` assembly.
+ * object — the `style: deepObject` assembly. Single-level only:
+ * OpenAPI 3.0–3.2 do not define nested semantics, so `obj[a][b]=v`
+ * yields a property literally named `a][b`.
  *
  * @internal
  */
