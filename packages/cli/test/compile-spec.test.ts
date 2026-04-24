@@ -208,6 +208,23 @@ describe("compile-spec — equivalence vs createValidator", () => {
     expect(aot.warnings).toEqual([]);
   });
 
+  it("warnings carries an unknown-minor fallback into the emitted module", async () => {
+    const weird = { ...petstore, openapi: "3.7.0" };
+    const aot = await buildAot(weird);
+    expect(aot.detectedVersion).toBe(undefined);
+    expect(aot.warnings.length).toBe(1);
+    expect(aot.warnings[0]).toMatch(/3\.7\.0.*unknown 3\.x minor.*3\.1/);
+    expect(Object.isFrozen(aot.warnings)).toBe(true);
+  });
+
+  it("warnings carries a missing-openapi fallback into the emitted module", async () => {
+    const noVersion = { ...petstore } as Partial<OpenAPIDocument> as OpenAPIDocument;
+    delete (noVersion as { openapi?: unknown }).openapi;
+    const aot = await buildAot(noVersion);
+    expect(aot.warnings.length).toBe(1);
+    expect(aot.warnings[0]).toMatch(/openapi.*field.*must be a string/);
+  });
+
   it("getOperation resolves a known (method, path)", async () => {
     const aot = await buildAot(petstore);
     expect(aot.getOperation({ method: "POST", path: "/pets" })?.pathPattern).toBe("/pets");

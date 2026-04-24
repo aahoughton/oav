@@ -59,3 +59,55 @@ export function detectOpenAPIVersion(spec: unknown): OpenAPIVersion | undefined 
   if (minor === "2") return "3.2";
   return undefined;
 }
+
+/**
+ * Why did {@link detectOpenAPIVersion} return `undefined`? Distinguishes
+ * category errors (missing or non-string `openapi` field, wrong major)
+ * from a valid-shaped 3.x spec with an unknown minor (forward-compat).
+ *
+ * @public
+ */
+export type UnknownVersionReason =
+  | { kind: "missing-openapi"; message: string }
+  | { kind: "wrong-major"; message: string }
+  | { kind: "ok-unknown-minor"; raw: string };
+
+/**
+ * Classify a spec's `openapi` field when {@link detectOpenAPIVersion}
+ * returned `undefined`. Shared by `createValidator` (runtime) and
+ * `compile-spec` (AOT) so both emit the same warning / error messages.
+ *
+ * @public
+ */
+export function classifyUnknownVersion(rawOpenapi: unknown): UnknownVersionReason {
+  if (typeof rawOpenapi !== "string") {
+    return {
+      kind: "missing-openapi",
+      message:
+        "expected an OpenAPI 3.x document — the `openapi` field must be a string " +
+        `like "3.1.0" (got ${typeof rawOpenapi}). ` +
+        'Swagger 2.0 documents use `swagger: "2.0"` instead and need to be converted ' +
+        "first (e.g. `npx swagger2openapi input.json -o output.json`). " +
+        "AsyncAPI / OpenRPC / other formats are different domains and oav doesn't handle them.",
+    };
+  }
+  const match = /^(\d+)\.(\d+)/.exec(rawOpenapi);
+  if (match === null) {
+    return {
+      kind: "missing-openapi",
+      message: `the \`openapi\` field \`"${rawOpenapi}"\` doesn't look like a semver version`,
+    };
+  }
+  const major = match[1]!;
+  if (major !== "3") {
+    const hint =
+      major === "2"
+        ? " Convert to 3.x first, e.g. `npx swagger2openapi input.json -o output.json`."
+        : "";
+    return {
+      kind: "wrong-major",
+      message: `oav supports OpenAPI 3.x; got openapi: "${rawOpenapi}".${hint}`,
+    };
+  }
+  return { kind: "ok-unknown-minor", raw: rawOpenapi };
+}

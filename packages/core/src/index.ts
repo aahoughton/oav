@@ -42,7 +42,12 @@ export {
 
 export { resolveJsonPointer } from "./json-pointer.js";
 
-export { detectOpenAPIVersion, type OpenAPIVersion } from "./version.js";
+export {
+  detectOpenAPIVersion,
+  classifyUnknownVersion,
+  type OpenAPIVersion,
+  type UnknownVersionReason,
+} from "./version.js";
 
 export type {
   ComponentsObject,

@@ -29,6 +29,7 @@ import {
   type Dialect,
   type RefResolver,
 } from "@oav/schema";
+import { classifyUnknownVersion } from "@oav/core";
 import type {
   HeaderObject,
   OpenAPIDocument,
@@ -82,7 +83,8 @@ const DIALECT_MAP: Record<StandaloneDialect, Dialect> = {
  */
 export function emitSpec(document: OpenAPIDocument, options: EmitSpecOptions = {}): string {
   const importPrefix = options.importPrefix ?? "@aahoughton/oav";
-  const dialect = resolveDialect(document, options.dialect);
+  const warnings: string[] = [];
+  const dialect = resolveDialect(document, options.dialect, warnings);
   const graph = resolve(document as unknown as SchemaOrBoolean);
   const refResolver: RefResolver = createRefResolver(graph);
 
@@ -251,7 +253,7 @@ export function emitSpec(document: OpenAPIDocument, options: EmitSpecOptions = {
     "",
     "// ---- detected version + warnings ----",
     `export const detectedVersion = ${JSON.stringify(detectVersionBucket(document))};`,
-    "export const warnings = Object.freeze([]);",
+    `export const warnings = Object.freeze(${JSON.stringify(warnings)});`,
     "",
     renderValidateRequest(),
     "",
@@ -496,11 +498,44 @@ function detectVersionBucket(document: OpenAPIDocument): "3.0" | "3.1" | "3.2" |
 function resolveDialect(
   document: OpenAPIDocument,
   override: StandaloneDialect | undefined,
+  warnings: string[],
 ): Dialect {
-  if (override !== undefined) return DIALECT_MAP[override];
   const bucket = detectVersionBucket(document);
+
+  // Explicit override short-circuits detection. Mirror the runtime's
+  // behaviour of surfacing a warning when the override is hiding a
+  // category error.
+  if (override !== undefined) {
+    if (bucket === undefined) {
+      const rawOpenapi = (document as { openapi?: unknown }).openapi;
+      const reason = classifyUnknownVersion(rawOpenapi);
+      if (reason.kind !== "ok-unknown-minor") {
+        warnings.push(
+          `compile-spec: ${reason.message}; compiling anyway because \`dialect\` was set`,
+        );
+      }
+    }
+    return DIALECT_MAP[override];
+  }
+
   if (bucket === "3.0") return oas30Dialect;
-  return openapi31Dialect; // 3.1, 3.2, or unknown
+  if (bucket === "3.1" || bucket === "3.2") return openapi31Dialect;
+
+  // bucket === undefined: classify and warn. We still fall back to the
+  // 3.1 dialect rather than throwing — AOT is a build-time pipeline and
+  // the consumer's `warnings` export is the appropriate signal.
+  const rawOpenapi = (document as { openapi?: unknown }).openapi;
+  const reason = classifyUnknownVersion(rawOpenapi);
+  if (reason.kind === "ok-unknown-minor") {
+    warnings.push(
+      `compile-spec: openapi: "${reason.raw}" is an unknown 3.x minor version; falling back to the 3.1 dialect`,
+    );
+  } else {
+    warnings.push(
+      `compile-spec: ${reason.message}; falling back to the 3.1 dialect (pass \`dialect\` to override)`,
+    );
+  }
+  return openapi31Dialect;
 }
 
 // ----- orchestration templates -----
