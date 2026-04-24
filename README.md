@@ -347,6 +347,10 @@ Ajv (draft versions, `$data`, async validation, etc.) see
 
 - `$dynamicRef` behaves like `$ref` with anchor lookup — no runtime
   dynamic-scope traversal.
+- `style: deepObject` query parameters support only single-level
+  nesting (`obj[key]=value`). OpenAPI 3.0–3.2 do not define nested
+  semantics; specs that rely on `obj[a][b]=value` should model the
+  flattened shape explicitly or use a different parameter style.
 - `pattern` keywords and `format: "regex"` compile to the JavaScript
   built-in `RegExp`, which has no execution timeout. If your OpenAPI
   spec is attacker-controlled (e.g. multi-tenant upload), a
