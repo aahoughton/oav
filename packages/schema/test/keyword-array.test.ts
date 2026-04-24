@@ -27,6 +27,25 @@ describe("array validation keywords", () => {
     expect(v.validate([1, 1, 1]).valid).toBe(true);
   });
 
+  it("uniqueItems spots mixed-type collisions via the primitive fast path", () => {
+    // Regression for #142 — the Map-backed lookup must treat each
+    // primitive identity (number, string, boolean, null) correctly.
+    const v = compile({ uniqueItems: true });
+    expect(v.validate([1, "1"]).valid).toBe(true); // different types, not equal
+    expect(v.validate([null, null]).valid).toBe(false);
+    expect(v.validate([true, false, true]).error?.params).toMatchObject({ duplicates: [0, 2] });
+  });
+
+  it("uniqueItems mixes primitives and objects without false matches", () => {
+    const v = compile({ uniqueItems: true });
+    // Primitives go through the Map; objects fall back to deepEqual.
+    // This shape stresses both paths in one call.
+    expect(v.validate([1, { a: 1 }, 2, { a: 2 }, "x"]).valid).toBe(true);
+    expect(v.validate([1, { a: 1 }, 2, { a: 1 }]).error?.params).toMatchObject({
+      duplicates: [1, 3],
+    });
+  });
+
   it("leaves non-arrays alone", () => {
     const v = compile({ maxItems: 1, minItems: 1, uniqueItems: true });
     expect(v.validate({ length: 5 }).valid).toBe(true);

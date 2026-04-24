@@ -40,6 +40,19 @@ export interface ValidatorDeps {
    * string's iterator and counts — O(1) memory.
    */
   countCodePoints: (s: string) => number;
+  /**
+   * Find the first duplicate in an array. Returns `{ a, b }` where
+   * `arr[a]` and `arr[b]` are structurally equal (JSON deep equality)
+   * and `a < b`, or `null` when every item is unique. Backs `uniqueItems`.
+   *
+   * Primitives use a `Map<value, firstIndex>` (O(N) total); objects and
+   * arrays fall back to pairwise `deepEqual` against the running list
+   * of seen non-primitive items (O(k²) in the object-count tail, which
+   * is unavoidable without canonicalisation). Mixed inputs get the
+   * primitive fast path for every primitive and the object fallback
+   * only for the object subset.
+   */
+  findDuplicate: (arr: readonly unknown[]) => { a: number; b: number } | null;
   formats: Map<string, (value: string) => boolean>;
   refs: Map<string, Validator>;
   /** User-registered keyword validators, keyed by keyword name. */
@@ -117,6 +130,38 @@ export function typeOf(value: unknown): string {
  *
  * @public
  */
+/**
+ * Find the first pair of structurally-equal elements in `arr`. Backs
+ * the `uniqueItems` keyword: primitives hit a `Map` fast path (O(N)),
+ * while objects/arrays fall back to pairwise `deepEqual` against the
+ * running list of seen non-primitives (O(k²) in the object-count
+ * tail, unavoidable without hashing).
+ *
+ * @param arr - The array to scan.
+ * @returns `{ a, b }` with `a < b` for the first duplicate pair, or
+ *          `null` when every element is unique.
+ *
+ * @public
+ */
+export function findDuplicate(arr: readonly unknown[]): { a: number; b: number } | null {
+  const primitives = new Map<unknown, number>();
+  const objects: Array<{ val: unknown; idx: number }> = [];
+  for (let i = 0; i < arr.length; i += 1) {
+    const v = arr[i];
+    if (v !== null && typeof v === "object") {
+      for (const o of objects) {
+        if (deepEqual(v, o.val)) return { a: o.idx, b: i };
+      }
+      objects.push({ val: v, idx: i });
+    } else {
+      const first = primitives.get(v);
+      if (first !== undefined) return { a: first, b: i };
+      primitives.set(v, i);
+    }
+  }
+  return null;
+}
+
 /**
  * Count the Unicode code points in `s` without allocating. Replaces
  * `[...s].length`, whose intermediate array blows up on large strings
@@ -213,6 +258,7 @@ export function createDeps(maxErrors: number = Number.POSITIVE_INFINITY): Valida
     typeOf,
     deepEqual,
     countCodePoints,
+    findDuplicate,
     wrapErrors,
     patterns,
     compilePattern(pattern: string): RegExp {
