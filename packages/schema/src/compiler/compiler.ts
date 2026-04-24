@@ -264,6 +264,13 @@ export interface CompileOptions {
    *   the CPU and memory cost of validating a huge payload is bounded.
    *
    * `maxErrors: 1` is the classic fast-fail mode.
+   *
+   * Must be a positive integer (>= 1) when supplied. A cap of 0 is
+   * effectively predicate mode (no errors collected, validation
+   * collapses to yes/no) — for that, prefer
+   * {@link CompileOptions.predicate} which compiles a fully
+   * specialised function with no error infrastructure at all.
+   * `compileSchema` throws on `maxErrors <= 0`.
    */
   maxErrors?: number;
   /**
@@ -448,6 +455,22 @@ export function compileSchema(
   }
 
   const maxErrors = options.maxErrors ?? Number.POSITIVE_INFINITY;
+  if (
+    options.maxErrors !== undefined &&
+    Number.isFinite(maxErrors) &&
+    (!Number.isInteger(maxErrors) || maxErrors < 1)
+  ) {
+    // Reject values that would silently neutralise validation. A cap
+    // of 0 collects nothing and would return `valid: true` for invalid
+    // data; non-integers are likely a typo. Predicate mode is the
+    // explicit way to skip error collection entirely. `Infinity` is
+    // degenerate (equivalent to omitting the option) but harmless,
+    // and existing callers may pass it explicitly — accept it.
+    throw new Error(
+      `compileSchema: \`maxErrors\` must be a positive integer (got ${String(options.maxErrors)}). ` +
+        "Use `predicate: true` if you want a yes/no validator with no error tree.",
+    );
+  }
   const predicate = options.predicate === true;
   if (predicate && Number.isFinite(maxErrors)) {
     // Predicate mode short-circuits at the first failure by design;

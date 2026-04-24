@@ -93,11 +93,17 @@ describe("maxErrors option", () => {
     expect(v.validate(42).truncated).toBeUndefined();
   });
 
-  it("maxErrors: 0 drops every error but still reports invalid", () => {
-    const v = compile({ type: "number" }, 0);
-    const r = v.validate("x");
-    expect(r.valid).toBe(true); // no errors collected; wrap returns null
-    // A cap of 0 effectively disables error reporting.
-    // (Users who want fast-fail should pass 1.)
+  it("rejects maxErrors: 0 at compile time", () => {
+    // A cap of 0 collects no errors and would silently return
+    // `valid: true` for invalid data — a correctness trap. Predicate
+    // mode is the explicit way to skip error collection entirely.
+    expect(() => compile({ type: "number" }, 0)).toThrow(
+      /must be a positive integer.*Use `predicate: true`/,
+    );
+  });
+
+  it("rejects negative and non-integer maxErrors", () => {
+    expect(() => compile({ type: "number" }, -1)).toThrow(/must be a positive integer/);
+    expect(() => compile({ type: "number" }, 1.5)).toThrow(/must be a positive integer/);
   });
 });

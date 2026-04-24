@@ -972,3 +972,28 @@ describe("validateRequest", () => {
     expect(leafCodes(err)).toContain("minLength");
   });
 });
+
+describe("createValidator option validation", () => {
+  it("rejects maxErrors: 0 eagerly at construction", () => {
+    // Lazy compile would otherwise defer this until the first
+    // request and surface as a per-op compile error. Surface it at
+    // construction so misconfiguration fails loudly.
+    expect(() => createValidator(petSpec(), { maxErrors: 0 })).toThrow(
+      /must be a positive integer/,
+    );
+  });
+
+  it("rejects negative and non-integer maxErrors", () => {
+    expect(() => createValidator(petSpec(), { maxErrors: -1 })).toThrow(
+      /must be a positive integer/,
+    );
+    expect(() => createValidator(petSpec(), { maxErrors: 1.5 })).toThrow(
+      /must be a positive integer/,
+    );
+  });
+
+  it("accepts maxErrors: 1 (fast-fail) and finite positive integers", () => {
+    expect(() => createValidator(petSpec(), { maxErrors: 1 })).not.toThrow();
+    expect(() => createValidator(petSpec(), { maxErrors: 100 })).not.toThrow();
+  });
+});
