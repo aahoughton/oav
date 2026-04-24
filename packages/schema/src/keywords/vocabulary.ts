@@ -30,14 +30,19 @@ import {
   propertyNamesKeyword,
 } from "./properties.js";
 import {
+  contentEncodingKeyword,
+  contentMediaTypeKeyword,
+  contentSchemaKeyword,
   defaultKeyword,
   deprecatedKeyword,
   descriptionKeyword,
   exampleKeyword,
   examplesKeyword,
+  externalDocsKeyword,
   readOnlyKeyword,
   titleKeyword,
   writeOnlyKeyword,
+  xmlKeyword,
 } from "./meta-data.js";
 import {
   anchorKeyword,
@@ -71,22 +76,26 @@ import type { Dialect, Vocabulary } from "./types.js";
 export type { Dialect, DialectRules } from "./types.js";
 export {
   APPLICATOR_VOCAB,
+  CONTENT_VOCAB,
   CORE_VALIDATION_VOCAB,
   CORE_VOCAB,
   FORMAT_ASSERTION_VOCAB,
   FORMAT_VOCAB,
   META_DATA_VOCAB,
   OAS30_VOCAB,
+  OPENAPI_META_DATA_VOCAB,
   UNEVALUATED_VOCAB,
 } from "./vocabulary-uris.js";
 import {
   APPLICATOR_VOCAB,
+  CONTENT_VOCAB,
   CORE_VALIDATION_VOCAB,
   CORE_VOCAB,
   FORMAT_ASSERTION_VOCAB,
   FORMAT_VOCAB,
   META_DATA_VOCAB,
   OAS30_VOCAB,
+  OPENAPI_META_DATA_VOCAB,
   UNEVALUATED_VOCAB,
 } from "./vocabulary-uris.js";
 
@@ -226,14 +235,29 @@ export const metaDataVocabulary: Vocabulary = {
 
 /**
  * OpenAPI-specific annotations layered on top of
- * {@link metaDataVocabulary}. Currently carries only `example` (single),
- * which OpenAPI permits but JSON Schema 2020-12 does not.
+ * {@link metaDataVocabulary}. Carries the singular `example`
+ * (deprecated in 3.1 but widely used), `xml` (XML serialisation hints
+ * on Schema Objects), and `externalDocs` (pointer to external docs).
+ * All annotation-only.
  *
  * @public
  */
 export const openapiMetaDataVocabulary: Vocabulary = {
-  uri: "https://spec.openapis.org/oas/vocab/meta-data",
-  keywords: [exampleKeyword],
+  uri: OPENAPI_META_DATA_VOCAB,
+  keywords: [exampleKeyword, xmlKeyword, externalDocsKeyword],
+};
+
+/**
+ * The JSON Schema 2020-12 Content vocabulary: `contentEncoding`,
+ * `contentMediaType`, `contentSchema`. The spec marks the content
+ * vocabulary as not required to validate; oav treats all three as
+ * pure annotations so schemas using them lint clean in strict mode.
+ *
+ * @public
+ */
+export const contentVocabulary: Vocabulary = {
+  uri: CONTENT_VOCAB,
+  keywords: [contentEncodingKeyword, contentMediaTypeKeyword, contentSchemaKeyword],
 };
 
 /**
@@ -252,6 +276,7 @@ export const defaultVocabularies: Vocabulary[] = [
   unevaluatedVocabulary,
   formatVocabulary,
   metaDataVocabulary,
+  contentVocabulary,
 ];
 
 /**
@@ -305,6 +330,7 @@ export const openapi31Dialect: Dialect = {
     formatVocabulary,
     metaDataVocabulary,
     openapiMetaDataVocabulary,
+    contentVocabulary,
   ],
   rules: { refSuppressesSiblings: false },
 };
@@ -329,6 +355,7 @@ export const oas30Dialect: Dialect = {
     formatVocabulary,
     metaDataVocabulary,
     openapiMetaDataVocabulary,
+    contentVocabulary,
   ],
   rules: { refSuppressesSiblings: true },
 };

@@ -11,6 +11,11 @@ export const FORMAT_VOCAB = "https://json-schema.org/draft/2020-12/vocab/format-
 export const FORMAT_ASSERTION_VOCAB =
   "https://json-schema.org/draft/2020-12/vocab/format-assertion";
 export const META_DATA_VOCAB = "https://json-schema.org/draft/2020-12/vocab/meta-data";
+export const CONTENT_VOCAB = "https://json-schema.org/draft/2020-12/vocab/content";
 
 // Not a JSON-Schema-spec URI; used only to group the OpenAPI 3.0 keyword set.
 export const OAS30_VOCAB = "https://spec.openapis.org/oas/3.0/vocab/schema";
+
+// Not a JSON-Schema-spec URI; groups OpenAPI 3.x annotation keywords
+// (`example`, `xml`, `externalDocs`) shared across 3.0 / 3.1 / 3.2.
+export const OPENAPI_META_DATA_VOCAB = "https://spec.openapis.org/oas/vocab/meta-data";

@@ -8,13 +8,13 @@
  * `annotation: true` flag.
  */
 
-import { META_DATA_VOCAB } from "./vocabulary-uris.js";
+import { CONTENT_VOCAB, META_DATA_VOCAB, OPENAPI_META_DATA_VOCAB } from "./vocabulary-uris.js";
 import type { KeywordDefinition } from "./types.js";
 
-function annotationKeyword(name: string): KeywordDefinition {
+function annotationKeyword(name: string, vocabulary: string = META_DATA_VOCAB): KeywordDefinition {
   return {
     keyword: name,
-    vocabulary: META_DATA_VOCAB,
+    vocabulary,
     annotation: true,
     compile(): void {
       // intentionally empty — pure annotation
@@ -97,4 +97,51 @@ export const examplesKeyword = annotationKeyword("examples");
  *
  * @public
  */
-export const exampleKeyword = annotationKeyword("example");
+export const exampleKeyword = annotationKeyword("example", OPENAPI_META_DATA_VOCAB);
+
+/**
+ * OpenAPI Schema Object's `xml` annotation. Describes how a property
+ * serialises to XML (element name, namespace, attribute placement).
+ * Annotation-only for JSON validation; oav doesn't emit XML.
+ * Spec-defined on the OpenAPI Schema Object across 3.0 / 3.1 / 3.2.
+ *
+ * @public
+ */
+export const xmlKeyword = annotationKeyword("xml", OPENAPI_META_DATA_VOCAB);
+
+/**
+ * OpenAPI Schema Object's `externalDocs` annotation — pointer to
+ * additional external documentation for this schema. Annotation-only.
+ * Spec-defined fixed field on the Schema Object across 3.0 / 3.1 / 3.2.
+ *
+ * @public
+ */
+export const externalDocsKeyword = annotationKeyword("externalDocs", OPENAPI_META_DATA_VOCAB);
+
+/**
+ * JSON Schema 2020-12 `contentEncoding` — declares the encoding (e.g.
+ * `base64`) used for a string value. The spec marks the content
+ * vocabulary as not required to validate; oav treats it as
+ * annotation-only.
+ *
+ * @public
+ */
+export const contentEncodingKeyword = annotationKeyword("contentEncoding", CONTENT_VOCAB);
+
+/**
+ * JSON Schema 2020-12 `contentMediaType` — declares the media type
+ * (e.g. `application/jwt`) of a string value's content. Annotation-only
+ * companion to {@link contentEncodingKeyword}.
+ *
+ * @public
+ */
+export const contentMediaTypeKeyword = annotationKeyword("contentMediaType", CONTENT_VOCAB);
+
+/**
+ * JSON Schema 2020-12 `contentSchema` — schema describing the structure
+ * of decoded content (after applying `contentEncoding` and parsing
+ * `contentMediaType`). Annotation-only — oav doesn't decode + re-validate.
+ *
+ * @public
+ */
+export const contentSchemaKeyword = annotationKeyword("contentSchema", CONTENT_VOCAB);
