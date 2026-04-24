@@ -236,6 +236,25 @@ describe("compile-spec --requests-only", () => {
 });
 
 describe("compile-spec --only", () => {
+  it("returns exit code 2 when the spec file can't be loaded", async () => {
+    // No `spec.json` in the memory reader → loadSpec throws → exit 2.
+    // (Exit 3 is reserved for compile/bundle failures after a successful
+    // load.) Pin the distinction so a future refactor can't collapse them.
+    const mem = memoryIo([]);
+    const res = await compileSpecCommand(
+      {
+        spec: "spec.json",
+        overlays: [],
+        output: "out.mjs",
+        importPrefix: "@oav",
+        resolveDir: RESOLVE_DIR,
+      },
+      mem.io,
+    );
+    expect(res.exitCode).toBe(2);
+    expect(mem.stderr.value).toContain("compile-spec:");
+  });
+
   it("drops unincluded ops from the router (→ route error on call)", async () => {
     // Include only POST /pets; GET /pets is dropped.
     const aot = await buildAot(petstore, {

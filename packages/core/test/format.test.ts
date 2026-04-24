@@ -49,6 +49,11 @@ describe("formatText", () => {
     for (const line of lines) {
       expect(line).not.toContain("must be boolean");
     }
+    // Boundary: depth==maxDepth must still render (the rule is `depth >
+    // maxDepth`, not `>=`). Pin it so an off-by-one regression here would
+    // be caught.
+    expect(lines).toContain("    body — branch 0 (Cat) failed [branch]");
+    expect(lines).toContain("    body — branch 1 (Dog) failed [branch]");
   });
 
   it("allows overriding the indent string", () => {
