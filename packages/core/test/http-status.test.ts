@@ -83,6 +83,17 @@ describe("httpStatusFor", () => {
     expect(httpStatusFor(err)).toBe(401);
   });
 
+  it("prefers 401 (security) over 500 (status) when both leaves are present", () => {
+    // Same gate ladder: auth runs before any response-status check, so
+    // 401 must win even when a status mismatch is also present in the
+    // tree (e.g. composed validations bubbled up together).
+    const err = createBranchError("response", [], "response validation failed", [
+      createLeafError("status", ["status"], "no matching status", { status: 200 }),
+      createLeafError("security", ["security"], "missing credential", {}),
+    ]);
+    expect(httpStatusFor(err)).toBe(401);
+  });
+
   it("applies overrides for individual slots", () => {
     const err = createBranchError("request", [], "request validation failed", [
       createLeafError("required", ["body"], "missing name", { missing: "name" }),

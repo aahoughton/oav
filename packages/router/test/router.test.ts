@@ -278,6 +278,9 @@ describe("router", () => {
     if (m?.kind === "match") {
       expect(m.operation.operationId).toBe("byId");
       expect(m.pathPattern).toBe("/items/{id}");
+      // Falling through must still capture the matched template's params,
+      // otherwise the operation would receive an empty / stale param map.
+      expect(m.pathParams).toEqual({ id: "42" });
     }
   });
 });

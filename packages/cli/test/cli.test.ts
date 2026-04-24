@@ -141,6 +141,114 @@ describe("buildProgram — argv-level", () => {
       runCli(["compile-schema", "schema.json", "--dialect", "draft-07"], mem),
     ).rejects.toThrow(/unknown dialect: draft-07/);
   });
+
+  it("validate --request reads an .http file and exits 0 on success", async () => {
+    const httpFile = "POST /pets HTTP/1.1\nContent-Type: application/json\n\n" + '{"name":"Fido"}';
+    const mem = memoryIo([["spec.json", spec]], [["req.http", httpFile]]);
+    const out = await runCli(["validate", "spec.json", "--request", "req.http"], mem);
+    expect(out.exitCode).toBe(0);
+    expect(out.stderr).toBe("");
+  });
+
+  it("validate --request surfaces validation errors with exit 1", async () => {
+    const httpFile =
+      "POST /pets HTTP/1.1\nContent-Type: application/json\n\n" + '{"wrong":"field"}';
+    const mem = memoryIo([["spec.json", spec]], [["req.http", httpFile]]);
+    const out = await runCli(["validate", "spec.json", "--request", "req.http"], mem);
+    expect(out.exitCode).toBe(1);
+    expect(out.stdout).toContain("required");
+  });
+
+  it("validate --response --status validates a response body", async () => {
+    // Spec with a typed 200 response so the validator has something to
+    // check. The base `spec` only has `description: ok` on responses.
+    const respSpec = {
+      ...spec,
+      paths: {
+        "/pets/{id}": {
+          get: {
+            parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+            responses: {
+              "200": {
+                description: "ok",
+                content: {
+                  "application/json": {
+                    schema: {
+                      type: "object",
+                      required: ["name"],
+                      properties: { name: { type: "string" } },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    };
+    const okMem = memoryIo(
+      [["spec.json", respSpec]],
+      [["body.json", JSON.stringify({ name: "Fido" })]],
+    );
+    const ok = await runCli(
+      [
+        "validate",
+        "spec.json",
+        "--path",
+        "GET /pets/42",
+        "--body",
+        "body.json",
+        "--response",
+        "--status",
+        "200",
+      ],
+      okMem,
+    );
+    expect(ok.exitCode).toBe(0);
+
+    const failMem = memoryIo([["spec.json", respSpec]], [["body.json", JSON.stringify({})]]);
+    const fail = await runCli(
+      [
+        "validate",
+        "spec.json",
+        "--path",
+        "GET /pets/42",
+        "--body",
+        "body.json",
+        "--response",
+        "--status",
+        "200",
+      ],
+      failMem,
+    );
+    expect(fail.exitCode).toBe(1);
+    expect(failMem.stdout.value).toContain("required");
+  });
+
+  it("validate --format json on the error path emits parseable JSON", async () => {
+    const mem = memoryIo([["spec.json", spec]], [["body.json", JSON.stringify({})]]);
+    const out = await runCli(
+      ["validate", "spec.json", "--path", "POST /pets", "--body", "body.json", "--format", "json"],
+      mem,
+    );
+    expect(out.exitCode).toBe(1);
+    // stdout for the error tree (exit code is what flags failure).
+    const parsed = JSON.parse(out.stdout);
+    expect(parsed.code).toBeDefined();
+  });
+
+  it("validate --format flat on the error path emits one error per line", async () => {
+    const mem = memoryIo([["spec.json", spec]], [["body.json", JSON.stringify({})]]);
+    const out = await runCli(
+      ["validate", "spec.json", "--path", "POST /pets", "--body", "body.json", "--format", "flat"],
+      mem,
+    );
+    expect(out.exitCode).toBe(1);
+    const lines = out.stdout.split("\n").filter((l) => l.length > 0);
+    expect(lines.length).toBeGreaterThan(0);
+    // Flat format puts each leaf on its own line — no nested indentation.
+    for (const line of lines) expect(line.startsWith(" ")).toBe(false);
+  });
 });
 
 // The compile-schema command always bundles via esbuild. These tests

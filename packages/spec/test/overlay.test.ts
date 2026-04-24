@@ -91,6 +91,30 @@ describe("applyOverlays", () => {
     expect(pet).toMatchObject({ allOf: expect.any(Array) });
   });
 
+  it("extendSchemas inserts the extension verbatim when the target schema doesn't exist", () => {
+    // Pin the silent-create behaviour explicitly so a future "throw on
+    // missing target" change is a deliberate decision, not an accident.
+    const patched = applyOverlays(base(), [
+      { extendSchemas: { NewType: { type: "string", minLength: 1 } } },
+    ]);
+    expect(patched.components?.schemas?.["NewType"]).toEqual({
+      type: "string",
+      minLength: 1,
+    });
+  });
+
+  it("overrides targeting an unknown (non-wildcard) path throws", () => {
+    expect(() =>
+      applyOverlays(base(), [
+        {
+          overrides: {
+            "/missing": { operations: { get: { upsertParameters: [] } } },
+          },
+        },
+      ]),
+    ).toThrow(/overlay override targets unknown path/);
+  });
+
   it("replaceSchemas fully replaces the entry", () => {
     const patched = applyOverlays(base(), [{ replaceSchemas: { Pet: { type: "string" } } }]);
     expect(patched.components?.schemas?.["Pet"]).toEqual({ type: "string" });

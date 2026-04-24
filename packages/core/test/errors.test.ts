@@ -33,6 +33,17 @@ describe("createError", () => {
     expect(err.children[0]).toBe(child);
     expect(err.params).toEqual({ matchCount: 0 });
   });
+
+  it("snapshots `path` so later caller-side mutation can't corrupt the error", () => {
+    // Generated validators reuse one mutable path array across traversal
+    // (push/pop per depth). Without a snapshot the error would silently
+    // point at whatever path the validator landed on next.
+    const livePath: (string | number)[] = ["body", "items", 0, "name"];
+    const err = createError({ code: "type", path: livePath, message: "x" });
+    livePath.push("mutation");
+    livePath[3] = "zzz";
+    expect(err.path).toEqual(["body", "items", 0, "name"]);
+  });
 });
 
 describe("createLeafError", () => {
