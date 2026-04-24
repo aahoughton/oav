@@ -30,10 +30,15 @@ external dev-dependencies (benchmark runners, competing validators,
 
 ## Architecture, package by package
 
-- **`@oav/core`** — pure types. `ValidationError` tree (children always an
-  array), path segments as `(string | number)[]`, and three formatters
-  (`formatText` / `formatJson` / `formatFlat`). Everything else depends
-  on this.
+- **`@oav/core`** — the shared error-tree model plus the helpers every
+  other package and most consumers need. `ValidationError` tree
+  (children always an array), path segments as `(string | number)[]`,
+  the three formatters (`formatText` / `formatJson` / `formatFlat`)
+  and the named-format dispatch (`formatError`, `formatErrors`,
+  `KNOWN_OUTPUT_FORMATS`), `httpStatusFor` / `allowHeaderFor` /
+  `toProblemDetails` for HTTP framing, RFC 6901 `resolveJsonPointer`,
+  shared OpenAPI / HTTP types, and `detectOpenAPIVersion`. Everything
+  else depends on this; nothing here depends on the others.
 - **`@oav/schema`** — the JSON Schema 2020-12 compiler. Walks a schema,
   dispatches each keyword via `KeywordDefinition.compile(ctx)`, assembles
   the generated JS source, and `eval`s it through `new Function(deps, src)`.
@@ -53,12 +58,17 @@ external dev-dependencies (benchmark runners, competing validators,
 - **`@oav/router`** — a sorted-list route matcher. Routes are sorted once
   at construction (more-literal segments first); `match` is a linear scan,
   O(routes × segments). Cheap for typical OpenAPI spec sizes.
-- **`@oav/validator`** — orchestrator. Pre-compiles every operation's
-  parameter/body/response schemas, does content-type negotiation and
-  parameter deserialization (style + explode), and returns a
-  `ValidationError` tree. Subtrees returned from sub-validators are
-  prefixed with the HTTP location (`body`, `query`, `header`, ...) via
-  the `startPath` argument to `validate(data, startPath)`.
+- **`@oav/validator`** — the HTTP orchestrator. `createValidator(spec,
+options)` returns an `OavValidator` exposing `validateRequest(req)`,
+  `validateResponse(req, res)`, and `getOperation({ method, path })`.
+  Per-operation parameter / body / response schemas are pre-compiled
+  on first access; the validator handles route matching, content-type
+  negotiation, parameter deserialization (style + explode), and
+  response-status matching. Subtrees from each sub-validator are
+  prefixed with the HTTP location (`body`, `query`, `header`, ...) so
+  error paths are unambiguous. Also exports the Fetch-API adapter
+  (`httpRequestFromFetch`, `httpResponseFromFetch`,
+  `readBodyFromFetch`) for Next.js / Hono / Bun / Deno consumers.
 - **`@oav/cli`** — thin commander wrapper. No business logic beyond arg
   parsing, I/O, and exit codes.
 
@@ -168,8 +178,8 @@ without forking the switch.
 ## Error-collection modes
 
 By default the compiler collects every error into a tree. For very
-large payloads (think "10 MB JSON array where every element is wrong
-the same way") that's wasted CPU and memory. `compileSchema(schema,
+large payloads (e.g. a 10 MB JSON array where every element fails the
+same way) that's wasted CPU and memory. `compileSchema(schema,
 { maxErrors: N })` — also exposed on `@oav/validator`'s
 `createValidator` — caps the tree at N leaves and short-circuits the
 hot loops once the budget is exhausted. `maxErrors: 1` is the classic
@@ -178,6 +188,11 @@ tells consumers their report is partial. Codegen is specialised: when
 `maxErrors` is left unset, the generated source is identical to before
 (no budget checks, no `truncated` tracking) — zero overhead for
 callers who don't opt in.
+
+`maxErrors` must be a positive integer (>= 1). `compileSchema` and
+`createValidator` both throw on `0`, negative values, or non-integers;
+predicate mode (below) is the explicit way to opt out of error
+collection entirely.
 
 The budget semantics show up at the keyword-authoring level through
 the `kind` argument on `ctx.emitError` / `ctx.errorStatement`:
