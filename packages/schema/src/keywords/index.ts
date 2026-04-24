@@ -67,14 +67,17 @@ export {
 export { typeKeyword } from "./type.js";
 export {
   APPLICATOR_VOCAB,
+  CONTENT_VOCAB,
   CORE_VALIDATION_VOCAB,
   CORE_VOCAB,
   FORMAT_ASSERTION_VOCAB,
   FORMAT_VOCAB,
   META_DATA_VOCAB,
   OAS30_VOCAB,
+  OPENAPI_META_DATA_VOCAB,
   UNEVALUATED_VOCAB,
   applicatorVocabulary,
+  contentVocabulary,
   coreVocabulary,
   defaultVocabularies,
   formatAssertionVocabulary,
@@ -89,14 +92,19 @@ export {
   validationVocabulary,
 } from "./vocabulary.js";
 export {
+  contentEncodingKeyword,
+  contentMediaTypeKeyword,
+  contentSchemaKeyword,
   defaultKeyword,
   deprecatedKeyword,
   descriptionKeyword,
   exampleKeyword,
   examplesKeyword,
+  externalDocsKeyword,
   readOnlyKeyword,
   titleKeyword,
   writeOnlyKeyword,
+  xmlKeyword,
 } from "./meta-data.js";
 export {
   oas30ExclusiveMaximumKeyword,

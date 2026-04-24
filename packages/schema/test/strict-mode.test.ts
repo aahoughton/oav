@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import type { SchemaOrBoolean } from "@oav/core";
 import { compileSchema } from "../src/compiler/compiler.js";
-import { jsonSchemaDialect } from "../src/keywords/vocabulary.js";
+import { jsonSchemaDialect, oas30Dialect, openapi31Dialect } from "../src/keywords/vocabulary.js";
 
 describe("strict mode", () => {
   const lint = (schema: SchemaOrBoolean, mode?: "off" | "warn-partial" | "strict") =>
@@ -46,6 +46,39 @@ describe("strict mode", () => {
       "strict",
     );
     expect(issues).toEqual([]);
+  });
+
+  it('"strict" tolerates the JSON Schema 2020-12 content vocabulary', () => {
+    const issues = lint(
+      {
+        type: "string",
+        contentEncoding: "base64",
+        contentMediaType: "application/jwt",
+        contentSchema: { type: "object" },
+      } as unknown as SchemaOrBoolean,
+      "strict",
+    );
+    expect(issues).toEqual([]);
+  });
+
+  it('"strict" tolerates `xml` and `externalDocs` under the OpenAPI dialects', () => {
+    const schema = {
+      type: "string",
+      xml: { name: "Msg" },
+      externalDocs: { url: "https://example.com/docs" },
+    } as unknown as SchemaOrBoolean;
+    // Base JSON Schema dialect does NOT recognise `xml` / `externalDocs`
+    // — they're OpenAPI extensions, not core JSON Schema keywords.
+    const baseIssues = compileSchema(schema, {
+      dialect: jsonSchemaDialect,
+      strict: "strict",
+    }).stats.strictIssues;
+    expect(baseIssues.map((i) => i.keyword).sort()).toEqual(["externalDocs", "xml"]);
+    // Both OpenAPI dialects DO recognise them.
+    for (const dialect of [openapi31Dialect, oas30Dialect]) {
+      const issues = compileSchema(schema, { dialect, strict: "strict" }).stats.strictIssues;
+      expect(issues).toEqual([]);
+    }
   });
 
   it('"strict" tolerates the standard $-prefixed metadata keys', () => {
