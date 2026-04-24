@@ -28,6 +28,18 @@ export interface ValidatorDeps {
    * under both modes.
    */
   compilePattern: (pattern: string) => RegExp;
+  /**
+   * Count the Unicode code points in `s` without allocating an
+   * intermediate array. Used by `minLength` / `maxLength`, which the
+   * JSON Schema 2020-12 spec requires to count code points (surrogate
+   * pairs count as one).
+   *
+   * The obvious `[...s].length` expression builds a one-string-per-code-point
+   * array just to read its length; on a 10 MB payload that allocates far
+   * more than the `maxLength` check can refuse. This helper walks the
+   * string's iterator and counts — O(1) memory.
+   */
+  countCodePoints: (s: string) => number;
   formats: Map<string, (value: string) => boolean>;
   refs: Map<string, Validator>;
   /** User-registered keyword validators, keyed by keyword name. */
@@ -105,6 +117,29 @@ export function typeOf(value: unknown): string {
  *
  * @public
  */
+/**
+ * Count the Unicode code points in `s` without allocating. Replaces
+ * `[...s].length`, whose intermediate array blows up on large strings
+ * before the `maxLength` check can reject them.
+ *
+ * @param s - The string to measure.
+ * @returns The number of Unicode code points.
+ *
+ * @example
+ * ```ts
+ * countCodePoints("hi");     // 2
+ * countCodePoints("🎉");     // 1 (a single astral code point)
+ * ```
+ *
+ * @public
+ */
+export function countCodePoints(s: string): number {
+  let n = 0;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- iterator drives the counter
+  for (const _ of s) n++;
+  return n;
+}
+
 export function deepEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (typeof a !== typeof b) return false;
@@ -177,6 +212,7 @@ export function createDeps(maxErrors: number = Number.POSITIVE_INFINITY): Valida
     createBranchError,
     typeOf,
     deepEqual,
+    countCodePoints,
     wrapErrors,
     patterns,
     compilePattern(pattern: string): RegExp {
