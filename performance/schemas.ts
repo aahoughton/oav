@@ -135,6 +135,36 @@ const composition: PerfSchema = {
   ],
 };
 
+// 6. Unique-primitives — pure `uniqueItems` pressure on a large array.
+// Picks up any regression to the primitive-fast-path fix; a naïve
+// O(N^2) implementation would show a sharp compile/validate split.
+const uniquePrimitives: PerfSchema = {
+  name: "unique-primitives",
+  description: "array of 500 unique strings with uniqueItems; O(N) primitive fast path",
+  schema: {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    type: "array",
+    uniqueItems: true,
+    items: { type: "string" },
+  },
+  validInputs: [makeUniqueStrings(500)],
+  invalidInputs: [makeDuplicateStrings(500)],
+};
+
+function makeUniqueStrings(n: number): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < n; i += 1) out.push(`item-${i}`);
+  return out;
+}
+
+function makeDuplicateStrings(n: number): string[] {
+  const out = makeUniqueStrings(n);
+  // Put the duplicate in the middle so the scan can't trivially
+  // short-circuit on the first pair.
+  out[Math.floor(n / 2)] = out[0]!;
+  return out;
+}
+
 // 5. Array-heavy — exercises the hot per-item validation loop.
 const arrayHeavy: PerfSchema = {
   name: "array-heavy",
@@ -170,4 +200,11 @@ function makeInvalidArray(n: number): Array<Record<string, unknown>> {
   return out;
 }
 
-export const perfSchemas: PerfSchema[] = [tiny, petstore, tree, composition, arrayHeavy];
+export const perfSchemas: PerfSchema[] = [
+  tiny,
+  petstore,
+  tree,
+  composition,
+  arrayHeavy,
+  uniquePrimitives,
+];

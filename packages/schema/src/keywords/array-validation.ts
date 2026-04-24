@@ -59,23 +59,13 @@ export const uniqueItemsKeyword: KeywordDefinition = {
   vocabulary: CORE_VALIDATION_VOCAB,
   compile(ctx: KeywordCompileContext): void {
     if (ctx.schema !== true) return;
-    const i = ctx.gen.scope.name("i");
-    const j = ctx.gen.scope.name("j");
     const dup = ctx.gen.scope.name("dup");
     ctx.gen.if(`Array.isArray(${ctx.data})`, (g) => {
-      g.let(dup, "null");
-      g.line(`outer_${dup}: for (let ${i} = 0; ${i} < ${ctx.data}.length; ${i} += 1) {`);
-      g.indent();
-      g.line(`for (let ${j} = ${i} + 1; ${j} < ${ctx.data}.length; ${j} += 1) {`);
-      g.indent();
-      g.if(`${NAMES.DEPS}.deepEqual(${ctx.data}[${i}], ${ctx.data}[${j}])`, (gi) => {
-        gi.line(`${dup} = { a: ${i}, b: ${j} };`);
-        gi.line(`break outer_${dup};`);
-      });
-      g.dedent();
-      g.line(`}`);
-      g.dedent();
-      g.line(`}`);
+      // Runtime helper does one Map-backed scan for primitives plus a
+      // pairwise deepEqual sweep of object/array items. Replaces the
+      // previous inline O(N^2) nested loop; generated code stays tiny
+      // and V8 gets to monomorphise the hot helper.
+      g.const(dup, `${NAMES.DEPS}.findDuplicate(${ctx.data})`);
       g.if(`${dup} !== null`, () => {
         // Duplicate indices live in params.duplicates; keep the
         // message as a baked literal to avoid per-error template
