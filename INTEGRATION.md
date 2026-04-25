@@ -534,6 +534,50 @@ rewritten to an "accept anything" schema before compile, so a Buffer
 or Uint8Array passes without a string-type error. `format: "byte"`
 (base64) still validates as a string.
 
+#### Global validator + per-route multer
+
+The recipe above is per-route inline — multer and the validator both
+live inside the route handler. That works for single-upload-route
+apps. For an app with many routes and one (or a few) upload
+endpoints, a more idiomatic shape is **multer mounted at the route
+prefix, validator mounted globally**, with `toHttpRequest`
+synthesizing the spec-shaped body from `req.files`:
+
+```ts
+import multer from "multer";
+import { httpRequestFromExpress, validateRequests } from "@aahoughton/oav-express4";
+
+const upload = multer({ storage: multer.memoryStorage() });
+
+// Mount multer at the route prefix that needs it, before the global validator.
+app.use("/uploads", upload.any());
+
+// Global validator with toHttpRequest synthesizing body from req.files.
+app.use(
+  validateRequests(validator, {
+    toHttpRequest: (req) => {
+      const httpReq = httpRequestFromExpress(req);
+      const files = req.files as Express.Multer.File[] | undefined;
+      if (files && files.length > 0) {
+        // Match the spec's binary-field shape — array if many, single buffer if one.
+        // Adjust to your spec's actual field shape (named-files object, single-file
+        // property, etc.).
+        httpReq.body = files.length === 1 ? files[0]?.buffer : files.map((f) => f.buffer);
+      }
+      return httpReq;
+    },
+  }),
+);
+```
+
+The `toHttpRequest` extension point is a general seam for **any
+"reshape what oav sees"** use case — synthesizing a body from
+`req.files`, normalizing an empty body to `{}`, merging headers
+from an upstream proxy, anything that wants to live above the
+extraction layer without bypassing it. The empty-body normalization
+recipe earlier in this doc and this multer-body-synthesis recipe
+are two examples of the same pattern.
+
 **Watch out for `oneOf` / `anyOf` with binary fields.** The "accept
 anything" rewrite means every binary branch matches every input. A
 common spec pattern for "one file or many" —

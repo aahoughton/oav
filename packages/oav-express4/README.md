@@ -18,6 +18,8 @@ npm install @aahoughton/oav @aahoughton/oav-express4 express
 
 `express` is a peer dep — your app's existing install satisfies it.
 
+> **YAML specs.** `@aahoughton/oav-core` is JSON-only by design (zero runtime deps). If your spec is YAML, either install [`@aahoughton/oav`](https://www.npmjs.com/package/@aahoughton/oav) instead — it bundles the YAML readers and the CLI — or install `yaml` separately and parse the spec yourself before passing the parsed object to `createValidator`.
+
 ## Quick start
 
 ```ts
@@ -235,6 +237,35 @@ The middleware awaits the returned promise; rejections route to `next(err)`.
 ### Per-route mounting
 
 `validateRequests(...)` is route-aware (it derives the operation from method+path). Mount it once at the app level — per-route mounting is redundant and may cause double-validation under nested routers.
+
+### Global validator + per-route multer (file uploads)
+
+When the validator is mounted globally and one or a few routes accept file uploads via multer, mount multer at the route prefix that needs it (upstream of the global validator) and use `toHttpRequest` to synthesize the spec-shaped body from `req.files`:
+
+```ts
+import multer from "multer";
+import { httpRequestFromExpress, validateRequests } from "@aahoughton/oav-express4";
+
+const upload = multer({ storage: multer.memoryStorage() });
+app.use("/uploads", upload.any());
+
+app.use(
+  validateRequests(validator, {
+    toHttpRequest: (req) => {
+      const httpReq = httpRequestFromExpress(req);
+      const files = req.files as Express.Multer.File[] | undefined;
+      if (files && files.length > 0) {
+        httpReq.body = files.length === 1 ? files[0]?.buffer : files.map((f) => f.buffer);
+      }
+      return httpReq;
+    },
+  }),
+);
+```
+
+`toHttpRequest` is the general "reshape what oav sees" seam — synthesizing body from files, normalizing empty bodies, merging headers from an upstream proxy, anything that lives above the extraction layer. The empty-body normalization recipe higher in this README and this multer recipe are two examples of the same pattern.
+
+For per-route inline multer (validator called from inside the route handler) and the full multer recipe with text-field reassembly, see the [INTEGRATION.md file uploads section](https://github.com/aahoughton/oav/blob/main/INTEGRATION.md#file-uploads-with-multer).
 
 ## See also
 
