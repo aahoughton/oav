@@ -165,15 +165,26 @@ cross-cutting recipes below.
 
 ### Express 5
 
-> **Adapter coming.** `oav-express5` is tracked in
-> [#194](https://github.com/aahoughton/oav/issues/194) and will ship
-> the same `validateRequests` / `httpRequestFromExpress` /
-> `renderProblemDetails` surface as `oav-express4`, leveraging
-> Express 5's promise-native middleware. Until then, the inline
-> recipe below covers the same ground.
+The [`@aahoughton/oav-express5`](https://www.npmjs.com/package/@aahoughton/oav-express5)
+companion package ships the middleware as a one-liner — same shape
+as `oav-express4` but promise-native (no `try/catch` wrapper):
 
-Express 5 is promise-native: async middleware that throws routes to
-the error handler automatically.
+```ts
+import { validateRequests } from "@aahoughton/oav-express5";
+
+app.use(express.json());
+app.use(validateRequests(validator));
+```
+
+Same exports as `oav-express4` (`httpRequestFromExpress`,
+`renderProblemDetails` standalone), same options (`toHttpRequest`,
+`onError`), same defaults. See the
+[adapter README](https://github.com/aahoughton/oav/blob/main/packages/oav-express5/README.md)
+for options, async `onError` semantics, and common patterns.
+
+**Manual middleware (when you need full control).** Express 5 is
+promise-native: async middleware that throws routes to the error
+handler automatically.
 
 ```ts
 app.use(async (req, res, next) => {
