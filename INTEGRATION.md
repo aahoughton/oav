@@ -655,7 +655,8 @@ a single leaf error with `code: "security"` and `path: ["security"]`,
 mapping to HTTP 401 in the default status recipe.
 
 Disable with `createValidator(spec, { validateSecurity: false })` if
-you want schema checks only.
+you want schema checks only. See `ValidatorOptions.validateSecurity`
+for the option contract; this section is the recipe.
 
 `express-openapi-validator`'s `securityHandlers` is a _credential-
 verifying_ dispatch table — you supply an auth function per scheme and
@@ -699,7 +700,9 @@ createValidator(spec, {
 
 `ignorePaths` runs before the router; `ignoreUndocumented` only
 applies to paths the router couldn't match. Both leave `method`
-errors (405 — path exists, verb doesn't) alone.
+errors (405 — path exists, verb doesn't) alone. See
+`ValidatorOptions.ignorePaths` / `ValidatorOptions.ignoreUndocumented`
+for the option contracts.
 
 If you need branching based on the error rather than the path, fall
 back to the manual pattern:
