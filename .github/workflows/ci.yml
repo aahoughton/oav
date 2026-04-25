@@ -46,7 +46,7 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    # engines.node is ">=20"; exercise every supported major so we
+    # engines.node is ">=22"; exercise every supported major so we
     # catch version-specific regressions before consumers do.
     strategy:
       fail-fast: false
