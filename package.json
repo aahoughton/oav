@@ -120,7 +120,7 @@
     "test:watch": "vitest",
     "lint": "oxlint && oxfmt --check .",
     "fmt": "oxfmt --write .",
-    "typecheck": "tsc -b",
+    "typecheck": "tsc -b && tsc -p examples",
     "prepublishOnly": "pnpm build && pnpm test"
   },
   "devDependencies": {
