@@ -228,7 +228,22 @@ export interface ValidatorStats {
 }
 
 /**
- * Options for {@link createValidator}.
+ * The full set of {@link createValidator} tunables. Every knob you
+ * might reach for lives on this type; the per-field TSDoc below is
+ * the canonical contract for each one. The integration guide carries
+ * worked examples; this type carries the API.
+ *
+ * - **Dialect override** — {@link ValidatorOptions.dialect}.
+ * - **Schema extension** — {@link ValidatorOptions.formats},
+ *   {@link ValidatorOptions.keywords}.
+ * - **Error budget** — {@link ValidatorOptions.maxErrors}.
+ * - **Strict-mode linting** — {@link ValidatorOptions.strict}.
+ * - **Security gating** — {@link ValidatorOptions.validateSecurity}.
+ * - **Path filtering** — {@link ValidatorOptions.ignoreUndocumented},
+ *   {@link ValidatorOptions.ignorePaths}.
+ * - **Query strictness** — {@link ValidatorOptions.strictQueryParameters}.
+ * - **Version mismatch** — {@link ValidatorOptions.onUnknownVersion}.
+ * - **Warn sink** — {@link ValidatorOptions.warn}.
  *
  * @remarks
  * Ordering convention (shared with
@@ -404,7 +419,10 @@ export interface ValidatorOptions {
  * Build a {@link Validator} from a resolved OpenAPI 3.1 document.
  *
  * @param spec - The fully-resolved OpenAPI document (no external `$ref`s).
- * @param options - Optional formats / strict-mode settings.
+ * @param options - Tunables for the validator. See {@link ValidatorOptions}
+ *   for the full set: security gating, path filtering, dialect override,
+ *   error budget, custom formats and keywords, strict-mode linting,
+ *   version-mismatch handling, and a warn-output sink.
  * @returns A validator that can check individual requests and responses.
  *
  * @example
@@ -413,6 +431,7 @@ export interface ValidatorOptions {
  * const err = v.validateRequest({ method: "POST", path: "/pets", body: {...} });
  * ```
  *
+ * @see {@link ValidatorOptions}
  * @public
  */
 export function createValidator(spec: OpenAPIDocument, options: ValidatorOptions = {}): Validator {
