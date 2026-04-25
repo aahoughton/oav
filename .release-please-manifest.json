@@ -1,5 +1,6 @@
 {
   ".": "0.0.0",
   "packages/oav": "0.0.0",
-  "packages/oav-express4": "0.0.0"
+  "packages/oav-express4": "0.0.0",
+  "packages/oav-express5": "0.0.0"
 }

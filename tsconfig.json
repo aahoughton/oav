@@ -9,6 +9,7 @@
     { "path": "./packages/validator" },
     { "path": "./packages/cli" },
     { "path": "./packages/oav" },
-    { "path": "./packages/oav-express4" }
+    { "path": "./packages/oav-express4" },
+    { "path": "./packages/oav-express5" }
   ]
 }

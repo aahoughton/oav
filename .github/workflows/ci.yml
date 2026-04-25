@@ -142,12 +142,14 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-      - name: pack both publishable workspace packages
+      - name: pack every publishable workspace package
         run: |
           set -euo pipefail
           mkdir -p "$GITHUB_WORKSPACE/packed"
           pnpm pack --pack-destination "$GITHUB_WORKSPACE/packed"
           (cd packages/oav && pnpm pack --pack-destination "$GITHUB_WORKSPACE/packed")
+          (cd packages/oav-express4 && pnpm pack --pack-destination "$GITHUB_WORKSPACE/packed")
+          (cd packages/oav-express5 && pnpm pack --pack-destination "$GITHUB_WORKSPACE/packed")
           ls -1 "$GITHUB_WORKSPACE/packed"
       - name: smoke-import @aahoughton/oav-core
         run: |
@@ -233,3 +235,43 @@ jobs:
           node smoke.mjs
           # CLI should be present in bin; verify --help exits 0
           npx oav --help > /dev/null
+      - name: smoke-import @aahoughton/oav-express4
+        run: |
+          set -euo pipefail
+          CORE_TGZ="$(ls "$GITHUB_WORKSPACE/packed"/aahoughton-oav-core-*.tgz | head -n1)"
+          E4_TGZ="$(ls "$GITHUB_WORKSPACE/packed"/aahoughton-oav-express4-*.tgz | head -n1)"
+          rm -rf /tmp/smoke-e4 && mkdir -p /tmp/smoke-e4 && cd /tmp/smoke-e4
+          npm init -y > /dev/null
+          npm install express@4 "$CORE_TGZ" "$E4_TGZ"
+          cat > smoke.mjs <<'EOF'
+          import {
+            httpRequestFromExpress,
+            renderProblemDetails,
+            validateRequests,
+          } from "@aahoughton/oav-express4";
+          if (typeof validateRequests !== "function") throw new Error("validateRequests missing");
+          if (typeof httpRequestFromExpress !== "function") throw new Error("httpRequestFromExpress missing");
+          if (typeof renderProblemDetails !== "function") throw new Error("renderProblemDetails missing");
+          console.log("oav-express4 smoke ok");
+          EOF
+          node smoke.mjs
+      - name: smoke-import @aahoughton/oav-express5
+        run: |
+          set -euo pipefail
+          CORE_TGZ="$(ls "$GITHUB_WORKSPACE/packed"/aahoughton-oav-core-*.tgz | head -n1)"
+          E5_TGZ="$(ls "$GITHUB_WORKSPACE/packed"/aahoughton-oav-express5-*.tgz | head -n1)"
+          rm -rf /tmp/smoke-e5 && mkdir -p /tmp/smoke-e5 && cd /tmp/smoke-e5
+          npm init -y > /dev/null
+          npm install express@5 "$CORE_TGZ" "$E5_TGZ"
+          cat > smoke.mjs <<'EOF'
+          import {
+            httpRequestFromExpress,
+            renderProblemDetails,
+            validateRequests,
+          } from "@aahoughton/oav-express5";
+          if (typeof validateRequests !== "function") throw new Error("validateRequests missing");
+          if (typeof httpRequestFromExpress !== "function") throw new Error("httpRequestFromExpress missing");
+          if (typeof renderProblemDetails !== "function") throw new Error("renderProblemDetails missing");
+          console.log("oav-express5 smoke ok");
+          EOF
+          node smoke.mjs

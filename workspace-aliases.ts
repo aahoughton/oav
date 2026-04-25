@@ -15,6 +15,7 @@ const PACKAGES = [
   "cli",
   "oav",
   "oav-express4",
+  "oav-express5",
 ] as const;
 
 export function workspaceAliases(rootDir: string): Record<string, string> {
