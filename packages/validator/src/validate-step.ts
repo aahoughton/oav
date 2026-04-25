@@ -157,18 +157,21 @@ export function validateParameter(
 
 /**
  * Content-type gate for the request body. Returns a single leaf when
- * the request carries a body whose `Content-Type` isn't in the declared
- * media-type set for the operation; otherwise `null`. Runs before
- * {@link validateBody} (and before parameter validation) so a
- * content-type mismatch short-circuits with an unambiguous single-leaf
- * tree instead of being paired with unrelated parameter diagnostics.
+ * the client's `Content-Type` doesn't match the operation's declared
+ * media types; otherwise `null`. Runs before {@link validateBody} (and
+ * before parameter validation) so a content-type mismatch short-circuits
+ * with an unambiguous single-leaf tree instead of being paired with
+ * unrelated parameter diagnostics.
  *
+ * Fires whenever the client declared a `Content-Type` that doesn't
+ * match — including the body-absent case, where the wrong header is
+ * the more actionable signal than the downstream "body required" leaf.
  * Returns `null` — deliberately not a content-type error — when:
  * - the operation declares no `requestBody`,
- * - the request carries no body (body-missing is a separate concern,
- *   handled by {@link validateBody}),
  * - the operation's `requestBody.content` map is empty (nothing to
- *   match against).
+ *   match against),
+ * - the request has no body AND no `Content-Type` (body-missing is a
+ *   separate concern, handled by {@link validateBody}).
  *
  * @internal
  */
@@ -177,9 +180,12 @@ export function checkBodyContentType(
   cache: OperationCache,
 ): ValidationError | null {
   if (cache.requestBody === undefined) return null;
-  const hasBody = req.body !== undefined && req.body !== null;
-  if (!hasBody) return null;
   if (cache.bodyValidators.size === 0) return null;
+  const hasBody = req.body !== undefined && req.body !== null;
+  // No body and no Content-Type: the client said nothing about the
+  // payload, so the actionable signal is the missing body, not a 415
+  // for an unsent header. Defer to validateBody.
+  if (!hasBody && req.contentType === undefined) return null;
   const mt = matchMediaType(req.contentType, cache.bodyValidators.keys());
   if (mt !== undefined) return null;
   return createLeafError(
