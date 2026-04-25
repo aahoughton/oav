@@ -37,6 +37,20 @@ app.post("/pets", (req, res) => res.json({ ok: true }));
 That's it. Invalid requests get a `400 application/problem+json` response (status from `httpStatusFor`, body from `toProblemDetails`, `Allow` header on 405). Valid requests reach your route handlers.
 
 > **Body parser ordering matters.** `express.json()` (or your equivalent) must run **before** `validateRequests(...)`, otherwise `req.body` is `undefined` and the validator emits `body required` for every request — a misleading error that points at the schema, not at the missing parser. Same for `cookie-parser` if your spec validates cookies.
+>
+> **Empty-body normalisation.** Some parsers (streaming variants, custom multi-format setups) leave `req.body === undefined` even after they run, for empty `{}`-equivalent payloads. When that happens, `required`-field checks short-circuit on the missing body — empty submissions pass validation. Normalise via `toHttpRequest`:
+>
+> ```ts
+> import { httpRequestFromExpress, validateRequests } from "@aahoughton/oav-express4";
+>
+> app.use(
+>   validateRequests(validator, {
+>     toHttpRequest: (req) => ({ ...httpRequestFromExpress(req), body: req.body ?? {} }),
+>   }),
+> );
+> ```
+>
+> Stock `express.json()` populates an empty body to `{}` and doesn't hit this — but migrators inheriting alternative parsers (e.g. `body-parser` streaming mode) often do.
 
 ## API
 
@@ -86,6 +100,57 @@ app.use(validateRequests(validator));
 ```
 
 The check is shape-only — it confirms the declared credential is _present_, not that it's _valid_. Don't treat it as a substitute for auth middleware.
+
+### Per-scheme auth dispatch (the eov `securityHandlers` shape)
+
+eov's `securityHandlers` is a per-scheme dispatch table — you supply an auth function per declared scheme and eov calls it. `oav-express4` doesn't ship this as a helper, but the recipe is small. Mount it as middleware _before_ `validateRequests`:
+
+```ts
+import type { Request } from "express";
+import { createValidator } from "@aahoughton/oav-core";
+
+type SchemeHandler = (req: Request, scopes: string[]) => Promise<boolean>;
+
+const handlers: Record<string, SchemeHandler> = {
+  bearerAuth: async (req, scopes) => {
+    const token = req.headers.authorization?.replace(/^Bearer /, "");
+    return verifyJwt(token, scopes);
+  },
+  apiKeyAuth: async (req) => {
+    const key = req.header("x-api-key");
+    return Boolean(key) && (await verifyApiKey(key));
+  },
+};
+
+app.use(async (req, res, next) => {
+  const op = validator.getOperation({ method: req.method, path: req.path });
+  const requirements = op?.operation.security ?? spec.security ?? [];
+  if (requirements.length === 0) return next();
+  for (const requirement of requirements) {
+    let allPass = true;
+    for (const [scheme, scopes] of Object.entries(requirement)) {
+      const handler = handlers[scheme];
+      if (!handler || !(await handler(req, scopes))) {
+        allPass = false;
+        break;
+      }
+    }
+    if (allPass) return next();
+  }
+  res.status(401).type("application/problem+json").json({
+    type: "about:blank",
+    title: "Unauthorized",
+    status: 401,
+    detail: "no security requirement satisfied",
+  });
+});
+
+app.use(validateRequests(validator)); // shape check off by default; redundant given the dispatcher above
+```
+
+OpenAPI semantics: each requirement object is AND across its scheme keys; the outer array is OR across requirements. The recipe walks them accordingly.
+
+If multiple projects end up copying this recipe, that's the signal to harvest into a `dispatchSecurity(...)` helper export — not yet.
 
 ### Skip validation for paths the spec doesn't declare
 

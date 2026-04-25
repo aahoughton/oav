@@ -143,12 +143,43 @@ app.use(async (req, res, next) => {
 Requires `express.json()` registered before this middleware (and
 `cookie-parser` if you use the `cookies` field).
 
-**One known sharp edge with stock `express.json()`:**
+**Two sharp edges to know about:**
 
-**Malformed JSON throws before oav runs.** `express.json()` throws a
-`SyntaxError` on bad JSON, and Express's default error handler emits
-an HTML page. Install an Express error middleware to convert it to
-`application/problem+json` upstream of the validator.
+1. **Malformed JSON throws before oav runs.** `express.json()` throws
+   a `SyntaxError` on bad JSON, and Express's default error handler
+   emits an HTML page. Install an Express error middleware to convert
+   it to `application/problem+json` upstream of the validator.
+
+2. **Empty-body normalisation.** Some body parsers (streaming
+   variants, custom multi-format setups) leave `req.body === undefined`
+   for empty `{}`-equivalent payloads instead of an empty object. When
+   that happens, oav's `required`-field checks short-circuit on the
+   missing body — validation passes for what the client thinks is an
+   empty submission, even when the spec marks fields as `required`.
+   If your parser does this, normalise before calling `validateRequest`:
+
+   ```ts
+   body: req.body ?? {},
+   ```
+
+   Stock `express.json()` populates `req.body` to `{}` for an empty
+   JSON body, so the default Express stack doesn't hit this — but
+   migrators replacing eov often inherit alternative parsers (e.g.
+   `body-parser`'s streaming mode, fastify's bridge, custom
+   multipart middleware) that do.
+
+   For consumers using the [`@aahoughton/oav-express4`](https://www.npmjs.com/package/@aahoughton/oav-express4)
+   adapter, override the extractor:
+
+   ```ts
+   import { httpRequestFromExpress, validateRequests } from "@aahoughton/oav-express4";
+
+   app.use(
+     validateRequests(validator, {
+       toHttpRequest: (req) => ({ ...httpRequestFromExpress(req), body: req.body ?? {} }),
+     }),
+   );
+   ```
 
 (Unmatched `Content-Type` is handled correctly without extra wiring:
 even when `express.json()` leaves `req.body` empty for a non-JSON
@@ -447,9 +478,15 @@ own response shape.
 
 ### File uploads with multer
 
-`express-openapi-validator` bundles `multer`. `oav` does not: install
-multer yourself, run it before the validator, and reconstruct the
-body for the validator call.
+`express-openapi-validator` bundles `multer` (and pulls in
+`@types/multer` transitively). `oav` does neither: install both
+yourself, run multer before the validator, and reconstruct the body
+for the validator call.
+
+```sh
+pnpm add multer
+pnpm add -D @types/multer    # else every Express.Multer.File reference goes red
+```
 
 ```ts
 import multer from "multer";
@@ -618,9 +655,7 @@ app.get("/pets/:id", async (req, res) => {
     { status, contentType: "application/json", body },
   );
   if (err !== null) {
-    // In prod: log + return a generic 500.
-    // In dev: return the tree so you notice.
-    console.error(err);
+    log.warn("response validation failed", { path: req.path, err });
   }
   res.status(status).json(body);
 });
@@ -638,9 +673,9 @@ app.use((req, res, next) => {
       { status: res.statusCode, contentType: "application/json", body },
     );
     if (err !== null) {
-      // Decide your policy: log-only, add a header, hard fail, etc.
+      // Default: log + send anyway. See "Failure mode" below.
       res.setHeader("X-Response-Validation", "failed");
-      console.warn("response validation failed", err);
+      log.warn("response validation failed", { path: req.path, err });
     }
     return json(body);
   };
@@ -648,9 +683,53 @@ app.use((req, res, next) => {
 });
 ```
 
-The `res.json` wrapper is ~15 lines. The policy (log, header, hard
-fail, etc.) is whatever you choose to put in the `if (err !== null)`
-branch.
+The `res.json` wrapper is ~15 lines.
+
+#### Failure mode: log, don't fail-hard (by default)
+
+The previous snippets log + send-anyway because that's the right
+default. The instinct from `express-openapi-validator`-with-
+`validateResponses: { allErrors: true }` is to flip the failure
+into a 500 — don't, at least not without warning.
+
+**Why.** The strict-mode failure path runs on _every_ response,
+including the ones your error handler emits. If your error handler
+sends `{ error: "...", code: "..." }` for 4xx responses but the
+spec's `ErrorResponse` schema requires `title` (or sets
+`additionalProperties: false`, or expects different field names),
+fail-hard mode rewrites legitimate 4xx responses as 500s. That's
+worse than the original validation gap: the client now sees a
+server error for a request that was their fault, and your error
+budget burns for free.
+
+**The recommended progression:**
+
+1. **Ship with log-only.** You'll get coverage of every response
+   shape your handlers actually emit, including the error paths.
+2. **Read the logs.** Triage the failures: real bugs in handler
+   output go to the issue tracker; spec-vs-error-handler shape
+   mismatches go to the spec (or to a tighter error envelope).
+3. **Tighten gradually.** Once the log is quiet for a sustained
+   period, you can flip the policy in your `res.json` wrapper:
+
+   ```ts
+   if (err !== null) {
+     log.error("response validation failed (hard)", { path: req.path, err });
+     res.statusCode = 500;
+     return json(toProblemDetails(err, { instance: req.originalUrl }));
+   }
+   ```
+
+   Even then, consider gating the hard-fail on `process.env.NODE_ENV
+!== "production"` so dev sees the failure loudly while prod
+   stays log-only — error responses in prod are exactly when you
+   least want a 500-on-top-of-a-400.
+
+`express-openapi-validator`'s `validateResponses: { allErrors: true,
+removeAdditional: ... }` family of options encourages a flip-it-on-
+and-forget posture that this footgun discusses. `oav`'s "you write
+the policy" model is partly so you can sequence the rollout
+deliberately.
 
 ### Security / authentication
 
@@ -692,9 +771,67 @@ this section is the recipe.
 `express-openapi-validator`'s `securityHandlers` is a _credential-
 verifying_ dispatch table — you supply an auth function per scheme and
 eov calls it. `oav` has no equivalent; that role stays with your auth
-middleware. If you want the declarative shape, write a small function
-that walks the matched operation's `security` array (via
-`validator.getOperation`) and dispatches per scheme.
+middleware. If you want the declarative shape (per-scheme handlers
+keyed off the spec's `security:` declaration), write a small dispatcher
+that walks the matched operation via `validator.getOperation` and
+fans out per scheme:
+
+```ts
+type SchemeHandler = (
+  req: HttpRequest,
+  scopes: string[],
+) => Promise<{ ok: true; user: unknown } | { ok: false; reason: string }>;
+
+const handlers: Record<string, SchemeHandler> = {
+  bearerAuth: async (req, scopes) => {
+    const token = req.headers?.authorization?.toString().replace(/^Bearer /, "");
+    return verifyJwt(token, scopes); // your existing auth
+  },
+  apiKeyAuth: async (req) => verifyApiKey(req.headers?.["x-api-key"]),
+  // oauth2, basic, whatever else your spec declares
+};
+
+async function dispatchSecurity(
+  req: HttpRequest,
+): Promise<{ ok: true; user?: unknown } | { ok: false; reason: string }> {
+  const op = validator.getOperation({ method: req.method, path: req.path });
+  // Fall back to document-level security when the operation omits it.
+  const requirements = op?.operation.security ?? spec.security ?? [];
+  if (requirements.length === 0) return { ok: true };
+  // OpenAPI: each requirement object is AND across its scheme keys; the
+  // outer array is OR across requirements. First requirement that fully
+  // passes wins.
+  for (const requirement of requirements) {
+    let allPass = true;
+    let lastUser: unknown;
+    for (const [scheme, scopes] of Object.entries(requirement)) {
+      const handler = handlers[scheme];
+      if (!handler) {
+        allPass = false;
+        break;
+      }
+      const r = await handler(req, scopes);
+      if (!r.ok) {
+        allPass = false;
+        break;
+      }
+      lastUser = r.user;
+    }
+    if (allPass) return { ok: true, user: lastUser };
+  }
+  return { ok: false, reason: "no security requirement satisfied" };
+}
+```
+
+Mount the dispatcher as middleware _before_ `validateRequests` (or
+your inline validator middleware). Reject (`401` / `403` per your
+policy) on `{ ok: false }` before validation runs. The validator's
+own `validateSecurity` shape check is then redundant — leave it at
+its default `false`.
+
+For framework-adapter consumers (`oav-express4`, future siblings),
+the same dispatcher pattern works; only the request-shape extraction
+changes (`httpRequestFromExpress(req)`, etc.).
 
 ### Type coercion on body fields
 
