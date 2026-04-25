@@ -1,0 +1,189 @@
+# Migration from express-openapi-validator
+
+A focused reference for porting an Express app off
+`express-openapi-validator` (eov) onto `oav`. Reads as a punch list,
+not a tutorial — for integration recipes, see
+[INTEGRATION.md](./INTEGRATION.md). For Express 4 specifically, the
+[`@aahoughton/oav-express4`](./packages/oav-express4/README.md)
+companion package gets you most of eov's ergonomics back as a
+one-liner; the recipes in this doc work whether you use the adapter
+or write the middleware inline.
+
+## What you give up; what you get
+
+eov registers as a single middleware that wraps a lot of behaviour:
+file upload (multer), security check dispatch, response wrapping,
+typed error classes. `oav` is a ~20-line middleware (or one
+`validateRequests(...)` call via the adapter) plus your own multer /
+auth wiring where needed. In exchange:
+
+- **You own the error → HTTP mapping.** A small switch statement
+  maps the validator's stable `code` field to whatever status codes
+  your API contract requires — `httpStatusFor` covers the common
+  case in one call.
+- **No wrapping of `res.json`.** eov wraps the response methods to
+  auto-intercept. `oav` reads its arguments and returns a result; it
+  does not touch `req` or `res`. Response validation happens when
+  you call `validateResponse`.
+- **Structured error trees.** Every error is
+  `{ code, path, message, params, children }`. Downstream code can
+  narrow on fields (`err.code === "required"`,
+  `err.params.missing`) instead of parsing message strings.
+- **Built-in OpenAPI 3.0 dialect.** `nullable: true`, boolean
+  `exclusiveMaximum`, and `$ref`-suppresses-siblings are in the
+  compiler's dialect dispatch — no preprocessing step. See the
+  [conformance report](./conformance/REPORT.md) for pass / fail
+  counts by category.
+- **Overlays.** Extend an externally-owned base spec (Supabase,
+  Hasura, PocketBase, a gateway-published document) with
+  `applyOverlays` at load time. See [OVERLAYS.md](./OVERLAYS.md).
+
+## Behavior differences to watch for
+
+The behaviour deltas surfaced by real eov→oav migrations. Most are
+defensible improvements; a few are cosmetic. Either way, expect
+fixture / test churn.
+
+| What                               | eov                                                   | oav                                                                                                                                                        |
+| ---------------------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Empty POST, no Content-Type**    | 415 unsupported-media-type                            | 400 body-required (no client signal to be "wrong about")                                                                                                   |
+| **Path-parameter label**           | `/params/<name>` in error paths                       | `/path/<name>` (OpenAPI's actual location name)                                                                                                            |
+| **404 message wording**            | `"not found"`                                         | `"no route matches POST /path/here"` (more actionable)                                                                                                     |
+| **Top-level message**              | every leaf joined                                     | first leaf only (`summarize` default); per-leaf details still in `errors[]`                                                                                |
+| **Top-level `path` on 404s**       | offending URL                                         | `[]` (empty array → `""` pointer); same kind of error, different rendering                                                                                 |
+| **`errorCode` names**              | `required.openapi.validation`                         | bare codes (`required`); the `.openapi.validation` suffix was always noise                                                                                 |
+| **`oneOf` with binary fields**     | silently accepted (looser inside binary fields)       | surfaces the genuine ambiguity with `matchCount: 2`; see [INTEGRATION.md → File uploads](./INTEGRATION.md#file-uploads-with-multer) for the spec-level fix |
+| **Error response monkey-patching** | `res.send("{...}")` (string form) caught via wrappers | not caught unless you write the wrapper yourself; see [INTEGRATION.md → Response validation](./INTEGRATION.md#response-validation-no-monkey-patching)      |
+| **Optional `openapi` version**     | throws on missing / unsupported                       | silently uses 3.1 by default; see `onUnknownVersion`                                                                                                       |
+| **`format` semantics**             | always assertive in OpenAPI context                   | assertive in OpenAPI context; annotation-only under raw `jsonSchemaDialect` (per 2020-12 default)                                                          |
+
+For the `oneOf [array<binary>, binary]` pattern specifically: the
+spec was already ambiguous before oav surfaced it (the `format:
+binary` bypass means both branches match anything). eov's looser
+acceptance masked the issue. Drop the `oneOf` and accept the array
+form — multer always delivers arrays — or fix the spec however
+makes sense for your API.
+
+## Option map
+
+### Spec loading
+
+| eov option                              | oav equivalent                                                                                                  |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `apiSpec` (path/URL/object)             | `loadSpec({ reader, entry })` + `createValidator(doc)`                                                          |
+| `$refParser: "bundle" \| "dereference"` | `loadSpec` inlines external refs; circulars become internal refs. Use `resolveSpec` directly for finer control. |
+| `validateApiSpec`                       | Run `oav resolve spec.yaml` in CI; no runtime toggle.                                                           |
+
+### Request validation
+
+| eov option                          | oav equivalent                                                                                             |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `validateRequests: true`            | `validator.validateRequest(...)` in your middleware, or `validateRequests(validator)` from `oav-express4`. |
+| `validateRequests.allErrors`        | Default — `oav` always collects every leaf. Bound cost with `maxErrors: N`.                                |
+| `validateRequests.coerceTypes`      | Query scalars coerced by default; body coercion not supported (see recipe).                                |
+| `validateRequests.removeAdditional` | Not supported. `additionalProperties: false` rejects; there is no silent-drop mode.                        |
+| `validateRequests.discriminator`    | Native, always on for OpenAPI specs.                                                                       |
+| `serDes`                            | Not supported. Pre- or post-transform the payload in your handler if you need `Date` / `ObjectId` / etc.   |
+| `ignorePaths` (regex/fn)            | `createValidator(spec, { ignorePaths: (p) => ... })` — predicate that short-circuits before routing.       |
+| `ignoreUndocumented`                | `createValidator(spec, { ignoreUndocumented: true })` — returns `null` on paths the router doesn't match.  |
+
+### Response validation
+
+| eov option                | oav equivalent                                                                      |
+| ------------------------- | ----------------------------------------------------------------------------------- |
+| `validateResponses: true` | `validator.validateResponse(...)` in handler or a `res.json` wrapper (see recipes). |
+
+### Formats and custom keywords
+
+| eov option                          | oav equivalent                                                                                             |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `formats`                           | `createValidator(spec, { formats: { ... } })` — see [format-shape note](#format-shape-note) below.         |
+| `validateFormats: "fast" \| "full"` | N/A — single-pass validation; the built-in formats are RFC-sourced.                                        |
+| `ajvFormats`                        | Pass custom format functions via the `formats` option — see [format-shape note](#format-shape-note) below. |
+
+### Security and file uploads
+
+| eov option                  | oav equivalent                                                                                                                                                                                                                       |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `validateSecurity: true`    | Off by default in oav (real apps gate security upstream of validation). Opt in with `createValidator(spec, { validateSecurity: true })` for shape-only checks on `bearer` / `basic` / `apiKey`.                                      |
+| `validateSecurity.handlers` | Your own auth middleware, run before the validator — `oav` only checks credential **shape**, not validity. For declarative per-scheme dispatch, see the [INTEGRATION.md security recipe](./INTEGRATION.md#per-scheme-auth-dispatch). |
+| `fileUploader: true`        | Your own multer middleware — see [INTEGRATION.md file uploads](./INTEGRATION.md#file-uploads-with-multer).                                                                                                                           |
+
+### Handler wiring
+
+| eov option          | oav equivalent                                                                 |
+| ------------------- | ------------------------------------------------------------------------------ |
+| `operationHandlers` | Your own Express routes. `oav` doesn't auto-load handlers from the filesystem. |
+
+## Features not carried over
+
+- **Auto-multer.** Replace with the [multer recipe](./INTEGRATION.md#file-uploads-with-multer) (~15 lines per upload route, or one global setup).
+- **Security handler dispatch.** Use your existing auth middleware, or the [per-scheme dispatch recipe](./INTEGRATION.md#per-scheme-auth-dispatch).
+- **`operationHandlers` filesystem routing.** Write Express routes
+  manually or keep whatever routing you had.
+- **`res.json` wrapping for automatic response validation.** Call
+  `validateResponse` explicitly where you need it, or wrap `res.json`
+  yourself (~15 lines; see the [response-validation recipe](./INTEGRATION.md#response-validation-no-monkey-patching)).
+- **`serDes` payload mutations.** Do these in your handler rather
+  than the validator.
+- **Typed error classes** (`BadRequest`, `Unauthorized`, etc.). Use
+  the error's `code` field and `httpStatusFor` for the status map.
+
+## Features added
+
+- **Structured error tree.** Stable `code`s, segment paths, and
+  per-code `params` typed via `BuiltInErrorParams`. Narrowing happens
+  on fields rather than message strings.
+- **Built-in 3.0 dialect.** No translation layer over 2020-12. See
+  [conformance/REPORT.md](./conformance/REPORT.md) for pass / fail
+  counts by category.
+- **Overlays.** Extend externally-owned specs at load time —
+  see [OVERLAYS.md](./OVERLAYS.md).
+- **Smaller install footprint.** `oav` depends on `yaml`,
+  `commander`, and `esbuild` (the latter two for CLI + AOT compile
+  output); `oav-core` is the lean alternative with zero
+  runtime deps for programmatic-only consumers who don't need the
+  CLI or YAML readers.
+- **No mutation of `req`.** eov attaches `req.openapi`, coerces
+  types, and replaces `req.body` after deserialise. `oav` reads its
+  inputs and returns an error tree; the request object is unchanged.
+- **Explicit control over where validation runs.** Skip it on
+  specific routes without configuration, run it twice (per-request
+  and per-response) with different `maxErrors` budgets, or run it at
+  the edge of a queue processor outside any HTTP framework.
+- **AOT compilation.** `oav compile-spec spec.yaml` emits a
+  zero-runtime-deps validator for edge / serverless deployments.
+  See the [CLI README](./packages/cli/README.md#compile-spec-output).
+
+## Format-shape note
+
+`ajv-formats` and custom formats registered with eov follow the ajv
+shape:
+
+```ts
+formats: {
+  duration: { type: "string", validate: (v) => isISODuration(v) },
+}
+```
+
+`oav` expects a plain string predicate:
+
+```ts
+formats: {
+  duration: (v) => isISODuration(v),
+}
+```
+
+When migrating a map of ajv-shaped definitions without rewriting each
+one, `oav/formats` exports `fromAjvFormats` for the conversion:
+
+```ts
+import { fromAjvFormats } from "@aahoughton/oav/formats";
+
+createValidator(spec, { formats: fromAjvFormats(myAjvFormats) });
+```
+
+`oav`'s `format` keyword only applies to string values (per JSON
+Schema 2020-12 §6.3), so ajv's `type: "number"` format entries are
+effectively no-ops — the function never runs on non-string data.
+Keep them in the map if it's simpler; they cost nothing.
