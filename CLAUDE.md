@@ -1,5 +1,99 @@
 # CLAUDE.md — project-internal notes for contributors using Claude Code
 
+## Contribution principles
+
+How to make decisions when extending this repo. The mechanics
+sections below cover _how_ to add a thing; this section is about
+_whether_ and _what shape_.
+
+### Surface tradeoffs honestly
+
+When a design choice has real tradeoffs (fat vs thin adapter, mocks
+vs integration tests, one PR vs many, opinionated default vs escape
+hatch), say so. Recommend a lean. Defer the call rather than picking
+silently — a half-articulated choice that survives review is harder
+to revisit than one that was explicitly weighed. The point is the
+surfacing, not the agonizing: options + lean + decision space, not
+exhaustive analysis.
+
+### Talk through design before drafting
+
+For substantive new APIs (a new package, a non-trivial option
+addition, a default-behavior shift), open the conversation before
+writing code. Sketch the API shape, list open questions, recommend
+defaults. The cost of one round-trip on the design saves several on
+the implementation when an early choice would have wanted to be
+different. For small fixes and obvious changes, just do it — judgment.
+
+### Naming and consistency
+
+Names that pair (`request`/`response`, `validateRequest`/`validateResponse`,
+`Validator`/`ValidatorOptions`, `httpRequestFromExpress`/`httpRequestFromFetch`)
+carry meaning beyond what each name says alone — a reader should be
+able to predict one from the other. When you add a new symbol, look
+for the sibling that should pair with it, even if you're only writing
+one half today. Across-package symmetry is a feature: every adapter
+package exports the same factory names with the same option shapes,
+with only the framework-typed argument varying. Per-framework types
+use framework-native names (`ExpressContext`, `FastifyContext`); names
+that sit above the framework boundary stay identical everywhere.
+
+If a name reads awkwardly in user code (`requestValidator(validator)`
+— three "validator"s, three meanings), that's a signal to rename, not
+to add a comment.
+
+### Forward-compatible API shapes
+
+Design v0 surfaces so v1 additions land as new exports / new options,
+not changed semantics. The Express 4 adapter shipped with
+`validateRequests` knowing future `validateResponses` would need to
+share option names, the default renderer, and the context shape.
+Picking those identifiers up front cost nothing; doing it after the
+fact would have meant a breaking rename. When you can't tell whether
+a new option will need to extend later, lean toward shapes that widen
+additively (`select: "first" | "deepest" | { byCode }`, not
+`byCodeOnly: boolean`).
+
+### No magic
+
+Prefer explicit docs warnings over silent runtime detection of common
+gotchas. The Express adapter doesn't auto-detect missing
+`express.json()`; the README flags it. Implicit fallbacks, surprise
+behaviors, and "we'll figure out what you meant" all create debugging
+dead ends. Better to error early with a clear message, or not at all
+and let the user's own logic fail in a familiar way.
+
+### Type as canonical contract
+
+TSDoc on the type is the API reference. Prose docs (READMEs,
+INTEGRATION.md) are recipes — worked examples that show how the
+pieces compose, with backreferences to the type for the contract.
+When adding a new option-bearing interface, lead its TSDoc with a
+roadmap of the field groups so editor tooling surfaces the surface
+on first read. When adding a recipe in INTEGRATION.md, include a
+"see {type}" backreference so the reader knows where the source of
+truth lives.
+
+### Scope discipline
+
+One PR per logical concern. Tightly-coupled fixes bundle (the
+publish-tooling trio: preinstall guard + prepack + npm-pack guard
+all touched the same script surface and shipped together).
+Anything that could be reverted independently → separate PR.
+Adjacent cleanups noticed during a fix → file as a `polish` issue,
+don't sneak in. The `polish` label exists for "real but not urgent"
+work — fix when next touching the area, not preemptively.
+
+### Verify before declaring done
+
+For substantive changes (new packages, behavior shifts, packaging
+work), exercise the change end-to-end before committing. Mocks
+cover the logic; smoke tests prove the integration. Bug fixes
+start with a reproducer — confirming the bug exists rules out
+fixing the wrong thing. The pack-smoke CI job catches install
+regressions; if your change touches packaging, run the smoke
+locally too (`pnpm pack` + `npm install` in `/tmp`).
+
 ## Build commands
 
 ```bash
