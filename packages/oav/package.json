@@ -120,7 +120,8 @@
   "scripts": {
     "build": "tsup",
     "test": "vitest run",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "prepack": "node -e \"if((process.env.npm_config_user_agent||'').startsWith('npm/'))throw Error('Use pnpm pack: npm pack does not rewrite workspace:* deps.')\" && tsup"
   },
   "dependencies": {
     "@aahoughton/oav-core": "workspace:*",

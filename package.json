@@ -114,14 +114,15 @@
     "provenance": true
   },
   "scripts": {
-    "preinstall": "npx -y only-allow pnpm",
+    "preinstall": "node -e \"require('fs').existsSync('pnpm-workspace.yaml')&&require('child_process').execSync('npx -y only-allow pnpm',{stdio:'inherit'})\"",
     "build": "tsup && pnpm --filter @aahoughton/oav build",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint && oxfmt --check .",
     "fmt": "oxfmt --write .",
     "typecheck": "tsc -b && tsc -p examples",
-    "prepublishOnly": "pnpm build && pnpm test"
+    "prepack": "pnpm build",
+    "prepublishOnly": "pnpm test"
   },
   "devDependencies": {
     "@types/node": "25.6.0",
