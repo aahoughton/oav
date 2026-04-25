@@ -226,17 +226,17 @@ npx swagger2openapi swagger.json -o openapi.json
 
 ## Configuring the validator
 
-| Option                  | Effect                                                                                                 |
-| ----------------------- | ------------------------------------------------------------------------------------------------------ |
-| `dialect`               | Force a specific schema dialect, bypassing version detection.                                          |
-| `formats`               | Extra string format validators merged on top of the built-ins.                                         |
-| `keywords`              | Register user-defined schema keywords (see below).                                                     |
-| `maxErrors`             | Cap on leaf errors; `1` is fast-fail, default is uncapped.                                             |
-| `strictQueryParameters` | Reject undeclared query parameters. Default `false`.                                                   |
-| `validateSecurity`      | Shape-only security check (bearer / basic / apiKey). Default `true`; set `false` to skip.              |
-| `ignoreUndocumented`    | Return `null` on requests whose path the router can't match. Default `false`.                          |
-| `ignorePaths`           | Predicate `(path) => boolean`; returning `true` short-circuits validation to `null` before routing.    |
-| `onUnknownVersion`      | Policy for specs with missing/unsupported `openapi`: `"fallback31"` (default), `"warn"`, or `"throw"`. |
+| Option                  | Effect                                                                                                                      |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `dialect`               | Force a specific schema dialect, bypassing version detection.                                                               |
+| `formats`               | Extra string format validators merged on top of the built-ins.                                                              |
+| `keywords`              | Register user-defined schema keywords (see below).                                                                          |
+| `maxErrors`             | Cap on leaf errors; `1` is fast-fail, default is uncapped.                                                                  |
+| `strictQueryParameters` | Reject undeclared query parameters. Default `false`.                                                                        |
+| `validateSecurity`      | Shape-only security check (bearer / basic / apiKey). Default `false` (auth middleware runs upstream); set `true` to opt in. |
+| `ignoreUndocumented`    | Return `null` on requests whose path the router can't match. Default `false`.                                               |
+| `ignorePaths`           | Predicate `(path) => boolean`; returning `true` short-circuits validation to `null` before routing.                         |
+| `onUnknownVersion`      | Policy for specs with missing/unsupported `openapi`: `"fallback31"` (default), `"warn"`, or `"throw"`.                      |
 
 ### Custom keywords
 

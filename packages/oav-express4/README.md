@@ -76,6 +76,17 @@ validateRequests(validator, {
 
 ## Common patterns
 
+### Enable shape-only security checks (no auth middleware yet)
+
+`ValidatorOptions.validateSecurity` is off by default — real apps run auth middleware upstream of the validator, so by the time `validateRequests` runs the credential has already been verified. During early dev (no auth wired yet) or with decorator-only auth that just attaches `req.user`, opt in:
+
+```ts
+const validator = createValidator(spec, { validateSecurity: true });
+app.use(validateRequests(validator));
+```
+
+The check is shape-only — it confirms the declared credential is _present_, not that it's _valid_. Don't treat it as a substitute for auth middleware.
+
 ### Skip validation for paths the spec doesn't declare
 
 The validator owns this — pass it `ignorePaths` or `ignoreUndocumented` at construction. See `ValidatorOptions` in `@aahoughton/oav-core` for the contract.

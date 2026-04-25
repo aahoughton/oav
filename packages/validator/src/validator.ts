@@ -353,10 +353,13 @@ export interface ValidatorOptions {
    * `mutualTLS` are accepted in the spec but not shape-checked at the
    * validator layer.
    *
-   * Defaults to `true` — migrating
-   * `express-openapi-validator`-with-`validateSecurity` consumers get
-   * the behaviour they're used to without extra wiring. Set `false` to
-   * bypass the check entirely.
+   * Defaults to `false`. Real apps gate security upstream of validation
+   * — by the time the validator runs, the auth middleware has already
+   * verified (or rejected) the credential. Opt in with `true` when
+   * there's no auth middleware (early dev / prototyping) or when the
+   * auth layer only decorates `req` without rejecting unauthenticated
+   * traffic. Opting in is shape-only and is **not** a substitute for
+   * actual credential verification.
    */
   validateSecurity?: boolean;
   /** When `true`, reject unknown query parameters (default: `false`). */
@@ -592,7 +595,7 @@ export function createValidator(spec: OpenAPIDocument, options: ValidatorOptions
 
   const operationCache = new WeakMap<OperationObject, OperationCache>();
 
-  const validateSecurity = options.validateSecurity !== false;
+  const validateSecurity = options.validateSecurity === true;
 
   const cacheFor = (pathMatch: RouteMatch): OperationCache => {
     const existing = operationCache.get(pathMatch.operation);
