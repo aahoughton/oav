@@ -120,9 +120,40 @@ migrating from).
   (first failing leaf). Pass `detail` explicitly for a structural
   summary like `` `${pd.issues.length} validation errors` `` or any
   other override.
-- `collectIssues(err)` — just the flat leaf list (with
-  `path` segments + RFC 6901 `pointer` strings), if you're rolling
-  your own response shape.
+- `collectIssues(err)` — just the flat leaf list, if you're rolling
+  your own response shape. Each issue carries both a raw `path`
+  (`PathSegment[]`) and a `pointer` — the same path **pre-formatted
+  as an [RFC 6901](https://www.rfc-editor.org/rfc/rfc6901) JSON
+  Pointer** string (e.g. `/body/users/3/email`). Use `pointer`
+  directly for response envelopes; `path` is the segments array if
+  you need programmatic access. Don't re-join `path` yourself —
+  `pointer` already handles RFC 6901's `~` / `/` escaping.
+
+### Common envelope shapes
+
+```ts
+// RFC 9457 (default) — one call.
+res
+  .status(httpStatusFor(err))
+  .type("application/problem+json")
+  .json(toProblemDetails(err, { instance: req.originalUrl }));
+
+// Custom envelope, eov-style flat list.
+res.status(httpStatusFor(err)).json({
+  message: summarize(err),
+  errors: collectIssues(err).map((i) => ({
+    path: i.pointer,
+    message: i.message,
+    errorCode: i.code,
+  })),
+});
+
+// Just the top-level summary (e.g. for a comma-joined "every leaf"
+// message that some pre-existing wire formats use):
+const joined = collectIssues(err)
+  .map((i) => i.message)
+  .join(", ");
+```
 
 See the [Framework integration](../../README.md#framework-integration)
 section of the root README for Express / Fastify / Next.js snippets.
