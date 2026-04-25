@@ -14,6 +14,7 @@ const PACKAGES = [
   "validator",
   "cli",
   "oav",
+  "oav-express4",
 ] as const;
 
 export function workspaceAliases(rootDir: string): Record<string, string> {
