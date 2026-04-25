@@ -15,7 +15,16 @@ export {
   type ValidationError,
 } from "./errors.js";
 
-export { countErrors, formatFlat, formatJson, formatText, type FormatOptions } from "./format.js";
+export {
+  countErrors,
+  formatFlat,
+  formatJson,
+  formatText,
+  summarize,
+  type FormatOptions,
+  type SummarizeOptions,
+  type SummarizeSelect,
+} from "./format.js";
 
 export {
   formatError,
