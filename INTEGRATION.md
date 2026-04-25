@@ -134,20 +134,17 @@ app.use(async (req, res, next) => {
 Requires `express.json()` registered before this middleware (and
 `cookie-parser` if you use the `cookies` field).
 
-**Two known sharp edges with stock `express.json()`:**
+**One known sharp edge with stock `express.json()`:**
 
-1. **`express.json()` only parses JSON content-types.** If a client
-   sends `Content-Type: text/plain` (or anything else your spec
-   doesn't declare), `req.body` is left empty and oav reports
-   "missing required request body" rather than a 415. To get
-   accurate 415 responses, register `express.raw({ type: '*/*' })`
-   on the non-JSON content types you want oav to gate, or parse
-   the body yourself in middleware and hand it to `validateRequest`.
-2. **Malformed JSON throws before oav runs.** `express.json()`
-   throws a `SyntaxError` on bad JSON, and Express's default error
-   handler emits an HTML page. Install an Express error middleware
-   to convert it to `application/problem+json` upstream of the
-   validator.
+**Malformed JSON throws before oav runs.** `express.json()` throws a
+`SyntaxError` on bad JSON, and Express's default error handler emits
+an HTML page. Install an Express error middleware to convert it to
+`application/problem+json` upstream of the validator.
+
+(Unmatched `Content-Type` is handled correctly without extra wiring:
+even when `express.json()` leaves `req.body` empty for a non-JSON
+request, oav sees the declared header, finds no matching media type
+in the spec, and returns a `content-type` leaf that maps to 415.)
 
 ### Express 4
 
@@ -172,7 +169,7 @@ app.use((req, res, next) => {
 });
 ```
 
-The same two body-parser caveats apply as for Express 5.
+The same body-parser caveat applies as for Express 5.
 
 ### Fastify
 

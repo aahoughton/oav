@@ -1,4 +1,4 @@
-import { collectLeaves, type OpenAPIDocument } from "@oav/core";
+import { collectLeaves, httpStatusFor, type OpenAPIDocument } from "@oav/core";
 import { describe, expect, it } from "vitest";
 import { createValidator } from "../src/validator.js";
 import { leafAt, leafCodes, petSpec } from "./fixtures.js";
@@ -118,6 +118,69 @@ describe("validateRequest", () => {
       body: "raw",
     });
     expect(leafCodes(err)).toContain("content-type");
+  });
+
+  it("absent body + unmatched Content-Type → content-type leaf (415), not body-required (400)", () => {
+    // Spec accepts only multipart/form-data. Client says text/plain and
+    // sends no body. Today's bug: the gate skipped body-absent requests
+    // entirely, so validateBody fired "missing required request body"
+    // (400) — true but downstream of the actual cause. Now the gate
+    // sees the unmatched header and surfaces a content-type leaf (415),
+    // which is the actionable signal.
+    const spec: OpenAPIDocument = {
+      openapi: "3.1.0",
+      info: { title: "t", version: "1" },
+      paths: {
+        "/upload": {
+          post: {
+            requestBody: {
+              required: true,
+              content: { "multipart/form-data": { schema: { type: "object" } } },
+            },
+            responses: { "200": { description: "ok" } },
+          },
+        },
+      },
+    };
+    const sv = createValidator(spec);
+    const err = sv.validateRequest({
+      method: "POST",
+      path: "/upload",
+      contentType: "text/plain",
+    });
+    const leaves = collectLeaves(err);
+    expect(leaves).toHaveLength(1);
+    expect(leaves[0]?.code).toBe("content-type");
+    expect(httpStatusFor(err)).toBe(415);
+  });
+
+  it("absent body + no Content-Type → body-required leaf (400), not content-type", () => {
+    // Regression guard for the body-absent fix: with no header, the
+    // client said nothing about the payload, so the actionable signal
+    // is the missing required body (400). The naive "swap the gate
+    // unconditionally" fix would regress this to a less-helpful 415
+    // for a header the client never sent.
+    const spec: OpenAPIDocument = {
+      openapi: "3.1.0",
+      info: { title: "t", version: "1" },
+      paths: {
+        "/x": {
+          post: {
+            requestBody: {
+              required: true,
+              content: { "application/json": { schema: { type: "object" } } },
+            },
+            responses: { "200": { description: "ok" } },
+          },
+        },
+      },
+    };
+    const sv = createValidator(spec);
+    const err = sv.validateRequest({ method: "POST", path: "/x" });
+    const leaves = collectLeaves(err);
+    expect(leaves).toHaveLength(1);
+    expect(leaves[0]?.code).toBe("body");
+    expect(httpStatusFor(err)).toBe(400);
   });
 
   it("content-type gate short-circuits before parameter validation", () => {
