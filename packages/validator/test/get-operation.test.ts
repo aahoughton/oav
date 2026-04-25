@@ -46,7 +46,7 @@ function uploadSpec(): OpenAPIDocument {
   };
 }
 
-describe("OavValidator.getOperation", () => {
+describe("Validator.getOperation", () => {
   it("returns the operation + path metadata for a matching request", () => {
     const v = createValidator(uploadSpec());
     const info = v.getOperation({ method: "POST", path: "/uploads" });
