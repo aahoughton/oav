@@ -60,7 +60,7 @@ in CI — they're tsx-run dev tooling, breakage shows up when you run them.
   at construction (more-literal segments first); `match` is a linear scan,
   O(routes × segments). Cheap for typical OpenAPI spec sizes.
 - **`@oav/validator`** — the HTTP orchestrator. `createValidator(spec,
-options)` returns an `OavValidator` exposing `validateRequest(req)`,
+options)` returns a `Validator` exposing `validateRequest(req)`,
   `validateResponse(req, res)`, and `getOperation({ method, path })`.
   Per-operation parameter / body / response schemas are pre-compiled
   on first access; the validator handles route matching, content-type

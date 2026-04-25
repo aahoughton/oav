@@ -1,7 +1,7 @@
 /**
  * The public `oav/validator` surface. One audience: callers
  * building a request/response validator from a resolved OpenAPI
- * document — `createValidator`, the `OavValidator` instance it returns,
+ * document — `createValidator`, the `Validator` instance it returns,
  * the options, and the Fetch-API adapters for consumers plugging the
  * validator into Next.js / Hono / Bun / Deno handlers.
  *
@@ -16,7 +16,7 @@
 
 export {
   createValidator,
-  type OavValidator,
+  type Validator,
   type ValidatorOptions,
   type ValidatorStats,
 } from "./validator.js";

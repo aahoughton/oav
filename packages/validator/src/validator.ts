@@ -71,7 +71,7 @@ function dialectFor(version: OpenAPIVersion): Dialect {
  *
  * @public
  */
-export interface OavValidator {
+export interface Validator {
   validateRequest(req: HttpRequest): ValidationError | null;
   validateResponse(req: HttpRequest, res: HttpResponse): ValidationError | null;
   /**
@@ -200,7 +200,7 @@ export interface OavValidator {
 }
 
 /**
- * Live counters attached to an {@link OavValidator}.
+ * Live counters attached to an {@link Validator}.
  *
  * @public
  */
@@ -375,12 +375,12 @@ export interface ValidatorOptions {
    * always throw unless `dialect` is set.
    *
    * - `"fallback31"` (default) — accept silently; use the 3.1 dialect.
-   * - `"warn"` — add an entry to {@link OavValidator.warnings} (and
+   * - `"warn"` — add an entry to {@link Validator.warnings} (and
    *   call {@link ValidatorOptions.warn} if provided) and use the 3.1
    *   dialect.
    * - `"throw"` — throw an `Error`.
    *
-   * Regardless of the choice, `OavValidator.detectedVersion` is set to
+   * Regardless of the choice, `Validator.detectedVersion` is set to
    * `undefined` so callers can introspect after the fact.
    */
   onUnknownVersion?: "fallback31" | "warn" | "throw";
@@ -389,7 +389,7 @@ export interface ValidatorOptions {
    * during {@link createValidator} whenever a warning is emitted
    * (currently: `onUnknownVersion: "warn"` path, and the single
    * category-error-overridden-by-`dialect` case). Every warning is
-   * _also_ accumulated into {@link OavValidator.warnings} regardless
+   * _also_ accumulated into {@link Validator.warnings} regardless
    * of whether this callback is set.
    *
    * Default: undefined (no live sink). The library never writes to
@@ -401,7 +401,7 @@ export interface ValidatorOptions {
 }
 
 /**
- * Build an {@link OavValidator} from a resolved OpenAPI 3.1 document.
+ * Build a {@link Validator} from a resolved OpenAPI 3.1 document.
  *
  * @param spec - The fully-resolved OpenAPI document (no external `$ref`s).
  * @param options - Optional formats / strict-mode settings.
@@ -415,10 +415,7 @@ export interface ValidatorOptions {
  *
  * @public
  */
-export function createValidator(
-  spec: OpenAPIDocument,
-  options: ValidatorOptions = {},
-): OavValidator {
+export function createValidator(spec: OpenAPIDocument, options: ValidatorOptions = {}): Validator {
   if (
     options.maxErrors !== undefined &&
     Number.isFinite(options.maxErrors) &&
