@@ -121,7 +121,8 @@
     "lint": "oxlint && oxfmt --check .",
     "fmt": "oxfmt --write .",
     "typecheck": "tsc -b && tsc -p examples",
-    "prepublishOnly": "pnpm build && pnpm test"
+    "prepack": "pnpm build",
+    "prepublishOnly": "pnpm test"
   },
   "devDependencies": {
     "@types/node": "25.6.0",
