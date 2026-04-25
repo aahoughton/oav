@@ -1,0 +1,197 @@
+# @aahoughton/oav-fastify
+
+Fastify adapter for [`@aahoughton/oav-core`](https://www.npmjs.com/package/@aahoughton/oav-core) — a `preValidation` hook factory plus standalone helpers (`httpRequestFromFastify`, `renderProblemDetails`) for callers composing their own hooks.
+
+Same shape as the Express siblings ([`oav-express4`](../oav-express4/README.md), [`oav-express5`](../oav-express5/README.md)) — only the framework-typed argument and Fastify's hook-vs-middleware distinction differ. Fastify is async-native, so thrown errors and rejected promises propagate to Fastify's error handler automatically, with no `try/catch` wrapper.
+
+For Hono / Bun adapters, see future sibling packages — same API shape, same names, same defaults.
+
+## Install
+
+```bash
+# JSON specs only
+npm install @aahoughton/oav-core @aahoughton/oav-fastify fastify
+
+# YAML specs + CLI (oav transitively provides oav-core)
+npm install @aahoughton/oav @aahoughton/oav-fastify fastify
+```
+
+`fastify` is a peer dep — your app's existing install satisfies it.
+
+> **YAML specs.** `@aahoughton/oav-core` is JSON-only by design (zero runtime deps). If your spec is YAML, either install [`@aahoughton/oav`](https://www.npmjs.com/package/@aahoughton/oav) instead — it bundles the YAML readers and the CLI — or install `yaml` separately and parse the spec yourself before passing the parsed object to `createValidator`.
+
+## Quick start
+
+```ts
+import Fastify from "fastify";
+import { createValidator } from "@aahoughton/oav-core";
+import { validateRequests } from "@aahoughton/oav-fastify";
+
+const validator = createValidator(spec);
+
+const app = Fastify();
+app.addHook("preValidation", validateRequests(validator));
+
+app.post("/pets", async () => ({ ok: true }));
+```
+
+That's it. Invalid requests get a `400 application/problem+json` response (status from `httpStatusFor`, body from `toProblemDetails`, `Allow` header on 405). Valid requests reach your route handlers.
+
+## Mount point: `preValidation`
+
+Fastify runs hooks in a fixed order:
+
+1. `onRequest` — request parsing not yet done
+2. `preParsing` — about to parse the body
+3. `preValidation` — body parsed; **this is where oav runs**
+4. `validation` — Fastify's per-route schema validation
+5. `preHandler` — about to call the route handler
+6. `handler`
+
+Mount on `preValidation` so oav sees the parsed body. If you also have per-route Fastify schemas declared, Fastify's own validation runs in step 4 (after this hook). Both can coexist — if oav rejects, Fastify's own validation never runs; if oav passes, Fastify's runs as usual. Authoring the same constraints in both places isn't recommended, but mixing them (oav for spec-driven validation, Fastify schemas for app-internal types) works.
+
+## API
+
+### `validateRequests(validator, options?)`
+
+Returns a Fastify `preValidationHookHandler`.
+
+| option          | type                                       | default                  |
+| --------------- | ------------------------------------------ | ------------------------ |
+| `toHttpRequest` | `(request: FastifyRequest) => HttpRequest` | `httpRequestFromFastify` |
+| `onError`       | `(err, ctx) => void \| Promise<void>`      | `renderProblemDetails`   |
+
+`onError` may be async — the hook awaits it. Fastify awaits the returned promise, so thrown extractor errors and rejected `onError` promises propagate to Fastify's `setErrorHandler` automatically, no `try/catch` needed. The hook does **not** call `reply.send()` after `onError` returns — your callback owns the response (write to `ctx.reply`, or throw to delegate to Fastify's error handler).
+
+> **Validation failures don't traverse Fastify's `setErrorHandler` by default.** The default `onError` (`renderProblemDetails`) writes the response directly. If you want validation failures in your existing error pipeline, throw from `onError` (Fastify routes throws to `setErrorHandler`) or compose a logger before `renderProblemDetails` — see [Add observability without changing the response](#add-observability-without-changing-the-response).
+
+### `httpRequestFromFastify(request)`
+
+Convert a `FastifyRequest` to oav's framework-agnostic `HttpRequest` shape. Read what's already on the request — body parsing is Fastify's responsibility (handled by content-type parsers before `preValidation`).
+
+Header keys passed through (Fastify already lowercases per HTTP spec), path stripped of query string from `request.url`, query taken from `request.query` (Fastify parses it into an object), cookies read from `request.cookies` if `@fastify/cookie` populated them.
+
+**Returns a fresh `HttpRequest`.** Top-level fields can be reassigned freely without affecting the original `FastifyRequest` — safe to spread (`{ ...httpRequestFromFastify(req), body: {} }`) or mutate in place.
+
+Use this when you want to compose your own hook (e.g. validate inside a custom plugin) without re-implementing the extraction.
+
+### `renderProblemDetails(err, ctx)`
+
+The default `onError`. RFC 9457 `application/problem+json` body (via `toProblemDetails`), status from `httpStatusFor`, `Allow` header from `allowHeaderFor` on 405.
+
+Exported standalone so a custom `onError` can call it as the fallback path:
+
+```ts
+validateRequests(validator, {
+  onError: (err, ctx) => {
+    if (err.code === "security") return ctx.reply.code(401).send();
+    renderProblemDetails(err, ctx);
+  },
+});
+```
+
+## Common patterns
+
+### Enable shape-only security checks (no auth middleware yet)
+
+`ValidatorOptions.validateSecurity` is off by default — real apps run auth middleware (or hooks) upstream of the validator. During early dev (no auth wired yet) or with decorator-only auth that just attaches `request.user`, opt in:
+
+```ts
+const validator = createValidator(spec, { validateSecurity: true });
+app.addHook("preValidation", validateRequests(validator));
+```
+
+The check is shape-only — it confirms the declared credential is _present_, not that it's _valid_. Don't treat it as a substitute for auth middleware.
+
+### Custom error envelope
+
+```ts
+app.addHook(
+  "preValidation",
+  validateRequests(validator, {
+    onError: (err, ctx) => {
+      ctx.reply.code(httpStatusFor(err)).send({
+        message: summarize(err),
+        errors: collectIssues(err),
+      });
+    },
+  }),
+);
+```
+
+### Forward to Fastify's `setErrorHandler`
+
+Throw from `onError` — Fastify routes thrown errors to `setErrorHandler`:
+
+```ts
+app.addHook(
+  "preValidation",
+  validateRequests(validator, {
+    onError: (err) => {
+      throw new ValidationFailure(err);
+    },
+  }),
+);
+
+app.setErrorHandler((err, _request, reply) => {
+  if (err instanceof ValidationFailure) {
+    reply.code(422).send({ ... });
+    return;
+  }
+  // ... your existing error handler
+});
+```
+
+### Add observability without changing the response
+
+Validation failures don't reach your registered `setErrorHandler` by default (the hook terminates the request itself). To log every failure while keeping the default problem-details response, compose `renderProblemDetails` after your log call:
+
+```ts
+app.addHook(
+  "preValidation",
+  validateRequests(validator, {
+    onError: (err, ctx) => {
+      log.warn("validation failed", { url: ctx.request.url, code: err.code });
+      renderProblemDetails(err, ctx);
+    },
+  }),
+);
+```
+
+Three lines, no behaviour change for clients. Use this whenever your existing error pipeline (Sentry, structured logger, request-id correlation) needs to see validation failures.
+
+### Async `onError` (remote logging, dynamic config)
+
+```ts
+app.addHook(
+  "preValidation",
+  validateRequests(validator, {
+    onError: async (err, ctx) => {
+      await sentry.captureException(err);
+      renderProblemDetails(err, ctx);
+    },
+  }),
+);
+```
+
+The hook awaits the returned promise; rejections propagate to Fastify's `setErrorHandler`.
+
+### Coexisting with Fastify per-route schemas
+
+Fastify's idiomatic per-route-schema pattern is independent of oav. The two can coexist in the same app:
+
+- Use **oav-fastify** when the OpenAPI spec is the source of truth — for endpoints whose contract is published / contract-tested / shared with other languages or services.
+- Use **Fastify per-route schemas** for app-internal types where you'd rather author the schema inline.
+
+If both fire on the same route, oav's `preValidation` hook runs first; if it passes, Fastify's `validation` step runs next. Don't author the same constraints in both places.
+
+### Comparison with `fastify-openapi-glue`
+
+[`fastify-openapi-glue`](https://www.npmjs.com/package/fastify-openapi-glue) reads an OpenAPI spec at startup and **generates routes + handler stubs from it**. oav-fastify is a different shape: it validates against the spec but you own the route declarations. Use `fastify-openapi-glue` if you want spec-driven scaffolding; use oav-fastify if your routes already exist and you want OpenAPI as the validation source of truth.
+
+## See also
+
+- [`@aahoughton/oav-core`](https://www.npmjs.com/package/@aahoughton/oav-core) — `createValidator`, `ValidatorOptions`, `summarize`, `collectIssues`, `httpStatusFor`, `toProblemDetails`.
+- [`@aahoughton/oav`](https://www.npmjs.com/package/@aahoughton/oav) — batteries-included distribution of oav-core: YAML readers + the `oav` CLI.
+- The repo-root `INTEGRATION.md` — broader recipes (security, file uploads, response validation, status mapping, type coercion, ignoring paths).
+- The repo-root `MIGRATION-FROM-EOV.md` — porting from `express-openapi-validator`.

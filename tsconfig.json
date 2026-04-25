@@ -10,6 +10,7 @@
     { "path": "./packages/cli" },
     { "path": "./packages/oav" },
     { "path": "./packages/oav-express4" },
-    { "path": "./packages/oav-express5" }
+    { "path": "./packages/oav-express5" },
+    { "path": "./packages/oav-fastify" }
   ]
 }

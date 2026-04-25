@@ -40,6 +40,12 @@
       "package-name": "@aahoughton/oav-express5",
       "component": "oav-express5",
       "changelog-path": "CHANGELOG.md"
+    },
+    "packages/oav-fastify": {
+      "release-type": "node",
+      "package-name": "@aahoughton/oav-fastify",
+      "component": "oav-fastify",
+      "changelog-path": "CHANGELOG.md"
     }
   }
 }

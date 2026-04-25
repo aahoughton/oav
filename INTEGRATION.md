@@ -219,14 +219,27 @@ that affect this pattern.
 
 ### Fastify
 
-> **Adapter coming.** `oav-fastify` is tracked in
-> [#195](https://github.com/aahoughton/oav/issues/195) and will ship
-> a Fastify hook (`validateRequests`) plus the standalone helpers,
-> matching the cross-adapter shape. Until then, the inline recipe
-> below covers the same ground.
+The [`@aahoughton/oav-fastify`](https://www.npmjs.com/package/@aahoughton/oav-fastify)
+companion package ships the hook as a one-liner — same shape as the
+Express adapters but Fastify-native (a `preValidation` hook, not
+middleware):
 
-Register as a `preValidation` hook so it runs after Fastify's own
-body parsing but before the route handler.
+```ts
+import { validateRequests } from "@aahoughton/oav-fastify";
+
+app.addHook("preValidation", validateRequests(validator));
+```
+
+Same cross-adapter exports (`httpRequestFromFastify`,
+`renderProblemDetails` standalone), same options (`toHttpRequest`,
+`onError`), same defaults. See the
+[adapter README](https://github.com/aahoughton/oav/blob/main/packages/oav-fastify/README.md)
+for options, async `onError` semantics, common patterns, and the
+relationship to Fastify's own per-route schema validation.
+
+**Manual hook (when you need full control).** Register as a
+`preValidation` hook so it runs after Fastify's own body parsing
+but before the route handler.
 
 ```ts
 fastify.addHook("preValidation", async (request, reply) => {
