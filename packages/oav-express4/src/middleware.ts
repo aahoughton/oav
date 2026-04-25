@@ -1,0 +1,93 @@
+import type { Request, RequestHandler } from "express";
+import type { HttpRequest } from "@oav/core";
+import type { Validator } from "@oav/validator";
+import { httpRequestFromExpress } from "./extract.js";
+import { renderProblemDetails } from "./render.js";
+import type { ErrorHandler, ExpressContext } from "./types.js";
+
+/**
+ * Options for {@link validateRequests}. Names and semantics are
+ * shared with future {@link validateResponses} and with the same
+ * options on every other adapter in the family (`oav-express5`,
+ * `oav-fastify`, ...) — only the framework-typed argument differs.
+ *
+ * @public
+ */
+export interface ValidateRequestsOptions {
+  /**
+   * Custom extractor from the Express request to oav's
+   * {@link HttpRequest} shape. Default: {@link httpRequestFromExpress}.
+   * Override when your stack populates non-standard fields the
+   * validator needs (e.g. a proxy that puts the verified body on
+   * `req.verifiedBody`).
+   */
+  toHttpRequest?: (req: Request) => HttpRequest;
+  /**
+   * Called when {@link Validator.validateRequest} returns an error.
+   * Default: {@link renderProblemDetails} — RFC 9457
+   * `application/problem+json` with status from `httpStatusFor`.
+   * Pass your own to render a custom envelope, call `next(err)`,
+   * map to a different status, etc. The middleware does not call
+   * `next()` after invoking `onError` — the callback is the response.
+   */
+  onError?: ErrorHandler<ExpressContext>;
+}
+
+/**
+ * Build an Express 4 request-handler that runs every request through
+ * a {@link Validator} and either calls `next()` (valid) or invokes
+ * the configured `onError` (invalid). The default `onError` writes
+ * an RFC 9457 problem-details response.
+ *
+ * Plural (`validateRequests`, not `validateRequest`) because the
+ * middleware intercepts every request — the singular form is the
+ * Validator's own per-call method.
+ *
+ * Express 4 is sync at the framework level: thrown exceptions and
+ * rejected promises don't auto-propagate to the error handler. The
+ * middleware forwards both via `next(err)` so the host app's error
+ * middleware sees them.
+ *
+ * Pairs with future `validateResponses(validator, opts)`. Same
+ * factory shape across `oav-express5` / `oav-fastify` / `oav-hono`.
+ *
+ * @example
+ * ```ts
+ * import express from "express";
+ * import { validateRequests } from "@aahoughton/oav-express4";
+ *
+ * const app = express();
+ * app.use(express.json());
+ * app.use(validateRequests(validator));
+ * ```
+ *
+ * @public
+ */
+export function validateRequests(
+  validator: Validator,
+  options: ValidateRequestsOptions = {},
+): RequestHandler {
+  const toHttpRequest = options.toHttpRequest ?? httpRequestFromExpress;
+  const onError = options.onError ?? renderProblemDetails;
+
+  return (req, res, next) => {
+    let httpReq;
+    try {
+      httpReq = toHttpRequest(req);
+    } catch (e) {
+      next(e);
+      return;
+    }
+    const err = validator.validateRequest(httpReq);
+    if (err === null) {
+      next();
+      return;
+    }
+    // onError may be sync or async. Awaiting a sync (void) return is
+    // essentially free; awaiting a Promise lets handlers do async work
+    // (remote logging, dynamic rendering config) before the response
+    // settles. Promise rejection is forwarded to next(err) so the
+    // host's error middleware sees it.
+    Promise.resolve(onError(err, { req, res, next })).catch(next);
+  };
+}

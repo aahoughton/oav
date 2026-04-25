@@ -28,6 +28,12 @@
       "package-name": "@aahoughton/oav",
       "component": "oav",
       "changelog-path": "CHANGELOG.md"
+    },
+    "packages/oav-express4": {
+      "release-type": "node",
+      "package-name": "@aahoughton/oav-express4",
+      "component": "oav-express4",
+      "changelog-path": "CHANGELOG.md"
     }
   }
 }

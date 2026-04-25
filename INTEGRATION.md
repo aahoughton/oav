@@ -157,9 +157,28 @@ in the spec, and returns a `content-type` leaf that maps to 415.)
 
 ### Express 4
 
-The `req` surface is identical. The difference: Express 4 doesn't
-await returned promises, so uncaught async errors don't propagate.
-Use `try`/`catch`:
+For Express 4 specifically, the [`@aahoughton/oav-express4`](https://www.npmjs.com/package/@aahoughton/oav-express4)
+companion package ships the middleware as a one-liner with the same
+defaults as the inline pattern above:
+
+```ts
+import { validateRequests } from "@aahoughton/oav-express4";
+
+app.use(express.json()); // ← still required
+app.use(validateRequests(validator));
+```
+
+The package also exports `httpRequestFromExpress(req)` (the extractor)
+and `renderProblemDetails(err, ctx)` (the default renderer) standalone,
+for callers composing their own middleware. See the package's
+[README](https://github.com/aahoughton/oav/blob/main/packages/oav-express4/README.md)
+for the options table and common patterns (custom envelopes, async
+`onError`, forwarding to Express's error chain).
+
+If you'd rather wire the middleware yourself, the inline pattern is
+identical to the Express 5 snippet above, with one twist: Express 4
+doesn't await returned promises, so uncaught async errors don't
+propagate. Use `try`/`catch`:
 
 ```ts
 app.use((req, res, next) => {
