@@ -150,6 +150,7 @@ jobs:
           (cd packages/oav && pnpm pack --pack-destination "$GITHUB_WORKSPACE/packed")
           (cd packages/oav-express4 && pnpm pack --pack-destination "$GITHUB_WORKSPACE/packed")
           (cd packages/oav-express5 && pnpm pack --pack-destination "$GITHUB_WORKSPACE/packed")
+          (cd packages/oav-fastify && pnpm pack --pack-destination "$GITHUB_WORKSPACE/packed")
           ls -1 "$GITHUB_WORKSPACE/packed"
       - name: smoke-import @aahoughton/oav-core
         run: |
@@ -273,5 +274,25 @@ jobs:
           if (typeof httpRequestFromExpress !== "function") throw new Error("httpRequestFromExpress missing");
           if (typeof renderProblemDetails !== "function") throw new Error("renderProblemDetails missing");
           console.log("oav-express5 smoke ok");
+          EOF
+          node smoke.mjs
+      - name: smoke-import @aahoughton/oav-fastify
+        run: |
+          set -euo pipefail
+          CORE_TGZ="$(ls "$GITHUB_WORKSPACE/packed"/aahoughton-oav-core-*.tgz | head -n1)"
+          F_TGZ="$(ls "$GITHUB_WORKSPACE/packed"/aahoughton-oav-fastify-*.tgz | head -n1)"
+          rm -rf /tmp/smoke-fastify && mkdir -p /tmp/smoke-fastify && cd /tmp/smoke-fastify
+          npm init -y > /dev/null
+          npm install fastify@5 "$CORE_TGZ" "$F_TGZ"
+          cat > smoke.mjs <<'EOF'
+          import {
+            httpRequestFromFastify,
+            renderProblemDetails,
+            validateRequests,
+          } from "@aahoughton/oav-fastify";
+          if (typeof validateRequests !== "function") throw new Error("validateRequests missing");
+          if (typeof httpRequestFromFastify !== "function") throw new Error("httpRequestFromFastify missing");
+          if (typeof renderProblemDetails !== "function") throw new Error("renderProblemDetails missing");
+          console.log("oav-fastify smoke ok");
           EOF
           node smoke.mjs
