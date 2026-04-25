@@ -112,6 +112,10 @@ For rendering validation failures as an HTTP response:
 
 See the [Framework integration](../../README.md#framework-integration)
 section of the root README for Express / Fastify / Next.js snippets.
+For Express 4 specifically, the
+[`@aahoughton/oav-express4`](../oav-express4/README.md) companion
+package wraps these helpers as a one-liner middleware; sibling
+adapters for Express 5 / Fastify / Hono will follow the same shape.
 
 ## OpenAPI / HTTP types
 

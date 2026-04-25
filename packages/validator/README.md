@@ -34,6 +34,13 @@ can group by location. The top-level node's `code` (`"request"` vs
 detected on construction (or `undefined` if the field was missing or
 unsupported and a fallback was used — see `onUnknownVersion` below).
 
+For Express 4 integration, the
+[`@aahoughton/oav-express4`](../oav-express4/README.md) companion
+package ships a `validateRequests` middleware factory built on top of
+this validator, plus standalone helpers for callers composing their
+own middleware. Sibling adapters for Express 5 / Fastify / Hono will
+follow the same shape.
+
 ## Why this validator
 
 Native OpenAPI 3.0 dialect alongside 3.1 / 3.2, so `nullable`,
