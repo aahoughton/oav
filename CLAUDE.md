@@ -72,17 +72,30 @@ options)` returns a `Validator` exposing `validateRequest(req)`,
   `readBodyFromFetch`) for Next.js / Hono / Bun / Deno consumers.
 - **`@oav/cli`** — thin commander wrapper. No business logic beyond arg
   parsing, I/O, and exit codes.
+- **`@oav/oav-express4`** — first of the framework adapter family.
+  Thin: depends on `@aahoughton/oav-core` (transitive) and declares
+  `express ^4.0.0` as a peer; ships a `validateRequests` middleware
+  factory plus standalone `httpRequestFromExpress` and
+  `renderProblemDetails` helpers. Naming and option shapes
+  (`validateRequests`, `ValidateRequestsOptions`, `ExpressContext`,
+  `ErrorHandler<Ctx>`) are designed to stay identical across future
+  `oav-express5` / `oav-fastify` / `oav-hono` siblings — only the
+  framework-typed argument differs. Future `validateResponses` slots
+  in additively.
 
 ## Dependency graph (strictly enforced; no cycles)
 
 ```
-cli → validator → router
-               → spec → core
-               → formats → core
-               → schema → core
-               → core
-     → spec → core
-     → core
+cli         → validator → router
+                       → spec → core
+                       → formats → core
+                       → schema → core
+                       → core
+            → spec → core
+            → core
+oav-express4 → validator → ... (same as cli's chain)
+            → core
+            (peer: express ^4)
 ```
 
 ## How to add a new keyword

@@ -21,13 +21,15 @@ walk programmatically.
 
 ## Install
 
-`oav` ships in two packages so consumers on constrained runtimes can
-skip what they don't use:
+`oav` ships in two core packages so consumers on constrained runtimes
+can skip what they don't use, plus framework adapter packages that
+build on either:
 
-| Package                | When to use                                                                                                                                                                                                                                                                                               |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@aahoughton/oav`      | Default. Batteries-included: YAML readers + the `oav` CLI. Depends on `yaml`; pulls in `commander` + `esbuild` for the CLI only (never imported from the library entry points, so bundlers tree-shake them out of application bundles; Node server runs load them only when the `oav` binary is invoked). |
-| `@aahoughton/oav-core` | Lean alternative. Zero runtime dependencies. Same programmatic surface as `@aahoughton/oav`, minus the YAML readers and CLI. Feed it JSON specs (or pre-parsed objects via the memory reader).                                                                                                            |
+| Package                    | When to use                                                                                                                                                                                                                                                                                               |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@aahoughton/oav`          | Default. Batteries-included: YAML readers + the `oav` CLI. Depends on `yaml`; pulls in `commander` + `esbuild` for the CLI only (never imported from the library entry points, so bundlers tree-shake them out of application bundles; Node server runs load them only when the `oav` binary is invoked). |
+| `@aahoughton/oav-core`     | Lean alternative. Zero runtime dependencies. Same programmatic surface as `@aahoughton/oav`, minus the YAML readers and CLI. Feed it JSON specs (or pre-parsed objects via the memory reader).                                                                                                            |
+| `@aahoughton/oav-express4` | Framework adapter for Express 4. Thin: imports the validator from `oav-core`, ships a middleware factory plus standalone helpers. Sibling adapters for Express 5, Fastify, and Hono will follow the same shape. See [`INTEGRATION.md`](./INTEGRATION.md).                                                 |
 
 ```bash
 npm install @aahoughton/oav
@@ -36,6 +38,10 @@ npm install @aahoughton/oav
 
 ```bash
 npm install @aahoughton/oav-core           # lean install, JSON-only
+```
+
+```bash
+npm install @aahoughton/oav-express4       # Express 4 + your choice of oav or oav-core
 ```
 
 `oav` re-exports `oav-core` at matching
@@ -289,12 +295,18 @@ app.use(async (req, res, next) => {
 
 See [**INTEGRATION.md**](./INTEGRATION.md) for:
 
-- Adapters for Express 4, Fastify, Next.js, Hono, Bun, and Deno.
+- Adapters for Express 4, Express 5, Fastify, Next.js, Hono, Bun, and Deno.
 - Recipes for file uploads (multer), response validation, security,
   ignoring paths, and the full status-code switch.
 - A migration table from `express-openapi-validator`, including
   where oav is stricter or more conformant and where you'll do more
   wiring by hand.
+
+For Express 4, the
+[`@aahoughton/oav-express4`](./packages/oav-express4/README.md)
+companion package ships the middleware as a one-liner — same
+defaults, async-aware `onError`. Sibling adapters for Express 5,
+Fastify, and Hono will follow the same shape.
 
 `oav` is not a drop-in for `express-openapi-validator`: you own the
 error → HTTP mapping, you wire up multer if you need file uploads,
