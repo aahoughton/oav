@@ -679,9 +679,15 @@ spec but not shape-checked at the validator layer. Failures surface as
 a single leaf error with `code: "security"` and `path: ["security"]`,
 mapping to HTTP 401 in the default status recipe.
 
-Disable with `createValidator(spec, { validateSecurity: false })` if
-you want schema checks only. See `ValidatorOptions.validateSecurity`
-for the option contract; this section is the recipe.
+**Off by default.** Real apps run auth middleware upstream of the
+validator, so by the time `validateRequest` runs the credential has
+already been verified. Enable with `createValidator(spec, {
+validateSecurity: true })` when there's no auth middleware (early
+dev / prototyping) or when the auth layer only decorates `req`
+without rejecting unauthenticated traffic. The check is shape-only
+and is **not** a substitute for actual credential verification.
+See `ValidatorOptions.validateSecurity` for the option contract;
+this section is the recipe.
 
 `express-openapi-validator`'s `securityHandlers` is a _credential-
 verifying_ dispatch table — you supply an auth function per scheme and
@@ -784,11 +790,11 @@ app.use(async (req, res, next) => {
 
 #### Security and file uploads
 
-| `express-openapi-validator` option | `oav` equivalent                                                                                                                  |
-| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `validateSecurity: true`           | Default — shape-only checks for `bearer` / `basic` / `apiKey`. Opt out with `createValidator(spec, { validateSecurity: false })`. |
-| `validateSecurity.handlers`        | Your own auth middleware, run before the validator — `oav` only checks credential **shape**, not validity.                        |
-| `fileUploader: true`               | Your own multer middleware (see [recipe](#file-uploads-with-multer)).                                                             |
+| `express-openapi-validator` option | `oav` equivalent                                                                                                                                                                                |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `validateSecurity: true`           | Off by default in oav (real apps gate security upstream of validation). Opt in with `createValidator(spec, { validateSecurity: true })` for shape-only checks on `bearer` / `basic` / `apiKey`. |
+| `validateSecurity.handlers`        | Your own auth middleware, run before the validator — `oav` only checks credential **shape**, not validity.                                                                                      |
+| `fileUploader: true`               | Your own multer middleware (see [recipe](#file-uploads-with-multer)).                                                                                                                           |
 
 #### Handler wiring
 
