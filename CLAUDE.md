@@ -110,6 +110,11 @@ pnpm typecheck                    # tsc -b (composite project references)
 tests run against `packages/*/src` directly — no need to build before
 testing.
 
+Use `pnpm pack` (not `npm pack`) for any workspace package. `npm pack`
+ships unrewritten `workspace:*` deps; the prepack guard rejects it
+with a hint, but the failure is a context switch best avoided by
+reaching for `pnpm pack` directly.
+
 ## Dev-only sub-packages (standalone; not in the workspace)
 
 - `conformance/` — upstream JSON Schema Test Suite + OpenAPI case

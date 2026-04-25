@@ -19,3 +19,11 @@ export { httpRequestFromExpress } from "./extract.js";
 export { renderProblemDetails } from "./render.js";
 export { validateRequests, type ValidateRequestsOptions } from "./middleware.js";
 export type { ErrorHandler, ExpressContext } from "./types.js";
+
+// Re-export the types that appear in our own option signatures. Strictly
+// not duplication of oav-core's surface — these ARE the adapter's
+// public contract, just borrowed for non-duplication reasons. Importing
+// them from this package means consumers don't have to know which
+// package owns them.
+export type { HttpRequest, ValidationError } from "@oav/core";
+export type { Validator } from "@oav/validator";

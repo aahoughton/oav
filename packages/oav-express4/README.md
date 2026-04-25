@@ -36,7 +36,7 @@ app.post("/pets", (req, res) => res.json({ ok: true }));
 
 That's it. Invalid requests get a `400 application/problem+json` response (status from `httpStatusFor`, body from `toProblemDetails`, `Allow` header on 405). Valid requests reach your route handlers.
 
-> **Body parser ordering matters.** `express.json()` (or your equivalent) must run **before** `validateRequests(...)`, otherwise `req.body` is `undefined` and the validator emits `body required` for every request — a misleading error that points at the schema, not at the missing parser. Same for `cookie-parser` if your spec validates cookies.
+> **Body parser ordering matters.** `express.json()` (or your equivalent) must run **before** `validateRequests(...)`, otherwise `req.body` is `undefined` and the validator emits `body required` for every request — a misleading error that points at the schema, not at the missing parser. Same for `cookie-parser` if your spec validates cookies. Any middleware that populates `req.body` with a parsed object satisfies oav — `express.json()`, custom streaming parsers, `body-parser`, fastify's bridge, app-specific middleware all work the same way.
 >
 > **Empty-body normalisation.** Some parsers (streaming variants, custom multi-format setups) leave `req.body === undefined` even after they run, for empty `{}`-equivalent payloads. When that happens, `required`-field checks short-circuit on the missing body — empty submissions pass validation. Normalise via `toHttpRequest`:
 >
@@ -65,11 +65,15 @@ Returns an Express 4 `RequestHandler`.
 
 `onError` may be async — the middleware awaits it. If it throws or rejects, the error is forwarded via `next(err)` so the host's error middleware sees it. The middleware does **not** call `next()` after `onError` returns — your callback owns the response (write to `ctx.res`, or call `ctx.next(err)` to delegate).
 
+> **Validation failures don't traverse Express's error chain by default.** The default `onError` (`renderProblemDetails`) writes the response directly. If you're migrating from `express-openapi-validator` (which emits validation failures as `HttpError` through `next(err)`), your existing error middleware won't see oav's failures unless you forward them — see [Forward to Express's error middleware](#forward-to-expresss-error-middleware) below. Same goes for observability: see [Add observability without changing the response](#add-observability-without-changing-the-response).
+
 ### `httpRequestFromExpress(req)`
 
 Convert an Express 4 `Request` to oav's framework-agnostic `HttpRequest` shape. Read what's already on `req` — body parsing is the host app's responsibility.
 
 Header keys lowercased, path stripped of query string, cookies read from `req.cookies` if present.
+
+**Returns a fresh `HttpRequest`.** Top-level fields can be reassigned freely without affecting the original Express `req` — safe to spread (`{ ...httpRequestFromExpress(req), body: {} }`) or mutate in place. The values it references (`req.body`, `req.headers`) are still the originals; deep mutation would still leak, but reassignment doesn't.
 
 Use this when you want to compose your own middleware (e.g. validate inside an existing custom wrapper) without re-implementing the extraction.
 
@@ -195,6 +199,23 @@ app.use((err, _req, res, _next) => {
   // ... your existing error handler
 });
 ```
+
+### Add observability without changing the response
+
+Validation failures don't reach your registered Express error middleware by default (the middleware terminates the request itself). To log every failure while keeping the default problem-details response, compose `renderProblemDetails` after your log call:
+
+```ts
+app.use(
+  validateRequests(validator, {
+    onError: (err, ctx) => {
+      log.warn("validation failed", { path: ctx.req.path, code: err.code });
+      renderProblemDetails(err, ctx);
+    },
+  }),
+);
+```
+
+Three lines, no behaviour change for clients. Use this whenever your existing error pipeline (Sentry, structured logger, request-id correlation) needs to see validation failures.
 
 ### Async `onError` (remote logging, dynamic config)
 

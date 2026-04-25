@@ -140,8 +140,12 @@ app.use(async (req, res, next) => {
 });
 ```
 
-Requires `express.json()` registered before this middleware (and
-`cookie-parser` if you use the `cookies` field).
+Requires `express.json()` (or any equivalent middleware that
+populates `req.body` with a parsed object) registered before this
+middleware, and `cookie-parser` if you use the `cookies` field.
+Custom streaming parsers, `body-parser`, fastify's bridge, and
+app-specific middleware all work the same way — oav doesn't care
+_how_ `req.body` got populated, only that it's there.
 
 **Two sharp edges to know about:**
 
@@ -184,7 +188,14 @@ Requires `express.json()` registered before this middleware (and
 (Unmatched `Content-Type` is handled correctly without extra wiring:
 even when `express.json()` leaves `req.body` empty for a non-JSON
 request, oav sees the declared header, finds no matching media type
-in the spec, and returns a `content-type` leaf that maps to 415.)
+in the spec, and returns a `content-type` leaf that maps to 415. The
+sibling case — **no Content-Type AND no body** — returns `body` /
+400 instead of 415, since there's no client signal about format
+intent to be "wrong about." This is a divergence from
+`express-openapi-validator`, which returns 415 in both cases; oav's
+choice surfaces the more actionable message ("you didn't send a
+body"). Tests that exercise the 415 path need to send an explicit
+unmatched Content-Type.)
 
 ### Express 4
 
@@ -522,6 +533,17 @@ hit: a `{ type: "string", format: "binary" }` field in the spec is
 rewritten to an "accept anything" schema before compile, so a Buffer
 or Uint8Array passes without a string-type error. `format: "byte"`
 (base64) still validates as a string.
+
+**Watch out for `oneOf` / `anyOf` with binary fields.** The "accept
+anything" rewrite means every binary branch matches every input. A
+common spec pattern for "one file or many" —
+`oneOf [array<binary>, binary]` — is silently ambiguous: both
+branches match the same payload, so `oneOf` fails with
+`matchCount: 2`. The fix is usually to drop the `oneOf` and accept
+the array form (parsers like multer always deliver arrays anyway);
+the original spec was already ambiguous before oav surfaced it.
+`express-openapi-validator` was looser inside binary fields and
+silently accepted, masking the issue.
 
 ### Deriving middleware config from the spec
 

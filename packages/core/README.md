@@ -63,6 +63,15 @@ declaration merging.
 
 ## Formatters
 
+Which one to reach for:
+
+| Want                                                                      | Use          |
+| ------------------------------------------------------------------------- | ------------ |
+| One-line string for `response.message`, log lines, Sentry/NR group titles | `summarize`  |
+| Multi-line indented tree for stdout, log dumps, human reading             | `formatText` |
+| Structured tree for programmatic consumption / JSON round-trip            | `formatJson` |
+| One line per leaf for grep, CI diffs                                      | `formatFlat` |
+
 Tree formatters — produce strings suitable for stdout / logs.
 
 - `formatText(err, { maxDepth?, indent? })` — indented human-readable.
@@ -89,7 +98,12 @@ format \"email\""`).
 
 ## HTTP response helpers
 
-For rendering validation failures as an HTTP response:
+For rendering validation failures as an HTTP response. Two response
+builders, pick by envelope shape: **`toProblemDetails`** for RFC 9457
+`application/problem+json`; **`collectIssues`** when you're keeping a
+custom response shape (e.g. preserving an existing
+`{ message, errors: [...] }` envelope from a library you're
+migrating from).
 
 - `httpStatusFor(err, overrides?)` — maps a `ValidationError` tree to
   an HTTP status code. Defaults: `route` → 404, `method` → 405,
