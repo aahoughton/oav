@@ -68,14 +68,21 @@ describe("toProblemDetails", () => {
     expect(pd.type).toBe("about:blank");
     expect(pd.title).toBe("Validation failed");
     expect(pd.status).toBe(400);
-    expect(pd.detail).toBe("2 validation errors");
+    // detail summarises the first leaf via summarize(); the structural
+    // count is still in `issues.length` for callers that need it.
+    expect(pd.detail).toBe("body missing name");
     expect(pd.instance).toBeUndefined();
     expect(pd.issues).toHaveLength(2);
   });
 
-  it("singularises `detail` for a single issue", () => {
+  it("uses the leaf's own message when the path is empty", () => {
     const pd = toProblemDetails(createLeafError("type", [], "x"));
-    expect(pd.detail).toBe("1 validation error");
+    expect(pd.detail).toBe("x");
+  });
+
+  it("honours a caller-supplied `detail` override", () => {
+    const pd = toProblemDetails(err, { detail: "2 validation errors" });
+    expect(pd.detail).toBe("2 validation errors");
   });
 
   it("honours caller-supplied type / title / status / instance", () => {

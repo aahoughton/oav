@@ -93,7 +93,16 @@ Both shipped from `oav`:
   [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457.html)
   `application/problem+json` body with the failing leaves carried in
   an `issues` field (a non-standard field alongside the required
-  ones).
+  ones). The `detail` field defaults to `summarize(err)` (a one-line
+  description of the first failing leaf); pass `detail` explicitly
+  for an override.
+
+- **`summarize(err, opts?)`** — single-line summary of the first
+  failing leaf as `<dotted-path> <message>`. Use it directly for log
+  lines, error-monitoring titles (Sentry/New Relic group by message),
+  or as the top-level `message` field in custom response envelopes.
+  See `SummarizeOptions.select` for the leaf-picking policy
+  (`"first"` / `"deepest"` / `{ byCode }`).
 
 ```ts
 import { allowHeaderFor, httpStatusFor, toProblemDetails } from "@aahoughton/oav";

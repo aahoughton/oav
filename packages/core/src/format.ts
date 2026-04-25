@@ -104,6 +104,80 @@ export function formatFlat(error: ValidationError): string {
 }
 
 /**
+ * Leaf-selection policy for {@link summarize}.
+ *
+ * - `"first"` — the first leaf in tree-traversal order. Matches
+ *   `express-openapi-validator`'s top-level `message`. The default.
+ * - `"deepest"` — the leaf with the longest path. More informative
+ *   on `oneOf` / composition trees where the structural cause sits
+ *   one or two levels in. Tiebreak: first encountered.
+ * - `{ byCode }` — priority list of error codes. Returns the first
+ *   leaf whose `code` matches the highest-priority entry; if no leaf
+ *   matches any listed code, falls back to the `"first"` policy.
+ *
+ * @public
+ */
+export type SummarizeSelect = "first" | "deepest" | { byCode: readonly string[] };
+
+/**
+ * Options for {@link summarize}.
+ *
+ * @public
+ */
+export interface SummarizeOptions {
+  /** How to pick the leaf to summarise. Defaults to `"first"`. */
+  select?: SummarizeSelect;
+}
+
+/**
+ * Render a {@link ValidationError} tree as a single human-readable line —
+ * the kind of string every HTTP adapter needs for response-body
+ * `message` fields, log lines, error-monitoring titles, and
+ * `Error.message`.
+ *
+ * Picks one leaf per the {@link SummarizeOptions.select} policy and
+ * renders it as `<dotted-path> <message>` (or just `<message>` when
+ * the path is empty). Use {@link formatFlat} or {@link formatText}
+ * when you need the full tree.
+ *
+ * @example
+ * ```ts
+ * summarize(rootError);
+ * // "body.users[0].email must match format \"email\""
+ *
+ * summarize(rootError, { select: { byCode: ["content-type", "required"] } });
+ * // returns the content-type leaf if any, else the first required leaf,
+ * // else the first leaf overall.
+ * ```
+ *
+ * @public
+ */
+export function summarize(error: ValidationError, options: SummarizeOptions = {}): string {
+  const select = options.select ?? "first";
+  // collectLeaves defines a leaf as any node with no children, so even
+  // a single-leaf root yields one entry — leaves[0] is always present.
+  const leaves = collectLeaves(error);
+
+  let chosen: ValidationError = leaves[0]!;
+  if (select === "deepest") {
+    for (const leaf of leaves) {
+      if (leaf.path.length > chosen.path.length) chosen = leaf;
+    }
+  } else if (select !== "first") {
+    for (const code of select.byCode) {
+      const match = leaves.find((l) => l.code === code);
+      if (match !== undefined) {
+        chosen = match;
+        break;
+      }
+    }
+  }
+
+  const location = joinPath(chosen.path);
+  return location.length > 0 ? `${location} ${chosen.message}` : chosen.message;
+}
+
+/**
  * Count the nodes in a {@link ValidationError} tree (branches + leaves).
  *
  * @param error - Root of the error tree.

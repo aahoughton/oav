@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createBranchError, createLeafError, type ValidationError } from "../src/errors.js";
-import { countErrors, formatFlat, formatJson, formatText } from "../src/format.js";
+import { countErrors, formatFlat, formatJson, formatText, summarize } from "../src/format.js";
 
 /** A realistic 4-level oneOf failure used by several formatter assertions. */
 function sampleTree(): ValidationError {
@@ -107,5 +107,59 @@ describe("formatFlat", () => {
 describe("countErrors", () => {
   it("counts branches and leaves", () => {
     expect(countErrors(sampleTree())).toBe(6);
+  });
+});
+
+describe("summarize", () => {
+  it('defaults to "first" — picks the first leaf in tree-traversal order', () => {
+    expect(summarize(sampleTree())).toBe("body.purr must be boolean");
+  });
+
+  it('"deepest" picks the leaf with the longest path', () => {
+    // sampleTree's two leaves: body.purr (depth 2) vs body (depth 1).
+    // "deepest" prefers body.purr; "first" would also land here, so add
+    // a more discriminating fixture.
+    const tree = createBranchError("body", ["body"], "bad", [
+      createLeafError("required", ["body"], "missing name"),
+      createLeafError("type", ["body", "items", 3, "name"], "must be string"),
+    ]);
+    expect(summarize(tree, { select: "first" })).toBe("body missing name");
+    expect(summarize(tree, { select: "deepest" })).toBe("body.items[3].name must be string");
+  });
+
+  it('"deepest" tiebreaks on first-encountered when path lengths match', () => {
+    const tree = createBranchError("body", ["body"], "bad", [
+      createLeafError("required", ["body", "a"], "missing a"),
+      createLeafError("required", ["body", "b"], "missing b"),
+    ]);
+    expect(summarize(tree, { select: "deepest" })).toBe("body.a missing a");
+  });
+
+  it("byCode returns the first leaf matching the highest-priority listed code", () => {
+    const tree = createBranchError("request", [], "request invalid", [
+      createLeafError("type", ["body", "age"], "must be number"),
+      createLeafError("content-type", ["body"], 'Content-Type "text/plain" not accepted'),
+      createLeafError("required", ["body"], "missing name"),
+    ]);
+    // content-type wins over required even though required appears later.
+    expect(summarize(tree, { select: { byCode: ["content-type", "required"] } })).toBe(
+      'body Content-Type "text/plain" not accepted',
+    );
+    // Priority order matters: required first picks the required leaf.
+    expect(summarize(tree, { select: { byCode: ["required", "content-type"] } })).toBe(
+      "body missing name",
+    );
+  });
+
+  it('byCode falls back to "first" when no leaf matches any listed code', () => {
+    const tree = createLeafError("type", ["body", "age"], "must be number");
+    expect(summarize(tree, { select: { byCode: ["content-type", "security"] } })).toBe(
+      "body.age must be number",
+    );
+  });
+
+  it("renders a path-less leaf as just the message", () => {
+    const tree = createLeafError("route", [], "no matching route");
+    expect(summarize(tree)).toBe("no matching route");
   });
 });

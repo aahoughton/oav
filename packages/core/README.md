@@ -63,11 +63,27 @@ declaration merging.
 
 ## Formatters
 
-All three produce strings suitable for stdout / logs.
+Tree formatters — produce strings suitable for stdout / logs.
 
 - `formatText(err, { maxDepth?, indent? })` — indented human-readable.
 - `formatJson(err)` — deep copy that round-trips through `JSON.stringify`.
 - `formatFlat(err)` — one line per leaf.
+
+Single-line summary — for response-body `message` fields, log lines,
+error-monitoring titles, and `Error.message`:
+
+- `summarize(err, { select? })` — picks one leaf and renders it as
+  `<dotted-path> <message>` (e.g. `"body.users[0].email must match
+format \"email\""`).
+  - `select: "first"` (default) — first leaf in tree-traversal
+    order. Matches `express-openapi-validator`'s top-level message.
+  - `select: "deepest"` — leaf with the longest path; more
+    informative on `oneOf` / composition trees.
+  - `select: { byCode: ["content-type", "required", ...] }` —
+    priority list. Returns the first leaf matching the
+    highest-priority listed code; falls back to `"first"` if no
+    match. Useful when the wire format wants to surface specific
+    failure categories first.
 
 `countErrors(err)` returns the total number of nodes in the tree.
 
@@ -83,10 +99,13 @@ For rendering validation failures as an HTTP response:
   `err.code`). Pass `{ default: 422 }` etc. to override a slot.
 - `allowHeaderFor(err)` — returns the comma-joined `Allow` header
   value for a 405, or `undefined` otherwise (RFC 9110 §15.5.6).
-- `toProblemDetails(err, { type?, title?, status?, instance? })` — RFC
-  9457 `application/problem+json` envelope with a typed `issues` array
-  as an extension member. Defaults: `about:blank` type,
-  `"Validation failed"` title, status `400`.
+- `toProblemDetails(err, { type?, title?, status?, detail?, instance? })` —
+  RFC 9457 `application/problem+json` envelope with a typed `issues`
+  array as an extension member. Defaults: `about:blank` type,
+  `"Validation failed"` title, status `400`, and `detail` = `summarize(err)`
+  (first failing leaf). Pass `detail` explicitly for a structural
+  summary like `` `${pd.issues.length} validation errors` `` or any
+  other override.
 - `collectIssues(err)` — just the flat leaf list (with
   `path` segments + RFC 6901 `pointer` strings), if you're rolling
   your own response shape.
