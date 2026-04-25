@@ -4,7 +4,7 @@ Express 5 adapter for [`@aahoughton/oav-core`](https://www.npmjs.com/package/@aa
 
 Same shape as the [`oav-express4`](../oav-express4/README.md) sibling — only the framework-typed argument and the async semantics differ. Express 5's promise-native middleware means thrown errors and rejected promises propagate to the host's error middleware automatically, with no `try/catch` wrapper.
 
-For Fastify / Hono adapters, see the sibling `oav-fastify` / `oav-hono` packages — same API shape, same names, same defaults.
+Sibling packages: [`oav-express4`](../oav-express4/README.md), [`oav-fastify`](../oav-fastify/README.md). Same export names, option shapes, and defaults; only the framework-typed argument differs.
 
 ## Install
 
@@ -36,7 +36,7 @@ app.use(validateRequests(validator));
 app.post("/pets", (req, res) => res.json({ ok: true }));
 ```
 
-That's it. Invalid requests get a `400 application/problem+json` response (status from `httpStatusFor`, body from `toProblemDetails`, `Allow` header on 405). Valid requests reach your route handlers.
+Invalid requests receive a `400 application/problem+json` response (status from `httpStatusFor`, body from `toProblemDetails`, `Allow` header on 405). Valid requests reach the route handlers.
 
 > **Body parser ordering matters.** `express.json()` (or any equivalent that populates `req.body` with a parsed object) must run **before** `validateRequests(...)`. Same for `cookie-parser` if your spec validates cookies. Any middleware that populates `req.body` works — `express.json()`, `body-parser`, custom streaming parsers, app-specific middleware all work the same way.
 >
@@ -164,7 +164,7 @@ app.use(
 );
 ```
 
-Three lines, no behaviour change for clients. Use this whenever your existing error pipeline (Sentry, structured logger, request-id correlation) needs to see validation failures.
+Use this whenever your existing error pipeline (Sentry, structured logger, request-id correlation) needs to see validation failures without changing the response shape.
 
 ### Async `onError` (remote logging, dynamic config)
 

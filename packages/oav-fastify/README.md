@@ -4,7 +4,7 @@ Fastify adapter for [`@aahoughton/oav-core`](https://www.npmjs.com/package/@aaho
 
 Same shape as the Express siblings ([`oav-express4`](../oav-express4/README.md), [`oav-express5`](../oav-express5/README.md)) — only the framework-typed argument and Fastify's hook-vs-middleware distinction differ. Fastify is async-native, so thrown errors and rejected promises propagate to Fastify's error handler automatically, with no `try/catch` wrapper.
 
-For Hono / Bun adapters, see future sibling packages — same API shape, same names, same defaults.
+Sibling packages: [`oav-express4`](../oav-express4/README.md), [`oav-express5`](../oav-express5/README.md). Same export names, option shapes, and defaults; only the framework-typed argument differs.
 
 ## Install
 
@@ -35,7 +35,7 @@ app.addHook("preValidation", validateRequests(validator));
 app.post("/pets", async () => ({ ok: true }));
 ```
 
-That's it. Invalid requests get a `400 application/problem+json` response (status from `httpStatusFor`, body from `toProblemDetails`, `Allow` header on 405). Valid requests reach your route handlers.
+Invalid requests receive a `400 application/problem+json` response (status from `httpStatusFor`, body from `toProblemDetails`, `Allow` header on 405). Valid requests reach the route handlers.
 
 ## Mount point: `preValidation`
 
@@ -158,7 +158,7 @@ app.addHook(
 );
 ```
 
-Three lines, no behaviour change for clients. Use this whenever your existing error pipeline (Sentry, structured logger, request-id correlation) needs to see validation failures.
+Use this whenever your existing error pipeline (Sentry, structured logger, request-id correlation) needs to see validation failures without changing the response shape.
 
 ### Async `onError` (remote logging, dynamic config)
 

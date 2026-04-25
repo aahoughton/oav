@@ -14,13 +14,11 @@ oav --help
 npx @aahoughton/oav validate openapi.yaml --request req.http
 ```
 
-The CLI lives in the batteries-included `oav` package, not
-the lean `oav-core` — `oav-core` doesn't ship a `bin` or
-any CLI glue. `oav` pulls in `commander` (argv parsing)
-and `esbuild` (AOT bundling for `compile-schema` / `compile-spec`) as
-regular dependencies, so the CLI runs out of the box after one
-install. Users who only need the programmatic API and want a smaller
-footprint install `oav-core` instead.
+The CLI lives in the `oav` package, not `oav-core` — `oav-core`
+doesn't ship a `bin` or any CLI glue. `oav` carries `commander`
+(argv parsing) and `esbuild` (AOT bundling for `compile-schema` /
+`compile-spec`) as regular dependencies. Users who only need the
+programmatic API install `oav-core` instead.
 
 ## Commands
 

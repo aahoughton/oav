@@ -157,10 +157,10 @@ const joined = collectIssues(err)
 
 See the [Framework integration](../../README.md#framework-integration)
 section of the root README for Express / Fastify / Next.js snippets.
-For Express 4 specifically, the
-[`@aahoughton/oav-express4`](../oav-express4/README.md) companion
-package wraps these helpers as a one-liner middleware; sibling
-adapters for Express 5 / Fastify / Hono will follow the same shape.
+Companion adapter packages wrap these helpers as middleware /
+hooks: [`oav-express4`](../oav-express4/README.md),
+[`oav-express5`](../oav-express5/README.md),
+[`oav-fastify`](../oav-fastify/README.md).
 
 ## OpenAPI / HTTP types
 
