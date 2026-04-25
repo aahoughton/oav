@@ -20,6 +20,7 @@
 
 import { fileURLToPath } from "node:url";
 import type {
+  MediaTypeObject,
   OperationObject,
   ParameterObject,
   SchemaObject,
@@ -49,11 +50,17 @@ export interface OperationDigest {
   security: string[][];
 }
 
+function getMediaTypes(op: OperationObject): Record<string, MediaTypeObject> {
+  const body = op.requestBody;
+  if (body === undefined || "$ref" in body) return {};
+  return body.content;
+}
+
 export function digestOperation(op: OperationObject): OperationDigest {
   return {
     operationId: op.operationId,
     deprecated: op.deprecated === true,
-    requestContentTypes: Object.keys(op.requestBody?.content ?? {}),
+    requestContentTypes: Object.keys(getMediaTypes(op)),
     bodyLimits: bodyLimitsByMediaType(op),
     requiredHeaders: (op.parameters ?? [])
       .filter((p): p is ParameterObject => "name" in p && p.in === "header" && p.required === true)
@@ -72,7 +79,7 @@ export function digestOperation(op: OperationObject): OperationDigest {
  */
 function bodyLimitsByMediaType(op: OperationObject): Record<string, { maxBytes?: number }> {
   const out: Record<string, { maxBytes?: number }> = {};
-  for (const [mediaType, mto] of Object.entries(op.requestBody?.content ?? {})) {
+  for (const [mediaType, mto] of Object.entries(getMediaTypes(op))) {
     out[mediaType] = { maxBytes: declaredMaxBytes(mto.schema) };
   }
   return out;

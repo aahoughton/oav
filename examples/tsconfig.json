@@ -1,0 +1,25 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "allowImportingTsExtensions": true,
+    "baseUrl": "..",
+    "paths": {
+      "@oav/core": ["./packages/core/src/index.ts"],
+      "@oav/schema": ["./packages/schema/src/index.ts"],
+      "@oav/schema/internals": ["./packages/schema/src/internals.ts"],
+      "@oav/formats": ["./packages/formats/src/index.ts"],
+      "@oav/spec": ["./packages/spec/src/index.ts"],
+      "@oav/router": ["./packages/router/src/index.ts"],
+      "@oav/validator": ["./packages/validator/src/index.ts"],
+      "@oav/validator/internals": ["./packages/validator/src/internals.ts"],
+      "@oav/cli": ["./packages/cli/src/index.ts"],
+      "@oav/oav": ["./packages/oav/src/index.ts"]
+    }
+  },
+  "include": ["**/*.ts"]
+}

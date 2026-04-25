@@ -26,7 +26,8 @@ testing.
 Both have their own `package.json` + `pnpm-workspace.yaml` (with empty
 `packages:` list so pnpm treats them as isolated roots). Their
 external dev-dependencies (benchmark runners, competing validators,
-`tsx`) are NOT in the main workspace install.
+`tsx`) are NOT in the main workspace install. Neither is type-checked
+in CI — they're tsx-run dev tooling, breakage shows up when you run them.
 
 ## Architecture, package by package
 
