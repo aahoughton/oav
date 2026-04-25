@@ -4,7 +4,7 @@ Express 4 adapter for [`@aahoughton/oav-core`](https://www.npmjs.com/package/@aa
 
 Thin: this package re-exports nothing from oav-core. You install both. The adapter declares oav-core as a regular dependency, so a single `npm install @aahoughton/oav-express4` pulls oav-core along; or install [`@aahoughton/oav`](https://www.npmjs.com/package/@aahoughton/oav) instead if you want YAML readers and the CLI.
 
-For Express 5 / Fastify / Hono adapters, see the sibling `oav-express5` / `oav-fastify` / `oav-hono` packages — same API shape, same names, same defaults.
+Sibling packages: [`oav-express5`](../oav-express5/README.md), [`oav-fastify`](../oav-fastify/README.md). Same export names, option shapes, and defaults; only the framework-typed argument differs.
 
 ## Install
 
@@ -36,7 +36,7 @@ app.use(validateRequests(validator));
 app.post("/pets", (req, res) => res.json({ ok: true }));
 ```
 
-That's it. Invalid requests get a `400 application/problem+json` response (status from `httpStatusFor`, body from `toProblemDetails`, `Allow` header on 405). Valid requests reach your route handlers.
+Invalid requests receive a `400 application/problem+json` response (status from `httpStatusFor`, body from `toProblemDetails`, `Allow` header on 405). Valid requests reach the route handlers.
 
 > **Body parser ordering matters.** `express.json()` (or your equivalent) must run **before** `validateRequests(...)`, otherwise `req.body` is `undefined` and the validator emits `body required` for every request — a misleading error that points at the schema, not at the missing parser. Same for `cookie-parser` if your spec validates cookies. Any middleware that populates `req.body` with a parsed object satisfies oav — `express.json()`, custom streaming parsers, `body-parser`, fastify's bridge, app-specific middleware all work the same way.
 >
@@ -217,7 +217,7 @@ app.use(
 );
 ```
 
-Three lines, no behaviour change for clients. Use this whenever your existing error pipeline (Sentry, structured logger, request-id correlation) needs to see validation failures.
+Use this whenever your existing error pipeline (Sentry, structured logger, request-id correlation) needs to see validation failures without changing the response shape.
 
 ### Async `onError` (remote logging, dynamic config)
 

@@ -171,30 +171,35 @@ options)` returns a `Validator` exposing `validateRequest(req)`,
   `readBodyFromFetch`) for Next.js / Hono / Bun / Deno consumers.
 - **`@oav/cli`** — thin commander wrapper. No business logic beyond arg
   parsing, I/O, and exit codes.
-- **`@oav/oav-express4`** — first of the framework adapter family.
-  Thin: depends on `@aahoughton/oav-core` (transitive) and declares
-  `express ^4.0.0` as a peer; ships a `validateRequests` middleware
-  factory plus standalone `httpRequestFromExpress` and
-  `renderProblemDetails` helpers. Naming and option shapes
-  (`validateRequests`, `ValidateRequestsOptions`, `ExpressContext`,
-  `ErrorHandler<Ctx>`) are designed to stay identical across future
-  `oav-express5` / `oav-fastify` / `oav-hono` siblings — only the
-  framework-typed argument differs. Future `validateResponses` slots
-  in additively.
+- **`@oav/oav-express4`**, **`@oav/oav-express5`**, **`@oav/oav-fastify`** —
+  framework adapters. Thin: depend on `@aahoughton/oav-core`
+  (transitive) and declare the matching framework as a peer. Each
+  exports `validateRequests` (the middleware/hook factory),
+  `httpRequestFrom<Framework>` (the standalone extractor), and
+  `renderProblemDetails` (the default error renderer). Option and
+  type names (`ValidateRequestsOptions`, `ErrorHandler<Ctx>`) are
+  identical across the family; per-framework `Context` types use
+  framework-native field names (`ExpressContext { req, res, next }`,
+  `FastifyContext { request, reply }`). The `oav-express5` / Fastify
+  variants are async-native and don't need `try/catch`; `oav-express4`
+  forwards thrown errors via `next(err)`. A future `validateResponses`
+  slots in additively on each adapter.
 
 ## Dependency graph (strictly enforced; no cycles)
 
 ```
-cli         → validator → router
-                       → spec → core
-                       → formats → core
-                       → schema → core
-                       → core
-            → spec → core
-            → core
-oav-express4 → validator → ... (same as cli's chain)
-            → core
-            (peer: express ^4)
+cli           → validator → router
+                         → spec → core
+                         → formats → core
+                         → schema → core
+                         → core
+              → spec → core
+              → core
+oav-express4  → validator → ... (same as cli's chain)
+              → core
+              (peer: express ^4)
+oav-express5  → same chain, peer: express ^5
+oav-fastify   → same chain, peer: fastify ^5
 ```
 
 ## How to add a new keyword

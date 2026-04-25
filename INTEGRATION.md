@@ -3,9 +3,8 @@
 A recipe book for wiring `oav` into HTTP frameworks. `oav` is a
 validator, not a middleware package — you write a short adapter
 between your framework and `validateRequest` / `validateResponse`,
-or use one of the companion adapter packages (`oav-express4`, future
-`oav-express5` / `oav-fastify` / `oav-hono`) that ships the wiring
-for you.
+or use one of the companion adapter packages: `oav-express4`,
+`oav-express5`, `oav-fastify`.
 
 This document is organised:
 
@@ -119,16 +118,17 @@ app.use(express.json()); // any middleware that populates req.body satisfies oav
 app.use(validateRequests(validator));
 ```
 
-Sensible defaults: RFC 9457 `application/problem+json` body via
-`toProblemDetails`, status from `httpStatusFor`, `Allow` header from
-`allowHeaderFor` on 405. The package also exports
+Defaults: status from `httpStatusFor`, `Allow` header from
+`allowHeaderFor` on 405, body from `toProblemDetails` (RFC 9457
+`application/problem+json`). The package also exports
 `httpRequestFromExpress(req)` (the extractor) and
 `renderProblemDetails(err, ctx)` (the default renderer) standalone,
 for callers composing their own middleware. See the
 [adapter README](https://github.com/aahoughton/oav/blob/main/packages/oav-express4/README.md)
-for options (`toHttpRequest`, `onError`), async `onError` semantics,
-custom envelope recipes, and the patterns in the cross-cutting
-section below.
+for the options (`toHttpRequest`, `onError`), async `onError`
+semantics, and adapter-specific patterns. Cross-cutting recipes
+(body parsers, file uploads, security, response validation) are
+below.
 
 **Manual middleware (when you need full control).** Same shape as
 the Express 5 snippet below, with one twist: Express 4 doesn't
@@ -976,6 +976,6 @@ stay framework-shaped rather than competitor-shaped:
   option map (eov → oav), features not carried over, features
   added.
 
-Future migration docs (from-fastify-inline, from-zod-first, etc.)
-will follow the same pattern — focused, one-page references, linked
-from here.
+When other migration paths surface (from-fastify-inline,
+from-zod-first), they get their own focused docs in the same
+shape, linked from here.

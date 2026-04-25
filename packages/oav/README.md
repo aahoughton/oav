@@ -19,7 +19,7 @@ const validator = createValidator(document);
 
 | Package                | When to use                                                                                                                                                                                             |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@aahoughton/oav`      | Default. YAML support out of the box; ships the `oav` CLI as a `bin`. Pulls in `yaml`, `commander`, and `esbuild` (CLI-only).                                                                           |
+| `@aahoughton/oav`      | Includes YAML readers and the `oav` CLI binary. Pulls in `yaml`, `commander`, and `esbuild` (CLI-only).                                                                                                 |
 | `@aahoughton/oav-core` | Lean. Zero runtime dependencies. JSON specs only (or pre-parsed objects via the memory reader). Use on Cloudflare Workers, Vercel Edge, Lambda@Edge, or anywhere the YAML/CLI footprint isn't worth it. |
 
 `oav` re-exports every subpath of `oav-core` at matching paths
@@ -59,15 +59,14 @@ is re-exported from `oav-core`. Documentation for those lives in:
 
 ## Framework integration
 
-`oav` is a validator, not a middleware package — you write a short
-adapter between your HTTP framework and `validateRequest` /
-`validateResponse`. For Express 4 specifically, the
-[`@aahoughton/oav-express4`](../oav-express4/README.md) companion
-package ships the middleware as a one-liner with sensible defaults;
-sibling packages for Express 5, Fastify, and Hono will follow the
-same shape. See [`INTEGRATION.md`](../../INTEGRATION.md) for adapter
-recipes for every supported framework, plus migration notes from
-`express-openapi-validator`.
+`oav` is a validator, not a middleware package. Companion adapter
+packages cover the framework wiring:
+[`oav-express4`](../oav-express4/README.md),
+[`oav-express5`](../oav-express5/README.md),
+[`oav-fastify`](../oav-fastify/README.md). See
+[`INTEGRATION.md`](../../INTEGRATION.md) for adapter recipes plus
+manual integration patterns for Next.js, Hono, Bun, and Deno via
+the Web Standards adapter.
 
 ## See also
 
