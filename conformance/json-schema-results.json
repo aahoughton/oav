@@ -1,0 +1,638 @@
+[
+  {
+    "file": "additionalProperties.json",
+    "groups": 9,
+    "cases": 21,
+    "pass": 21,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "allOf.json",
+    "groups": 12,
+    "cases": 30,
+    "pass": 30,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "anchor.json",
+    "groups": 4,
+    "cases": 8,
+    "pass": 8,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "anyOf.json",
+    "groups": 8,
+    "cases": 18,
+    "pass": 18,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "boolean_schema.json",
+    "groups": 2,
+    "cases": 18,
+    "pass": 18,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "const.json",
+    "groups": 17,
+    "cases": 54,
+    "pass": 54,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "contains.json",
+    "groups": 7,
+    "cases": 21,
+    "pass": 21,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "content.json",
+    "groups": 4,
+    "cases": 18,
+    "pass": 18,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "default.json",
+    "groups": 3,
+    "cases": 7,
+    "pass": 7,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "defs.json",
+    "groups": 1,
+    "cases": 2,
+    "pass": 0,
+    "fail": 0,
+    "error": 2,
+    "mismatches": [
+      {
+        "group": "validate definition against metaschema",
+        "test": "valid definition schema",
+        "data": {
+          "$defs": {
+            "foo": {
+              "type": "integer"
+            }
+          }
+        },
+        "expected": true,
+        "actual": "error",
+        "reason": "compile: cannot resolve $ref: https://json-schema.org/draft/2020-12/schema"
+      },
+      {
+        "group": "validate definition against metaschema",
+        "test": "invalid definition schema",
+        "data": {
+          "$defs": {
+            "foo": {
+              "type": 1
+            }
+          }
+        },
+        "expected": false,
+        "actual": "error",
+        "reason": "compile: cannot resolve $ref: https://json-schema.org/draft/2020-12/schema"
+      }
+    ]
+  },
+  {
+    "file": "dependentRequired.json",
+    "groups": 4,
+    "cases": 20,
+    "pass": 20,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "dependentSchemas.json",
+    "groups": 4,
+    "cases": 20,
+    "pass": 20,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "dynamicRef.json",
+    "groups": 21,
+    "cases": 44,
+    "pass": 32,
+    "fail": 12,
+    "error": 0,
+    "mismatches": [
+      {
+        "group": "A $dynamicRef resolves to the first $dynamicAnchor still in scope that is encountered when the schema is evaluated",
+        "test": "An array containing non-strings is invalid",
+        "data": [
+          "foo",
+          42
+        ],
+        "expected": false,
+        "actual": true
+      },
+      {
+        "group": "A $dynamicRef with intermediate scopes that don't include a matching $dynamicAnchor does not affect dynamic scope resolution",
+        "test": "An array containing non-strings is invalid",
+        "data": [
+          "foo",
+          42
+        ],
+        "expected": false,
+        "actual": true
+      },
+      {
+        "group": "A $dynamicRef that initially resolves to a schema with a matching $dynamicAnchor resolves to the first $dynamicAnchor in the dynamic scope",
+        "test": "The recursive part is not valid against the root",
+        "data": {
+          "foo": "pass",
+          "bar": {
+            "baz": {
+              "foo": "fail"
+            }
+          }
+        },
+        "expected": false,
+        "actual": true
+      },
+      {
+        "group": "multiple dynamic paths to the $dynamicRef keyword",
+        "test": "number list with string values",
+        "data": {
+          "kindOfList": "numbers",
+          "list": [
+            "foo"
+          ]
+        },
+        "expected": false,
+        "actual": true
+      },
+      {
+        "group": "multiple dynamic paths to the $dynamicRef keyword",
+        "test": "string list with number values",
+        "data": {
+          "kindOfList": "strings",
+          "list": [
+            1.1
+          ]
+        },
+        "expected": false,
+        "actual": true
+      },
+      {
+        "group": "after leaving a dynamic scope, it is not used by a $dynamicRef",
+        "test": "string matches /$defs/thingy, but the $dynamicRef does not stop here",
+        "data": "a string",
+        "expected": false,
+        "actual": true
+      },
+      {
+        "group": "after leaving a dynamic scope, it is not used by a $dynamicRef",
+        "test": "/then/$defs/thingy is the final stop for the $dynamicRef",
+        "data": null,
+        "expected": true,
+        "actual": false
+      },
+      {
+        "group": "strict-tree schema, guards against misspelled properties",
+        "test": "instance with misspelled field",
+        "data": {
+          "children": [
+            {
+              "daat": 1
+            }
+          ]
+        },
+        "expected": false,
+        "actual": true
+      },
+      {
+        "group": "tests for implementation dynamic anchor and reference link",
+        "test": "incorrect extended schema",
+        "data": {
+          "elements": [
+            {
+              "b": 1
+            }
+          ]
+        },
+        "expected": false,
+        "actual": true
+      },
+      {
+        "group": "$ref and $dynamicAnchor are independent of order - $defs first",
+        "test": "incorrect extended schema",
+        "data": {
+          "elements": [
+            {
+              "b": 1
+            }
+          ]
+        },
+        "expected": false,
+        "actual": true
+      },
+      {
+        "group": "$ref and $dynamicAnchor are independent of order - $ref first",
+        "test": "incorrect extended schema",
+        "data": {
+          "elements": [
+            {
+              "b": 1
+            }
+          ]
+        },
+        "expected": false,
+        "actual": true
+      },
+      {
+        "group": "$dynamicRef avoids the root of each schema, but scopes are still registered",
+        "test": "data is not sufficient for schema at second#/$defs/length",
+        "data": "hey",
+        "expected": false,
+        "actual": true
+      }
+    ]
+  },
+  {
+    "file": "enum.json",
+    "groups": 15,
+    "cases": 51,
+    "pass": 51,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "exclusiveMaximum.json",
+    "groups": 1,
+    "cases": 4,
+    "pass": 4,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "exclusiveMinimum.json",
+    "groups": 1,
+    "cases": 4,
+    "pass": 4,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "format.json",
+    "groups": 19,
+    "cases": 133,
+    "pass": 133,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "if-then-else.json",
+    "groups": 12,
+    "cases": 30,
+    "pass": 30,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "infinite-loop-detection.json",
+    "groups": 1,
+    "cases": 2,
+    "pass": 2,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "items.json",
+    "groups": 10,
+    "cases": 29,
+    "pass": 29,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "maxContains.json",
+    "groups": 5,
+    "cases": 14,
+    "pass": 14,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "maximum.json",
+    "groups": 2,
+    "cases": 8,
+    "pass": 8,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "maxItems.json",
+    "groups": 2,
+    "cases": 6,
+    "pass": 6,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "maxLength.json",
+    "groups": 2,
+    "cases": 7,
+    "pass": 7,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "maxProperties.json",
+    "groups": 3,
+    "cases": 10,
+    "pass": 10,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "minContains.json",
+    "groups": 8,
+    "cases": 28,
+    "pass": 28,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "minimum.json",
+    "groups": 2,
+    "cases": 11,
+    "pass": 11,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "minItems.json",
+    "groups": 2,
+    "cases": 6,
+    "pass": 6,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "minLength.json",
+    "groups": 2,
+    "cases": 7,
+    "pass": 7,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "minProperties.json",
+    "groups": 2,
+    "cases": 8,
+    "pass": 8,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "multipleOf.json",
+    "groups": 5,
+    "cases": 10,
+    "pass": 9,
+    "fail": 1,
+    "error": 0,
+    "mismatches": [
+      {
+        "group": "float division = inf",
+        "test": "always invalid, but naive implementations may raise an overflow error",
+        "data": 1e+308,
+        "expected": false,
+        "actual": true
+      }
+    ]
+  },
+  {
+    "file": "not.json",
+    "groups": 9,
+    "cases": 40,
+    "pass": 40,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "oneOf.json",
+    "groups": 11,
+    "cases": 27,
+    "pass": 27,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "pattern.json",
+    "groups": 3,
+    "cases": 12,
+    "pass": 12,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "patternProperties.json",
+    "groups": 6,
+    "cases": 25,
+    "pass": 25,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "prefixItems.json",
+    "groups": 4,
+    "cases": 11,
+    "pass": 11,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "properties.json",
+    "groups": 6,
+    "cases": 28,
+    "pass": 28,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "propertyNames.json",
+    "groups": 6,
+    "cases": 20,
+    "pass": 20,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "ref.json",
+    "groups": 36,
+    "cases": 79,
+    "pass": 77,
+    "fail": 0,
+    "error": 2,
+    "mismatches": [
+      {
+        "group": "remote ref, containing refs itself",
+        "test": "remote ref valid",
+        "data": {
+          "minLength": 1
+        },
+        "expected": true,
+        "actual": "error",
+        "reason": "compile: cannot resolve $ref: https://json-schema.org/draft/2020-12/schema"
+      },
+      {
+        "group": "remote ref, containing refs itself",
+        "test": "remote ref invalid",
+        "data": {
+          "minLength": -1
+        },
+        "expected": false,
+        "actual": "error",
+        "reason": "compile: cannot resolve $ref: https://json-schema.org/draft/2020-12/schema"
+      }
+    ]
+  },
+  {
+    "file": "refRemote.json",
+    "groups": 15,
+    "cases": 31,
+    "pass": 31,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "required.json",
+    "groups": 5,
+    "cases": 18,
+    "pass": 18,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "type.json",
+    "groups": 11,
+    "cases": 80,
+    "pass": 80,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "unevaluatedItems.json",
+    "groups": 29,
+    "cases": 71,
+    "pass": 70,
+    "fail": 1,
+    "error": 0,
+    "mismatches": [
+      {
+        "group": "unevaluatedItems with $dynamicRef",
+        "test": "with no unevaluated items",
+        "data": [
+          "foo",
+          "bar"
+        ],
+        "expected": true,
+        "actual": false
+      }
+    ]
+  },
+  {
+    "file": "unevaluatedProperties.json",
+    "groups": 42,
+    "cases": 125,
+    "pass": 124,
+    "fail": 1,
+    "error": 0,
+    "mismatches": [
+      {
+        "group": "unevaluatedProperties with $dynamicRef",
+        "test": "with no unevaluated properties",
+        "data": {
+          "foo": "foo",
+          "bar": "bar"
+        },
+        "expected": true,
+        "actual": false
+      }
+    ]
+  },
+  {
+    "file": "uniqueItems.json",
+    "groups": 6,
+    "cases": 69,
+    "pass": 69,
+    "fail": 0,
+    "error": 0,
+    "mismatches": []
+  },
+  {
+    "file": "vocabulary.json",
+    "groups": 2,
+    "cases": 5,
+    "pass": 4,
+    "fail": 1,
+    "error": 0,
+    "mismatches": [
+      {
+        "group": "schema that uses custom metaschema with with no validation vocabulary",
+        "test": "no validation: invalid number, but it still validates",
+        "data": {
+          "numberProperty": 1
+        },
+        "expected": true,
+        "actual": false
+      }
+    ]
+  }
+]
