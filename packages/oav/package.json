@@ -1,6 +1,6 @@
 {
   "name": "@aahoughton/oav",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "HTTP-aware OpenAPI request/response validator. Batteries-included distribution: re-exports @aahoughton/oav-core, adds YAML readers, ships the `oav` CLI. For a zero-runtime-dep install, use @aahoughton/oav-core directly.",
   "keywords": [
     "cli",
