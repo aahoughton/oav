@@ -55,7 +55,9 @@ jobs:
           cache: pnpm
           registry-url: https://registry.npmjs.org
       - run: pnpm install --frozen-lockfile
-      - run: pnpm build
+      # No explicit `pnpm build`: each package's prepack rebuilds on
+      # `pnpm -r publish` below. (Vitest aliases the workspace src
+      # directly, so `pnpm test` doesn't need a prebuilt dist either.)
       - run: pnpm test
       # Publish every non-private workspace package. Currently that's
       # @aahoughton/oav-core (root) and @aahoughton/oav (packages/oav);
