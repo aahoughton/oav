@@ -43,7 +43,7 @@ imports — no surface changes.
   flags.
 
 Everything else (`createValidator`, `compileSchema`, error helpers,
-formatters, `summarize`, `toProblemDetails`, HTTP-status helpers, …)
+formatters, `formatSummary`, `toProblemDetails`, HTTP-status helpers, …)
 is re-exported from `oav-core`. Documentation for those lives in:
 
 - [`packages/core/README.md`](../core/README.md) — error tree,

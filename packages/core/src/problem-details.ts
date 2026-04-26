@@ -1,5 +1,5 @@
 import { collectLeaves, type PathSegment, type ValidationError } from "./errors.js";
-import { summarize } from "./format.js";
+import { formatSummary } from "./format.js";
 
 /**
  * A single validation issue flattened for client consumption. Produced
@@ -67,7 +67,7 @@ export interface ProblemDetailsOptions {
   instance?: string;
   /**
    * Override the human-readable `detail`. Defaults to
-   * {@link summarize}(error) — a single line describing the first
+   * {@link formatSummary}(error) — a single line describing the first
    * failing leaf (e.g. `"body.users[0].email must match format \"email\""`).
    * Pass an explicit string for a structural summary like
    * `` `${issues.length} validation error(s)` `` if you'd rather
@@ -124,7 +124,7 @@ export function toProblemDetails(
     type: options.type ?? "about:blank",
     title: options.title ?? "Validation failed",
     status: options.status ?? 400,
-    detail: options.detail ?? summarize(error),
+    detail: options.detail ?? formatSummary(error),
     issues,
   };
   if (options.instance !== undefined) result.instance = options.instance;

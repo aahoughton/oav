@@ -176,7 +176,7 @@ app.use(
   validateRequests(validator, {
     onError: (err, ctx) => {
       ctx.res.status(httpStatusFor(err)).json({
-        message: summarize(err),
+        message: formatSummary(err),
         errors: collectIssues(err),
       });
     },
@@ -269,6 +269,6 @@ For per-route inline multer (validator called from inside the route handler) and
 
 ## See also
 
-- [`@aahoughton/oav-core`](https://www.npmjs.com/package/@aahoughton/oav-core) — `createValidator`, `ValidatorOptions`, `summarize`, `collectIssues`, `httpStatusFor`, `toProblemDetails`.
+- [`@aahoughton/oav-core`](https://www.npmjs.com/package/@aahoughton/oav-core) — `createValidator`, `ValidatorOptions`, `formatSummary`, `collectIssues`, `httpStatusFor`, `toProblemDetails`.
 - [`@aahoughton/oav`](https://www.npmjs.com/package/@aahoughton/oav) — batteries-included distribution of oav-core: YAML readers + the `oav` CLI.
 - The repo-root `INTEGRATION.md` — broader recipes (security, file uploads, response validation, migration from `express-openapi-validator`).

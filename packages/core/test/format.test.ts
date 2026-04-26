@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { createBranchError, createLeafError, type ValidationError } from "../src/errors.js";
-import { countErrors, formatFlat, formatJson, formatText, summarize } from "../src/format.js";
+import {
+  countErrors,
+  formatFlat,
+  formatJson,
+  formatSummary,
+  formatText,
+  summarize,
+  toJsonObject,
+} from "../src/format.js";
 
 /** A realistic 4-level oneOf failure used by several formatter assertions. */
 function sampleTree(): ValidationError {
@@ -110,7 +118,80 @@ describe("countErrors", () => {
   });
 });
 
-describe("summarize", () => {
+describe("toJsonObject", () => {
+  it("returns a tree that survives JSON.stringify → JSON.parse", () => {
+    const tree = sampleTree();
+    const roundTripped = JSON.parse(JSON.stringify(toJsonObject(tree)));
+    expect(roundTripped).toEqual(tree);
+  });
+
+  it("deep-copies children and params", () => {
+    const tree = sampleTree();
+    const cloned = toJsonObject(tree);
+    expect(cloned).not.toBe(tree);
+    expect(cloned.children).not.toBe(tree.children);
+    const firstChild = cloned.children[0];
+    if (firstChild === undefined) throw new Error("unreachable");
+    firstChild.message = "mutated";
+    expect(tree.children[0]?.message).not.toBe("mutated");
+  });
+});
+
+describe("formatSummary", () => {
+  it('defaults to "first" — picks the first leaf in tree-traversal order', () => {
+    expect(formatSummary(sampleTree())).toBe("body.purr must be boolean");
+  });
+
+  it('"deepest" picks the leaf with the longest path', () => {
+    const tree = createBranchError("body", ["body"], "bad", [
+      createLeafError("required", ["body"], "missing name"),
+      createLeafError("type", ["body", "items", 3, "name"], "must be string"),
+    ]);
+    expect(formatSummary(tree, { select: "first" })).toBe("body missing name");
+    expect(formatSummary(tree, { select: "deepest" })).toBe("body.items[3].name must be string");
+  });
+
+  it('"all" enumerates every leaf, one per line, in formatFlat shape', () => {
+    const out = formatSummary(sampleTree(), { select: "all" });
+    const lines = out.split("\n");
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toBe("body.purr — must be boolean [type]");
+    expect(lines[1]).toBe('body — must have required property "bark" [required]');
+  });
+
+  it('"all" output is byte-identical to the deprecated formatFlat for the same tree', () => {
+    const tree = sampleTree();
+    expect(formatSummary(tree, { select: "all" })).toBe(formatFlat(tree));
+  });
+
+  it("byCode returns the first leaf matching the highest-priority listed code", () => {
+    const tree = createBranchError("request", [], "request invalid", [
+      createLeafError("type", ["body", "age"], "must be number"),
+      createLeafError("content-type", ["body"], 'Content-Type "text/plain" not accepted'),
+      createLeafError("required", ["body"], "missing name"),
+    ]);
+    expect(formatSummary(tree, { select: { byCode: ["content-type", "required"] } })).toBe(
+      'body Content-Type "text/plain" not accepted',
+    );
+    expect(formatSummary(tree, { select: { byCode: ["required", "content-type"] } })).toBe(
+      "body missing name",
+    );
+  });
+
+  it('byCode falls back to "first" when no leaf matches any listed code', () => {
+    const tree = createLeafError("type", ["body", "age"], "must be number");
+    expect(formatSummary(tree, { select: { byCode: ["content-type", "security"] } })).toBe(
+      "body.age must be number",
+    );
+  });
+
+  it("renders a path-less leaf as just the message", () => {
+    const tree = createLeafError("route", [], "no matching route");
+    expect(formatSummary(tree)).toBe("no matching route");
+  });
+});
+
+describe("summarize (deprecated)", () => {
   it('defaults to "first" — picks the first leaf in tree-traversal order', () => {
     expect(summarize(sampleTree())).toBe("body.purr must be boolean");
   });

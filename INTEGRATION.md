@@ -13,7 +13,7 @@ This document is organised:
   `validateResponse` work with.
 - **[Supporting helpers](#supporting-helpers)** —
   `httpStatusFor`, `allowHeaderFor`, `toProblemDetails`,
-  `summarize`, `collectIssues`. The recipes below assume these.
+  `formatSummary`, `collectIssues`. The recipes below assume these.
 - **[Per-framework integration](#per-framework-integration)** —
   Express 4, Express 5, Fastify, Next.js, Hono, Bun, Deno. Each
   section leads with the adapter (where one exists) and falls back
@@ -78,16 +78,19 @@ lean install). The recipes below assume these are in scope.
   [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457.html)
   `application/problem+json` body with the failing leaves carried in
   an `issues` field (a non-standard field alongside the required
-  ones). The `detail` field defaults to `summarize(err)` (a one-line
-  description of the first failing leaf); pass `detail` explicitly
-  for an override.
+  ones). The `detail` field defaults to `formatSummary(err)` (a
+  one-line description of the first failing leaf); pass `detail`
+  explicitly for an override.
 
-- **`summarize(err, opts?)`** — single-line summary of the first
-  failing leaf as `<dotted-path> <message>`. Use it directly for log
-  lines, error-monitoring titles (Sentry/New Relic group by message),
-  or as the top-level `message` field in custom response envelopes.
-  See `SummarizeOptions.select` for the leaf-picking policy
-  (`"first"` / `"deepest"` / `{ byCode }`).
+- **`formatSummary(err, opts?)`** — render the error tree as a
+  string. Default is a single line summarising the first failing
+  leaf as `<dotted-path> <message>` — use it for log lines,
+  error-monitoring titles (Sentry/New Relic group by message), or
+  as the top-level `message` field in custom response envelopes.
+  Pass `{ select: "all" }` for a multi-line enumeration of every
+  leaf — the EOV-style "every issue in a single message" shape.
+  See `FormatSummaryOptions.select` for the full policy
+  (`"first"` / `"deepest"` / `"all"` / `{ byCode }`).
 
 - **`collectIssues(err)`** — flat leaf list. Each issue carries both
   a raw `path: PathSegment[]` and a pre-formatted RFC 6901 `pointer`
@@ -98,8 +101,8 @@ lean install). The recipes below assume these are in scope.
 import {
   allowHeaderFor,
   collectIssues,
+  formatSummary,
   httpStatusFor,
-  summarize,
   toProblemDetails,
 } from "@aahoughton/oav";
 ```

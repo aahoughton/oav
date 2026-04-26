@@ -133,7 +133,9 @@ in CI — they're tsx-run dev tooling, breakage shows up when you run them.
 - **`@oav/core`** — the shared error-tree model plus the helpers every
   other package and most consumers need. `ValidationError` tree
   (children always an array), path segments as `(string | number)[]`,
-  the three formatters (`formatText` / `formatJson` / `formatFlat`)
+  the canonical formatters (`formatText` / `formatSummary` / `toJsonObject`;
+  legacy aliases `formatJson` / `formatFlat` / `summarize` are still exported
+  but deprecated, removal in v2.0)
   and the named-format dispatch (`formatError`, `formatErrors`,
   `KNOWN_OUTPUT_FORMATS`), `httpStatusFor` / `allowHeaderFor` /
   `toProblemDetails` for HTTP framing, RFC 6901 `resolveJsonPointer`,

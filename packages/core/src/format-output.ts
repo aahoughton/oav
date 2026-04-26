@@ -1,4 +1,4 @@
-import { formatFlat, formatJson, formatText } from "./format.js";
+import { formatSummary, formatText, toJsonObject } from "./format.js";
 import type { ValidationError } from "./errors.js";
 
 /**
@@ -59,9 +59,9 @@ export function formatError(
   if (typeof renderer === "function") return renderer(err);
   switch (renderer) {
     case "json":
-      return JSON.stringify(formatJson(err), null, 2);
+      return JSON.stringify(toJsonObject(err), null, 2);
     case "flat":
-      return formatFlat(err);
+      return formatSummary(err, { select: "all" });
     case "text":
     default:
       return formatText(err, depth !== undefined ? { maxDepth: depth } : {});

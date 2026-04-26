@@ -68,7 +68,7 @@ describe("toProblemDetails", () => {
     expect(pd.type).toBe("about:blank");
     expect(pd.title).toBe("Validation failed");
     expect(pd.status).toBe(400);
-    // detail summarises the first leaf via summarize(); the structural
+    // detail summarises the first leaf via formatSummary(); the structural
     // count is still in `issues.length` for callers that need it.
     expect(pd.detail).toBe("body missing name");
     expect(pd.instance).toBeUndefined();
