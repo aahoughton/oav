@@ -15,6 +15,15 @@ updates:
       # auto-PRs; bump it deliberately when the time is right.
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
+      # Each oav-express{4,5} adapter pins to its corresponding express
+      # major on purpose — that's the whole point of having two
+      # packages. A semver-major bump here would silently turn the v4
+      # adapter into a v5 adapter (or vice versa). Within-major patch /
+      # minor bumps still flow through dev-minor-and-patch.
+      - dependency-name: "express"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/express"
+        update-types: ["version-update:semver-major"]
     groups:
       types:
         patterns:
