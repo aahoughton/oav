@@ -59,17 +59,23 @@ jobs:
       # `pnpm -r publish` below. (Vitest aliases the workspace src
       # directly, so `pnpm test` doesn't need a prebuilt dist either.)
       - run: pnpm test
-      # Publish every non-private workspace package. Currently that's
-      # @aahoughton/oav-core (root) and @aahoughton/oav (packages/oav);
-      # the @oav/* workspace packages are private and are skipped.
+      # Publish every non-private workspace package: @aahoughton/oav-core
+      # (root), @aahoughton/oav (packages/oav), and the framework
+      # adapters @aahoughton/oav-express4, oav-express5, oav-fastify.
+      # The @oav/* internal workspace packages are private and skipped.
+      #
+      # Auth: npm trusted publishing via GitHub Actions OIDC. The
+      # `id-token: write` permission above lets pnpm exchange a GitHub
+      # OIDC token for an npm publish token at request time — no
+      # NPM_TOKEN secret in this workflow. Each published package must
+      # have a trusted publisher configured on npmjs.com pointing at
+      # `aahoughton/oav` + this workflow file.
       #
       # --no-git-checks: the release-please commit is on main but CI
       # checks it out in detached-HEAD mode, which pnpm otherwise refuses.
       # --access public: required the first time a scoped package publishes;
       # harmless afterwards.
-      # --provenance: attaches a signed build attestation (uses the
-      # id-token: write OIDC permission above) so npmjs shows a
-      # "verified" badge on the published tarball.
+      # --provenance: attaches a signed build attestation so npmjs shows
+      # a "verified" badge on the published tarball (also uses the OIDC
+      # token).
       - run: pnpm -r publish --access public --provenance --no-git-checks
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
