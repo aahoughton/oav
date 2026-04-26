@@ -1,7 +1,7 @@
 {
-  ".": "0.0.0",
-  "packages/oav": "0.0.0",
-  "packages/oav-express4": "0.0.0",
-  "packages/oav-express5": "0.0.0",
-  "packages/oav-fastify": "0.0.0"
+  ".": "1.0.0",
+  "packages/oav": "1.0.0",
+  "packages/oav-express4": "1.0.0",
+  "packages/oav-express5": "1.0.0",
+  "packages/oav-fastify": "1.0.0"
 }
