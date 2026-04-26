@@ -141,7 +141,9 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm build
+      # No explicit `pnpm build`: each publishable package's prepack
+      # rebuilds on `pnpm pack` below, so the explicit step is wasted
+      # work. Builds still happen — just via prepack.
       - name: pack every publishable workspace package
         run: |
           set -euo pipefail
