@@ -8,6 +8,7 @@
     "node_modules/",
     "coverage/",
     "conformance/JSON-Schema-Test-Suite/",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "conformance/json-schema-results.json"
   ]
 }
