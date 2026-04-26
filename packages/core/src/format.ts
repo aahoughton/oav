@@ -18,8 +18,8 @@ export interface FormatOptions {
  * @remarks
  * Every node renders as `<path> — <message> [<code>]`. Children are indented
  * under their parent. The output is meant for terminals and logs, not for
- * programmatic consumption — use {@link formatJson} or {@link formatFlat}
- * for that.
+ * programmatic consumption — use {@link toJsonObject} or
+ * {@link formatSummary} for that.
  *
  * @param error - Root of the error tree.
  * @param options - Optional rendering settings.
@@ -53,110 +53,115 @@ export function formatText(error: ValidationError, options: FormatOptions = {}):
 }
 
 /**
- * Render a {@link ValidationError} tree as the raw tree — identical to the
- * input, but guaranteed to round-trip through `JSON.stringify`/`JSON.parse`.
+ * Return a {@link ValidationError} tree as a JSON-safe plain object.
+ *
+ * @remarks
+ * The returned object has the same shape as the input but is freshly
+ * constructed (deep-cloned `children`, `path`, and `params`), so it
+ * round-trips losslessly through `JSON.stringify` / `JSON.parse`.
  *
  * @param error - Root of the error tree.
  * @returns The same tree, safe to hand to `JSON.stringify`.
  *
  * @example
  * ```ts
- * JSON.stringify(formatJson(rootError), null, 2);
+ * JSON.stringify(toJsonObject(rootError), null, 2);
  * ```
  *
  * @public
  */
-export function formatJson(error: ValidationError): ValidationError {
+export function toJsonObject(error: ValidationError): ValidationError {
   return {
     code: error.code,
     path: [...error.path],
     message: error.message,
     params: { ...error.params },
-    children: error.children.map(formatJson),
+    children: error.children.map(toJsonObject),
   };
 }
 
 /**
- * Render every leaf of a {@link ValidationError} tree as one line, each
- * prefixed with the joined path. Intended for `grep`-style consumption and
- * `diff`s in CI.
- *
- * @param error - Root of the error tree.
- * @returns A newline-separated string, one line per leaf.
- *
- * @example
- * ```ts
- * const flat = formatFlat(rootError);
- * // body.users[0].email — must match format "email" [format]
- * // body.users[1].age — must be >= 0 [minimum]
- * ```
- *
- * @public
- */
-export function formatFlat(error: ValidationError): string {
-  const lines: string[] = [];
-  for (const leaf of collectLeaves(error)) {
-    const location = joinPath(leaf.path);
-    const pathPart = location.length > 0 ? `${location} — ` : "";
-    lines.push(`${pathPart}${leaf.message} [${leaf.code}]`);
-  }
-  return lines.join("\n");
-}
-
-/**
- * Leaf-selection policy for {@link summarize}.
+ * Leaf-selection policy for {@link formatSummary}.
  *
  * - `"first"` — the first leaf in tree-traversal order. Matches
  *   `express-openapi-validator`'s top-level `message`. The default.
  * - `"deepest"` — the leaf with the longest path. More informative
  *   on `oneOf` / composition trees where the structural cause sits
  *   one or two levels in. Tiebreak: first encountered.
+ * - `"all"` — every leaf, one per line, each prefixed with its path
+ *   and suffixed with its `[code]`. Use this when you want a flat
+ *   enumeration of every issue (e.g. EOV-style flat error messages,
+ *   `grep`-friendly logs, CI diffs).
  * - `{ byCode }` — priority list of error codes. Returns the first
  *   leaf whose `code` matches the highest-priority entry; if no leaf
  *   matches any listed code, falls back to the `"first"` policy.
  *
  * @public
  */
-export type SummarizeSelect = "first" | "deepest" | { byCode: readonly string[] };
+export type FormatSummarySelect = "first" | "deepest" | "all" | { byCode: readonly string[] };
 
 /**
- * Options for {@link summarize}.
+ * Options for {@link formatSummary}.
  *
  * @public
  */
-export interface SummarizeOptions {
-  /** How to pick the leaf to summarise. Defaults to `"first"`. */
-  select?: SummarizeSelect;
+export interface FormatSummaryOptions {
+  /** How to pick which leaf (or leaves) to summarise. Defaults to `"first"`. */
+  select?: FormatSummarySelect;
 }
 
 /**
- * Render a {@link ValidationError} tree as a single human-readable line —
- * the kind of string every HTTP adapter needs for response-body
- * `message` fields, log lines, error-monitoring titles, and
- * `Error.message`.
+ * Render a {@link ValidationError} tree as a string — the workhorse for
+ * HTTP response-body `message` fields, log lines, error-monitoring
+ * titles, and `Error.message`.
  *
- * Picks one leaf per the {@link SummarizeOptions.select} policy and
- * renders it as `<dotted-path> <message>` (or just `<message>` when
- * the path is empty). Use {@link formatFlat} or {@link formatText}
- * when you need the full tree.
+ * Two output shapes depending on {@link FormatSummaryOptions.select}:
+ *
+ * - **Single-leaf modes** (`"first"`, `"deepest"`, `{ byCode }`) pick one
+ *   leaf and render it as `<dotted-path> <message>` (or just `<message>`
+ *   when the path is empty). One line.
+ * - **All-leaves mode** (`"all"`) enumerates every leaf, one per line,
+ *   as `<dotted-path> — <message> [<code>]`. Use this for the EOV-style
+ *   "every issue in a single message" shape.
+ *
+ * For the indented full-tree view, use {@link formatText}; for the raw
+ * JSON-safe object, use {@link toJsonObject}.
  *
  * @example
  * ```ts
- * summarize(rootError);
+ * formatSummary(rootError);
  * // "body.users[0].email must match format \"email\""
  *
- * summarize(rootError, { select: { byCode: ["content-type", "required"] } });
- * // returns the content-type leaf if any, else the first required leaf,
+ * formatSummary(rootError, { select: "deepest" });
+ * // The leaf with the longest path — useful on oneOf trees.
+ *
+ * formatSummary(rootError, { select: "all" });
+ * // Every leaf, one per line. EOV-style flat output:
+ * //   body.users[0].email — must match format "email" [format]
+ * //   body.users[1].age — must be >= 0 [minimum]
+ *
+ * formatSummary(rootError, { select: { byCode: ["content-type", "required"] } });
+ * // The first content-type leaf if any, else the first required leaf,
  * // else the first leaf overall.
  * ```
  *
  * @public
  */
-export function summarize(error: ValidationError, options: SummarizeOptions = {}): string {
+export function formatSummary(error: ValidationError, options: FormatSummaryOptions = {}): string {
   const select = options.select ?? "first";
   // collectLeaves defines a leaf as any node with no children, so even
   // a single-leaf root yields one entry — leaves[0] is always present.
   const leaves = collectLeaves(error);
+
+  if (select === "all") {
+    const lines: string[] = [];
+    for (const leaf of leaves) {
+      const location = joinPath(leaf.path);
+      const pathPart = location.length > 0 ? `${location} — ` : "";
+      lines.push(`${pathPart}${leaf.message} [${leaf.code}]`);
+    }
+    return lines.join("\n");
+  }
 
   let chosen: ValidationError = leaves[0]!;
   if (select === "deepest") {
@@ -196,4 +201,58 @@ export function countErrors(error: ValidationError): number {
     n += 1;
   });
   return n;
+}
+
+// ---------------------------------------------------------------------------
+// Deprecated: kept exported for source compatibility; absent from user-facing
+// docs. Behaviour identical to the new canonical names. Removal in v2.0.
+// ---------------------------------------------------------------------------
+
+/**
+ * @deprecated Use {@link toJsonObject} — same return shape, name reflects
+ *   that it returns an object, not a string.
+ *
+ * @public
+ */
+export function formatJson(error: ValidationError): ValidationError {
+  return toJsonObject(error);
+}
+
+/**
+ * Options for the deprecated {@link summarize}. Use
+ * {@link FormatSummaryOptions} instead.
+ *
+ * @deprecated Use {@link FormatSummaryOptions}.
+ *
+ * @public
+ */
+export interface SummarizeOptions {
+  /** @deprecated See {@link FormatSummaryOptions.select}. */
+  select?: SummarizeSelect;
+}
+
+/**
+ * @deprecated Use {@link FormatSummarySelect}. Note: the new type also
+ *   accepts `"all"` for flat all-leaves output.
+ *
+ * @public
+ */
+export type SummarizeSelect = "first" | "deepest" | { byCode: readonly string[] };
+
+/**
+ * @deprecated Use {@link formatSummary} — same defaults and behaviour.
+ *
+ * @public
+ */
+export function summarize(error: ValidationError, options: SummarizeOptions = {}): string {
+  return formatSummary(error, options);
+}
+
+/**
+ * @deprecated Use `formatSummary(err, { select: "all" })`.
+ *
+ * @public
+ */
+export function formatFlat(error: ValidationError): string {
+  return formatSummary(error, { select: "all" });
 }

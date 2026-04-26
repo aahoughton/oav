@@ -63,36 +63,44 @@ declaration merging.
 
 ## Formatters
 
+Naming convention: **`format*`** returns a string (humans, logs,
+CLI, response bodies); **`to*`** returns an object (machine
+consumers, JSON serialization).
+
 Which one to reach for:
 
-| Want                                                                      | Use          |
-| ------------------------------------------------------------------------- | ------------ |
-| One-line string for `response.message`, log lines, Sentry/NR group titles | `summarize`  |
-| Multi-line indented tree for stdout, log dumps, human reading             | `formatText` |
-| Structured tree for programmatic consumption / JSON round-trip            | `formatJson` |
-| One line per leaf for grep, CI diffs                                      | `formatFlat` |
+| Want                                                                       | Use                                     |
+| -------------------------------------------------------------------------- | --------------------------------------- |
+| One-line summary for `response.message`, log lines, Sentry/NR group titles | `formatSummary(err)`                    |
+| Every leaf, one per line — flat enumeration (EOV-style, grep, CI diffs)    | `formatSummary(err, { select: "all" })` |
+| Multi-line indented tree for stdout, log dumps, human reading              | `formatText(err)`                       |
+| Structured tree for programmatic consumption / JSON round-trip             | `toJsonObject(err)`                     |
 
-Tree formatters — produce strings suitable for stdout / logs.
+Detail:
 
-- `formatText(err, { maxDepth?, indent? })` — indented human-readable.
-- `formatJson(err)` — deep copy that round-trips through `JSON.stringify`.
-- `formatFlat(err)` — one line per leaf.
+- **`formatText(err, { maxDepth?, indent? })`** — indented
+  human-readable tree. One line per node.
 
-Single-line summary — for response-body `message` fields, log lines,
-error-monitoring titles, and `Error.message`:
-
-- `summarize(err, { select? })` — picks one leaf and renders it as
+- **`formatSummary(err, { select? })`** — render the tree as a
+  string. Default picks one leaf and renders it as
   `<dotted-path> <message>` (e.g. `"body.users[0].email must match
-format \"email\""`).
+format \"email\""`). Selection options:
   - `select: "first"` (default) — first leaf in tree-traversal
-    order. Matches `express-openapi-validator`'s top-level message.
+    order.
   - `select: "deepest"` — leaf with the longest path; more
     informative on `oneOf` / composition trees.
+  - `select: "all"` — every leaf, one per line, each with path,
+    message, and `[code]`. The "every issue in a single message"
+    shape; use this when migrating from validators that emit a
+    flat enumeration by default.
   - `select: { byCode: ["content-type", "required", ...] }` —
     priority list. Returns the first leaf matching the
     highest-priority listed code; falls back to `"first"` if no
     match. Useful when the wire format wants to surface specific
     failure categories first.
+
+- **`toJsonObject(err)`** — deep copy that round-trips losslessly
+  through `JSON.stringify` / `JSON.parse`.
 
 `countErrors(err)` returns the total number of nodes in the tree.
 
@@ -116,7 +124,7 @@ migrating from).
 - `toProblemDetails(err, { type?, title?, status?, detail?, instance? })` —
   RFC 9457 `application/problem+json` envelope with a typed `issues`
   array as an extension member. Defaults: `about:blank` type,
-  `"Validation failed"` title, status `400`, and `detail` = `summarize(err)`
+  `"Validation failed"` title, status `400`, and `detail` = `formatSummary(err)`
   (first failing leaf). Pass `detail` explicitly for a structural
   summary like `` `${pd.issues.length} validation errors` `` or any
   other override.
@@ -140,7 +148,7 @@ res
 
 // Custom envelope, eov-style flat list.
 res.status(httpStatusFor(err)).json({
-  message: summarize(err),
+  message: formatSummary(err),
   errors: collectIssues(err).map((i) => ({
     path: i.pointer,
     message: i.message,
@@ -148,9 +156,11 @@ res.status(httpStatusFor(err)).json({
   })),
 });
 
-// Just the top-level summary (e.g. for a comma-joined "every leaf"
-// message that some pre-existing wire formats use):
-const joined = collectIssues(err)
+// Every-leaf "joined message" shape (some pre-existing wire formats
+// use this — e.g. eov under `validateRequests: { allErrors: true }`):
+formatSummary(err, { select: "all" }); // newline-joined
+// Or for a comma-joined variant:
+collectIssues(err)
   .map((i) => i.message)
   .join(", ");
 ```

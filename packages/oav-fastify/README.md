@@ -111,7 +111,7 @@ app.addHook(
   validateRequests(validator, {
     onError: (err, ctx) => {
       ctx.reply.code(httpStatusFor(err)).send({
-        message: summarize(err),
+        message: formatSummary(err),
         errors: collectIssues(err),
       });
     },
@@ -191,7 +191,7 @@ If both fire on the same route, oav's `preValidation` hook runs first; if it pas
 
 ## See also
 
-- [`@aahoughton/oav-core`](https://www.npmjs.com/package/@aahoughton/oav-core) — `createValidator`, `ValidatorOptions`, `summarize`, `collectIssues`, `httpStatusFor`, `toProblemDetails`.
+- [`@aahoughton/oav-core`](https://www.npmjs.com/package/@aahoughton/oav-core) — `createValidator`, `ValidatorOptions`, `formatSummary`, `collectIssues`, `httpStatusFor`, `toProblemDetails`.
 - [`@aahoughton/oav`](https://www.npmjs.com/package/@aahoughton/oav) — batteries-included distribution of oav-core: YAML readers + the `oav` CLI.
 - The repo-root `INTEGRATION.md` — broader recipes (security, file uploads, response validation, status mapping, type coercion, ignoring paths).
 - The repo-root `MIGRATION-FROM-EOV.md` — porting from `express-openapi-validator`.

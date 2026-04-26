@@ -7,7 +7,7 @@ import type { ExpressContext } from "./types.js";
  * RFC 9457 `application/problem+json` response: status from
  * {@link httpStatusFor}, `Allow` header from {@link allowHeaderFor}
  * on a 405, body from {@link toProblemDetails} (whose `detail` is
- * the {@link summarize}d first leaf).
+ * the first failing leaf via {@link formatSummary}).
  *
  * Exported standalone for two cases:
  *

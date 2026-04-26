@@ -123,7 +123,7 @@ app.use(
   validateRequests(validator, {
     onError: (err, ctx) => {
       ctx.res.status(httpStatusFor(err)).json({
-        message: summarize(err),
+        message: formatSummary(err),
         errors: collectIssues(err),
       });
     },
@@ -201,7 +201,7 @@ A migrating consumer's `import { validateRequests } from "@aahoughton/oav-expres
 
 ## See also
 
-- [`@aahoughton/oav-core`](https://www.npmjs.com/package/@aahoughton/oav-core) — `createValidator`, `ValidatorOptions`, `summarize`, `collectIssues`, `httpStatusFor`, `toProblemDetails`.
+- [`@aahoughton/oav-core`](https://www.npmjs.com/package/@aahoughton/oav-core) — `createValidator`, `ValidatorOptions`, `formatSummary`, `collectIssues`, `httpStatusFor`, `toProblemDetails`.
 - [`@aahoughton/oav`](https://www.npmjs.com/package/@aahoughton/oav) — batteries-included distribution of oav-core: YAML readers + the `oav` CLI.
 - The repo-root `INTEGRATION.md` — broader recipes (security, file uploads, response validation, status mapping, type coercion, ignoring paths).
 - The repo-root `MIGRATION-FROM-EOV.md` — porting from `express-openapi-validator`.

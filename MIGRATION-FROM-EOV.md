@@ -44,18 +44,18 @@ The behaviour deltas surfaced by real eov→oav migrations. Most are
 defensible improvements; a few are cosmetic. Either way, expect
 fixture / test churn.
 
-| What                               | eov                                                   | oav                                                                                                                                                        |
-| ---------------------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Empty POST, no Content-Type**    | 415 unsupported-media-type                            | 400 body-required (no client signal to be "wrong about")                                                                                                   |
-| **Path-parameter label**           | `/params/<name>` in error paths                       | `/path/<name>` (OpenAPI's actual location name)                                                                                                            |
-| **404 message wording**            | `"not found"`                                         | `"no route matches POST /path/here"` (more actionable)                                                                                                     |
-| **Top-level message**              | every leaf joined                                     | first leaf only (`summarize` default); per-leaf details still in `errors[]`                                                                                |
-| **Top-level `path` on 404s**       | offending URL                                         | `[]` (empty array → `""` pointer); same kind of error, different rendering                                                                                 |
-| **`errorCode` names**              | `required.openapi.validation`                         | bare codes (`required`); the `.openapi.validation` suffix was always noise                                                                                 |
-| **`oneOf` with binary fields**     | silently accepted (looser inside binary fields)       | surfaces the genuine ambiguity with `matchCount: 2`; see [INTEGRATION.md → File uploads](./INTEGRATION.md#file-uploads-with-multer) for the spec-level fix |
-| **Error response monkey-patching** | `res.send("{...}")` (string form) caught via wrappers | not caught unless you write the wrapper yourself; see [INTEGRATION.md → Response validation](./INTEGRATION.md#response-validation-no-monkey-patching)      |
-| **Optional `openapi` version**     | throws on missing / unsupported                       | silently uses 3.1 by default; see `onUnknownVersion`                                                                                                       |
-| **`format` semantics**             | always assertive in OpenAPI context                   | assertive in OpenAPI context; annotation-only under raw `jsonSchemaDialect` (per 2020-12 default)                                                          |
+| What                               | eov                                                                                         | oav                                                                                                                                                                                                                        |
+| ---------------------------------- | ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Empty POST, no Content-Type**    | 415 unsupported-media-type                                                                  | 400 body-required (no client signal to be "wrong about")                                                                                                                                                                   |
+| **Path-parameter label**           | `/params/<name>` in error paths                                                             | `/path/<name>` (OpenAPI's actual location name)                                                                                                                                                                            |
+| **404 message wording**            | `"not found"`                                                                               | `"no route matches POST /path/here"` (more actionable)                                                                                                                                                                     |
+| **Top-level message**              | first leaf by default; every leaf `, `-joined under `validateRequests: { allErrors: true }` | configurable via `formatSummary`: `{ select: "first" }` (default; first leaf) or `{ select: "all" }` (every leaf, newline-joined). Per-leaf details always in `errors[]` / `issues[]`. Shape differs from eov — see below. |
+| **Top-level `path` on 404s**       | offending URL                                                                               | `[]` (empty array → `""` pointer); same kind of error, different rendering                                                                                                                                                 |
+| **`errorCode` names**              | `required.openapi.validation`                                                               | bare codes (`required`); the `.openapi.validation` suffix was always noise                                                                                                                                                 |
+| **`oneOf` with binary fields**     | silently accepted (looser inside binary fields)                                             | surfaces the genuine ambiguity with `matchCount: 2`; see [INTEGRATION.md → File uploads](./INTEGRATION.md#file-uploads-with-multer) for the spec-level fix                                                                 |
+| **Error response monkey-patching** | `res.send("{...}")` (string form) caught via wrappers                                       | not caught unless you write the wrapper yourself; see [INTEGRATION.md → Response validation](./INTEGRATION.md#response-validation-no-monkey-patching)                                                                      |
+| **Optional `openapi` version**     | throws on missing / unsupported                                                             | silently uses 3.1 by default; see `onUnknownVersion`                                                                                                                                                                       |
+| **`format` semantics**             | always assertive in OpenAPI context                                                         | assertive in OpenAPI context; annotation-only under raw `jsonSchemaDialect` (per 2020-12 default)                                                                                                                          |
 
 For the `oneOf [array<binary>, binary]` pattern specifically: the
 spec was already ambiguous before oav surfaced it (the `format:
@@ -187,3 +187,37 @@ createValidator(spec, { formats: fromAjvFormats(myAjvFormats) });
 Schema 2020-12 §6.3), so ajv's `type: "number"` format entries are
 effectively no-ops — the function never runs on non-string data.
 Keep them in the map if it's simpler; they cost nothing.
+
+## All-issues output (eov's `allErrors`)
+
+`eov`'s default puts the first failing leaf in the top-level
+`message`. With `validateRequests: { allErrors: true }`, eov instead
+`, `-joins every issue into one `message` string.
+
+`oav` defaults to the same first-leaf summary. For an all-issues
+string, use `formatSummary` with `{ select: "all" }`:
+
+```ts
+import { formatSummary } from "@aahoughton/oav-core";
+
+// Default — first failing leaf, equivalent to eov's default `message`:
+formatSummary(err);
+// "body.users[0].email must match format \"email\""
+
+// All leaves, one per line — equivalent in scope to eov's `allErrors`:
+formatSummary(err, { select: "all" });
+// body.users[0].email — must match format "email" [format]
+// body.users[1].age — must be >= 0 [minimum]
+```
+
+Shape differs from eov in three ways: `oav` uses dotted paths
+(`body.users[0].email`) instead of slash-separated
+(`request/body/users/0/email`); separates each entry with `\n`
+rather than `, `; and appends the error `[code]`. If you need exact
+parity for an existing client, post-process the string or render
+your own using `collectIssues(err)`.
+
+The same `formatSummary` powers the `detail` field of
+`toProblemDetails` — pass `{ detail: formatSummary(err, { select: "all" }) }`
+to override the default and emit the all-issues form in your
+RFC 9457 response body.
