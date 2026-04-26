@@ -64,15 +64,7 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          # Deliberately no `registry-url`. setup-node would otherwise
-          # write a `.npmrc` containing
-          # `//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}` and
-          # export `NODE_AUTH_TOKEN=XXXXX-XXXXX-XXXXX-XXXXX` (its
-          # placeholder). pnpm/npm would then publish using that bogus
-          # token instead of falling through to the OIDC trusted-
-          # publisher exchange — which is exactly what we want it to do.
-          # The default registry is registry.npmjs.org, so omitting this
-          # parameter doesn't change where things publish.
+          registry-url: https://registry.npmjs.org
       - run: pnpm install --frozen-lockfile
       # No explicit `pnpm build`: each package's prepack rebuilds on
       # `pnpm -r publish` below. (Vitest aliases the workspace src
@@ -83,18 +75,24 @@ jobs:
       # adapters @aahoughton/oav-express4, oav-express5, oav-fastify.
       # The @oav/* internal workspace packages are private and skipped.
       #
-      # Auth: npm trusted publishing via GitHub Actions OIDC. The
-      # `id-token: write` permission above lets pnpm exchange a GitHub
-      # OIDC token for an npm publish token at request time — no
-      # NPM_TOKEN secret in this workflow. Each published package must
-      # have a trusted publisher configured on npmjs.com pointing at
-      # `aahoughton/oav` + this workflow file.
+      # Auth: long-lived NPM_TOKEN secret. We attempted OIDC trusted
+      # publishing in #220/#221; both failed because pnpm publish does
+      # not yet implement the OIDC token exchange (it shells out to
+      # npm CLI for publish, but the auth path doesn't trigger
+      # npm 11.5+'s trusted-publisher flow consistently — see
+      # https://github.com/pnpm/pnpm/issues/9812 and the 2026-01-14
+      # comment on that issue showing it still fails on Node 24 + npm
+      # 11.6 via pnpm). Revisit when pnpm ships native trusted-publisher
+      # support, or when we move publish off `pnpm publish`.
       #
       # --no-git-checks: the release-please commit is on main but CI
       # checks it out in detached-HEAD mode, which pnpm otherwise refuses.
       # --access public: required the first time a scoped package publishes;
       # harmless afterwards.
       # --provenance: attaches a signed build attestation so npmjs shows
-      # a "verified" badge on the published tarball (also uses the OIDC
-      # token).
+      # a "verified" badge on the published tarball (uses the
+      # `id-token: write` permission for Sigstore signing — independent
+      # of npm publish auth).
       - run: pnpm -r publish --access public --provenance --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
