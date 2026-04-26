@@ -15,6 +15,13 @@ name: release
 on:
   push:
     branches: [main]
+  # Manual trigger: re-fires the publish job for the most recent
+  # release tag without needing release-please to mint a new one.
+  # Use this to recover from a transient publish failure (network,
+  # registry hiccup, trusted-publisher misconfiguration on a single
+  # package). `pnpm -r publish` is idempotent — it skips already-
+  # published versions and only attempts the missing ones.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -35,11 +42,15 @@ jobs:
 
   publish:
     needs: release-please
-    # Fires only when release-please merges a release PR (tag + GitHub
-    # Release just created). Regular pushes to main still trigger the
-    # release-please job above, but it exits without `release_created`
-    # when all it did was update the in-flight release PR.
-    if: needs.release-please.outputs.release_created == 'true'
+    # Fires when release-please merges a release PR (tag + GitHub
+    # Release just created), OR when this workflow is manually
+    # dispatched (recovery from a partial / failed publish).
+    # Regular pushes to main run release-please above but skip
+    # publish — release-please's `release_created` is `false` while
+    # it's only updating the in-flight release PR.
+    if: |
+      needs.release-please.outputs.release_created == 'true' ||
+      github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -53,7 +64,15 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          registry-url: https://registry.npmjs.org
+          # Deliberately no `registry-url`. setup-node would otherwise
+          # write a `.npmrc` containing
+          # `//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}` and
+          # export `NODE_AUTH_TOKEN=XXXXX-XXXXX-XXXXX-XXXXX` (its
+          # placeholder). pnpm/npm would then publish using that bogus
+          # token instead of falling through to the OIDC trusted-
+          # publisher exchange — which is exactly what we want it to do.
+          # The default registry is registry.npmjs.org, so omitting this
+          # parameter doesn't change where things publish.
       - run: pnpm install --frozen-lockfile
       # No explicit `pnpm build`: each package's prepack rebuilds on
       # `pnpm -r publish` below. (Vitest aliases the workspace src
