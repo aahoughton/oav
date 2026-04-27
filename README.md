@@ -1,23 +1,28 @@
 # oav
 
-Codegen-based HTTP validator for OpenAPI **3.0**, **3.1**, and **3.2**.
-Compiles every operation's schemas to JavaScript at construction time,
-then checks live requests and responses against the resulting functions
-and returns a **tree of structural errors** you can format, filter, or
-walk programmatically.
+OpenAPI **3.0** / **3.1** / **3.2** HTTP request and response
+validator. Two primary drivers:
 
-- One validator call checks method + path + parameters + body + content
-  type + status + headers against the spec — not just the JSON body.
-- Structured error trees (not flat arrays), so downstream code can
-  distinguish a missing `required` property from a `oneOf` branch
-  failure from an unsupported `Content-Type`.
-- OpenAPI 3.0 compiles through its own dialect: `nullable`, boolean
-  `exclusiveMaximum`, and `$ref`-suppresses-siblings are keyword
-  definitions in the 3.0 vocabulary stack. Single compiler pass, no
-  schema preprocessing.
-- Codegen-compiled at construction, cached by schema identity, zero
-  per-request version branching. Handles recursive `$ref`, multi-file
-  specs, overlays, and custom keywords / formats.
+- **Tenant overrides over a base spec.** When tenants extend a
+  shared API — adding a required header on one route, refining a
+  schema, requiring auth where the base spec didn't — they need to
+  document those changes in the spec they ship, not as
+  application-side patches. `applyOverlays` rewrites the document
+  at load time. Custom keywords, formats, and dialects plug into
+  the compiler the same way, so per-tenant validation rules don't
+  require forking. See [OVERLAYS.md](./OVERLAYS.md).
+- **Validators that fit in microservice runners.** `oav
+compile-spec openapi.yaml` emits a single zero-dependency ES
+  module exposing the full validator surface. Targets Cloudflare
+  Workers, Vercel Edge, Lambda@Edge, Deno Deploy — runtimes where
+  `new Function()` is unavailable, or where dependency footprint
+  matters. `--only "POST /pets"` (repeatable) scopes the output to
+  specific operations without touching the source spec.
+
+Errors come back as a typed tree (`code`, `path`, `message`,
+`params`, `children`). One validator call covers the full HTTP
+frame: method, path, parameters, body, content type, status, and
+headers.
 
 ## Install
 
@@ -89,48 +94,45 @@ rooted at the HTTP frame (e.g. `["body", "pets", 3, "name"]`), a
 human-readable `message`, and a machine-readable `params` object whose
 shape per code is documented in `BuiltInErrorParams`.
 
-## Why (yet another) OpenAPI validator?
+## How it compares
 
-Things `oav` brings together that aren't jointly available elsewhere
-in the JavaScript ecosystem:
+oav's primary alternative is
+[Ajv](https://github.com/ajv-validator/ajv) — directly for
+`compileSchema`, or via
+[`express-openapi-validator`](https://github.com/cdimascio/express-openapi-validator)
+for HTTP validation. (Migrating from EOV specifically:
+[MIGRATION-FROM-EOV.md](./MIGRATION-FROM-EOV.md).)
 
-- **An HTTP-aware validator.** One call checks method + path +
-  parameters + body + content type + status + headers against the
-  spec, not just the JSON body. Every HTTP-level concern — route
-  matching, content-type negotiation, parameter deserialisation,
-  response status matching — lives inside the validator.
-- **Overlays over externally-owned specs.** Projects consuming an
-  OpenAPI document they don't own (Supabase / Directus / Hasura /
-  PocketBase / a gateway's published spec) can extend or override it
-  at load time. `applyOverlays` rewrites the base document in memory;
-  no forking, no preprocessing, no string substitution.
-- **Native OpenAPI 3.0 support and a structured error tree.** 3.0 has
-  its own compiler dialect rather than being translated to 2020-12:
-  `nullable`, boolean `exclusiveMaximum`, and
-  `$ref`-suppresses-siblings are baked into the compiler's dialect
-  dispatch. Errors come back as a typed
-  tree (`code` / `path` / `params` / `children`) so downstream code
-  can narrow on fields rather than pattern-match on messages.
-- **AOT compilation for edge runtimes.** `oav compile-spec
-<openapi.yaml>` emits a single ES module — zero imports — exposing
-  the full `validateRequest` / `validateResponse` / `getOperation`
-  surface with every operation's schemas pre-compiled. Runs on
-  Cloudflare Workers / Vercel Edge / Lambda@Edge / Deno Deploy —
-  anywhere runtime code generation is forbidden or dependency
-  footprint matters. Full details in
-  [`packages/cli/README.md`](./packages/cli/README.md#compile-spec-output).
+Numbers below are from the [`performance/`](./performance/README.md)
+benchmark on AWS c7i.large (Intel Sapphire Rapids, Node 22). Your
+hardware will vary.
 
-Ajv is the canonical JSON Schema validator for JavaScript and
-underpins most of the OpenAPI ecosystem. It has the edge on
-steady-state validate throughput — roughly 2–5× on complex shapes in
-`oav`'s default error-tree mode; `oav`'s predicate mode
-(`compileSchema(..., { predicate: true })`) closes most of that gap.
-On _compile_ throughput the ranking flips by 1–2 orders of
-magnitude: on a real-world OpenAPI doc (Stripe, 886 schemas), oav
-compiles **8× faster**; on synthetic schemas, 30–180× faster. If
-you construct validators per-request, per-tenant, or per-test, that
-usually dominates the overall picture. Full numbers in
-[`COMPARISON.md`](./COMPARISON.md) and
+**Compile: oav is meaningfully faster.**
+
+|                                            | Ajv   | oav       |
+| ------------------------------------------ | ----- | --------- |
+| Single synthetic schema (varies by shape)  | ~6 ms | 25–200 µs |
+| Real-world spec (petstore-31, ~10 schemas) | 27 ms | 1.6 ms    |
+
+Ajv compile is essentially constant overhead per schema; oav scales
+with shape. The advantage shows up wherever validator construction
+sits in the hot path — per-request, per-tenant, per-test, edge
+cold-start, AOT module emit.
+
+**Validate: roughly tied on simple shapes; Ajv wins on complex.**
+
+Both libraries are sub-microsecond per check on typical OpenAPI
+bodies. On complex `oneOf`/`allOf` or large arrays, Ajv leads by
+2–4× (say 100 ns → 400 ns per call, or 1.7 µs → 4 µs). oav's
+`predicate` mode (`compileSchema(..., { predicate: true })`) closes
+most of that gap for yes/no use cases.
+
+For typical HTTP workloads — 1k–10k req/sec × ~1 validation per
+request — the difference is invisible at any of those numbers. For
+validation-heavy code (millions of validations per second), Ajv wins.
+
+Full per-shape breakdown: [`COMPARISON.md`](./COMPARISON.md). Raw
+benchmark data and methodology:
 [`performance/README.md`](./performance/README.md).
 
 ## Conformance
