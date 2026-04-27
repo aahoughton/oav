@@ -5,8 +5,8 @@ Imported by every other module in the package and — because the error
 tree is what `validateRequest` / `validateResponse` return — the
 closest thing to a "read me first" for library consumers.
 
-This subpath is available from both `@aahoughton/oav/core` and
-`@aahoughton/oav-core/core`; the imports below work identically
+This subpath is available from both `oav/core` and
+`oav-core/core`; the imports below work identically
 against either package.
 
 ```ts

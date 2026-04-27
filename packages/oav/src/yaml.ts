@@ -143,14 +143,16 @@ export function createSmartHttpReader(): DocumentReader {
  * package's `createMemoryReader` with pre-parsed objects can convert
  * YAML sources once at setup time.
  *
+ * Returns `unknown` because YAML is dynamic; cast to
+ * {@link OpenAPIDocument} (or your own narrower type) when feeding
+ * the result to `createValidator`.
+ *
  * @example
  * ```ts
- * import { createMemoryReader } from "@aahoughton/oav/spec";
- * import { parseYamlString } from "@aahoughton/oav";
+ * import { createValidator, parseYamlString, type OpenAPIDocument } from "@aahoughton/oav";
  *
- * const reader = createMemoryReader(
- *   new Map([["spec.yaml", parseYamlString("openapi: 3.1.0\ninfo: { title: t, version: 1 }")]]),
- * );
+ * const spec = parseYamlString(yamlSource) as OpenAPIDocument;
+ * const validator = createValidator(spec);
  * ```
  *
  * @public

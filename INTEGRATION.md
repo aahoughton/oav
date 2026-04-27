@@ -58,7 +58,7 @@ children hang off `body`, `query.<name>`, `headers.<name>`, etc.
 
 ## Supporting helpers
 
-All shipped from `@aahoughton/oav` (or `@aahoughton/oav-core` for the
+All shipped from `oav` (or `oav-core` for the
 lean install). The recipes below assume these are in scope.
 
 - **`httpStatusFor(err, overrides?)`** — maps a `ValidationError`
@@ -111,7 +111,7 @@ import {
 
 ### Express 4
 
-The [`@aahoughton/oav-express4`](https://www.npmjs.com/package/@aahoughton/oav-express4)
+The [`oav-express4`](https://www.npmjs.com/package/@aahoughton/oav-express4)
 companion package ships the middleware as a one-liner:
 
 ```ts
@@ -168,7 +168,7 @@ cross-cutting recipes below.
 
 ### Express 5
 
-The [`@aahoughton/oav-express5`](https://www.npmjs.com/package/@aahoughton/oav-express5)
+The [`oav-express5`](https://www.npmjs.com/package/@aahoughton/oav-express5)
 companion package ships the middleware as a one-liner — same shape
 as `oav-express4` but promise-native (no `try/catch` wrapper):
 
@@ -222,7 +222,7 @@ that affect this pattern.
 
 ### Fastify
 
-The [`@aahoughton/oav-fastify`](https://www.npmjs.com/package/@aahoughton/oav-fastify)
+The [`oav-fastify`](https://www.npmjs.com/package/@aahoughton/oav-fastify)
 companion package ships the hook as a one-liner — same shape as the
 Express adapters but Fastify-native (a `preValidation` hook, not
 middleware):
@@ -472,6 +472,76 @@ For richer response envelopes, `toProblemDetails` produces
 `application/problem+json` with the failing leaves as an `issues`
 field. `collectIssues` is the raw flat leaf list if you want to roll
 your own response shape.
+
+### Preserving an existing client error envelope
+
+Migrating an existing service may mean a documented client
+contract you can't change without breaking callers. Keep your
+envelope, fill it from `collectIssues` (per-issue path,
+message, code) plus `formatSummary` (top-level summary) plus
+`httpStatusFor` (status). Don't walk the tree by hand — the helpers
+already do the right thing for nested branches, route/method
+top-levels, and security/content-type leaves under `request` /
+`response` wrappers.
+
+```ts
+import { collectIssues, formatSummary, httpStatusFor, type ValidationError } from "@aahoughton/oav";
+
+// .. or whatever your clients already parse.
+type ClientError = {
+  message: string;
+  errors: Array<{ path: string; message: string; errorCode: string }>;
+};
+
+function toClientError(err: ValidationError): ClientError {
+  return {
+    message: formatSummary(err),
+    errors: collectIssues(err).map((issue) => ({
+      path: issue.pointer, // RFC 6901, e.g. "/body/email"
+      message: issue.message,
+      errorCode: issue.code, // bare code, e.g. "required"
+    })),
+  };
+}
+
+app.use(
+  validateRequests(validator, {
+    onError: (err, ctx) => {
+      ctx.res.status(httpStatusFor(err)).json(toClientError(err));
+    },
+  }),
+);
+```
+
+For a `POST /contacts` whose body has `age: 42` (over a `maximum: 30`)
+and `email: "not-an-email"` (fails `format: email`), the response would be:
+
+```json
+{
+  "message": "body.age must be <= 30",
+  "errors": [
+    {
+      "path": "/body/age",
+      "message": "must be <= 30",
+      "errorCode": "maximum"
+    },
+    {
+      "path": "/body/email",
+      "message": "must match format email",
+      "errorCode": "format"
+    }
+  ]
+}
+```
+
+`pointer` prefixes are `/body`, `/query`, `/header`, `/path`,
+`/cookie` (not `/params` — that's an `express-openapi-validator`
+quirk; see [MIGRATION-FROM-EOV.md](./MIGRATION-FROM-EOV.md) for the
+full diff). Each `issue.params` carries machine-readable detail
+(e.g. `{ maximum: 30, actual: 42 }` for `maximum`,
+`{ format: "email", actual: "not-an-email" }` for `format`) if you
+want to surface structured details too — `BuiltInErrorParams` in
+`oav-core` documents the shape per code.
 
 ### Body parser caveats
 

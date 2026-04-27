@@ -78,7 +78,7 @@ the upstream test suites live in
 | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `validateRequest(req)`                        | Check an `HttpRequest` against the spec. Returns `null` on success or a `ValidationError` tree.                                                                     |
 | `validateResponse(req, res)`                  | Check an `HttpResponse` against the spec (request is used only for method + path). Returns `null` or a tree.                                                        |
-| `validateFetchRequest<T>(request, opts?)`     | Convenience for Web Standards `Request`: reads URL, headers, body; returns a discriminated union with a typed body. See INTEGRATION.md.                             |
+| `validateFetchRequest<T>(request, opts?)`     | Convenience for Web Standards `Request`: reads URL, headers, body; returns a discriminated union with a typed body. See [INTEGRATION.md](../../INTEGRATION.md).     |
 | `validateFetchResponse<T>(request, response)` | Symmetric Web Standards `Response` check. Useful for contract-testing an upstream.                                                                                  |
 | `getOperation({ method, path })`              | Startup-time introspection: returns the resolved, overlay-applied `OperationObject` + matched template for a (method, path) pair.                                   |
 | `detectedVersion`                             | The `openapi` string detected on construction, or `undefined` for an unrecognised / missing version (see `onUnknownVersion`).                                       |
