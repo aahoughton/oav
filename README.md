@@ -10,7 +10,7 @@ validator. Two primary drivers:
   application-side patches. `applyOverlays` rewrites the document
   at load time. Custom keywords, formats, and dialects plug into
   the compiler the same way, so per-tenant validation rules don't
-  require forking. See [OVERLAYS.md](./OVERLAYS.md).
+  require forking. See [docs/overlays.md](./docs/overlays.md).
 - **Validators that fit in microservice runners.** `oav
 compile-spec openapi.yaml` emits a single zero-dependency ES
   module exposing the full validator surface. Targets Cloudflare
@@ -35,7 +35,7 @@ targets:
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `oav`          | Batteries-included: YAML readers + the `oav` CLI. Depends on `yaml`; pulls in `commander` + `esbuild` for the CLI only (never imported from the library entry points, so bundlers tree-shake them out of application bundles; Node server runs load them only when the `oav` binary is invoked). |
 | `oav-core`     | Lean. Zero runtime dependencies. Same programmatic surface as `oav`, minus the YAML readers and CLI. Feed it JSON specs (or pre-parsed objects via the memory reader).                                                                                                                           |
-| `oav-express4` | Express 4 framework adapter. Thin: imports the validator from `oav-core`, exports a middleware factory plus standalone helpers. See [`INTEGRATION.md`](./INTEGRATION.md).                                                                                                                        |
+| `oav-express4` | Express 4 framework adapter. Thin: imports the validator from `oav-core`, exports a middleware factory plus standalone helpers. See [`docs/integration.md`](./docs/integration.md).                                                                                                              |
 | `oav-express5` | Express 5 framework adapter. Same exports as `oav-express4`; promise-native middleware shape.                                                                                                                                                                                                    |
 | `oav-fastify`  | Fastify framework adapter. Same exports as the Express adapters; ships a `preValidation` hook instead of middleware.                                                                                                                                                                             |
 
@@ -102,7 +102,7 @@ oav's primary alternative is
 `compileSchema`, or via
 [`express-openapi-validator`](https://github.com/cdimascio/express-openapi-validator)
 for HTTP validation. (Migrating from EOV specifically:
-[MIGRATION-FROM-EOV.md](./MIGRATION-FROM-EOV.md).)
+[docs/migration-from-eov.md](./docs/migration-from-eov.md).)
 
 Numbers below are from the [`performance/`](./performance/README.md)
 benchmark on AWS c7i.large (Intel Sapphire Rapids, Node 22). Your
@@ -132,7 +132,7 @@ For typical HTTP workloads — 1k–10k req/sec × ~1 validation per
 request — the difference is invisible at any of those numbers. For
 validation-heavy code (millions of validations per second), Ajv wins.
 
-Full per-shape breakdown: [`COMPARISON.md`](./COMPARISON.md). Raw
+Full per-shape breakdown: [`docs/comparison.md`](./docs/comparison.md). Raw
 benchmark data and methodology:
 [`performance/README.md`](./performance/README.md).
 
@@ -293,7 +293,7 @@ app.use(async (req, res, next) => {
 });
 ```
 
-See [**INTEGRATION.md**](./INTEGRATION.md) for:
+See [**docs/integration.md**](./docs/integration.md) for:
 
 - Adapter packages for Express 4, Express 5, and Fastify; recipes for Next.js, Hono, Bun, and Deno via the Web Standards adapter.
 - Recipes for file uploads (multer), response validation, security,
@@ -358,7 +358,7 @@ Runnable, self-contained TypeScript examples in
 
 Runtime-behaviour corners. For a feature-scope comparison against
 Ajv (draft versions, `$data`, async validation, etc.) see
-[COMPARISON.md](./COMPARISON.md).
+[docs/comparison.md](./docs/comparison.md).
 
 - `$dynamicRef` behaves like `$ref` with anchor lookup — no runtime
   dynamic-scope traversal.

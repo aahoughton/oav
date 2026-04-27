@@ -45,7 +45,7 @@ export const descriptionKeyword = annotationKeyword("description");
  * `default` — a suggested default value for the schema. Preserved as
  * metadata only; oav never injects defaults into request bodies or
  * response bodies (see the `useDefaults` discussion in
- * [`COMPARISON.md`](../../../COMPARISON.md) if you need that behaviour).
+ * [`docs/comparison.md`](../../../docs/comparison.md) if you need that behaviour).
  *
  * @public
  */
