@@ -3,8 +3,8 @@
 A focused reference for porting an Express app off
 `express-openapi-validator` (eov) onto `oav`. Reads as a punch list,
 not a tutorial — for integration recipes, see
-[INTEGRATION.md](./INTEGRATION.md). For Express 4 specifically, the
-[`oav-express4`](./packages/oav-express4/README.md)
+[integration.md](./integration.md). For Express 4 specifically, the
+[`oav-express4`](../packages/oav-express4/README.md)
 companion package gets you most of eov's ergonomics back as a
 one-liner; the recipes in this doc work whether you use the adapter
 or write the middleware inline.
@@ -32,11 +32,11 @@ auth wiring where needed. In exchange:
 - **Built-in OpenAPI 3.0 dialect.** `nullable: true`, boolean
   `exclusiveMaximum`, and `$ref`-suppresses-siblings are in the
   compiler's dialect dispatch — no preprocessing step. See the
-  [conformance report](./conformance/REPORT.md) for pass / fail
+  [conformance report](../conformance/REPORT.md) for pass / fail
   counts by category.
 - **Overlays.** Extend an externally-owned base spec (Supabase,
   Hasura, PocketBase, a gateway-published document) with
-  `applyOverlays` at load time. See [OVERLAYS.md](./OVERLAYS.md).
+  `applyOverlays` at load time. See [overlays.md](./overlays.md).
 
 ## Behavior differences to watch for
 
@@ -52,8 +52,8 @@ fixture / test churn.
 | **Top-level message**              | first leaf by default; every leaf `, `-joined under `validateRequests: { allErrors: true }` | configurable via `formatSummary`: `{ select: "first" }` (default; first leaf) or `{ select: "all" }` (every leaf, newline-joined). Per-leaf details always in `errors[]` / `issues[]`. Shape differs from eov — see below. |
 | **Top-level `path` on 404s**       | offending URL                                                                               | `[]` (empty array → `""` pointer); same kind of error, different rendering                                                                                                                                                 |
 | **`errorCode` names**              | `required.openapi.validation`                                                               | bare codes (`required`); the `.openapi.validation` suffix was always noise                                                                                                                                                 |
-| **`oneOf` with binary fields**     | silently accepted (looser inside binary fields)                                             | surfaces the genuine ambiguity with `matchCount: 2`; see [INTEGRATION.md → File uploads](./INTEGRATION.md#file-uploads-with-multer) for the spec-level fix                                                                 |
-| **Error response monkey-patching** | `res.send("{...}")` (string form) caught via wrappers                                       | not caught unless you write the wrapper yourself; see [INTEGRATION.md → Response validation](./INTEGRATION.md#response-validation-no-monkey-patching)                                                                      |
+| **`oneOf` with binary fields**     | silently accepted (looser inside binary fields)                                             | surfaces the genuine ambiguity with `matchCount: 2`; see [integration.md → File uploads](./integration.md#file-uploads-with-multer) for the spec-level fix                                                                 |
+| **Error response monkey-patching** | `res.send("{...}")` (string form) caught via wrappers                                       | not caught unless you write the wrapper yourself; see [integration.md → Response validation](./integration.md#response-validation-no-monkey-patching)                                                                      |
 | **Optional `openapi` version**     | throws on missing / unsupported                                                             | silently uses 3.1 by default; see `onUnknownVersion`                                                                                                                                                                       |
 | **`format` semantics**             | always assertive in OpenAPI context                                                         | assertive in OpenAPI context; annotation-only under raw `jsonSchemaDialect` (per 2020-12 default)                                                                                                                          |
 
@@ -106,8 +106,8 @@ makes sense for your API.
 | eov option                  | oav equivalent                                                                                                                                                                                                                       |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `validateSecurity: true`    | Off by default in oav (real apps gate security upstream of validation). Opt in with `createValidator(spec, { validateSecurity: true })` for shape-only checks on `bearer` / `basic` / `apiKey`.                                      |
-| `validateSecurity.handlers` | Your own auth middleware, run before the validator — `oav` only checks credential **shape**, not validity. For declarative per-scheme dispatch, see the [INTEGRATION.md security recipe](./INTEGRATION.md#per-scheme-auth-dispatch). |
-| `fileUploader: true`        | Your own multer middleware — see [INTEGRATION.md file uploads](./INTEGRATION.md#file-uploads-with-multer).                                                                                                                           |
+| `validateSecurity.handlers` | Your own auth middleware, run before the validator — `oav` only checks credential **shape**, not validity. For declarative per-scheme dispatch, see the [integration.md security recipe](./integration.md#per-scheme-auth-dispatch). |
+| `fileUploader: true`        | Your own multer middleware — see [integration.md file uploads](./integration.md#file-uploads-with-multer).                                                                                                                           |
 
 ### Handler wiring
 
@@ -117,13 +117,13 @@ makes sense for your API.
 
 ## Features not carried over
 
-- **Auto-multer.** Replace with the [multer recipe](./INTEGRATION.md#file-uploads-with-multer) (~15 lines per upload route, or one global setup).
-- **Security handler dispatch.** Use your existing auth middleware, or the [per-scheme dispatch recipe](./INTEGRATION.md#per-scheme-auth-dispatch).
+- **Auto-multer.** Replace with the [multer recipe](./integration.md#file-uploads-with-multer) (~15 lines per upload route, or one global setup).
+- **Security handler dispatch.** Use your existing auth middleware, or the [per-scheme dispatch recipe](./integration.md#per-scheme-auth-dispatch).
 - **`operationHandlers` filesystem routing.** Write Express routes
   manually or keep whatever routing you had.
 - **`res.json` wrapping for automatic response validation.** Call
   `validateResponse` explicitly where you need it, or wrap `res.json`
-  yourself (~15 lines; see the [response-validation recipe](./INTEGRATION.md#response-validation-no-monkey-patching)).
+  yourself (~15 lines; see the [response-validation recipe](./integration.md#response-validation-no-monkey-patching)).
 - **`serDes` payload mutations.** Do these in your handler rather
   than the validator.
 - **Typed error classes** (`BadRequest`, `Unauthorized`, etc.). Use
@@ -135,10 +135,10 @@ makes sense for your API.
   per-code `params` typed via `BuiltInErrorParams`. Narrowing happens
   on fields rather than message strings.
 - **Built-in 3.0 dialect.** No translation layer over 2020-12. See
-  [conformance/REPORT.md](./conformance/REPORT.md) for pass / fail
+  [conformance/REPORT.md](../conformance/REPORT.md) for pass / fail
   counts by category.
 - **Overlays.** Extend externally-owned specs at load time —
-  see [OVERLAYS.md](./OVERLAYS.md).
+  see [overlays.md](./overlays.md).
 - **Smaller install footprint.** `oav` depends on `yaml`,
   `commander`, and `esbuild` (the latter two for CLI + AOT compile
   output); `oav-core` is the lean alternative with zero
@@ -153,7 +153,7 @@ makes sense for your API.
   the edge of a queue processor outside any HTTP framework.
 - **AOT compilation.** `oav compile-spec spec.yaml` emits a
   zero-runtime-deps validator for edge / serverless deployments.
-  See the [CLI README](./packages/cli/README.md#compile-spec-output).
+  See the [CLI README](../packages/cli/README.md#compile-spec-output).
 
 ## Format-shape note
 

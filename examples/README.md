@@ -36,7 +36,7 @@ for `@aahoughton/oav` in import specifiers that don't touch
 | `overlay-petstore-endpoint.ts` | `petstore.yaml`       | Require an `X-Tenant` header on `POST /pets` via an endpoint overlay                |
 | `spec-digest.ts`               | `uploads.yaml`        | Derive middleware config (multer limits, required headers) from the spec at startup |
 
-See [`OVERLAYS.md`](../OVERLAYS.md) for a walk-through of the overlay
+See [`docs/overlays.md`](../docs/overlays.md) for a walk-through of the overlay
 shape and when to use each section (`extendSchemas`, `replaceSchemas`,
 `overrides`, `addPaths`).
 

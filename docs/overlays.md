@@ -163,7 +163,7 @@ your deployment serves that patching it piecewise is noisier than
 starting fresh.
 
 Runnable demo:
-[`examples/overlay-petstore-endpoint.ts`](./examples/overlay-petstore-endpoint.ts)
+[`examples/overlay-petstore-endpoint.ts`](../examples/overlay-petstore-endpoint.ts)
 — adds a gateway-required `X-Tenant` header to `POST /pets`.
 
 ## Things to know
@@ -194,7 +194,7 @@ Runnable demo:
 
 ## Related
 
-- [`examples/overlay-petstore-schema.ts`](./examples/overlay-petstore-schema.ts)
+- [`examples/overlay-petstore-schema.ts`](../examples/overlay-petstore-schema.ts)
   and
-  [`examples/overlay-petstore-endpoint.ts`](./examples/overlay-petstore-endpoint.ts)
+  [`examples/overlay-petstore-endpoint.ts`](../examples/overlay-petstore-endpoint.ts)
   — runnable end-to-end demos.

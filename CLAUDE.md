@@ -66,12 +66,12 @@ and let the user's own logic fail in a familiar way.
 ### Type as canonical contract
 
 TSDoc on the type is the API reference. Prose docs (READMEs,
-INTEGRATION.md) are recipes — worked examples that show how the
-pieces compose, with backreferences to the type for the contract.
+docs/integration.md) are recipes — worked examples that show how
+the pieces compose, with backreferences to the type for the contract.
 When adding a new option-bearing interface, lead its TSDoc with a
 roadmap of the field groups so editor tooling surfaces the surface
-on first read. When adding a recipe in INTEGRATION.md, include a
-"see {type}" backreference so the reader knows where the source of
+on first read. When adding a recipe in docs/integration.md, include
+a "see {type}" backreference so the reader knows where the source of
 truth lives.
 
 ### Scope discipline

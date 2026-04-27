@@ -11,7 +11,7 @@ combined — schema validation plus HTTP-layer checks — and trades
 differently on a handful of specifics, catalogued below.
 
 This document is about behaviour and capabilities. For raw numbers
-and methodology see [`performance/README.md`](./performance/README.md);
+and methodology see [`performance/README.md`](../performance/README.md);
 the shape of the trade-off is sketched below.
 
 ## Performance sketch
@@ -30,7 +30,7 @@ The takeaway: ajv wins steady-state validate throughput on a spec you
 compile once and reuse; oav wins anywhere validator construction is
 part of the hot path (per-request, per-tenant, per-test, edge
 cold-starts). Full methodology, raw numbers, and the benchmark
-harness live in [`performance/README.md`](./performance/README.md).
+harness live in [`performance/README.md`](../performance/README.md).
 
 ## Where Ajv (+ express-openapi-validator) does more
 
@@ -75,7 +75,7 @@ Capabilities that the Ajv stack covers and oav does not.
   common use case — cross-field constraints like `max >= min` —
   works in oav via an object-level custom keyword that sees the
   whole object and reaches siblings directly; see
-  [`examples/cross-field-validation.ts`](./examples/cross-field-validation.ts).
+  [`examples/cross-field-validation.ts`](../examples/cross-field-validation.ts).
   Trade-off: the constraint sits on the parent object in the schema
   rather than inside the constrained field's own subschema.
 - **Async validation.** Ajv supports async formats and keywords (e.g.
@@ -88,7 +88,7 @@ Capabilities that the Ajv stack covers and oav does not.
   validation but doesn't verify credentials),
   `operationHandlers` filesystem auto-loading, and `ignorePaths` /
   `ignoreUndocumented` are one-liner options. oav leaves these to the
-  adapter — see [`INTEGRATION.md`](./INTEGRATION.md) for recipes.
+  adapter — see [`integration.md`](./integration.md) for recipes.
 
 ## Where oav does more
 
@@ -206,4 +206,4 @@ when compile throughput matters (1–2 orders of magnitude above ajv,
 8× on Stripe's real-world spec; see the performance sketch above).
 
 For benchmark numbers rather than feature comparisons, see
-[`performance/README.md`](./performance/README.md).
+[`performance/README.md`](../performance/README.md).

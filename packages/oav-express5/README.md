@@ -6,7 +6,7 @@ Same shape as the [`oav-express4`](../oav-express4/README.md) sibling — only t
 
 Sibling packages: [`oav-express4`](../oav-express4/README.md), [`oav-fastify`](../oav-fastify/README.md). Same export names, option shapes, and defaults; only the framework-typed argument differs.
 
-> **Migrating from `express-openapi-validator`?** See [MIGRATION-FROM-EOV.md](../../MIGRATION-FROM-EOV.md) for behavior differences (path-label `/params/` → `/path/`, `errorCode` namespacing, status mapping) and a worked porting walkthrough.
+> **Migrating from `express-openapi-validator`?** See [docs/migration-from-eov.md](../../docs/migration-from-eov.md) for behavior differences (path-label `/params/` → `/path/`, `errorCode` namespacing, status mapping) and a worked porting walkthrough.
 
 ## Install
 
@@ -189,7 +189,7 @@ The middleware awaits the returned promise. Express 5 awaits the middleware itse
 
 ### Global validator + per-route multer (file uploads)
 
-When the validator is mounted globally and one or a few routes accept file uploads via multer, mount multer at the route prefix that needs it (upstream of the global validator) and use `toHttpRequest` to synthesize the spec-shaped body from `req.files`. See the [INTEGRATION.md file uploads recipe](https://github.com/aahoughton/oav/blob/main/INTEGRATION.md#file-uploads-with-multer) for the full pattern; the only difference for Express 5 is the lack of `try/catch` (which neither the recipe nor the adapter needs).
+When the validator is mounted globally and one or a few routes accept file uploads via multer, mount multer at the route prefix that needs it (upstream of the global validator) and use `toHttpRequest` to synthesize the spec-shaped body from `req.files`. See the [integration.md file uploads recipe](https://github.com/aahoughton/oav/blob/main/docs/integration.md#file-uploads-with-multer) for the full pattern; the only difference for Express 5 is the lack of `try/catch` (which neither the recipe nor the adapter needs).
 
 ## Express 4 vs Express 5
 
@@ -205,5 +205,5 @@ A migrating consumer's `import { validateRequests } from "@aahoughton/oav-expres
 
 - [`oav-core`](https://www.npmjs.com/package/@aahoughton/oav-core) — `createValidator`, `ValidatorOptions`, `formatSummary`, `collectIssues`, `httpStatusFor`, `toProblemDetails`.
 - [`oav`](https://www.npmjs.com/package/@aahoughton/oav) — batteries-included distribution of oav-core: YAML readers + the `oav` CLI.
-- The repo-root [`INTEGRATION.md`](../../INTEGRATION.md) — broader recipes (security, file uploads, response validation, status mapping, type coercion, ignoring paths).
-- The repo-root [`MIGRATION-FROM-EOV.md`](../../MIGRATION-FROM-EOV.md) — porting from `express-openapi-validator`.
+- The repo-root [`docs/integration.md`](../../docs/integration.md) — broader recipes (security, file uploads, response validation, status mapping, type coercion, ignoring paths).
+- The repo-root [`docs/migration-from-eov.md`](../../docs/migration-from-eov.md) — porting from `express-openapi-validator`.

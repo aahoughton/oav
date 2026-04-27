@@ -193,5 +193,5 @@ If both fire on the same route, oav's `preValidation` hook runs first; if it pas
 
 - [`oav-core`](https://www.npmjs.com/package/@aahoughton/oav-core) — `createValidator`, `ValidatorOptions`, `formatSummary`, `collectIssues`, `httpStatusFor`, `toProblemDetails`.
 - [`oav`](https://www.npmjs.com/package/@aahoughton/oav) — batteries-included distribution of oav-core: YAML readers + the `oav` CLI.
-- The repo-root `INTEGRATION.md` — broader recipes (security, file uploads, response validation, status mapping, type coercion, ignoring paths).
-- The repo-root `MIGRATION-FROM-EOV.md` — porting from `express-openapi-validator`.
+- The repo-root `docs/integration.md` — broader recipes (security, file uploads, response validation, status mapping, type coercion, ignoring paths).
+- The repo-root `docs/migration-from-eov.md` — porting from `express-openapi-validator`.

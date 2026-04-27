@@ -18,13 +18,21 @@ This document is organised:
   Express 4, Express 5, Fastify, Next.js, Hono, Bun, Deno. Each
   section leads with the adapter (where one exists) and falls back
   to the manual inline recipe.
-- **[Cross-cutting recipes](#cross-cutting-recipes)** —
-  status-code mapping, file uploads, response validation, security,
-  type coercion, ignoring paths. Linked from the per-framework
-  sections.
+- **[Cross-cutting recipes](#cross-cutting-recipes)** — linked from
+  the per-framework sections:
+  - [Status-code mapping](#status-code-mapping)
+  - [Preserving an existing client error envelope](#preserving-an-existing-client-error-envelope)
+  - [Body parser caveats](#body-parser-caveats)
+  - [File uploads with multer](#file-uploads-with-multer)
+  - [Deriving middleware config from the spec](#deriving-middleware-config-from-the-spec)
+  - [Streaming bodies, large uploads, and the `readBody` override](#streaming-bodies-large-uploads-and-the-readbody-override)
+  - [Response validation (no monkey-patching)](#response-validation-no-monkey-patching)
+  - [Security / authentication](#security--authentication)
+  - [Type coercion on body fields](#type-coercion-on-body-fields)
+  - [Ignoring paths not in the spec](#ignoring-paths-not-in-the-spec)
 - **[Migration paths](#migration-paths)** — pointers to focused
   migration docs (currently only
-  [MIGRATION-FROM-EOV.md](./MIGRATION-FROM-EOV.md) for
+  [migration-from-eov.md](./migration-from-eov.md) for
   `express-openapi-validator`).
 
 ## What the validator expects
@@ -536,7 +544,7 @@ and `email: "not-an-email"` (fails `format: email`), the response would be:
 
 `pointer` prefixes are `/body`, `/query`, `/header`, `/path`,
 `/cookie` (not `/params` — that's an `express-openapi-validator`
-quirk; see [MIGRATION-FROM-EOV.md](./MIGRATION-FROM-EOV.md) for the
+quirk; see [migration-from-eov.md](./migration-from-eov.md) for the
 full diff). Each `issue.params` carries machine-readable detail
 (e.g. `{ maximum: 30, actual: 42 }` for `maximum`,
 `{ format: "email", actual: "not-an-email" }` for `format`) if you
@@ -726,7 +734,7 @@ app.post("/uploads", upload.any() /* validator + handler as above */);
 route-match + `$ref` resolution + overlay application that validation
 does, but hands the result back as plain OpenAPI shapes — read
 whatever declaration you need. `digestOperation` (see
-[`examples/spec-digest.ts`](./examples/spec-digest.ts)) is a recipe
+[`examples/spec-digest.ts`](../examples/spec-digest.ts)) is a recipe
 that pulls the common middleware-config facts into a flat shape:
 content types, body limits, required headers, security. Copy it into
 your project and adjust the interpretation choices
@@ -1044,7 +1052,7 @@ app.use(async (req, res, next) => {
 Focused migration docs live in their own files so this guide can
 stay framework-shaped rather than competitor-shaped:
 
-- **[MIGRATION-FROM-EOV.md](./MIGRATION-FROM-EOV.md)** — migrating
+- **[migration-from-eov.md](./migration-from-eov.md)** — migrating
   from `express-openapi-validator`. Behavior-difference reference,
   option map (eov → oav), features not carried over, features
   added.

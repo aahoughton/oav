@@ -6,7 +6,7 @@ Thin: this package re-exports nothing from oav-core. You install both. The adapt
 
 Sibling packages: [`oav-express5`](../oav-express5/README.md), [`oav-fastify`](../oav-fastify/README.md). Same export names, option shapes, and defaults; only the framework-typed argument differs.
 
-> **Migrating from `express-openapi-validator`?** See [MIGRATION-FROM-EOV.md](../../MIGRATION-FROM-EOV.md) for behavior differences (path-label `/params/` → `/path/`, `errorCode` namespacing, status mapping) and a worked porting walkthrough.
+> **Migrating from `express-openapi-validator`?** See [docs/migration-from-eov.md](../../docs/migration-from-eov.md) for behavior differences (path-label `/params/` → `/path/`, `errorCode` namespacing, status mapping) and a worked porting walkthrough.
 
 ## Install
 
@@ -267,11 +267,11 @@ app.use(
 
 `toHttpRequest` is the general "reshape what oav sees" seam — synthesizing body from files, normalizing empty bodies, merging headers from an upstream proxy, anything that lives above the extraction layer. The empty-body normalization recipe higher in this README and this multer recipe are two examples of the same pattern.
 
-For per-route inline multer (validator called from inside the route handler) and the full multer recipe with text-field reassembly, see the [INTEGRATION.md file uploads section](https://github.com/aahoughton/oav/blob/main/INTEGRATION.md#file-uploads-with-multer).
+For per-route inline multer (validator called from inside the route handler) and the full multer recipe with text-field reassembly, see the [integration.md file uploads section](https://github.com/aahoughton/oav/blob/main/docs/integration.md#file-uploads-with-multer).
 
 ## See also
 
 - [`oav-core`](https://www.npmjs.com/package/@aahoughton/oav-core) — `createValidator`, `ValidatorOptions`, `formatSummary`, `collectIssues`, `httpStatusFor`, `toProblemDetails`.
 - [`oav`](https://www.npmjs.com/package/@aahoughton/oav) — batteries-included distribution of oav-core: YAML readers + the `oav` CLI.
-- The repo-root [`INTEGRATION.md`](../../INTEGRATION.md) — broader recipes (security, file uploads, response validation, status mapping, type coercion, ignoring paths).
-- The repo-root [`MIGRATION-FROM-EOV.md`](../../MIGRATION-FROM-EOV.md) — porting from `express-openapi-validator`.
+- The repo-root [`docs/integration.md`](../../docs/integration.md) — broader recipes (security, file uploads, response validation, status mapping, type coercion, ignoring paths).
+- The repo-root [`docs/migration-from-eov.md`](../../docs/migration-from-eov.md) — porting from `express-openapi-validator`.

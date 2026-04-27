@@ -64,7 +64,7 @@ packages cover the framework wiring:
 [`oav-express4`](../oav-express4/README.md),
 [`oav-express5`](../oav-express5/README.md),
 [`oav-fastify`](../oav-fastify/README.md). See
-[`INTEGRATION.md`](../../INTEGRATION.md) for adapter recipes plus
+[`docs/integration.md`](../../docs/integration.md) for adapter recipes plus
 manual integration patterns for Next.js, Hono, Bun, and Deno via
 the Web Standards adapter.
 
@@ -72,8 +72,8 @@ the Web Standards adapter.
 
 - [Top-level `README.md`](../../README.md) — full rationale, install
   matrix, comparison.
-- [`INTEGRATION.md`](../../INTEGRATION.md) — adapter recipes,
+- [`docs/integration.md`](../../docs/integration.md) — adapter recipes,
   security wiring, response validation, file uploads, migration.
-- [`OVERLAYS.md`](../../OVERLAYS.md) — extending an externally-owned
+- [`docs/overlays.md`](../../docs/overlays.md) — extending an externally-owned
   base spec at load time.
-- [`COMPARISON.md`](../../COMPARISON.md) — feature comparison vs Ajv.
+- [`docs/comparison.md`](../../docs/comparison.md) — feature comparison vs Ajv.
