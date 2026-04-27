@@ -1,6 +1,6 @@
 {
   "name": "@aahoughton/oav-fastify",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Fastify adapter for @aahoughton/oav-core. preValidation hook factory plus standalone helpers (httpRequestFromFastify, renderProblemDetails) for callers composing their own hooks.",
   "keywords": [
     "fastify",
