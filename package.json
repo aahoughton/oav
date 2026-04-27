@@ -1,6 +1,6 @@
 {
   "name": "@aahoughton/oav-core",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "HTTP-aware OpenAPI request/response validator with a JSON Schema codegen compiler. Zero runtime dependencies; install @aahoughton/oav for the batteries-included experience (YAML readers + CLI).",
   "keywords": [
     "cli",
