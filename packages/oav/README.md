@@ -1,6 +1,6 @@
 # oav
 
-Batteries-included distribution of `@aahoughton/oav-core`. Adds YAML
+Batteries-included distribution of `oav-core`. Adds YAML
 readers and the `oav` CLI on top of the lean validator package; the
 programmatic surface is identical.
 
@@ -17,10 +17,10 @@ const validator = createValidator(document);
 
 ## When to use which
 
-| Package                | When to use                                                                                                                                                                                             |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@aahoughton/oav`      | Includes YAML readers and the `oav` CLI binary. Pulls in `yaml`, `commander`, and `esbuild` (CLI-only).                                                                                                 |
-| `@aahoughton/oav-core` | Lean. Zero runtime dependencies. JSON specs only (or pre-parsed objects via the memory reader). Use on Cloudflare Workers, Vercel Edge, Lambda@Edge, or anywhere the YAML/CLI footprint isn't worth it. |
+| Package    | When to use                                                                                                                                                                                             |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `oav`      | Includes YAML readers and the `oav` CLI binary. Pulls in `yaml`, `commander`, and `esbuild` (CLI-only).                                                                                                 |
+| `oav-core` | Lean. Zero runtime dependencies. JSON specs only (or pre-parsed objects via the memory reader). Use on Cloudflare Workers, Vercel Edge, Lambda@Edge, or anywhere the YAML/CLI footprint isn't worth it. |
 
 `oav` re-exports every subpath of `oav-core` at matching paths
 (`oav/schema`, `oav/spec`, `oav/formats`, `oav/core`,

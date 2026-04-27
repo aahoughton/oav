@@ -5,11 +5,11 @@ this when you want to stitch a spec together before handing it to
 `createValidator`.
 
 This module is available at matching subpaths in both
-`@aahoughton/oav/spec` and `@aahoughton/oav-core/spec`. The examples
+`oav/spec` and `oav-core/spec`. The examples
 below import from `@aahoughton/oav`; substitute `@aahoughton/oav-core`
 if you're on the lean package.
 
-> **`@aahoughton/oav-core` ships JSON readers only.** Calling
+> **`oav-core` ships JSON readers only.** Calling
 > `createFileReader()` or `createHttpReader()` on a `.yaml` / `.yml`
 > path throws an install-hint error. For YAML support, install
 > `@aahoughton/oav` (for the bundled `createYamlFileReader`) or

@@ -1,10 +1,12 @@
-# @aahoughton/oav-express4
+# oav-express4
 
-Express 4 adapter for [`@aahoughton/oav-core`](https://www.npmjs.com/package/@aahoughton/oav-core) — a request-validator middleware factory plus standalone helpers (`httpRequestFromExpress`, `renderProblemDetails`) for callers composing their own middleware.
+Express 4 adapter for [`oav-core`](https://www.npmjs.com/package/@aahoughton/oav-core) — a request-validator middleware factory plus standalone helpers (`httpRequestFromExpress`, `renderProblemDetails`) for callers composing their own middleware.
 
-Thin: this package re-exports nothing from oav-core. You install both. The adapter declares oav-core as a regular dependency, so a single `npm install @aahoughton/oav-express4` pulls oav-core along; or install [`@aahoughton/oav`](https://www.npmjs.com/package/@aahoughton/oav) instead if you want YAML readers and the CLI.
+Thin: this package re-exports nothing from oav-core. You install both. The adapter declares oav-core as a regular dependency, so a single `npm install @aahoughton/oav-express4` pulls oav-core along; or install [`oav`](https://www.npmjs.com/package/@aahoughton/oav) instead if you want YAML readers and the CLI.
 
 Sibling packages: [`oav-express5`](../oav-express5/README.md), [`oav-fastify`](../oav-fastify/README.md). Same export names, option shapes, and defaults; only the framework-typed argument differs.
+
+> **Migrating from `express-openapi-validator`?** See [MIGRATION-FROM-EOV.md](../../MIGRATION-FROM-EOV.md) for behavior differences (path-label `/params/` → `/path/`, `errorCode` namespacing, status mapping) and a worked porting walkthrough.
 
 ## Install
 
@@ -18,7 +20,7 @@ npm install @aahoughton/oav @aahoughton/oav-express4 express
 
 `express` is a peer dep — your app's existing install satisfies it.
 
-> **YAML specs.** `@aahoughton/oav-core` is JSON-only by design (zero runtime deps). If your spec is YAML, either install [`@aahoughton/oav`](https://www.npmjs.com/package/@aahoughton/oav) instead — it bundles the YAML readers and the CLI — or install `yaml` separately and parse the spec yourself before passing the parsed object to `createValidator`.
+> **YAML specs.** `oav-core` is JSON-only by design (zero runtime deps). If your spec is YAML, either install [`oav`](https://www.npmjs.com/package/@aahoughton/oav) instead — it bundles the YAML readers and the CLI — or install `yaml` separately and parse the spec yourself before passing the parsed object to `createValidator`.
 
 ## Quick start
 
@@ -160,7 +162,7 @@ If multiple projects end up copying this recipe, that's the signal to harvest in
 
 ### Skip validation for paths the spec doesn't declare
 
-The validator owns this — pass it `ignorePaths` or `ignoreUndocumented` at construction. See `ValidatorOptions` in `@aahoughton/oav-core` for the contract.
+The validator owns this — pass it `ignorePaths` or `ignoreUndocumented` at construction. See `ValidatorOptions` in `oav-core` for the contract.
 
 ```ts
 const validator = createValidator(spec, {
@@ -269,6 +271,7 @@ For per-route inline multer (validator called from inside the route handler) and
 
 ## See also
 
-- [`@aahoughton/oav-core`](https://www.npmjs.com/package/@aahoughton/oav-core) — `createValidator`, `ValidatorOptions`, `formatSummary`, `collectIssues`, `httpStatusFor`, `toProblemDetails`.
-- [`@aahoughton/oav`](https://www.npmjs.com/package/@aahoughton/oav) — batteries-included distribution of oav-core: YAML readers + the `oav` CLI.
-- The repo-root `INTEGRATION.md` — broader recipes (security, file uploads, response validation, migration from `express-openapi-validator`).
+- [`oav-core`](https://www.npmjs.com/package/@aahoughton/oav-core) — `createValidator`, `ValidatorOptions`, `formatSummary`, `collectIssues`, `httpStatusFor`, `toProblemDetails`.
+- [`oav`](https://www.npmjs.com/package/@aahoughton/oav) — batteries-included distribution of oav-core: YAML readers + the `oav` CLI.
+- The repo-root [`INTEGRATION.md`](../../INTEGRATION.md) — broader recipes (security, file uploads, response validation, status mapping, type coercion, ignoring paths).
+- The repo-root [`MIGRATION-FROM-EOV.md`](../../MIGRATION-FROM-EOV.md) — porting from `express-openapi-validator`.

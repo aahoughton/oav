@@ -1,10 +1,12 @@
-# @aahoughton/oav-express5
+# oav-express5
 
-Express 5 adapter for [`@aahoughton/oav-core`](https://www.npmjs.com/package/@aahoughton/oav-core) — a promise-native middleware factory plus standalone helpers (`httpRequestFromExpress`, `renderProblemDetails`) for callers composing their own middleware.
+Express 5 adapter for [`oav-core`](https://www.npmjs.com/package/@aahoughton/oav-core) — a promise-native middleware factory plus standalone helpers (`httpRequestFromExpress`, `renderProblemDetails`) for callers composing their own middleware.
 
 Same shape as the [`oav-express4`](../oav-express4/README.md) sibling — only the framework-typed argument and the async semantics differ. Express 5's promise-native middleware means thrown errors and rejected promises propagate to the host's error middleware automatically, with no `try/catch` wrapper.
 
 Sibling packages: [`oav-express4`](../oav-express4/README.md), [`oav-fastify`](../oav-fastify/README.md). Same export names, option shapes, and defaults; only the framework-typed argument differs.
+
+> **Migrating from `express-openapi-validator`?** See [MIGRATION-FROM-EOV.md](../../MIGRATION-FROM-EOV.md) for behavior differences (path-label `/params/` → `/path/`, `errorCode` namespacing, status mapping) and a worked porting walkthrough.
 
 ## Install
 
@@ -18,7 +20,7 @@ npm install @aahoughton/oav @aahoughton/oav-express5 express
 
 `express` is a peer dep — your app's existing install satisfies it.
 
-> **YAML specs.** `@aahoughton/oav-core` is JSON-only by design (zero runtime deps). If your spec is YAML, either install [`@aahoughton/oav`](https://www.npmjs.com/package/@aahoughton/oav) instead — it bundles the YAML readers and the CLI — or install `yaml` separately and parse the spec yourself before passing the parsed object to `createValidator`.
+> **YAML specs.** `oav-core` is JSON-only by design (zero runtime deps). If your spec is YAML, either install [`oav`](https://www.npmjs.com/package/@aahoughton/oav) instead — it bundles the YAML readers and the CLI — or install `yaml` separately and parse the spec yourself before passing the parsed object to `createValidator`.
 
 ## Quick start
 
@@ -107,7 +109,7 @@ The check is shape-only — it confirms the declared credential is _present_, no
 
 ### Skip validation for paths the spec doesn't declare
 
-The validator owns this — pass it `ignorePaths` or `ignoreUndocumented` at construction. See `ValidatorOptions` in `@aahoughton/oav-core` for the contract.
+The validator owns this — pass it `ignorePaths` or `ignoreUndocumented` at construction. See `ValidatorOptions` in `oav-core` for the contract.
 
 ```ts
 const validator = createValidator(spec, {
@@ -201,7 +203,7 @@ A migrating consumer's `import { validateRequests } from "@aahoughton/oav-expres
 
 ## See also
 
-- [`@aahoughton/oav-core`](https://www.npmjs.com/package/@aahoughton/oav-core) — `createValidator`, `ValidatorOptions`, `formatSummary`, `collectIssues`, `httpStatusFor`, `toProblemDetails`.
-- [`@aahoughton/oav`](https://www.npmjs.com/package/@aahoughton/oav) — batteries-included distribution of oav-core: YAML readers + the `oav` CLI.
-- The repo-root `INTEGRATION.md` — broader recipes (security, file uploads, response validation, status mapping, type coercion, ignoring paths).
-- The repo-root `MIGRATION-FROM-EOV.md` — porting from `express-openapi-validator`.
+- [`oav-core`](https://www.npmjs.com/package/@aahoughton/oav-core) — `createValidator`, `ValidatorOptions`, `formatSummary`, `collectIssues`, `httpStatusFor`, `toProblemDetails`.
+- [`oav`](https://www.npmjs.com/package/@aahoughton/oav) — batteries-included distribution of oav-core: YAML readers + the `oav` CLI.
+- The repo-root [`INTEGRATION.md`](../../INTEGRATION.md) — broader recipes (security, file uploads, response validation, status mapping, type coercion, ignoring paths).
+- The repo-root [`MIGRATION-FROM-EOV.md`](../../MIGRATION-FROM-EOV.md) — porting from `express-openapi-validator`.

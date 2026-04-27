@@ -1,6 +1,6 @@
-# @aahoughton/oav-fastify
+# oav-fastify
 
-Fastify adapter for [`@aahoughton/oav-core`](https://www.npmjs.com/package/@aahoughton/oav-core) — a `preValidation` hook factory plus standalone helpers (`httpRequestFromFastify`, `renderProblemDetails`) for callers composing their own hooks.
+Fastify adapter for [`oav-core`](https://www.npmjs.com/package/@aahoughton/oav-core) — a `preValidation` hook factory plus standalone helpers (`httpRequestFromFastify`, `renderProblemDetails`) for callers composing their own hooks.
 
 Same shape as the Express siblings ([`oav-express4`](../oav-express4/README.md), [`oav-express5`](../oav-express5/README.md)) — only the framework-typed argument and Fastify's hook-vs-middleware distinction differ. Fastify is async-native, so thrown errors and rejected promises propagate to Fastify's error handler automatically, with no `try/catch` wrapper.
 
@@ -18,7 +18,7 @@ npm install @aahoughton/oav @aahoughton/oav-fastify fastify
 
 `fastify` is a peer dep — your app's existing install satisfies it.
 
-> **YAML specs.** `@aahoughton/oav-core` is JSON-only by design (zero runtime deps). If your spec is YAML, either install [`@aahoughton/oav`](https://www.npmjs.com/package/@aahoughton/oav) instead — it bundles the YAML readers and the CLI — or install `yaml` separately and parse the spec yourself before passing the parsed object to `createValidator`.
+> **YAML specs.** `oav-core` is JSON-only by design (zero runtime deps). If your spec is YAML, either install [`oav`](https://www.npmjs.com/package/@aahoughton/oav) instead — it bundles the YAML readers and the CLI — or install `yaml` separately and parse the spec yourself before passing the parsed object to `createValidator`.
 
 ## Quick start
 
@@ -191,7 +191,7 @@ If both fire on the same route, oav's `preValidation` hook runs first; if it pas
 
 ## See also
 
-- [`@aahoughton/oav-core`](https://www.npmjs.com/package/@aahoughton/oav-core) — `createValidator`, `ValidatorOptions`, `formatSummary`, `collectIssues`, `httpStatusFor`, `toProblemDetails`.
-- [`@aahoughton/oav`](https://www.npmjs.com/package/@aahoughton/oav) — batteries-included distribution of oav-core: YAML readers + the `oav` CLI.
+- [`oav-core`](https://www.npmjs.com/package/@aahoughton/oav-core) — `createValidator`, `ValidatorOptions`, `formatSummary`, `collectIssues`, `httpStatusFor`, `toProblemDetails`.
+- [`oav`](https://www.npmjs.com/package/@aahoughton/oav) — batteries-included distribution of oav-core: YAML readers + the `oav` CLI.
 - The repo-root `INTEGRATION.md` — broader recipes (security, file uploads, response validation, status mapping, type coercion, ignoring paths).
 - The repo-root `MIGRATION-FROM-EOV.md` — porting from `express-openapi-validator`.

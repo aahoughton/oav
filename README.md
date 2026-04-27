@@ -26,17 +26,18 @@ headers.
 
 ## Install
 
-`oav` ships in two core packages so consumers on constrained runtimes
-can skip what they don't use, plus framework adapter packages that
-build on either:
+`oav` ships in two core packages, plus framework adapter packages that
+build on either `oav` or `oav-core` -- if you don't need YAML support,
+you can skip `oav` entirely — the lean path for zero-dependency / edge
+targets:
 
-| Package                    | When to use                                                                                                                                                                                                                                                                                      |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `@aahoughton/oav`          | Batteries-included: YAML readers + the `oav` CLI. Depends on `yaml`; pulls in `commander` + `esbuild` for the CLI only (never imported from the library entry points, so bundlers tree-shake them out of application bundles; Node server runs load them only when the `oav` binary is invoked). |
-| `@aahoughton/oav-core`     | Lean. Zero runtime dependencies. Same programmatic surface as `@aahoughton/oav`, minus the YAML readers and CLI. Feed it JSON specs (or pre-parsed objects via the memory reader).                                                                                                               |
-| `@aahoughton/oav-express4` | Express 4 framework adapter. Thin: imports the validator from `oav-core`, exports a middleware factory plus standalone helpers. See [`INTEGRATION.md`](./INTEGRATION.md).                                                                                                                        |
-| `@aahoughton/oav-express5` | Express 5 framework adapter. Same exports as `oav-express4`; promise-native middleware shape.                                                                                                                                                                                                    |
-| `@aahoughton/oav-fastify`  | Fastify framework adapter. Same exports as the Express adapters; ships a `preValidation` hook instead of middleware.                                                                                                                                                                             |
+| Package        | When to use                                                                                                                                                                                                                                                                                      |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `oav`          | Batteries-included: YAML readers + the `oav` CLI. Depends on `yaml`; pulls in `commander` + `esbuild` for the CLI only (never imported from the library entry points, so bundlers tree-shake them out of application bundles; Node server runs load them only when the `oav` binary is invoked). |
+| `oav-core`     | Lean. Zero runtime dependencies. Same programmatic surface as `oav`, minus the YAML readers and CLI. Feed it JSON specs (or pre-parsed objects via the memory reader).                                                                                                                           |
+| `oav-express4` | Express 4 framework adapter. Thin: imports the validator from `oav-core`, exports a middleware factory plus standalone helpers. See [`INTEGRATION.md`](./INTEGRATION.md).                                                                                                                        |
+| `oav-express5` | Express 5 framework adapter. Same exports as `oav-express4`; promise-native middleware shape.                                                                                                                                                                                                    |
+| `oav-fastify`  | Fastify framework adapter. Same exports as the Express adapters; ships a `preValidation` hook instead of middleware.                                                                                                                                                                             |
 
 ```bash
 npm install @aahoughton/oav            # YAML + CLI
@@ -302,9 +303,9 @@ See [**INTEGRATION.md**](./INTEGRATION.md) for:
   wiring by hand.
 
 Companion adapter packages cover the common framework wiring:
-[`@aahoughton/oav-express4`](./packages/oav-express4/README.md),
-[`@aahoughton/oav-express5`](./packages/oav-express5/README.md),
-[`@aahoughton/oav-fastify`](./packages/oav-fastify/README.md). They
+[`oav-express4`](./packages/oav-express4/README.md),
+[`oav-express5`](./packages/oav-express5/README.md),
+[`oav-fastify`](./packages/oav-fastify/README.md). They
 share the same export names and option shapes; only the
 framework-typed argument differs.
 

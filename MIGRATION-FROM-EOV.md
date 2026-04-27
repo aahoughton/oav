@@ -4,7 +4,7 @@ A focused reference for porting an Express app off
 `express-openapi-validator` (eov) onto `oav`. Reads as a punch list,
 not a tutorial — for integration recipes, see
 [INTEGRATION.md](./INTEGRATION.md). For Express 4 specifically, the
-[`@aahoughton/oav-express4`](./packages/oav-express4/README.md)
+[`oav-express4`](./packages/oav-express4/README.md)
 companion package gets you most of eov's ergonomics back as a
 one-liner; the recipes in this doc work whether you use the adapter
 or write the middleware inline.
