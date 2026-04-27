@@ -114,7 +114,6 @@
     "provenance": true
   },
   "scripts": {
-    "preinstall": "node -e \"require('fs').existsSync('pnpm-workspace.yaml')&&require('child_process').execSync('npx -y only-allow pnpm',{stdio:'inherit'})\"",
     "build": "tsup && pnpm --filter @aahoughton/oav build",
     "test": "vitest run",
     "test:watch": "vitest",
