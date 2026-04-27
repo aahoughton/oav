@@ -47,19 +47,11 @@ npm install @aahoughton/oav-express5   # Express 5 adapter
 npm install @aahoughton/oav-fastify    # Fastify adapter
 ```
 
-`oav` re-exports `oav-core` at matching
-subpaths. Samples below use `oav`; on the lean package,
-substitute `oav-core` in imports that don't touch the
-YAML readers (`createYamlFileReader`, `createSmartHttpReader`) or
-the CLI.
-
-The `commander` + `esbuild` deps `oav` pulls in are
-reachable only from the `oav` CLI binary (`dist/cli.js`). Application
-code importing from `oav` hits `dist/index.js`, which
-doesn't reference them — bundlers tree-shake them out of the output,
-and Node servers load them only when the CLI is invoked. Consumers
-who want to skip the ~10 MB of esbuild's native binary on disk can
-install `oav-core` instead (zero runtime deps, no CLI).
+`oav` re-exports `oav-core` at four subpath entrypoints (`/schema`,
+`/spec`, `/formats`, `/core`); on the lean package, substitute
+`oav-core` in imports that don't touch the YAML readers
+(`createYamlFileReader`, `createSmartHttpReader`) or the CLI. See
+[`docs/modules.md`](./docs/modules.md) for what each subpath exports.
 
 ## Quick start
 
@@ -94,6 +86,11 @@ handles local YAML, remote JSON / YAML, and local JSON transparently.
 rooted at the HTTP frame (e.g. `["body", "pets", 3, "name"]`), a
 human-readable `message`, and a machine-readable `params` object whose
 shape per code is documented in `BuiltInErrorParams`.
+
+Runnable end-to-end demos in [`examples/`](./examples/README.md):
+custom formats, custom keywords, cross-field constraints, error
+budgets, version differences, overlays, and spec-derived middleware
+config.
 
 ## How it compares
 
@@ -148,27 +145,16 @@ counts by category.
 
 Categories oav does not aim to cover:
 
-- `$dynamicRef` with runtime dynamic-scope rebinding. oav resolves
-  statically against the anchor map.
-- The `optional/format/*` subtree. Those tests target strict-assertion
-  behaviour; `format` is annotation-only by default per JSON Schema
-  2020-12 §6.3.
+- `$dynamicRef` with runtime dynamic-scope rebinding (oav resolves
+  statically against the anchor map).
+- The `optional/format/*` subtree (`format` is annotation-only by
+  default per JSON Schema 2020-12 §6.3).
 - A small tail of isolated optional cases (float-overflow handling,
-  external-ref loading tied to the dynamic-scope category above).
+  external-ref loading tied to dynamic scope).
 
-In practice, OpenAPI specs generated or hand-authored by application
-developers rarely touch any of these. `$dynamicRef` / `$dynamicAnchor`
-are concentrated in meta-schemas and extensible-type libraries (JSON
-Schema's own meta-schema, Hyperjump's type system); a spec that
-describes "POST /pets takes a Pet" doesn't declare them. The strict
-format-assertion gap only surfaces if you rely on RFC-edge behaviour
-in `iri` / `iri-reference` or non-BMP regex content — `date-time`,
-`email`, `uuid`, and the common URI formats pass. Float overflow
-concerns numbers beyond `Number.MAX_SAFE_INTEGER` (~9 × 10¹⁵);
-outside that range, JavaScript's own `Number` precision is the
-limiting factor regardless of validator. If any of these corners
-matter for your use case, the report lays out which tests fail and
-why.
+OpenAPI specs hand-authored or generated for typical APIs rarely
+touch any of these. If they matter for your use case, the
+[report](./conformance/REPORT.md) lays out which tests fail and why.
 
 ## CLI
 
@@ -188,15 +174,6 @@ compile-spec), `--requests-only` (compile-spec), `--only METHOD PATH`
 [packages/cli/README.md](./packages/cli/README.md) for the full
 surface, the `.http` file format, and both compile commands' output
 contracts.
-
-`compile-schema` and `compile-spec` emit ES modules with zero imports
-after the esbuild bundle step. `compile-spec`'s output exposes the
-same `validateRequest` / `validateResponse` / `getOperation` surface
-as `createValidator(document)` but with every schema already compiled
-into the file — suited for Cloudflare Workers / Vercel Edge /
-Lambda@Edge where runtime `ajv.compile()` is forbidden, or for
-Lambda cold-start latency where skipping 10–50 ms of spec parse +
-compile pays back.
 
 ## Versions
 
@@ -226,44 +203,12 @@ npx swagger2openapi swagger.json -o openapi.json
 
 ## Configuring the validator
 
-| Option                  | Effect                                                                                                                      |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `dialect`               | Force a specific schema dialect, bypassing version detection.                                                               |
-| `formats`               | Extra string format validators merged on top of the built-ins.                                                              |
-| `keywords`              | Register user-defined schema keywords (see below).                                                                          |
-| `maxErrors`             | Cap on leaf errors; `1` is fast-fail, default is uncapped.                                                                  |
-| `strictQueryParameters` | Reject undeclared query parameters. Default `false`.                                                                        |
-| `validateSecurity`      | Shape-only security check (bearer / basic / apiKey). Default `false` (auth middleware runs upstream); set `true` to opt in. |
-| `ignoreUndocumented`    | Return `null` on requests whose path the router can't match. Default `false`.                                               |
-| `ignorePaths`           | Predicate `(path) => boolean`; returning `true` short-circuits validation to `null` before routing.                         |
-| `onUnknownVersion`      | Policy for specs with missing/unsupported `openapi`: `"fallback31"` (default), `"warn"`, or `"throw"`.                      |
-
-### Custom keywords
-
-```ts
-const validator = createValidator(spec, {
-  keywords: {
-    activeTenant: (data) =>
-      typeof data !== "string" || tenantCache.has(data)
-        ? true
-        : { message: `tenant "${data}" is not active` },
-  },
-});
-```
-
-Custom keywords plug into generated code alongside the built-ins. See
-[examples/custom-keywords.ts](./examples/custom-keywords.ts).
-
-### Bounded error collection
-
-```ts
-createValidator(spec, { maxErrors: 1 }); // fast-fail
-createValidator(spec, { maxErrors: 10 }); // bound CPU/memory on huge payloads
-```
-
-Hot loops (array items, object properties, `allOf`/`anyOf` branches)
-short-circuit once the budget is exhausted. Results carry
-`truncated: true` so callers know the tree was capped.
+`createValidator(spec, options)` accepts options for dialect override,
+custom formats and keywords, error budget, strict-mode lint, security
+shape-checking, ignored paths, and version-mismatch policy. See
+[`docs/configuration.md`](./docs/configuration.md) for the option
+table, custom-keyword recipe, and bounded-error-collection details.
+The canonical contract is the `ValidatorOptions` TSDoc.
 
 ## Framework integration
 
@@ -317,55 +262,14 @@ tree is structured (`code`/`path`/`message`/`params`/`children`),
 the OpenAPI 3.0 dialect is built in rather than translated to
 2020-12, and the validator does not mutate `req` or `res`.
 
-## Modules
-
-The package publishes a small root and four subpath entrypoints.
-`oav-core` exposes the same five entrypoints; substitute
-`oav-core/...` to import from the lean package.
-
-| Import                    | Surface                                                  |
-| ------------------------- | -------------------------------------------------------- |
-| `@aahoughton/oav`         | `createValidator`, error helpers, formatters, types      |
-| `@aahoughton/oav/schema`  | `compileSchema`, dialects, vocabularies, custom keywords |
-| `@aahoughton/oav/spec`    | `loadSpec`, `resolveSpec`, `applyOverlays`, readers      |
-| `@aahoughton/oav/formats` | Built-in string format validators                        |
-| `@aahoughton/oav/core`    | Error tree model, shared OpenAPI / HTTP types            |
-
-`oav` also exports `createYamlFileReader`,
-`createSmartHttpReader` (HTTP reader that handles both JSON and YAML
-by inspecting `Content-Type`), and `parseYamlString` at the root entry,
-and ships the `oav` CLI as a `bin`.
-
-## Examples
-
-Runnable, self-contained TypeScript examples in
-[`examples/`](./examples/README.md):
-
-| File                           | Shows                                                                |
-| ------------------------------ | -------------------------------------------------------------------- |
-| `basic-validation.ts`          | Load a spec → `createValidator` → request and response checks        |
-| `custom-formats.ts`            | Register a user string format (E.164 phone)                          |
-| `custom-keywords.ts`           | Register a schema keyword that reads dynamic runtime state           |
-| `cross-field-validation.ts`    | Cross-field constraint (`max >= min`) via an object-level keyword    |
-| `max-errors.ts`                | Fast-fail and bounded error collection on a bulk-invalid payload     |
-| `versions.ts`                  | 3.0, 3.1, 3.2 side by side (`nullable`, QUERY method)                |
-| `overlay.ts`                   | Merge a gateway header requirement into one operation                |
-| `overlay-petstore-schema.ts`   | Extend the `Pet` component with a deployment-required field          |
-| `overlay-petstore-endpoint.ts` | Require an `X-Tenant` header on `POST /pets` via an endpoint overlay |
-| `spec-digest.ts`               | Derive middleware config (multer limits, required headers) at boot   |
-
 ## Known limitations
 
 Runtime-behaviour corners. For a feature-scope comparison against
 Ajv (draft versions, `$data`, async validation, etc.) see
 [docs/comparison.md](./docs/comparison.md).
 
-- `$dynamicRef` behaves like `$ref` with anchor lookup — no runtime
-  dynamic-scope traversal.
-- `style: deepObject` query parameters support only single-level
-  nesting (`obj[key]=value`). OpenAPI 3.0–3.2 do not define nested
-  semantics; specs that rely on `obj[a][b]=value` should model the
-  flattened shape explicitly or use a different parameter style.
+- `$dynamicRef` behaves like `$ref` with anchor lookup — no runtime dynamic-scope traversal.
+- `style: deepObject` query parameters support only single-level nesting (`obj[key]=value`); OpenAPI 3.0–3.2 don't define nested semantics.
 - `pattern` keywords and `format: "regex"` compile to the JavaScript
   built-in `RegExp`, which has no execution timeout. If your OpenAPI
   spec is attacker-controlled (e.g. multi-tenant upload), a
