@@ -57,23 +57,64 @@ export function buildProgram(options: BuildProgramOptions = {}): Command {
     .command("resolve <spec>")
     .description("Resolve a (possibly multi-file) OpenAPI document and print the stitched result.")
     .option("--overlay <file...>", "apply one or more overlays in order", collectOverlays, [])
+    .option(
+      "--lint",
+      "run spec-hygiene checks; findings go to stderr (or the json envelope when --envelope json)",
+      false,
+    )
+    .option(
+      "--fail-on <level>",
+      "non-zero exit when any finding at or above <level> appears (only 'warning' for now); requires --lint",
+      (value: string): "warning" => {
+        if (value !== "warning") {
+          throw new Error(`unknown level: ${value} (expected "warning")`);
+        }
+        return value;
+      },
+    )
+    .option(
+      "--envelope <shape>",
+      "'text' (default; document on stdout, findings on stderr) or 'json' ({ document, specHygieneIssues } single payload)",
+      (value: string): "text" | "json" => {
+        if (value !== "text" && value !== "json") {
+          throw new Error(`unknown envelope: ${value} (expected "text" or "json")`);
+        }
+        return value;
+      },
+      "text",
+    )
     .option("-o, --output <file>", "write output to a file instead of stdout")
     .option("--quiet", "print nothing; exit code only", false)
-    .action(async (spec: string, opts: { overlay: string[]; output?: string; quiet: boolean }) => {
-      const res = await resolveCommand(
-        {
-          spec,
-          overlays: opts.overlay ?? [],
-          options: {
-            format: "text",
-            output: opts.output,
-            quiet: opts.quiet,
-          },
+    .action(
+      async (
+        spec: string,
+        opts: {
+          overlay: string[];
+          lint: boolean;
+          failOn?: "warning";
+          envelope: "text" | "json";
+          output?: string;
+          quiet: boolean;
         },
-        io,
-      );
-      exit(res.exitCode);
-    });
+      ) => {
+        const res = await resolveCommand(
+          {
+            spec,
+            overlays: opts.overlay ?? [],
+            lint: opts.lint,
+            ...(opts.failOn !== undefined && { failOn: opts.failOn }),
+            envelope: opts.envelope,
+            options: {
+              format: "text",
+              output: opts.output,
+              quiet: opts.quiet,
+            },
+          },
+          io,
+        );
+        exit(res.exitCode);
+      },
+    );
 
   program
     .command("validate <spec>")

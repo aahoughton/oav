@@ -1,6 +1,7 @@
 import { dirname, isAbsolute, posix, resolve as resolvePath } from "node:path";
 import { resolveJsonPointer, type OpenAPIDocument } from "@oav/core";
 import type { DocumentReader } from "./reader.js";
+import { lintResolvedSpec, type SpecHygieneIssue } from "./lint.js";
 
 // Re-export the canonical implementation so @oav/spec consumers who
 // imported `resolveJsonPointer` keep working.
@@ -18,6 +19,12 @@ export interface ResolveSpecOptions {
   entry: string;
   /** Base directory/URI for resolving relative refs. Defaults to the entry's directory. */
   baseUri?: string;
+  /**
+   * Run spec-hygiene lint passes against the resolved document.
+   * Findings land in {@link ResolvedSpec.specHygieneIssues}. Defaults
+   * to `false`. See {@link lintResolvedSpec}.
+   */
+  lint?: boolean;
 }
 
 /**
@@ -30,6 +37,12 @@ export interface ResolvedSpec {
   document: OpenAPIDocument;
   /** URIs of every external file that was loaded during resolution. */
   sources: string[];
+  /**
+   * Spec-hygiene findings from {@link lintResolvedSpec}. Empty unless
+   * {@link ResolveSpecOptions.lint} was set. Same name and shape as
+   * {@link Validator.specHygieneIssues} on the validator side.
+   */
+  specHygieneIssues: readonly SpecHygieneIssue[];
 }
 
 type Mutable = Record<string, unknown>;
@@ -182,7 +195,8 @@ export async function resolveSpec(options: ResolveSpecOptions): Promise<Resolved
     rootObj.$defs = { ...prevDefs, __ext__: { ...prevExt, ...stitched } };
   }
 
-  return { document: resolved, sources: [...sources] };
+  const specHygieneIssues = options.lint ? lintResolvedSpec(resolved) : [];
+  return { document: resolved, sources: [...sources], specHygieneIssues };
 }
 
 function resolveRelative(base: string, rel: string): string {

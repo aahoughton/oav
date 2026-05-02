@@ -1,6 +1,7 @@
 import type { DocumentReader } from "./reader.js";
 import { applyOverlays, type SpecOverlay } from "./overlay.js";
 import { resolveSpec, type ResolvedSpec } from "./resolver.js";
+import { lintResolvedSpec } from "./lint.js";
 
 /**
  * Options accepted by {@link loadSpec}.
@@ -16,6 +17,12 @@ export interface LoadSpecOptions {
   baseUri?: string;
   /** Overlays to apply in order after resolution. */
   overlays?: SpecOverlay[];
+  /**
+   * Run spec-hygiene lint passes against the post-overlay document.
+   * Findings land in {@link ResolvedSpec.specHygieneIssues}. Defaults
+   * to `false`.
+   */
+  lint?: boolean;
 }
 
 /**
@@ -37,14 +44,19 @@ export interface LoadSpecOptions {
  * @public
  */
 export async function loadSpec(options: LoadSpecOptions): Promise<ResolvedSpec> {
+  // resolveSpec lints the pre-overlay document if asked, but the overlay
+  // pass below can change reachability (add or remove operations,
+  // components, refs). Defer the lint to after overlays are applied so
+  // the findings reflect the document the consumer will actually use.
   const resolved = await resolveSpec({
     reader: options.reader,
     entry: options.entry,
     ...(options.baseUri !== undefined && { baseUri: options.baseUri }),
   });
-  if (!options.overlays || options.overlays.length === 0) return resolved;
-  return {
-    document: applyOverlays(resolved.document, options.overlays),
-    sources: resolved.sources,
-  };
+  const overlaid =
+    options.overlays && options.overlays.length > 0
+      ? applyOverlays(resolved.document, options.overlays)
+      : resolved.document;
+  const specHygieneIssues = options.lint ? lintResolvedSpec(overlaid) : [];
+  return { document: overlaid, sources: resolved.sources, specHygieneIssues };
 }

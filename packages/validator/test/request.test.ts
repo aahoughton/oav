@@ -1059,4 +1059,24 @@ describe("createValidator option validation", () => {
     expect(() => createValidator(petSpec(), { maxErrors: 1 })).not.toThrow();
     expect(() => createValidator(petSpec(), { maxErrors: 100 })).not.toThrow();
   });
+
+  it("specHygieneIssues is empty by default (lint not requested)", () => {
+    const v = createValidator(petSpec());
+    expect(v.specHygieneIssues).toEqual([]);
+  });
+
+  it("populates specHygieneIssues when lint: true and the spec has hygiene issues", () => {
+    const spec = petSpec();
+    spec.components = {
+      ...spec.components,
+      schemas: { ...spec.components?.schemas, Orphan: { type: "object" } },
+    };
+    const v = createValidator(spec, { lint: true });
+    expect(v.specHygieneIssues.some((i) => i.code === "unused-component")).toBe(true);
+  });
+
+  it("specHygieneIssues is frozen (callers can't mutate it)", () => {
+    const v = createValidator(petSpec(), { lint: true });
+    expect(Object.isFrozen(v.specHygieneIssues)).toBe(true);
+  });
 });

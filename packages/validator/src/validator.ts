@@ -15,6 +15,7 @@ import {
 } from "@oav/core";
 import { builtInFormats } from "@oav/formats";
 import { createRouter, type RouteMatch, type Router } from "@oav/router";
+import { lintResolvedSpec, type SpecHygieneIssue } from "@oav/spec";
 import {
   compileSchema,
   createRefResolver,
@@ -190,6 +191,16 @@ export interface Validator {
    * writes happen.
    */
   readonly warnings: readonly string[];
+  /**
+   * Spec-hygiene findings from {@link lintResolvedSpec}, populated when
+   * {@link ValidatorOptions.lint} is `true`. Empty otherwise. Frozen
+   * after `createValidator` returns.
+   *
+   * Different from {@link ValidatorStats.strictIssues}, which lints
+   * compiled schemas; this one lints the OpenAPI document itself
+   * (unused components, dead path parameters, unreachable `$defs`).
+   */
+  readonly specHygieneIssues: readonly SpecHygieneIssue[];
   /**
    * Runtime observability for compile-time-specialisation optimisations.
    * The counters live on the validator, not inside a ValidationError
@@ -416,6 +427,18 @@ export interface ValidatorOptions {
    * stderr.
    */
   warn?: (message: string) => void;
+  /**
+   * Run spec-hygiene lint passes against the document at construction.
+   * Findings land in {@link Validator.specHygieneIssues}; nothing is
+   * thrown. Defaults to `false`.
+   *
+   * The same engine runs from
+   * {@link @aahoughton/oav/spec!resolveSpec} and
+   * {@link @aahoughton/oav/spec!loadSpec}; pick whichever layer is
+   * natural for your flow. Running it in both places lints twice for
+   * no benefit.
+   */
+  lint?: boolean;
 }
 
 /**
@@ -853,6 +876,10 @@ export function createValidator(spec: OpenAPIDocument, options: ValidatorOptions
     };
   };
 
+  const specHygieneIssues: readonly SpecHygieneIssue[] = options.lint
+    ? Object.freeze(lintResolvedSpec(spec))
+    : [];
+
   return {
     validateRequest,
     validateResponse,
@@ -861,6 +888,7 @@ export function createValidator(spec: OpenAPIDocument, options: ValidatorOptions
     getOperation,
     detectedVersion,
     warnings,
+    specHygieneIssues,
     stats,
   };
 }
