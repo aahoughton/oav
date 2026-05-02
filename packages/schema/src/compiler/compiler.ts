@@ -32,10 +32,74 @@ const TREE_RUNTIME_HELPERS = /\b(?:createLeafError|createBranchError|wrapErrors)
  */
 const DEFAULT_STRICT_MODE = "warn-partial" as const;
 
+/**
+ * Sibling keys explicitly permitted alongside `$ref` under OAS 3.0
+ * (Schema Object §4.7.24.2): metadata-only, no validation effect.
+ * Anything else gets silently dropped under
+ * `refSuppressesSiblings: true`.
+ */
+const OAS30_REF_SIBLINGS_ALLOWED = new Set(["$ref", "description", "summary"]);
+
+/** Composition keys that can introduce a `required` key from elsewhere. */
+const COMPOSITION_KEYS = ["$ref", "allOf", "oneOf", "anyOf"] as const;
+
+/**
+ * Annotation-only keys that don't affect validation. Stripped before
+ * structural-equality compares so a "two branches differ only in
+ * description" case still surfaces as redundant.
+ */
+const ANNOTATION_KEYS = new Set([
+  "title",
+  "description",
+  "summary",
+  "examples",
+  "example",
+  "default",
+  "deprecated",
+  "$comment",
+  "$id",
+  "$schema",
+  "$anchor",
+  "$dynamicAnchor",
+]);
+
+/** Compose-style keys whose duplicate branches signal silent collapse. */
+const COMPOSITION_BRANCH_KEYS = ["oneOf", "anyOf"] as const;
+
+function structuralEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== typeof b) return false;
+  if (a === null || b === null) return false;
+  if (typeof a !== "object") return false;
+  const aArr = Array.isArray(a);
+  const bArr = Array.isArray(b);
+  if (aArr !== bArr) return false;
+  if (aArr) {
+    const al = a as unknown[];
+    const bl = b as unknown[];
+    if (al.length !== bl.length) return false;
+    for (let i = 0; i < al.length; i += 1) {
+      if (!structuralEqual(al[i], bl[i])) return false;
+    }
+    return true;
+  }
+  const ao = a as Record<string, unknown>;
+  const bo = b as Record<string, unknown>;
+  const ak = Object.keys(ao).filter((k) => !ANNOTATION_KEYS.has(k));
+  const bk = Object.keys(bo).filter((k) => !ANNOTATION_KEYS.has(k));
+  if (ak.length !== bk.length) return false;
+  for (const k of ak) {
+    if (!Object.prototype.hasOwnProperty.call(bo, k)) return false;
+    if (!structuralEqual(ao[k], bo[k])) return false;
+  }
+  return true;
+}
+
 function runStrictLint(
   schema: SchemaOrBoolean,
   byKeyword: Map<string, KeywordDefinition>,
   mode: "warn-partial" | "strict",
+  rules: { refSuppressesSiblings: boolean },
 ): StrictIssue[] {
   // The full set of names the active dialect recognises, including
   // `implements` entries on existing definitions (e.g. `if` implements
@@ -49,7 +113,9 @@ function runStrictLint(
   const issues: StrictIssue[] = [];
   walkSubschemas(schema, (node, path) => {
     if (typeof node !== "object" || node === null || Array.isArray(node)) return;
-    for (const key of Object.keys(node)) {
+    const obj = node as Record<string, unknown>;
+
+    for (const key of Object.keys(obj)) {
       const def = byKeyword.get(key);
       if (def?.partial !== undefined) {
         issues.push({
@@ -74,6 +140,69 @@ function runStrictLint(
             ? `unknown keyword "${key}" at <root>`
             : `unknown keyword "${key}" at "${path}"`,
       });
+    }
+
+    // silent-rewrite/* checks are always-on (any non-"off" mode).
+    if (rules.refSuppressesSiblings && typeof obj.$ref === "string") {
+      for (const key of Object.keys(obj)) {
+        if (OAS30_REF_SIBLINGS_ALLOWED.has(key)) continue;
+        issues.push({
+          code: "silent-rewrite/ref-siblings-oas30",
+          keyword: key,
+          path,
+          message:
+            path.length === 0
+              ? `OAS 3.0: "${key}" sibling of $ref at <root> is silently dropped (only description/summary survive)`
+              : `OAS 3.0: "${key}" sibling of $ref at "${path}" is silently dropped (only description/summary survive)`,
+        });
+      }
+    }
+
+    if (Array.isArray(obj.required)) {
+      const hasComposition = COMPOSITION_KEYS.some((k) => k in obj);
+      if (!hasComposition) {
+        const props = obj.properties;
+        const propKeys =
+          typeof props === "object" && props !== null && !Array.isArray(props)
+            ? new Set(Object.keys(props as Record<string, unknown>))
+            : new Set<string>();
+        for (const name of obj.required) {
+          if (typeof name !== "string") continue;
+          if (propKeys.has(name)) continue;
+          issues.push({
+            code: "silent-rewrite/required-not-in-properties",
+            keyword: "required",
+            path,
+            message:
+              path.length === 0
+                ? `required: "${name}" at <root> not declared in properties (likely a typo)`
+                : `required: "${name}" at "${path}" not declared in properties (likely a typo)`,
+          });
+        }
+      }
+    }
+
+    for (const key of COMPOSITION_BRANCH_KEYS) {
+      const branches = obj[key];
+      if (!Array.isArray(branches) || branches.length < 2) continue;
+      // O(n^2) pairwise compare; n is small in real specs (oneOf with
+      // 2-5 branches is the common shape). For each branch, flag if any
+      // earlier branch is structurally equal to it (skip the first
+      // occurrence to avoid N findings for N identical branches).
+      for (let i = 1; i < branches.length; i += 1) {
+        for (let j = 0; j < i; j += 1) {
+          if (structuralEqual(branches[i], branches[j])) {
+            const branchPath = path.length === 0 ? `${key}[${i}]` : `${path}.${key}[${i}]`;
+            issues.push({
+              code: "silent-rewrite/redundant-composition-branches",
+              keyword: key,
+              path: branchPath,
+              message: `${key}[${i}] is structurally identical to ${key}[${j}] (annotation-only differences ignored); branches collapse and the validator's match-count behavior diverges from the source spec`,
+            });
+            break;
+          }
+        }
+      }
     }
   });
   return issues;
@@ -152,8 +281,30 @@ export interface StrictIssue {
    * - `"unknown-keyword"`: the schema declares a key that's not in the
    *   active dialect, not an `x-*` extension, and not a standard
    *   `$`-prefixed metadata key. Likely a typo.
+   * - `"silent-rewrite/ref-siblings-oas30"`: under OAS 3.0
+   *   (`refSuppressesSiblings: true`), a schema with `$ref` plus
+   *   sibling keywords other than `description` / `summary`. The
+   *   siblings are silently dropped; the validator runs the `$ref`
+   *   target only.
+   * - `"silent-rewrite/required-not-in-properties"`: a `required`
+   *   array names a key that doesn't appear in the same schema's
+   *   `properties`. Almost always a typo. Conservative: skipped on
+   *   schemas that mix `required` with `$ref` / `allOf` / `oneOf` /
+   *   `anyOf` (the named key could be contributed by a composed
+   *   branch).
+   * - `"silent-rewrite/redundant-composition-branches"`: an `oneOf` /
+   *   `anyOf` array where two or more branches are structurally
+   *   identical after compile-time rewrites (notably the validator's
+   *   `format: binary` opaque-body bypass). The compiled validator's
+   *   semantics differ from the source spec: identical branches
+   *   collapse, changing the match-count behavior.
    */
-  code: "partial-feature" | "unknown-keyword";
+  code:
+    | "partial-feature"
+    | "unknown-keyword"
+    | "silent-rewrite/ref-siblings-oas30"
+    | "silent-rewrite/required-not-in-properties"
+    | "silent-rewrite/redundant-composition-branches";
   /** The offending keyword / key name as written in the schema. */
   keyword: string;
   /** Dotted path from the root schema to the subschema holding the key. */
@@ -544,7 +695,11 @@ export function compileSchema(
   const wholeSource = assembleSource(state, rootName);
   const strictMode = options.strict ?? DEFAULT_STRICT_MODE;
   const strictIssues: readonly StrictIssue[] =
-    strictMode === "off" ? [] : runStrictLint(schema, byKeyword, strictMode);
+    strictMode === "off"
+      ? []
+      : runStrictLint(schema, byKeyword, strictMode, {
+          refSuppressesSiblings: state.refSuppressesSiblings,
+        });
   const stats: CompileStats = {
     functionCount: state.nextFn,
     unevaluatedTrackingEmitted: state.unevaluatedEmitted,

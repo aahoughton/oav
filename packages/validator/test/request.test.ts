@@ -109,6 +109,55 @@ describe("validateRequest", () => {
     expect(unknown?.keyword).toBe("minLenght");
   });
 
+  it("strict mode surfaces silent-rewrite/redundant-composition-branches after binary-bypass collapse", () => {
+    // Two branches that look distinct in the source spec ({string +
+    // format:binary} vs {string + format:binary + description}) collapse
+    // to identical empty schemas after the validator's binary bypass.
+    // The lint surfaces from the post-transform shape.
+    const spec: OpenAPIDocument = {
+      openapi: "3.1.0",
+      info: { title: "t", version: "1" },
+      paths: {
+        "/upload": {
+          post: {
+            requestBody: {
+              required: true,
+              content: {
+                "multipart/form-data": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      file: {
+                        oneOf: [
+                          { type: "string", format: "binary" },
+                          { type: "string", format: "binary", description: "the upload" },
+                        ],
+                      },
+                    },
+                  } as unknown as OpenAPIDocument["components"],
+                },
+              },
+            },
+            responses: { "200": { description: "ok" } },
+          },
+        },
+      },
+    };
+    const vi = createValidator(spec);
+    // Lazy compile: trigger the request-side schema compile.
+    vi.validateRequest({
+      method: "POST",
+      path: "/upload",
+      contentType: "multipart/form-data",
+      body: { file: Buffer.from("x") },
+    });
+    const redundant = vi.stats.strictIssues.find(
+      (i) => i.code === "silent-rewrite/redundant-composition-branches",
+    );
+    expect(redundant).toBeDefined();
+    expect(redundant?.keyword).toBe("oneOf");
+  });
+
   it("errors for wrong Content-Type", () => {
     const err = v.validateRequest({
       method: "POST",
