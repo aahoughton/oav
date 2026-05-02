@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.0](https://github.com/aahoughton/oav/compare/oav-express5-v1.1.1...oav-express5-v2.0.0) (2026-05-02)
+
+
+### Documentation
+
+* move root markdown into docs/ subdir ([#237](https://github.com/aahoughton/oav/issues/237)) ([365af48](https://github.com/aahoughton/oav/commit/365af48ab7394bf18ddc498419f15be67079ba3a))
+
 ## [1.1.1](https://github.com/aahoughton/oav/compare/oav-express5-v1.1.0...oav-express5-v1.1.1) (2026-04-27)
 
 
