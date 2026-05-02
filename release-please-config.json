@@ -3,6 +3,13 @@
   "separate-pull-requests": false,
   "include-v-in-tag": true,
   "include-component-in-tag": true,
+  "plugins": [
+    {
+      "type": "linked-versions",
+      "groupName": "oav",
+      "components": ["oav-core", "oav", "oav-express4", "oav-express5", "oav-fastify"]
+    }
+  ],
   "changelog-sections": [
     { "type": "feat", "section": "Features" },
     { "type": "fix", "section": "Bug Fixes" },
