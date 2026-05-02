@@ -16,7 +16,7 @@ export interface ResolvedGraph {
   /** Every `$id` discovered, mapped to the schema it labels (keyed by absolute URI). */
   byId: Map<string, SchemaOrBoolean>;
   /**
-   * Flat union of every `$anchor` discovered — last-writer-wins when two
+   * Flat union of every `$anchor` discovered: last-writer-wins when two
    * anchors share a name across scopes. Prefer {@link anchorScopes} when
    * scope-local lookup matters; this map exists for compatibility.
    */
@@ -32,7 +32,7 @@ export interface ResolvedGraph {
    * maps for the anchors declared within that scope.
    */
   anchorScopes: Map<string, Map<string, SchemaOrBoolean>>;
-  /** Per-base-URI `$dynamicAnchor` maps — same shape as {@link anchorScopes}. */
+  /** Per-base-URI `$dynamicAnchor` maps; same shape as {@link anchorScopes}. */
   dynamicAnchorScopes: Map<string, Map<string, SchemaOrBoolean>>;
   /** Identity-keyed map from every schema object to its enclosing base URI. */
   schemaBaseUri: WeakMap<object, string>;
@@ -60,7 +60,7 @@ export interface ResolveOptions {
  * too, using their registry key as the starting base URI.
  *
  * @remarks
- * This function does not yet inline `$ref` — references are left in place
+ * This function does not yet inline `$ref`; references are left in place
  * and resolved lazily at compile time. The schemas remain the original
  * values (not cloned).
  *

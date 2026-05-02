@@ -21,7 +21,7 @@ export function validateHostname(value: string): boolean {
 
 /**
  * RFC 5890 internationalized `hostname`. Same rules as {@link validateHostname}
- * after punycoding each label — for v1 we accept any non-empty labels made
+ * after punycoding each label; for v1 we accept any non-empty labels made
  * of unicode letters, digits, and hyphens, 1-63 code points each.
  *
  * @public

@@ -272,7 +272,7 @@ describe("validator.validateFetchRequest", () => {
         body: JSON.stringify({ name: "FromWire", age: 1 }),
       });
       // …but the override returns a different body shape instead. The
-      // Request stream isn't consumed by our default parser — the
+      // Request stream isn't consumed by our default parser; the
       // callback owns it.
       const result = await v.validateFetchRequest<{ name: string; age: number }>(req, {
         readBody: async () => ({ name: "FromOverride", age: 2 }),
@@ -315,7 +315,7 @@ describe("validator.validateFetchRequest", () => {
       // The sureify / puddle-rest-proxy shape: a multipart endpoint
       // declared in the spec as `{ documents: string, format: binary }`
       // (or an array of same). A user's streaming parser pulls bytes off
-      // the request and assembles whatever body the spec expects —
+      // the request and assembles whatever body the spec expects;
       // placeholders for file fields (paths, buffer handles) pass through
       // the validator's format:binary bypass.
       const spec: OpenAPIDocument = {
@@ -440,7 +440,7 @@ describe("validator.validateFetchResponse", () => {
   });
 
   it("doesn't read the request body", async () => {
-    // Request body present but validateFetchResponse shouldn't consume it —
+    // Request body present but validateFetchResponse shouldn't consume it;
     // a caller that wants the request body after validating the response
     // should still be able to read it.
     const req = new Request("https://example.com/pets", {

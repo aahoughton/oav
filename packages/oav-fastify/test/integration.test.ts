@@ -9,7 +9,7 @@ import { validateRequests } from "../src/middleware.js";
 /**
  * Real-server integration tests against Fastify. Uses
  * `fastify.inject()` (Fastify-native synthetic-request API) instead
- * of `app.listen(0)` + native fetch — `inject` is so idiomatic in
+ * of `app.listen(0)` + native fetch; `inject` is so idiomatic in
  * Fastify-land that bending the cross-adapter native-fetch
  * convention here earns its keep. Same `it()` names as the Express
  * adapters' integration suites; the implementations differ only

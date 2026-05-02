@@ -4,7 +4,7 @@ import type { HttpRequest } from "@oav/core";
 /**
  * Convert an Express 4 `Request` to oav's framework-agnostic
  * {@link HttpRequest} shape. Read what's already on `req`; do not
- * touch the body parser or any async source — bodies are assumed
+ * touch the body parser or any async source; bodies are assumed
  * already-parsed by `express.json()` (or equivalent) upstream of
  * the validator middleware.
  *
@@ -17,7 +17,7 @@ import type { HttpRequest } from "@oav/core";
  * them, otherwise omitted.
  *
  * Pairs with future `httpRequestFromExpress5`, `httpRequestFromFastify`,
- * etc. — same name pattern as oav's existing
+ * etc.: same name pattern as oav's existing
  * {@link httpRequestFromFetch}.
  *
  * @public

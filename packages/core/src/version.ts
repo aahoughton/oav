@@ -4,12 +4,12 @@
  * The OpenAPI Specification has two major variants that affect
  * validator behaviour:
  *
- * - **3.0.x** — uses a draft-Wright-00-based JSON Schema dialect with
+ * - **3.0.x**: uses a draft-Wright-00-based JSON Schema dialect with
  *   its own flavours of `type` (single string only), `nullable: true`,
  *   boolean `exclusiveMaximum`/`Minimum`, no sibling keys for `$ref`,
  *   and no `const` / `if`/`then`/`else` / `contains` /
  *   `unevaluatedProperties` / `patternProperties`.
- * - **3.1.x** and **3.2.x** — use JSON Schema 2020-12. 3.2 is largely
+ * - **3.1.x** and **3.2.x**: use JSON Schema 2020-12. 3.2 is largely
  *   additive over 3.1 (new methods like `QUERY`, tightened rules) and
  *   shares 3.1's dialect.
  *
@@ -84,7 +84,7 @@ export function classifyUnknownVersion(rawOpenapi: unknown): UnknownVersionReaso
     return {
       kind: "missing-openapi",
       message:
-        "expected an OpenAPI 3.x document — the `openapi` field must be a string " +
+        "expected an OpenAPI 3.x document; the `openapi` field must be a string " +
         `like "3.1.0" (got ${typeof rawOpenapi}). ` +
         'Swagger 2.0 documents use `swagger: "2.0"` instead and need to be converted ' +
         "first (e.g. `npx swagger2openapi input.json -o output.json`). " +

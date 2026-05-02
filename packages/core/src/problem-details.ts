@@ -5,7 +5,7 @@ import { formatSummary } from "./format.js";
  * A single validation issue flattened for client consumption. Produced
  * by {@link collectIssues} and embedded in {@link ProblemDetails.issues}.
  *
- * Maps 1:1 to a leaf in the {@link ValidationError} tree — you get the
+ * Maps 1:1 to a leaf in the {@link ValidationError} tree: you get the
  * same `code`, `message`, and `params`, plus the path in two forms:
  * the raw segments array (good for programmatic filtering) and an
  * RFC 6901 JSON Pointer (good for display and tools that follow the
@@ -67,7 +67,7 @@ export interface ProblemDetailsOptions {
   instance?: string;
   /**
    * Override the human-readable `detail`. Defaults to
-   * {@link formatSummary}(error) — a single line describing the first
+   * {@link formatSummary}(error): a single line describing the first
    * failing leaf (e.g. `"body.users[0].email must match format \"email\""`).
    * Pass an explicit string for a structural summary like
    * `` `${issues.length} validation error(s)` `` if you'd rather
@@ -81,7 +81,7 @@ export interface ProblemDetailsOptions {
  * with an RFC 6901 JSON Pointer. Useful when you want a client-friendly
  * issues array but don't need the {@link ProblemDetails} envelope.
  *
- * Leaf-only by design — branch-level `params` (e.g. `oneOf`'s `matchCount`)
+ * Leaf-only by design: branch-level `params` (e.g. `oneOf`'s `matchCount`)
  * are not in the result. Access the raw {@link ValidationError} if you
  * need the tree.
  *

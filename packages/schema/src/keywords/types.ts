@@ -17,8 +17,8 @@ export interface CompileRuntime {
  * Which budget semantics to apply when pushing an error expression
  * onto the errors accumulator. See {@link KeywordCompileContext.emitError}.
  *
- * - `"leaf"` — fresh leaf error, counts against `maxErrors`.
- * - `"lift"` — already-counted error being propagated (unconditional push).
+ * - `"leaf"`: fresh leaf error, counts against `maxErrors`.
+ * - `"lift"`: already-counted error being propagated (unconditional push).
  *
  * @public
  */
@@ -33,7 +33,7 @@ export interface ValidateSubschemaOptions {
   /**
    * Extra path segment to push onto `path` for the duration of this
    * subschema's traversal (e.g. an array index or property name).
-   * Pass a JS expression — literal strings must be quoted.
+   * Pass a JS expression; literal strings must be quoted.
    */
   segment?: string;
 }
@@ -51,7 +51,7 @@ export interface CompileAndCallOptions {
    * Emitted into the "sub passed" branch. Receives the per-branch
    * evaluated-keys var names when the enclosing scope tracks either;
    * `null` otherwise. Merge into the caller's `outProps` / `outItems`
-   * here — annotations from failing branches are not merged per the
+   * here; annotations from failing branches are not merged per the
    * 2020-12 spec, so the helper only exposes them on the pass side.
    */
   onPass: (gen: CodeEmitter, branchProps: string | null, branchItems: string | null) => void;
@@ -73,7 +73,7 @@ export interface CompileAndCallOptions {
 
 /**
  * The narrow context passed to each keyword's `compile()` function. Keyword
- * authors see only these names — no reference to the compiler, the full
+ * authors see only these names: no reference to the compiler, the full
  * vocabulary, or the validator instance.
  *
  * @public
@@ -95,7 +95,7 @@ export interface KeywordCompileContext {
    * Compile a nested subschema to its own function and return the
    * function's identifier. The returned name is callable with
    * `(data, path)` inside generated code. Use this when a keyword
-   * needs direct access to the function name — most composition-style
+   * needs direct access to the function name; most composition-style
    * keywords are better served by
    * {@link KeywordCompileContext.compileAndCallSubschema}, which also
    * hides the predicate-vs-tree call-signature split.
@@ -116,7 +116,7 @@ export interface KeywordCompileContext {
    * `null` for the branch variables.
    *
    * The sub-validator is called once; what each branch does is
-   * keyword-specific — composition keywords push the error into a
+   * keyword-specific: composition keywords push the error into a
    * per-keyword errors array on fail, `not` emits a leaf on pass,
    * etc. The abstraction deliberately stops at the call shape.
    */
@@ -132,13 +132,13 @@ export interface KeywordCompileContext {
   readonly evaluatedItemsVar: string | null;
   /**
    * `true` when a finite `maxErrors` cap was configured. Keyword
-   * authors usually don't need to read this directly — prefer
+   * authors usually don't need to read this directly; prefer
    * {@link KeywordCompileContext.emitError} /
    * {@link KeywordCompileContext.emitBudgetBreak} which inspect it.
    */
   readonly gated: boolean;
   /**
-   * `true` when predicate mode is active — the compiled validator
+   * `true` when predicate mode is active: the compiled validator
    * returns `boolean` and constructs no error tree. Most keywords
    * don't need to read this directly: `emitError`,
    * `errorStatement`, `leafErrorExpr`, and `validateSubschema` all
@@ -146,7 +146,7 @@ export interface KeywordCompileContext {
    * that inspect a sub-validator's return value for their own
    * control flow (`allOf`, `anyOf`, `oneOf`, `not`, `if/then/else`,
    * `$ref`, `contains`, `discriminator`, `dependentSchemas`) must
-   * branch on this flag — sub-validators in predicate mode return
+   * branch on this flag; sub-validators in predicate mode return
    * `boolean`, not `ValidationError | null`, and don't take a
    * `path` argument.
    */
@@ -156,13 +156,13 @@ export interface KeywordCompileContext {
    * generator. Pick the right `kind` based on where the error
    * expression came from:
    *
-   * - `"leaf"` — freshly-minted leaf error, created in this call.
+   * - `"leaf"`: freshly-minted leaf error, created in this call.
    *   Counts against the `maxErrors` budget when one is configured;
    *   short-circuits cleanly when the cap has been hit.
-   * - `"lift"` — an already-counted error being propagated up the
+   * - `"lift"`: an already-counted error being propagated up the
    *   tree (a sub-validator's return value) or a branch wrapper
    *   around already-counted children (`createBranchError`). Always
-   *   unconditional — never touches the budget counter.
+   *   unconditional, never touches the budget counter.
    *
    * Using the wrong kind silently miscounts errors against the
    * budget, so think about it each time. TypeScript enforces that you
@@ -170,7 +170,7 @@ export interface KeywordCompileContext {
    */
   emitError(kind: ErrorKind, errExpr: string): void;
   /**
-   * String form of {@link KeywordCompileContext.emitError} — returns
+   * String form of {@link KeywordCompileContext.emitError}: returns
    * the statement instead of emitting it. Useful inside compound
    * source like a `switch` body, where the push appears inline in a
    * larger `gen.line(...)` call.
@@ -196,15 +196,15 @@ export interface KeywordCompileContext {
    * pair so the shared-mutable `path` array carries the extra segment
    * only for the duration of this subschema's traversal.
    *
-   * When the subschema is simple enough — a boolean, or a single
-   * validation keyword from a safe whitelist — the keyword's code is
+   * When the subschema is simple enough (a boolean, or a single
+   * validation keyword from a safe whitelist) the keyword's code is
    * inlined directly, avoiding the per-call function dispatch. For
    * anything more complex, it falls back to compiling the subschema
    * into a named function and emitting the usual call + lift. Either
    * way the path is reused, not re-allocated.
    *
    * This is the right helper for the common "descend into a
-   * subschema and emit any errors" pattern — used by `properties`,
+   * subschema and emit any errors" pattern, used by `properties`,
    * `items`, `additionalProperties`, etc. Composition keywords that
    * need the sub-validator's return value for their own logic
    * (`allOf`, `anyOf`, `oneOf`, …) should call
@@ -219,7 +219,7 @@ export interface KeywordCompileContext {
    * Pending path segments to splice as trailing args into
    * `createLeafError` / `createBranchError`. Populated by the
    * subschema inliner when it flattens a segmented
-   * `validateSubschema` call into the enclosing function body —
+   * `validateSubschema` call into the enclosing function body:
    * instead of pre-materializing `[...path, seg]` for the inner
    * keyword contexts (which the runtime then re-snapshots, doubling
    * allocation), we leave `path` unchanged and let leaf keywords
@@ -232,7 +232,7 @@ export interface KeywordCompileContext {
    */
   readonly pathSegments: readonly string[];
   /**
-   * JS expression producing the effective path at runtime —
+   * JS expression producing the effective path at runtime,
    * equivalent to `ctx.path` when `pathSegments` is empty, and to
    * `[...path, seg1, seg2, …]` otherwise. Prefer the error helpers
    * for error construction; reach for this only when a keyword
@@ -247,7 +247,7 @@ export interface KeywordCompileContext {
    * caller's own `extraSegments` as trailing args. Up to two total
    * extras embed as explicit parameters (matching the runtime
    * signature); three or more fall back to eagerly materializing the
-   * extended path at the call site (rare — pathologically nested
+   * extended path at the call site (rare; pathologically nested
    * inlined subschemas).
    *
    * @param codeExpr - Pre-quoted JS expression for the error code
@@ -284,7 +284,7 @@ export interface KeywordCompileContext {
    * their validator body.
    *
    * Use this for schema-derived constants that would otherwise be
-   * allocated on every validate call — Sets of known property names,
+   * allocated on every validate call: Sets of known property names,
    * required-name arrays, enum candidates. The hoisted value must be
    * immutable from the validator's perspective (the validator reads it;
    * nothing in the generated code mutates it).
@@ -318,7 +318,7 @@ export interface KeywordDefinition {
   /** When `true`, indicates the keyword takes subschemas (applicator). */
   applicator?: boolean;
   /**
-   * When `true`, declares this keyword to be pure annotation/metadata —
+   * When `true`, declares this keyword to be pure annotation/metadata:
    * it emits no runtime validation code. Annotation keywords can coexist
    * with inlineable keywords without disqualifying the schema. Used by
    * the subschema inliner to decide which keys to skip when counting
@@ -327,7 +327,7 @@ export interface KeywordDefinition {
    */
   annotation?: boolean;
   /**
-   * Short explanation when this keyword is only partially supported —
+   * Short explanation when this keyword is only partially supported:
    * the compiler accepts and dispatches it, but the emitted validation
    * doesn't fully match the spec. Surfaced via the compile-time strict
    * mode (see {@link CompileOptions.strict}) so users know they're

@@ -1,6 +1,6 @@
 /**
  * The JSON Schema 2020-12 Meta-Data vocabulary. These keywords are
- * annotation-only — they carry human- or tool-facing metadata and emit
+ * annotation-only: they carry human- or tool-facing metadata and emit
  * no runtime validation code. Registering them as first-class keyword
  * definitions (rather than tolerating them as unknown keys) gives the
  * compiler a single source of truth for the set, which the subschema
@@ -17,13 +17,13 @@ function annotationKeyword(name: string, vocabulary: string = META_DATA_VOCAB): 
     vocabulary,
     annotation: true,
     compile(): void {
-      // intentionally empty — pure annotation
+      // intentionally empty: pure annotation
     },
   };
 }
 
 /**
- * `title` — a short human-readable label for the schema. Annotation-
+ * `title`: a short human-readable label for the schema. Annotation-
  * only; emits no validation code. Bundled into
  * {@link metaDataVocabulary} and reachable alongside it from
  * `oav/schema`.
@@ -33,7 +33,7 @@ function annotationKeyword(name: string, vocabulary: string = META_DATA_VOCAB): 
 export const titleKeyword = annotationKeyword("title");
 
 /**
- * `description` — a longer human-readable explanation of the schema.
+ * `description`: a longer human-readable explanation of the schema.
  * Annotation-only; emits no validation code. Pair with
  * {@link titleKeyword} for tooling that displays a label plus details.
  *
@@ -42,7 +42,7 @@ export const titleKeyword = annotationKeyword("title");
 export const descriptionKeyword = annotationKeyword("description");
 
 /**
- * `default` — a suggested default value for the schema. Preserved as
+ * `default`: a suggested default value for the schema. Preserved as
  * metadata only; oav never injects defaults into request bodies or
  * response bodies (see the `useDefaults` discussion in
  * [`docs/comparison.md`](../../../docs/comparison.md) if you need that behaviour).
@@ -52,7 +52,7 @@ export const descriptionKeyword = annotationKeyword("description");
 export const defaultKeyword = annotationKeyword("default");
 
 /**
- * `deprecated` — marks a schema (most often a single property) as
+ * `deprecated`: marks a schema (most often a single property) as
  * deprecated. Annotation-only: deprecated values are not rejected at
  * runtime. Tooling and generated clients use it to surface warnings.
  *
@@ -61,7 +61,7 @@ export const defaultKeyword = annotationKeyword("default");
 export const deprecatedKeyword = annotationKeyword("deprecated");
 
 /**
- * `readOnly` — flags a property the client MUST NOT send on request
+ * `readOnly`: flags a property the client MUST NOT send on request
  * bodies. Annotation-only inside the schema compiler; the validator's
  * request-side body transform consults it and rewrites such properties
  * to `false` on request-direction schemas. Companion to
@@ -72,7 +72,7 @@ export const deprecatedKeyword = annotationKeyword("deprecated");
 export const readOnlyKeyword = annotationKeyword("readOnly");
 
 /**
- * `writeOnly` — flags a property the server MUST NOT send on response
+ * `writeOnly`: flags a property the server MUST NOT send on response
  * bodies. Annotation-only inside the schema compiler; the validator's
  * response-side body transform consults it and rewrites such properties
  * to `false` on response-direction schemas. Companion to
@@ -83,7 +83,7 @@ export const readOnlyKeyword = annotationKeyword("readOnly");
 export const writeOnlyKeyword = annotationKeyword("writeOnly");
 
 /**
- * `examples` — an array of example values the schema author supplies
+ * `examples`: an array of example values the schema author supplies
  * for documentation and tooling. Annotation-only; emits no validation
  * code. Supersedes OpenAPI 3.0's singular {@link exampleKeyword}.
  *
@@ -110,7 +110,7 @@ export const exampleKeyword = annotationKeyword("example", OPENAPI_META_DATA_VOC
 export const xmlKeyword = annotationKeyword("xml", OPENAPI_META_DATA_VOCAB);
 
 /**
- * OpenAPI Schema Object's `externalDocs` annotation — pointer to
+ * OpenAPI Schema Object's `externalDocs` annotation: pointer to
  * additional external documentation for this schema. Annotation-only.
  * Spec-defined fixed field on the Schema Object across 3.0 / 3.1 / 3.2.
  *
@@ -119,7 +119,7 @@ export const xmlKeyword = annotationKeyword("xml", OPENAPI_META_DATA_VOCAB);
 export const externalDocsKeyword = annotationKeyword("externalDocs", OPENAPI_META_DATA_VOCAB);
 
 /**
- * JSON Schema 2020-12 `contentEncoding` — declares the encoding (e.g.
+ * JSON Schema 2020-12 `contentEncoding`: declares the encoding (e.g.
  * `base64`) used for a string value. The spec marks the content
  * vocabulary as not required to validate; oav treats it as
  * annotation-only.
@@ -129,7 +129,7 @@ export const externalDocsKeyword = annotationKeyword("externalDocs", OPENAPI_MET
 export const contentEncodingKeyword = annotationKeyword("contentEncoding", CONTENT_VOCAB);
 
 /**
- * JSON Schema 2020-12 `contentMediaType` — declares the media type
+ * JSON Schema 2020-12 `contentMediaType`: declares the media type
  * (e.g. `application/jwt`) of a string value's content. Annotation-only
  * companion to {@link contentEncodingKeyword}.
  *
@@ -138,9 +138,9 @@ export const contentEncodingKeyword = annotationKeyword("contentEncoding", CONTE
 export const contentMediaTypeKeyword = annotationKeyword("contentMediaType", CONTENT_VOCAB);
 
 /**
- * JSON Schema 2020-12 `contentSchema` — schema describing the structure
+ * JSON Schema 2020-12 `contentSchema`: schema describing the structure
  * of decoded content (after applying `contentEncoding` and parsing
- * `contentMediaType`). Annotation-only — oav doesn't decode + re-validate.
+ * `contentMediaType`). Annotation-only; oav doesn't decode + re-validate.
  *
  * @public
  */

@@ -2,7 +2,7 @@
 
 A focused reference for porting an Express app off
 `express-openapi-validator` (eov) onto `oav`. Reads as a punch list,
-not a tutorial — for integration recipes, see
+not a tutorial; for integration recipes, see
 [integration.md](./integration.md). For Express 4 specifically, the
 [`oav-express4`](../packages/oav-express4/README.md)
 companion package gets you most of eov's ergonomics back as a
@@ -19,7 +19,7 @@ auth wiring where needed. In exchange:
 
 - **You own the error → HTTP mapping.** A small switch statement
   maps the validator's stable `code` field to whatever status codes
-  your API contract requires — `httpStatusFor` covers the common
+  your API contract requires; `httpStatusFor` covers the common
   case in one call.
 - **No wrapping of `res.json`.** eov wraps the response methods to
   auto-intercept. `oav` reads its arguments and returns a result; it
@@ -31,7 +31,7 @@ auth wiring where needed. In exchange:
   `err.params.missing`) instead of parsing message strings.
 - **Built-in OpenAPI 3.0 dialect.** `nullable: true`, boolean
   `exclusiveMaximum`, and `$ref`-suppresses-siblings are in the
-  compiler's dialect dispatch — no preprocessing step. See the
+  compiler's dialect dispatch; no preprocessing step. See the
   [conformance report](../conformance/REPORT.md) for pass / fail
   counts by category.
 - **Overlays.** Extend an externally-owned base spec (Supabase,
@@ -40,28 +40,28 @@ auth wiring where needed. In exchange:
 
 ## Behavior differences to watch for
 
-The behaviour deltas surfaced by real eov→oav migrations. Most are
+The behaviour deltas surfaced by real eov-to-oav migrations. Most are
 defensible improvements; a few are cosmetic. Either way, expect
 fixture / test churn.
 
-| What                               | eov                                                                                         | oav                                                                                                                                                                                                                        |
-| ---------------------------------- | ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Empty POST, no Content-Type**    | 415 unsupported-media-type                                                                  | 400 body-required (no client signal to be "wrong about")                                                                                                                                                                   |
-| **Path-parameter label**           | `/params/<name>` in error paths                                                             | `/path/<name>` (OpenAPI's actual location name)                                                                                                                                                                            |
-| **404 message wording**            | `"not found"`                                                                               | `"no route matches POST /path/here"` (more actionable)                                                                                                                                                                     |
-| **Top-level message**              | first leaf by default; every leaf `, `-joined under `validateRequests: { allErrors: true }` | configurable via `formatSummary`: `{ select: "first" }` (default; first leaf) or `{ select: "all" }` (every leaf, newline-joined). Per-leaf details always in `errors[]` / `issues[]`. Shape differs from eov — see below. |
-| **Top-level `path` on 404s**       | offending URL                                                                               | `[]` (empty array → `""` pointer); same kind of error, different rendering                                                                                                                                                 |
-| **`errorCode` names**              | `required.openapi.validation`                                                               | bare codes (`required`); the `.openapi.validation` suffix was always noise                                                                                                                                                 |
-| **`oneOf` with binary fields**     | silently accepted (looser inside binary fields)                                             | surfaces the genuine ambiguity with `matchCount: 2`; see [integration.md → File uploads](./integration.md#file-uploads-with-multer) for the spec-level fix                                                                 |
-| **Error response monkey-patching** | `res.send("{...}")` (string form) caught via wrappers                                       | not caught unless you write the wrapper yourself; see [integration.md → Response validation](./integration.md#response-validation-no-monkey-patching)                                                                      |
-| **Optional `openapi` version**     | throws on missing / unsupported                                                             | silently uses 3.1 by default; see `onUnknownVersion`                                                                                                                                                                       |
-| **`format` semantics**             | always assertive in OpenAPI context                                                         | assertive in OpenAPI context; annotation-only under raw `jsonSchemaDialect` (per 2020-12 default)                                                                                                                          |
+| What                               | eov                                                                                         | oav                                                                                                                                                                                                                       |
+| ---------------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Empty POST, no Content-Type**    | 415 unsupported-media-type                                                                  | 400 body-required (no client signal to be "wrong about")                                                                                                                                                                  |
+| **Path-parameter label**           | `/params/<name>` in error paths                                                             | `/path/<name>` (OpenAPI's actual location name)                                                                                                                                                                           |
+| **404 message wording**            | `"not found"`                                                                               | `"no route matches POST /path/here"` (more actionable)                                                                                                                                                                    |
+| **Top-level message**              | first leaf by default; every leaf `, `-joined under `validateRequests: { allErrors: true }` | configurable via `formatSummary`: `{ select: "first" }` (default; first leaf) or `{ select: "all" }` (every leaf, newline-joined). Per-leaf details always in `errors[]` / `issues[]`. Shape differs from eov; see below. |
+| **Top-level `path` on 404s**       | offending URL                                                                               | `[]` (empty array, `""` pointer); same kind of error, different rendering                                                                                                                                                 |
+| **`errorCode` names**              | `required.openapi.validation`                                                               | bare codes (`required`); the `.openapi.validation` suffix was always noise                                                                                                                                                |
+| **`oneOf` with binary fields**     | silently accepted (looser inside binary fields)                                             | surfaces the genuine ambiguity with `matchCount: 2`; see [integration.md, File uploads](./integration.md#file-uploads-with-multer) for the spec-level fix                                                                 |
+| **Error response monkey-patching** | `res.send("{...}")` (string form) caught via wrappers                                       | not caught unless you write the wrapper yourself; see [integration.md, Response validation](./integration.md#response-validation-no-monkey-patching)                                                                      |
+| **Optional `openapi` version**     | throws on missing / unsupported                                                             | silently uses 3.1 by default; see `onUnknownVersion`                                                                                                                                                                      |
+| **`format` semantics**             | always assertive in OpenAPI context                                                         | assertive in OpenAPI context; annotation-only under raw `jsonSchemaDialect` (per 2020-12 default)                                                                                                                         |
 
 For the `oneOf [array<binary>, binary]` pattern specifically: the
 spec was already ambiguous before oav surfaced it (the `format:
 binary` bypass means both branches match anything). eov's looser
 acceptance masked the issue. Drop the `oneOf` and accept the array
-form — multer always delivers arrays — or fix the spec however
+form (multer always delivers arrays), or fix the spec however
 makes sense for your API.
 
 ## Option map
@@ -79,13 +79,13 @@ makes sense for your API.
 | eov option                          | oav equivalent                                                                                             |
 | ----------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | `validateRequests: true`            | `validator.validateRequest(...)` in your middleware, or `validateRequests(validator)` from `oav-express4`. |
-| `validateRequests.allErrors`        | Default — `oav` always collects every leaf. Bound cost with `maxErrors: N`.                                |
+| `validateRequests.allErrors`        | Default; `oav` always collects every leaf. Bound cost with `maxErrors: N`.                                 |
 | `validateRequests.coerceTypes`      | Query scalars coerced by default; body coercion not supported (see recipe).                                |
 | `validateRequests.removeAdditional` | Not supported. `additionalProperties: false` rejects; there is no silent-drop mode.                        |
 | `validateRequests.discriminator`    | Native, always on for OpenAPI specs.                                                                       |
 | `serDes`                            | Not supported. Pre- or post-transform the payload in your handler if you need `Date` / `ObjectId` / etc.   |
-| `ignorePaths` (regex/fn)            | `createValidator(spec, { ignorePaths: (p) => ... })` — predicate that short-circuits before routing.       |
-| `ignoreUndocumented`                | `createValidator(spec, { ignoreUndocumented: true })` — returns `null` on paths the router doesn't match.  |
+| `ignorePaths` (regex/fn)            | `createValidator(spec, { ignorePaths: (p) => ... })`: predicate that short-circuits before routing.        |
+| `ignoreUndocumented`                | `createValidator(spec, { ignoreUndocumented: true })`: returns `null` on paths the router doesn't match.   |
 
 ### Response validation
 
@@ -95,19 +95,19 @@ makes sense for your API.
 
 ### Formats and custom keywords
 
-| eov option                          | oav equivalent                                                                                             |
-| ----------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `formats`                           | `createValidator(spec, { formats: { ... } })` — see [format-shape note](#format-shape-note) below.         |
-| `validateFormats: "fast" \| "full"` | N/A — single-pass validation; the built-in formats are RFC-sourced.                                        |
-| `ajvFormats`                        | Pass custom format functions via the `formats` option — see [format-shape note](#format-shape-note) below. |
+| eov option                          | oav equivalent                                                                                            |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `formats`                           | `createValidator(spec, { formats: { ... } })`; see [format-shape note](#format-shape-note) below.         |
+| `validateFormats: "fast" \| "full"` | N/A: single-pass validation; the built-in formats are RFC-sourced.                                        |
+| `ajvFormats`                        | Pass custom format functions via the `formats` option; see [format-shape note](#format-shape-note) below. |
 
 ### Security and file uploads
 
-| eov option                  | oav equivalent                                                                                                                                                                                                                       |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `validateSecurity: true`    | Off by default in oav (real apps gate security upstream of validation). Opt in with `createValidator(spec, { validateSecurity: true })` for shape-only checks on `bearer` / `basic` / `apiKey`.                                      |
-| `validateSecurity.handlers` | Your own auth middleware, run before the validator — `oav` only checks credential **shape**, not validity. For declarative per-scheme dispatch, see the [integration.md security recipe](./integration.md#per-scheme-auth-dispatch). |
-| `fileUploader: true`        | Your own multer middleware — see [integration.md file uploads](./integration.md#file-uploads-with-multer).                                                                                                                           |
+| eov option                  | oav equivalent                                                                                                                                                                                                                      |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `validateSecurity: true`    | Off by default in oav (real apps gate security upstream of validation). Opt in with `createValidator(spec, { validateSecurity: true })` for shape-only checks on `bearer` / `basic` / `apiKey`.                                     |
+| `validateSecurity.handlers` | Your own auth middleware, run before the validator. `oav` only checks credential **shape**, not validity. For declarative per-scheme dispatch, see the [integration.md security recipe](./integration.md#per-scheme-auth-dispatch). |
+| `fileUploader: true`        | Your own multer middleware; see [integration.md file uploads](./integration.md#file-uploads-with-multer).                                                                                                                           |
 
 ### Handler wiring
 
@@ -137,7 +137,7 @@ makes sense for your API.
 - **Built-in 3.0 dialect.** No translation layer over 2020-12. See
   [conformance/REPORT.md](../conformance/REPORT.md) for pass / fail
   counts by category.
-- **Overlays.** Extend externally-owned specs at load time —
+- **Overlays.** Extend externally-owned specs at load time;
   see [overlays.md](./overlays.md).
 - **Smaller install footprint.** `oav` depends on `yaml`,
   `commander`, and `esbuild` (the latter two for CLI + AOT compile
@@ -185,7 +185,7 @@ createValidator(spec, { formats: fromAjvFormats(myAjvFormats) });
 
 `oav`'s `format` keyword only applies to string values (per JSON
 Schema 2020-12 §6.3), so ajv's `type: "number"` format entries are
-effectively no-ops — the function never runs on non-string data.
+effectively no-ops; the function never runs on non-string data.
 Keep them in the map if it's simpler; they cost nothing.
 
 ## All-issues output (eov's `allErrors`)

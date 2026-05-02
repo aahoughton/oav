@@ -25,7 +25,7 @@ const YAML_HINT =
   "createSmartHttpReader() ahead of the JSON-only readers from @aahoughton/oav-core/spec.";
 
 /**
- * Read files from the local filesystem. JSON only — `.yaml` / `.yml`
+ * Read files from the local filesystem. JSON only; `.yaml` / `.yml`
  * paths throw with a clear install hint. Pair with
  * `oav`' `createYamlFileReader` via
  * {@link composeReaders} for YAML support.
@@ -70,7 +70,7 @@ export function createFileReader(cwd: string = process.cwd()): DocumentReader {
  * Read documents over HTTP/HTTPS. JSON only; pair with
  * `oav`'s `createSmartHttpReader` for YAML (it claims all
  * `http(s)` URIs and dispatches by `Content-Type`, so it shadows this
- * reader in a compose chain — that's fine; JSON endpoints still parse
+ * reader in a compose chain; that's fine; JSON endpoints still parse
  * as JSON there).
  *
  * @returns A {@link DocumentReader}.

@@ -1,10 +1,10 @@
 /**
  * The public `oav/schema` surface. Two audiences:
  *
- *   1. Compiler consumers — `compileSchema`, `CompiledSchema`,
+ *   1. Compiler consumers: `compileSchema`, `CompiledSchema`,
  *      `CompileOptions`, dialects. The minimum needed to turn a schema
  *      into a validator.
- *   2. Keyword authors — `KeywordDefinition`, `KeywordCompileContext`,
+ *   2. Keyword authors: `KeywordDefinition`, `KeywordCompileContext`,
  *      vocabulary URIs + vocab objects, the built-in keyword constants
  *      (useful for reusing or composing them into a custom dialect),
  *      the OAS 3.0 overrides.
@@ -18,7 +18,7 @@
  * @packageDocumentation
  */
 
-// Compiler — turning schemas into validators.
+// Compiler: turning schemas into validators.
 export {
   compileSchema,
   type CompileOptions,
@@ -30,7 +30,7 @@ export {
   type ValidationResult,
 } from "./compiler/index.js";
 
-// Keyword authoring — types + context seen inside `compile(ctx)`.
+// Keyword authoring: types + context seen inside `compile(ctx)`.
 export {
   createCustomKeywordDefinition,
   customKeywordVocabulary,
@@ -77,7 +77,7 @@ export {
   validationVocabulary,
 } from "./keywords/vocabulary.js";
 
-// Built-in keyword constants — reusable when composing a custom dialect.
+// Built-in keyword constants: reusable when composing a custom dialect.
 export {
   maxItemsKeyword,
   minItemsKeyword,
@@ -157,7 +157,7 @@ export { typeKeyword } from "./keywords/type.js";
 export { discriminatorKeyword } from "./keywords/discriminator.js";
 export { unevaluatedItemsKeyword, unevaluatedPropertiesKeyword } from "./keywords/unevaluated.js";
 
-// Ref resolution — needed by `@oav/validator` and any consumer wiring
+// Ref resolution: needed by `@oav/validator` and any consumer wiring
 // up a custom spec loader. The lower-level `SchemaRegistry` /
 // `collectDynamicAnchors` primitives are in `./internals`.
 export {
@@ -168,7 +168,7 @@ export {
   type ResolveOptions,
 } from "./resolve/index.js";
 
-// Generic subschema walk — intended for linters / introspection /
+// Generic subschema walk: intended for linters / introspection /
 // tooling. For rewriting use cases, the raw `SUBSCHEMA_*_POSITIONS`
 // constants are in `./internals`.
 export { walkSubschemas, type SubschemaVisitor } from "./subschema-positions.js";

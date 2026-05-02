@@ -76,7 +76,7 @@ export const oas30NullableKeyword: KeywordDefinition = {
   vocabulary: OAS30_VOCAB,
   annotation: true,
   compile(): void {
-    // intentionally empty — consumed by oas30TypeKeyword
+    // intentionally empty: consumed by oas30TypeKeyword
   },
 };
 

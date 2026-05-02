@@ -4,26 +4,26 @@ import type { HttpRequest } from "@oav/core";
 /**
  * Convert a Fastify `FastifyRequest` to oav's framework-agnostic
  * {@link HttpRequest} shape. Read what's already on the request;
- * do not touch the body parser or any async source — bodies are
+ * do not touch the body parser or any async source; bodies are
  * assumed already-parsed by Fastify's content-type parsers
  * (which run before `preValidation`).
  *
  * Header keys are already lowercased by Fastify (per HTTP spec); we
  * pass them through. The path is extracted from `request.url` (which
- * includes the query string) — query string is dropped from the
+ * includes the query string); query string is dropped from the
  * `path` field and routed to `query` separately.
  *
  * Cookies are read from `request.cookies` if `@fastify/cookie` has
  * populated them, otherwise omitted.
  *
  * Pairs with sibling `httpRequestFromExpress` in `oav-express4` /
- * `oav-express5`, future `httpRequestFromHono`, etc. — same name
+ * `oav-express5`, future `httpRequestFromHono`, etc.; same name
  * pattern as oav's existing {@link httpRequestFromFetch}.
  *
  * @public
  */
 export function httpRequestFromFastify(request: FastifyRequest): HttpRequest {
-  // request.url is /path?query — extract pathname.
+  // request.url is /path?query; extract pathname.
   const url = new URL(request.url, "http://localhost");
   const headers: Record<string, string | string[]> = {};
   for (const [key, value] of Object.entries(request.headers)) {

@@ -161,7 +161,7 @@ describe("router", () => {
   it("flags GET-vs-explicit-HEAD as ambiguous on identical structure", () => {
     // GET implicitly answers HEAD via the runtime fallback (RFC 9110).
     // A sibling pattern declaring explicit HEAD on the same structure
-    // would silently win at match time depending on sort order — surface
+    // would silently win at match time depending on sort order; surface
     // it at construction.
     expect(() =>
       createRouter({

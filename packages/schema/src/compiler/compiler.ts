@@ -20,7 +20,7 @@ import { createDeps, type ValidatorDeps } from "./runtime.js";
 
 // Token scan fed into CompileStats.emittedTreeRuntime. Word-boundaried
 // so stray mentions inside string literals (e.g. an error message that
-// happens to contain "wrapErrors") don't count — every real emission
+// happens to contain "wrapErrors") don't count; every real emission
 // spells the helper as a bare identifier.
 const TREE_RUNTIME_HELPERS = /\b(?:createLeafError|createBranchError|wrapErrors)\b/;
 
@@ -113,7 +113,7 @@ export interface CompileStats {
   /**
    * `true` iff the compiler actually emitted `evalProps` / `evalItems`
    * Set machinery anywhere in the generated source. When `false`, the
-   * unevaluated-keys-gating optimisation is taking effect — the schema
+   * unevaluated-keys-gating optimisation is taking effect: the schema
    * doesn't use `unevaluatedProperties` / `unevaluatedItems`, so the
    * compiler suppressed the per-function Set allocation and merge loop.
    * Surfaced so tests can assert on the optimisation directly instead
@@ -123,7 +123,7 @@ export interface CompileStats {
   /**
    * `true` iff the generated source references any tree-mode runtime
    * helper (`createLeafError`, `createBranchError`, `wrapErrors`). In
-   * predicate mode this MUST be `false` — the whole point of the mode
+   * predicate mode this MUST be `false`: the whole point of the mode
    * is to avoid allocating an error tree. Surfaced so the predicate-
    * mode contract can be asserted without grepping the generated JS.
    */
@@ -131,7 +131,7 @@ export interface CompileStats {
   /**
    * Warnings produced by {@link CompileOptions.strict}. Empty unless
    * strict mode is active and found something to flag. Never contains
-   * compile-blocking issues — strict mode only reports; the caller
+   * compile-blocking issues; strict mode only reports; the caller
    * decides whether to treat any entry as fatal.
    */
   strictIssues: readonly StrictIssue[];
@@ -165,7 +165,7 @@ export interface StrictIssue {
 /**
  * The function returned by {@link compileSchema}. Call it with any JSON value
  * to validate against the original schema. An optional `startPath`
- * is prepended to every error's `path` — useful when the compiled
+ * is prepended to every error's `path`, useful when the compiled
  * validator is embedded inside a larger traversal (e.g. the HTTP
  * validator prepends `["body"]`, `["query", name]`, etc.). The array
  * is cloned before use and never mutated.
@@ -183,7 +183,7 @@ export type CompiledSchema = {
 /**
  * The shape returned by {@link compileSchema} when `predicate: true` is
  * set. The validator collects no errors, allocates no tree, and
- * returns a boolean — a true yes/no predicate. Use when consumers only
+ * returns a boolean: a true yes/no predicate. Use when consumers only
  * need to know whether the value conforms (e.g. routing, gating), not
  * why it doesn't.
  *
@@ -204,10 +204,10 @@ export type CompiledPredicate = {
  * Ordering convention (shared with
  * {@link @aahoughton/oav!ValidatorOptions}):
  *
- *   1. Compile essentials — `dialect`.
- *   2. Shared extension points — `formats`, `keywords`.
- *   3. Error-collection policy — `maxErrors`.
- *   4. Surface-specific extras last — here, `external`, `refResolver`,
+ *   1. Compile essentials: `dialect`.
+ *   2. Shared extension points: `formats`, `keywords`.
+ *   3. Error-collection policy: `maxErrors`.
+ *   4. Surface-specific extras last: here, `external`, `refResolver`,
  *      `predicate`.
  *
  * Options common to both surfaces share names and positions so a
@@ -267,7 +267,7 @@ export interface CompileOptions {
    *
    * Must be a positive integer (>= 1) when supplied. A cap of 0 is
    * effectively predicate mode (no errors collected, validation
-   * collapses to yes/no) — for that, prefer
+   * collapses to yes/no); for that, prefer
    * {@link CompileOptions.predicate} which compiles a fully
    * specialised function with no error infrastructure at all.
    * `compileSchema` throws on `maxErrors <= 0`.
@@ -279,7 +279,7 @@ export interface CompileOptions {
    *
    * - `"off"`: silence on everything (pre-v-strict behaviour).
    * - `"warn-partial"` (default): warn on keywords flagged as
-   *   partially-implemented (currently `$dynamicRef` — its runtime
+   *   partially-implemented (currently `$dynamicRef`; its runtime
    *   dynamic-scope rebinding is not emitted).
    * - `"strict"`: warn on partial features AND unknown keys (keys not
    *   in the active dialect, not `x-*` extensions, not standard
@@ -291,12 +291,12 @@ export interface CompileOptions {
 
   /** Additional external named schemas that `$ref` can resolve to. */
   external?: Map<string, SchemaOrBoolean>;
-  /** Custom ref resolver — overrides the default (which resolves fragments within the root). */
+  /** Custom ref resolver; overrides the default (which resolves fragments within the root). */
   refResolver?: RefResolver;
   /**
    * When `true`, compile a boolean predicate rather than an
    * error-collecting validator. The returned {@link CompiledPredicate}'s
-   * `validate(data)` returns `boolean` — no {@link ValidationError}
+   * `validate(data)` returns `boolean`: no {@link ValidationError}
    * tree is ever constructed, so consumers who only need a yes/no
    * answer pay nothing for error-reporting machinery (leaf allocation,
    * path snapshot, params object, message string).
@@ -330,7 +330,7 @@ export interface CompileState {
   readonly compileValidator: (schema: SchemaOrBoolean) => string;
   /**
    * `true` when a finite `maxErrors` was configured. Codegen uses this
-   * to emit the extra budget checks — when errors are uncapped we emit
+   * to emit the extra budget checks; when errors are uncapped we emit
    * plain `errors.push` with no runtime overhead.
    */
   readonly gated: boolean;
@@ -351,7 +351,7 @@ export interface CompileState {
    * anywhere in the root schema or any registered external schema. When
    * `false`, the compiler suppresses allocation of per-function
    * `evalProps` / `evalItems` Sets and the merge loop that threads them
-   * back to the caller — machinery that's inert unless
+   * back to the caller: machinery that's inert unless
    * `unevaluated*` actually consumes it. OpenAPI specs essentially
    * never use these keywords, so the false path is the common case.
    */
@@ -370,7 +370,7 @@ export interface CompileState {
  * Return `true` iff `schema` (or any schema reachable from it through
  * subschema-valued positions) contains the `unevaluatedProperties` or
  * `unevaluatedItems` keyword. The detector is the gate for the
- * evaluated-keys-Set machinery — when it's `false`, the compiler emits
+ * evaluated-keys-Set machinery: when it's `false`, the compiler emits
  * a form that skips the per-function Set allocation entirely.
  */
 function schemaUsesUnevaluated(schema: SchemaOrBoolean): boolean {
@@ -465,7 +465,7 @@ export function compileSchema(
     // data; non-integers are likely a typo. Predicate mode is the
     // explicit way to skip error collection entirely. `Infinity` is
     // degenerate (equivalent to omitting the option) but harmless,
-    // and existing callers may pass it explicitly — accept it.
+    // and existing callers may pass it explicitly; accept it.
     throw new Error(
       `compileSchema: \`maxErrors\` must be a positive integer (got ${String(options.maxErrors)}). ` +
         "Use `predicate: true` if you want a yes/no validator with no error tree.",
@@ -477,8 +477,8 @@ export function compileSchema(
     // a finite maxErrors cap would be shadowed and callers would be
     // misled into thinking errors were being counted. Fail loudly.
     throw new Error(
-      "compileSchema: `predicate: true` is mutually exclusive with a finite `maxErrors` — " +
-        "predicate mode short-circuits on the first failure, so there is nothing to count.",
+      "compileSchema: `predicate: true` is mutually exclusive with a finite `maxErrors`. " +
+        "Predicate mode short-circuits on the first failure, so there is nothing to count.",
     );
   }
   const deps = createDeps(maxErrors);
@@ -586,7 +586,7 @@ function compileValidator(schema: SchemaOrBoolean, state: CompileState): string 
   // Pure-`$ref` elision: a schema whose only non-annotation keyword is
   // `$ref` compiles to a pass-through wrapper today (allocates a
   // scratch errors array, calls the target, propagates the result).
-  // Nothing structural comes out of the wrapper — inlining it away
+  // Nothing structural comes out of the wrapper; inlining it away
   // saves one function call per descent on every composition branch /
   // items call / properties subschema that uses `$ref`. When the ref
   // resolves back to this schema (self-recursion), alias returns the
@@ -656,7 +656,7 @@ function resolvePureRefTarget(schema: SchemaObject, state: CompileState): string
  * whether a generated function needs to allocate evaluated-key sets.
  *
  * Short-circuits to `false` when {@link CompileState.unevaluatedTracking}
- * is off — a compile unit that never uses `unevaluatedProperties` has
+ * is off: a compile unit that never uses `unevaluatedProperties` has
  * nothing to consume the Sets, so allocating + merging them is pure
  * overhead.
  *
@@ -709,7 +709,7 @@ function buildFunctionBody(schema: SchemaOrBoolean, state: CompileState): string
   gen.indent();
   if (!state.predicate) {
     // Start null; lazily allocate on first push. Valid inputs never
-    // touch this — the function returns null directly without
+    // touch this; the function returns null directly without
     // allocating anything.
     gen.let(NAMES.ERRORS, "null");
   }
@@ -740,7 +740,7 @@ function buildFunctionBody(schema: SchemaOrBoolean, state: CompileState): string
     }
     compileSchemaKeywords(schema, gen, state, evaluatedPropertiesVar, evaluatedItemsVar);
     // Merge evaluated-key sets into the caller's out-parameters when the
-    // caller is tracking. Runs regardless of errors — a keyword that
+    // caller is tracking. Runs regardless of errors; a keyword that
     // evaluated a key evaluated it, even if other keywords flagged the
     // data invalid. In predicate mode any failure has already returned
     // `false` by this point, so the merge only runs for passing data;

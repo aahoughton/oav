@@ -143,7 +143,7 @@ describe("validateCommand", () => {
       io,
     );
     expect(result.exitCode).toBe(0);
-    // Silence on success — no bare newline leak.
+    // Silence on success: no bare newline leak.
     expect(stdout.value).toBe("");
   });
 

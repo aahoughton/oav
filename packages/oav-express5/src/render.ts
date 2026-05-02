@@ -12,9 +12,9 @@ import type { ExpressContext } from "./types.js";
  * Exported standalone for two cases:
  *
  * 1. You want oav's rendering as the fallback in your own
- *    middleware — call this directly when you don't want to handle
+ *    middleware: call this directly when you don't want to handle
  *    the error yourself.
- * 2. You want a slightly different renderer — use this as the
+ * 2. You want a slightly different renderer: use this as the
  *    starting point and adjust (e.g. swap the body, override the
  *    status, add headers).
  *

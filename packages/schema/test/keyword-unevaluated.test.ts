@@ -134,7 +134,7 @@ describe("discriminator keyword", () => {
 
   it("accepts multiple mapping keys that point to the same branch", () => {
     // eov #1088: two mapping entries targeting the same schema should
-    // not collide — each key routes to the shared branch deterministically.
+    // not collide; each key routes to the shared branch deterministically.
     const v = compile({
       $defs: {
         Pet: { type: "object", required: ["name"], properties: { name: { type: "string" } } },

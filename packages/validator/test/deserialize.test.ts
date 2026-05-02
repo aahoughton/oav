@@ -28,7 +28,7 @@ describe("deserialize", () => {
       explode: false,
       schema: { type: "array", items: { type: "integer" } },
     });
-    // Array items keep their string form — coercion uses the
+    // Array items keep their string form; coercion uses the
     // container's schema, not the items' schema.
     expect(out).toEqual(["1", "2", "3"]);
   });

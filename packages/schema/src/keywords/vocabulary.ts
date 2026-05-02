@@ -190,7 +190,7 @@ export const unevaluatedVocabulary: Vocabulary = {
 
 /**
  * The built-in format-annotation vocabulary. Non-assertive per the spec
- * default — use {@link formatAssertionVocabulary} to make `format`
+ * default; use {@link formatAssertionVocabulary} to make `format`
  * actually reject data.
  *
  * @public
@@ -213,7 +213,7 @@ export const formatAssertionVocabulary: Vocabulary = {
 };
 
 /**
- * The JSON Schema 2020-12 Meta-Data vocabulary. Pure annotations — these
+ * The JSON Schema 2020-12 Meta-Data vocabulary. Pure annotations: these
  * keywords carry human- and tool-facing metadata and never reject data.
  * Registering them explicitly gives the compiler's inliner a single,
  * dialect-scoped source of truth for "which keys are safe to ignore".
@@ -263,7 +263,7 @@ export const contentVocabulary: Vocabulary = {
 /**
  * The three default vocabularies (validation + applicator +
  * format-annotation) in the order the compiler expects. Consumers
- * normally pick a full {@link Dialect} instead — see
+ * normally pick a full {@link Dialect} instead; see
  * {@link jsonSchemaDialect}, {@link openapi31Dialect}, and
  * {@link oas30Dialect}.
  *

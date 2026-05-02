@@ -41,7 +41,7 @@ describe("renderProblemDetails", () => {
       status: 400,
       instance: "/pets",
     });
-    // detail comes from formatSummary() — first leaf, "<path> <message>".
+    // detail comes from formatSummary(): first leaf, "<path> <message>".
     expect(body.detail).toBe("body.age must be number");
     expect(body.issues).toHaveLength(1);
   });

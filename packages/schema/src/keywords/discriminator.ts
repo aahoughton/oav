@@ -5,7 +5,7 @@ import { APPLICATOR_VOCAB } from "./vocabulary-uris.js";
 /**
  * The OpenAPI 3.1 `discriminator` object. When present alongside `oneOf`,
  * the validator reads the named property, looks it up in `mapping`, and
- * validates the data against ONLY the selected branch — producing a
+ * validates the data against ONLY the selected branch, producing a
  * single-branch failure tree rather than N branches.
  *
  * @remarks
@@ -96,9 +96,9 @@ export const discriminatorKeyword: KeywordDefinition = {
               return;
             }
             // Discriminator routes to ONE branch. If it returns an error,
-            // that's already a counted leaf from the sub-validator — lift
+            // that's already a counted leaf from the sub-validator; lift
             // it (don't re-count). If the discriminator value matches no
-            // branch, THAT error is a fresh leaf — gate it.
+            // branch, THAT error is a fresh leaf; gate it.
             const switchLines = discFns
               .map(
                 ({ value, fn }) =>

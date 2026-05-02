@@ -41,7 +41,7 @@ export interface BuildProgramOptions {
  * without spawning a child process; pass `{ io, exit }` to route all
  * side-effects through in-process collaborators. Commands write their
  * primary output through `io.stdout` (or the file sink when `-o` is
- * set) and their errors through `io.stderr` — this CLI layer only
+ * set) and their errors through `io.stderr`; this CLI layer only
  * handles argv-parsing usage errors + the final `exit` call.
  *
  * @public

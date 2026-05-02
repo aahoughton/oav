@@ -4,7 +4,7 @@ import type { ValidationError } from "./errors.js";
 /**
  * Single source of truth for the CLI's `--format` flag. The
  * {@link OutputFormat} union and the Commander parser validator both
- * derive from this tuple — add a new name here and extend
+ * derive from this tuple; add a new name here and extend
  * {@link formatError} to wire it up end-to-end.
  *
  * @public

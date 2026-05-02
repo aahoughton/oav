@@ -2,12 +2,12 @@
  * Body schema pre-transforms applied before the JSON Schema compiler
  * sees the operation's body schema. Two concerns live here:
  *
- *   1. Direction (readOnly / writeOnly) — properties forbidden in the
+ *   1. Direction (readOnly / writeOnly): properties forbidden in the
  *      current leg of the HTTP exchange are rewritten to `false` and
  *      stripped from `required`. See
  *      {@link transformBodySchemaForDirection}.
  *
- *   2. Opaque bodies — `format: "binary"` fields arrive as Buffers or
+ *   2. Opaque bodies: `format: "binary"` fields arrive as Buffers or
  *      framework-specific objects, not strings, so the transform
  *      replaces them with `{}` (an "accept anything" schema) in both
  *      directions. See {@link isBinaryStringSchema}.
@@ -38,9 +38,9 @@ export type BodyDirection = "request" | "response";
  *
  * OpenAPI `readOnly` / `writeOnly` constrain the direction of travel for
  * a property:
- * - `readOnly: true` — server-generated; clients MUST NOT include it in
+ * - `readOnly: true`: server-generated; clients MUST NOT include it in
  *   request bodies, and it's exempt from `required` on the request side.
- * - `writeOnly: true` — client-only; servers MUST NOT include it in
+ * - `writeOnly: true`: client-only; servers MUST NOT include it in
  *   response bodies, and it's exempt from `required` on the response side.
  *
  * The JSON Schema compiler is direction-agnostic, so we pre-transform
@@ -48,7 +48,7 @@ export type BodyDirection = "request" | "response";
  * replaced with `false` (rejecting their presence) and stripped from
  * `required` (exempting their absence).
  *
- * The transform is a local rewrite only — `$ref` nodes are preserved as
+ * The transform is a local rewrite only; `$ref` nodes are preserved as
  * they are. To make composition-via-ref work (e.g.
  * `allOf: [{ $ref: "#/Timestamps" }, ...]` where `Timestamps` owns the
  * readOnly field), pair this with {@link createDirectionResolver}:
@@ -127,7 +127,7 @@ function transformInner(
   const cached = cache.get(schema);
   if (cached !== undefined) return cached;
 
-  // OAS `format: "binary"` marks opaque bytes — the field arrives as a
+  // OAS `format: "binary"` marks opaque bytes: the field arrives as a
   // Buffer, Uint8Array, or framework-specific object (multer etc.), not
   // a JS string. Stripping all constraints so the validator accepts
   // whatever the HTTP layer decoded avoids false positives on every
@@ -196,12 +196,12 @@ function isBinaryStringSchema(schema: SchemaOrBoolean): boolean {
   if (typeof schema !== "object" || schema === null || Array.isArray(schema)) return false;
   const s = schema as Record<string, unknown>;
   if (s.format !== "binary") return false;
-  // Either `type: "string"` or an array containing "string" — accept
+  // Either `type: "string"` or an array containing "string"; accept
   // both, including the 3.1 shorthand `type: ["string", "null"]`.
   if (s.type === "string") return true;
   if (Array.isArray(s.type) && (s.type as unknown[]).includes("string")) return true;
   // Author declared `format: binary` without a type. Still not a
-  // validatable JSON value — bypass.
+  // validatable JSON value; bypass.
   if (s.type === undefined) return true;
   return false;
 }

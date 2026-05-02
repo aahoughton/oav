@@ -16,8 +16,8 @@ describe("walkSubschemas", () => {
     walkSubschemas(schema, (_node, path) => {
       paths.push(path);
     });
-    // Order: single-valued keys first, then array keys, then map keys —
-    // matches the SUBSCHEMA_{SINGLE,ARRAY,MAP}_POSITIONS iteration.
+    // Order: single-valued keys first, then array keys, then map keys.
+    // Matches the SUBSCHEMA_{SINGLE,ARRAY,MAP}_POSITIONS iteration.
     expect(paths).toEqual([
       "",
       "allOf[0]",

@@ -2,7 +2,7 @@ import type { SchemaOrBoolean } from "@oav/core";
 
 /**
  * A URI-keyed registry of schemas. A single `Map` provides `add` / `get` /
- * `remove` — there is deliberately no separate `schemas` vs `refs` vs `cache`
+ * `remove`; there is deliberately no separate `schemas` vs `refs` vs `cache`
  * distinction because that distinction always leaks.
  *
  * @public

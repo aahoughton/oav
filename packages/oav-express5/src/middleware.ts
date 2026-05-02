@@ -9,7 +9,7 @@ import type { ErrorHandler, ExpressContext } from "./types.js";
  * Options for {@link validateRequests}. Names and semantics are
  * shared with future {@link validateResponses} and with the same
  * options on every other adapter in the family (`oav-express4`,
- * `oav-fastify`, ...) — only the framework-typed argument differs.
+ * `oav-fastify`, ...); only the framework-typed argument differs.
  *
  * @public
  */
@@ -24,11 +24,11 @@ export interface ValidateRequestsOptions {
   toHttpRequest?: (req: Request) => HttpRequest;
   /**
    * Called when {@link Validator.validateRequest} returns an error.
-   * Default: {@link renderProblemDetails} — RFC 9457
+   * Default: {@link renderProblemDetails}: RFC 9457
    * `application/problem+json` with status from `httpStatusFor`.
    * Pass your own to render a custom envelope, call `next(err)`,
    * map to a different status, etc. The middleware does not call
-   * `next()` after invoking `onError` — the callback is the response.
+   * `next()` after invoking `onError`; the callback is the response.
    */
   onError?: ErrorHandler<ExpressContext>;
 }
@@ -40,7 +40,7 @@ export interface ValidateRequestsOptions {
  * an RFC 9457 problem-details response.
  *
  * Plural (`validateRequests`, not `validateRequest`) because the
- * middleware intercepts every request — the singular form is the
+ * middleware intercepts every request; the singular form is the
  * Validator's own per-call method.
  *
  * Express 5 is promise-native: this middleware is `async`, and

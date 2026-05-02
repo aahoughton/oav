@@ -199,7 +199,7 @@ export async function validateCommand(
     return { exitCode: 3 };
   }
 
-  // Silence on success — no bare-newline leak, matches Unix convention.
+  // Silence on success; no bare-newline leak, matches Unix convention.
   if (err === null) return { exitCode: 0 };
   const rendered = formatError(err, args.options.format, args.options.depth);
   await primarySink(io, args.options)(rendered + "\n");
@@ -232,7 +232,7 @@ export type ValidateMode =
  * `validate(data)` mirrors `compileSchema(schema).validate(data)`, then
  * bundles it via esbuild into a single file with zero imports.
  *
- * The output runs without `oav` installed at all — the
+ * The output runs without `oav` installed at all: the
  * Lambda / edge / single-file deployment case. `esbuild` is a required
  * peer dependency for this subcommand; a clear install hint prints on
  * stderr with exit code 3 if it's not resolvable.
@@ -331,9 +331,9 @@ async function bundleEmitted(source: string, resolveDir: string): Promise<string
  * Implement the `oav compile-spec <spec>` subcommand. Loads an OpenAPI
  * document (with optional overlays), compiles every operation's
  * schemas, and emits a standalone ES module exposing the full
- * `createValidator`-equivalent surface — `validateRequest`,
+ * `createValidator`-equivalent surface: `validateRequest`,
  * `validateResponse`, `validateFetchRequest`, `validateFetchResponse`,
- * `getOperation`, `detectedVersion`, `warnings` — with zero imports
+ * `getOperation`, `detectedVersion`, `warnings`, with zero imports
  * after bundling.
  *
  * @public

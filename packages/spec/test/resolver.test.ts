@@ -123,7 +123,7 @@ describe("resolveSpec", () => {
     }
   });
 
-  it("only stitches circular externals — non-circular refs are inlined", async () => {
+  it("only stitches circular externals; non-circular refs are inlined", async () => {
     const reader = createMemoryReader(
       new Map<string, unknown>([
         [
@@ -349,7 +349,7 @@ describe("resolveSpec", () => {
       );
       const { document } = await resolveSpec({ reader, entry: "root.json" });
       const refs = collectInternalRefs(document);
-      // No raw root-level #/components/... refs should survive —
+      // No raw root-level #/components/... refs should survive;
       // everything got rewritten into the external namespace.
       expect(refs.filter((r) => r.startsWith("#/components/"))).toEqual([]);
       // Both external files got stitched.

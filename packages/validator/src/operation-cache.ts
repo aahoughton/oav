@@ -185,7 +185,7 @@ export function buildOperationCache(
     bodyValidators,
     responses,
     // Security is populated by `createValidator` after this call
-    // returns — `buildOperationCache` deliberately doesn't see the full
+    // returns; `buildOperationCache` deliberately doesn't see the full
     // document (it only needs the `RouteMatch` subtree) so the field
     // starts out undefined.
     security: undefined,
@@ -195,7 +195,7 @@ export function buildOperationCache(
 /**
  * Resolve an operation-level `$ref` (requestBody / response / parameter /
  * header) against the spec. Returns the target object with any siblings
- * on the reference itself dropped — per OAS, siblings of a Reference
+ * on the reference itself dropped: per OAS, siblings of a Reference
  * are ignored. Follows chains with a depth guard to catch cycles.
  * External refs must be inlined upstream by `@oav/spec.resolveSpec()`.
  *

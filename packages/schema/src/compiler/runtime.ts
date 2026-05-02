@@ -20,8 +20,8 @@ export interface ValidatorDeps {
   ) => ValidationError | null;
   patterns: Map<string, RegExp>;
   /**
-   * Compile a user-supplied regex. Tries the `u` (Unicode) flag first —
-   * JSON Schema 2020-12 recommends it — and falls back to no-flag when
+   * Compile a user-supplied regex. Tries the `u` (Unicode) flag first
+   * (JSON Schema 2020-12 recommends it) and falls back to no-flag when
    * the pattern trips strict `u`-mode rules (stray `\-`, `\:`, `\/` etc.,
    * common in real-world OpenAPI specs). Results are memoized in
    * `patterns`. Throws `SyntaxError` only when the pattern is malformed
@@ -37,7 +37,7 @@ export interface ValidatorDeps {
    * The obvious `[...s].length` expression builds a one-string-per-code-point
    * array just to read its length; on a 10 MB payload that allocates far
    * more than the `maxLength` check can refuse. This helper walks the
-   * string's iterator and counts — O(1) memory.
+   * string's iterator and counts; O(1) memory.
    */
   countCodePoints: (s: string) => number;
   /**
@@ -114,7 +114,7 @@ export function typeOf(value: unknown): string {
 }
 
 /**
- * Structural equality for JSON values — honours array ordering, object key
+ * Structural equality for JSON values: honours array ordering, object key
  * sets (not ordering), and NaN-as-not-equal. Used by `enum`, `const`, and
  * `uniqueItems`.
  *
@@ -271,7 +271,7 @@ export function createDeps(maxErrors: number = Number.POSITIVE_INFINITY): Valida
         try {
           re = new RegExp(pattern);
         } catch {
-          // Surface the stricter (`u`-mode) error — it's more informative
+          // Surface the stricter (`u`-mode) error; it's more informative
           // when both modes reject the pattern.
           throw errU;
         }

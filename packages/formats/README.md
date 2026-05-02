@@ -18,7 +18,7 @@ validateUuid("not a uuid"); // false
 ```
 
 When the validator package is used via `createValidator`, the built-in
-formats are already included — pass `formats` to extend them, not
+formats are already included; pass `formats` to extend them, not
 replace them.
 
 ## Formats

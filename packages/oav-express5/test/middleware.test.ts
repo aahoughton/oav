@@ -149,7 +149,7 @@ describe("validateRequests", () => {
     const next = vi.fn() as unknown as NextFunction;
     // Express 5 awaits the returned promise; thrown errors reach the
     // error chain via the promise rejection. The middleware itself
-    // doesn't try/catch — Express does.
+    // doesn't try/catch; Express does.
     await expect(
       mw(fakeReq({ method: "GET", path: "/pets", headers: {} }), res, next),
     ).rejects.toBe(boom);

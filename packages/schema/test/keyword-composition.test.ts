@@ -101,7 +101,7 @@ describe("if/then/else keyword", () => {
   it("an `if` whose property is missing is vacuously true (applies `then`)", () => {
     // ajv #2439 / #2299. A `properties` subschema is vacuously satisfied
     // when the named key isn't present in the data, so the `if` passes
-    // and `then` fires — distinct from the case where the key IS present
+    // and `then` fires, distinct from the case where the key IS present
     // but fails the constraint.
     const schema = {
       type: "object",

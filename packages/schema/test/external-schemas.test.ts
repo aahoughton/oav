@@ -62,7 +62,7 @@ describe("compileSchema with external schemas", () => {
     expect(v.validate(1).valid).toBe(false);
   });
 
-  it("scopes $anchor by enclosing $id — same anchor name in different scopes", () => {
+  it("scopes $anchor by enclosing $id: same anchor name in different scopes", () => {
     // Two subschemas both declare `$anchor: "x"` under different $ids; refs
     // must resolve to the scope-local anchor, not the last one written.
     const schema = {

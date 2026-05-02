@@ -16,7 +16,7 @@ import type { JsonValue } from "./types.js";
  *     reference to optionally exist.
  *
  * Shared by `@oav/schema`'s internal `$ref` resolver and `@oav/spec`'s
- * document stitcher — having one implementation means a single place
+ * document stitcher; having one implementation means a single place
  * for any future RFC edge-case fix.
  *
  * @public

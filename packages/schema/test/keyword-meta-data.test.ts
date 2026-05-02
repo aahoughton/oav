@@ -65,7 +65,7 @@ describe("meta-data vocabulary", () => {
     expect(jsHas("externalDocs")).toBe(false);
   });
 
-  it("is a no-op at runtime — annotation-only schemas accept any input", () => {
+  it("is a no-op at runtime: annotation-only schemas accept any input", () => {
     const v = compile({
       title: "X",
       description: "anything",
@@ -130,7 +130,7 @@ describe("content vocabulary", () => {
     }
   });
 
-  it("is a no-op at runtime — content keywords accept any string", () => {
+  it("is a no-op at runtime: content keywords accept any string", () => {
     const v = compile({
       type: "string",
       contentEncoding: "base64",

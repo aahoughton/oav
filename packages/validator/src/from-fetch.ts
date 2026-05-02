@@ -8,7 +8,7 @@
  *
  * The content-type dispatcher recognises JSON (`application/json` and
  * `*+json`), URL-encoded forms, multipart/form-data, and text/*. For
- * anything else, the raw bytes come through as a `Uint8Array` — the
+ * anything else, the raw bytes come through as a `Uint8Array`; the
  * validator's `format: "binary"` opaque-body bypass accepts any value
  * when the body schema declares it that way.
  *
@@ -34,7 +34,7 @@ export interface FetchRequestOptions {
    *
    * The callback receives the original `Request` with its body stream
    * intact. Return whatever shape the spec's `requestBody` schema
-   * expects — `format: "binary"` fields pass through the validator
+   * expects; `format: "binary"` fields pass through the validator
    * unchanged, so opaque placeholders (a temp-file path, a Buffer
    * handle, etc.) are valid.
    *
@@ -63,7 +63,7 @@ export interface FetchRequestOptions {
  * framework-agnostic {@link HttpRequest} shape the validator expects,
  * plus the parsed body for the caller to consume.
  *
- * The request body is a one-shot stream — after this helper returns,
+ * The request body is a one-shot stream; after this helper returns,
  * `request.body` is exhausted. Callers that need to re-read the body
  * should use `request.clone()` before calling.
  *
@@ -131,7 +131,7 @@ export async function httpResponseFromFetch(response: Response): Promise<{
   const headers = headersToRecord(response.headers);
   const contentType = response.headers.get("content-type") ?? undefined;
   // Response body parsing: reuse the same media-type dispatch as
-  // requests. Method is irrelevant — there's no GET/HEAD skip; a
+  // requests. Method is irrelevant; there's no GET/HEAD skip; a
   // spec-declared response body is readable regardless.
   const body = await readBody(response, contentType, "POST");
 

@@ -100,7 +100,7 @@ describe("loadSpec", () => {
 
     expect(sources.sort()).toEqual(["main.json", "schemas.json"]);
     // External ref inlined into components.schemas.Pet, then wrapped in
-    // allOf by extendSchemas — proves resolveSpec ran first.
+    // allOf by extendSchemas; proves resolveSpec ran first.
     const pet = document.components?.schemas?.["Pet"];
     expect(pet).toMatchObject({ allOf: expect.any(Array) });
   });

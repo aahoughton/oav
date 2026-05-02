@@ -13,7 +13,7 @@ import { validateRequests } from "../src/middleware.js";
  * round-trip via native fetch, close the server when done.
  *
  * Same `it()` names as future oav-express5 / oav-fastify integration
- * suites — adapter implementations differ, scenarios stay identical.
+ * suites; adapter implementations differ, scenarios stay identical.
  */
 
 function petSpec(): OpenAPIDocument {
@@ -218,7 +218,7 @@ describe("oav-express4 integration: custom toHttpRequest", () => {
     const validator = createValidator(petSpec());
     const app = express();
     app.use(express.json());
-    // Inject a synthetic verifiedBody for every request — must run
+    // Inject a synthetic verifiedBody for every request; must run
     // BEFORE validateRequests so the extractor sees it.
     app.use((req, _res, next) => {
       (req as Request & { verifiedBody?: unknown }).verifiedBody = { name: "Fido" };
@@ -244,7 +244,7 @@ describe("oav-express4 integration: custom toHttpRequest", () => {
   });
 
   it("custom toHttpRequest extractor reaches the validator", async () => {
-    // Real body is empty, but verifiedBody contains a valid body — the
+    // Real body is empty, but verifiedBody contains a valid body; the
     // custom extractor should surface it to the validator and validation
     // should pass.
     const r = await fetch(`${baseUrl}/pets`, {
@@ -268,7 +268,7 @@ describe("oav-express4 integration: Express 4 specifics", () => {
     app.use(
       validateRequests(validator, {
         toHttpRequest: () => {
-          // Simulate a sync extractor failure — Express 4 requires
+          // Simulate a sync extractor failure; Express 4 requires
           // try/catch + next(err) since it doesn't await middleware
           // promises. The adapter handles this for us.
           throw new Error("extractor exploded");

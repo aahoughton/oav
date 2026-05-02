@@ -32,7 +32,7 @@ export interface EmitStandaloneOptions {
   dialect: StandaloneDialect;
   /**
    * Import-path prefix for runtime deps in the emitted module.
-   * Defaults to `"oav"` — the published name. Tests
+   * Defaults to `"oav"` (the published name). Tests
    * override to `"@oav"` so the output resolves against the
    * workspace aliases instead of a published tarball.
    */
@@ -51,7 +51,7 @@ export interface EmitStandaloneOptions {
  * Rejects schemas that use `format: "..."` values outside
  * {@link @aahoughton/oav/formats!builtInFormats}. Custom formats and
  * custom keywords aren't serialisable and require a more involved
- * emission path — out of scope for the CLI entry.
+ * emission path; out of scope for the CLI entry.
  *
  * @internal
  */
@@ -88,7 +88,7 @@ export function emitStandalone(schema: SchemaOrBoolean, options: EmitStandaloneO
     `import { builtInFormats } from "${importPrefix}/formats";`,
     "",
     "// Silence unused-import warnings when the schema doesn't reach a",
-    "// given helper — the compiler's output only references the ones it",
+    "// given helper. The compiler's output only references the ones it",
     "// needs, so some imports may appear unused at module scope.",
     "void createLeafError; void createBranchError; void createError;",
     "void deepEqual; void typeOf; void wrapErrors;",

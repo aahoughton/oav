@@ -132,7 +132,7 @@ export const formatAssertionKeyword: KeywordDefinition = {
  * JSON Schema 2020-12 §6.3 specifies that `minLength` / `maxLength` count
  * code points, so surrogate pairs (emoji, astral CJK, ...) count as one.
  * Delegates to the `countCodePoints` runtime helper, which iterates without
- * allocating an intermediate array — `[...s].length` would spike memory on
+ * allocating an intermediate array; `[...s].length` would spike memory on
  * large strings before the length check could reject them.
  */
 function codePointLengthExpr(dataExpr: string): string {

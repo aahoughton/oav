@@ -4,8 +4,8 @@ OpenAPI **3.0** / **3.1** / **3.2** HTTP request and response
 validator. Two primary drivers:
 
 - **Tenant overrides over a base spec.** When tenants extend a
-  shared API — adding a required header on one route, refining a
-  schema, requiring auth where the base spec didn't — they need to
+  shared API (adding a required header on one route, refining a
+  schema, requiring auth where the base spec didn't), they need to
   document those changes in the spec they ship, not as
   application-side patches. `applyOverlays` rewrites the document
   at load time. Custom keywords, formats, and dialects plug into
@@ -14,7 +14,7 @@ validator. Two primary drivers:
 - **Validators that fit in microservice runners.** `oav
 compile-spec openapi.yaml` emits a single zero-dependency ES
   module exposing the full validator surface. Targets Cloudflare
-  Workers, Vercel Edge, Lambda@Edge, Deno Deploy — runtimes where
+  Workers, Vercel Edge, Lambda@Edge, Deno Deploy: runtimes where
   `new Function()` is unavailable, or where dependency footprint
   matters. `--only "POST /pets"` (repeatable) scopes the output to
   specific operations without touching the source spec.
@@ -28,8 +28,8 @@ headers.
 
 `oav` ships in two core packages, plus framework adapter packages that
 build on either `oav` or `oav-core` -- if you don't need YAML support,
-you can skip `oav` entirely — the lean path for zero-dependency / edge
-targets:
+you can skip `oav` entirely (the lean path for zero-dependency / edge
+targets):
 
 | Package        | When to use                                                                                                                                                                                                                                                                                      |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -95,7 +95,7 @@ config.
 ## How it compares
 
 oav's primary alternative is
-[Ajv](https://github.com/ajv-validator/ajv) — directly for
+[Ajv](https://github.com/ajv-validator/ajv): directly for
 `compileSchema`, or via
 [`express-openapi-validator`](https://github.com/cdimascio/express-openapi-validator)
 for HTTP validation. (Migrating from EOV specifically:
@@ -114,19 +114,19 @@ hardware will vary.
 
 Ajv compile is essentially constant overhead per schema; oav scales
 with shape. The advantage shows up wherever validator construction
-sits in the hot path — per-request, per-tenant, per-test, edge
+sits in the hot path: per-request, per-tenant, per-test, edge
 cold-start, AOT module emit.
 
 **Validate: roughly tied on simple shapes; Ajv wins on complex.**
 
 Both libraries are sub-microsecond per check on typical OpenAPI
 bodies. On complex `oneOf`/`allOf` or large arrays, Ajv leads by
-2–4× (say 100 ns → 400 ns per call, or 1.7 µs → 4 µs). oav's
+2–4× (say 100 ns to 400 ns per call, or 1.7 µs to 4 µs). oav's
 `predicate` mode (`compileSchema(..., { predicate: true })`) closes
 most of that gap for yes/no use cases.
 
-For typical HTTP workloads — 1k–10k req/sec × ~1 validation per
-request — the difference is invisible at any of those numbers. For
+For typical HTTP workloads (1k–10k req/sec × ~1 validation per
+request), the difference is invisible at any of those numbers. For
 validation-heavy code (millions of validations per second), Ajv wins.
 
 Full per-shape breakdown: [`docs/comparison.md`](./docs/comparison.md). Raw
@@ -163,8 +163,8 @@ oav resolve openapi.yaml
 oav validate openapi.yaml --request req.http
 oav validate openapi.yaml --path "POST /pets" --body payload.json
 oav validate openapi.yaml --path "GET /pets" --response --status 200 --body resp.json
-oav compile-schema schema.json -o validator.mjs             # JSON Schema → standalone validator
-oav compile-spec openapi.yaml  -o validator.mjs             # OpenAPI   → standalone HTTP validator (edge / Lambda)
+oav compile-schema schema.json -o validator.mjs             # JSON Schema -> standalone validator
+oav compile-spec openapi.yaml  -o validator.mjs             # OpenAPI   -> standalone HTTP validator (edge / Lambda)
 ```
 
 Flags: `--format text|json|flat`, `--depth n`, `--overlay file`
@@ -192,7 +192,7 @@ one of the built-in dialects (`jsonSchemaDialect`, `openapi31Dialect`,
 3.1 dialect by default; configure with
 `onUnknownVersion: "throw" | "warn" | "fallback31"`.
 
-**Swagger 2.0 specs** aren't supported directly — `createValidator`
+**Swagger 2.0 specs** aren't supported directly: `createValidator`
 throws on `swagger: "2.0"` documents. Convert to OpenAPI 3.0 first with
 [`swagger2openapi`](https://github.com/Mermade/oas-kit/tree/main/packages/swagger2openapi)
 and pass the 3.0 output to `createValidator`:
@@ -268,7 +268,7 @@ Runtime-behaviour corners. For a feature-scope comparison against
 Ajv (draft versions, `$data`, async validation, etc.) see
 [docs/comparison.md](./docs/comparison.md).
 
-- `$dynamicRef` behaves like `$ref` with anchor lookup — no runtime dynamic-scope traversal.
+- `$dynamicRef` behaves like `$ref` with anchor lookup; no runtime dynamic-scope traversal.
 - `style: deepObject` query parameters support only single-level nesting (`obj[key]=value`); OpenAPI 3.0–3.2 don't define nested semantics.
 - `pattern` keywords and `format: "regex"` compile to the JavaScript
   built-in `RegExp`, which has no execution timeout. If your OpenAPI
@@ -288,4 +288,4 @@ conformance and performance sub-packages are described there and in
 
 ## License
 
-MIT — see [LICENSE](./LICENSE).
+MIT. See [LICENSE](./LICENSE).

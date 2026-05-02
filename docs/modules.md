@@ -23,11 +23,11 @@ Per-framework adapter packages share the same export names and option
 shapes as each other; only the framework-typed argument differs. Each
 has its own README:
 
-- [`oav-express4`](../packages/oav-express4/README.md) — Express 4 (peer: `express ^4`).
-- [`oav-express5`](../packages/oav-express5/README.md) — Express 5 (peer: `express ^5`); promise-native middleware shape.
-- [`oav-fastify`](../packages/oav-fastify/README.md) — Fastify (peer: `fastify ^5`); ships a `preValidation` hook instead of middleware.
+- [`oav-express4`](../packages/oav-express4/README.md): Express 4 (peer: `express ^4`).
+- [`oav-express5`](../packages/oav-express5/README.md): Express 5 (peer: `express ^5`); promise-native middleware shape.
+- [`oav-fastify`](../packages/oav-fastify/README.md): Fastify (peer: `fastify ^5`); ships a `preValidation` hook instead of middleware.
 
 For Next.js, Hono, Bun, and Deno, use the Web Standards adapter
-(`httpRequestFromFetch`, `validateFetchRequest`) directly — no
+(`httpRequestFromFetch`, `validateFetchRequest`) directly; no
 framework-specific package. See
 [`docs/integration.md`](./integration.md).

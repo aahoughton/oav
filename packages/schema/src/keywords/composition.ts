@@ -224,7 +224,7 @@ export const notKeyword: KeywordDefinition = {
     const sub = ctx.schema as SchemaOrBoolean;
     const fn = ctx.compileSubschema(sub);
     if (ctx.predicate) {
-      // If the sub validates, `not` fails — short-circuit.
+      // If the sub validates, `not` fails; short-circuit.
       ctx.gen.line(`if (${fn}(${ctx.data})) return false;`);
       return;
     }

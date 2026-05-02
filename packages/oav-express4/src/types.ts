@@ -6,7 +6,7 @@ import type { ValidationError } from "@oav/core";
  * `onError` callbacks so they can render their own response, call
  * `next(err)`, or whatever the host app's error contract requires.
  *
- * Identical in shape to what an inline middleware would close over —
+ * Identical in shape to what an inline middleware would close over;
  * the type is exported only so users can annotate their callbacks.
  *
  * @public
@@ -20,7 +20,7 @@ export interface ExpressContext {
 /**
  * Signature shared by `onError` on every adapter in the family
  * (`oav-express4`, future `oav-express5`, `oav-fastify`, ...). The
- * `Ctx` parameter is the only thing that varies — same name and shape
+ * `Ctx` parameter is the only thing that varies; same name and shape
  * everywhere.
  *
  * Returning a Promise is supported on every adapter. `oav-express4`
