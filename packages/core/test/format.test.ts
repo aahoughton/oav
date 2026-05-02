@@ -42,12 +42,12 @@ describe("formatText", () => {
   it("renders a 4-level tree with nested indentation and codes", () => {
     const out = formatText(sampleTree());
     const lines = out.split("\n");
-    expect(lines[0]).toBe("body — request body invalid [body]");
-    expect(lines[1]).toBe("  body — must match exactly one of 2 schemas [oneOf]");
-    expect(lines[2]).toBe("    body — branch 0 (Cat) failed [branch]");
-    expect(lines[3]).toBe("      body.purr — must be boolean [type]");
-    expect(lines[4]).toBe("    body — branch 1 (Dog) failed [branch]");
-    expect(lines[5]).toBe('      body — must have required property "bark" [required]');
+    expect(lines[0]).toBe("body request body invalid [body]");
+    expect(lines[1]).toBe("  body must match exactly one of 2 schemas [oneOf]");
+    expect(lines[2]).toBe("    body branch 0 (Cat) failed [branch]");
+    expect(lines[3]).toBe("      body.purr must be boolean [type]");
+    expect(lines[4]).toBe("    body branch 1 (Dog) failed [branch]");
+    expect(lines[5]).toBe('      body must have required property "bark" [required]');
   });
 
   it("truncates at maxDepth with an ellipsis marker", () => {
@@ -60,13 +60,13 @@ describe("formatText", () => {
     // Boundary: depth==maxDepth must still render (the rule is `depth >
     // maxDepth`, not `>=`). Pin it so an off-by-one regression here would
     // be caught.
-    expect(lines).toContain("    body — branch 0 (Cat) failed [branch]");
-    expect(lines).toContain("    body — branch 1 (Dog) failed [branch]");
+    expect(lines).toContain("    body branch 0 (Cat) failed [branch]");
+    expect(lines).toContain("    body branch 1 (Dog) failed [branch]");
   });
 
   it("allows overriding the indent string", () => {
     const out = formatText(sampleTree(), { indent: "\t" });
-    expect(out.split("\n")[1]).toMatch(/^\tbody — must match/);
+    expect(out.split("\n")[1]).toMatch(/^\tbody must match/);
   });
 
   it("omits the path prefix when the path is empty", () => {
@@ -99,8 +99,8 @@ describe("formatFlat", () => {
     const out = formatFlat(sampleTree());
     const lines = out.split("\n");
     expect(lines).toHaveLength(2);
-    expect(lines[0]).toBe("body.purr — must be boolean [type]");
-    expect(lines[1]).toBe('body — must have required property "bark" [required]');
+    expect(lines[0]).toBe("body.purr must be boolean [type]");
+    expect(lines[1]).toBe('body must have required property "bark" [required]');
   });
 
   it("flattens deep nesting to a single leaf-per-line report", () => {
@@ -108,7 +108,7 @@ describe("formatFlat", () => {
     for (let i = 0; i < 10; i += 1) {
       node = createBranchError(`level-${i}`, [], "branch", [node]);
     }
-    expect(formatFlat(node)).toBe("deep.x — bad [type]");
+    expect(formatFlat(node)).toBe("deep.x bad [type]");
   });
 });
 
@@ -138,7 +138,7 @@ describe("toJsonObject", () => {
 });
 
 describe("formatSummary", () => {
-  it('defaults to "first" — picks the first leaf in tree-traversal order', () => {
+  it('defaults to "first" and picks the first leaf in tree-traversal order', () => {
     expect(formatSummary(sampleTree())).toBe("body.purr must be boolean");
   });
 
@@ -155,13 +155,46 @@ describe("formatSummary", () => {
     const out = formatSummary(sampleTree(), { select: "all" });
     const lines = out.split("\n");
     expect(lines).toHaveLength(2);
-    expect(lines[0]).toBe("body.purr — must be boolean [type]");
-    expect(lines[1]).toBe('body — must have required property "bark" [required]');
+    expect(lines[0]).toBe("body.purr must be boolean [type]");
+    expect(lines[1]).toBe('body must have required property "bark" [required]');
   });
 
   it('"all" output is byte-identical to the deprecated formatFlat for the same tree', () => {
     const tree = sampleTree();
     expect(formatSummary(tree, { select: "all" })).toBe(formatFlat(tree));
+  });
+
+  it('"all" honours a custom separator', () => {
+    const out = formatSummary(sampleTree(), { select: "all", separator: ", " });
+    expect(out).toBe(
+      'body.purr must be boolean [type], body must have required property "bark" [required]',
+    );
+  });
+
+  it('"all" suppresses the trailing [code] when includeCode is false', () => {
+    const out = formatSummary(sampleTree(), { select: "all", includeCode: false });
+    const lines = out.split("\n");
+    expect(lines).toEqual(["body.purr must be boolean", 'body must have required property "bark"']);
+  });
+
+  it('"all" with eov-shape options composes separator + includeCode orthogonally', () => {
+    const out = formatSummary(sampleTree(), {
+      select: "all",
+      separator: ", ",
+      includeCode: false,
+    });
+    expect(out).toBe('body.purr must be boolean, body must have required property "bark"');
+  });
+
+  it("separator and includeCode have no effect on single-leaf modes", () => {
+    const tree = sampleTree();
+    const opts = { separator: ", ", includeCode: false } as const;
+    expect(formatSummary(tree, { select: "first", ...opts })).toBe(
+      formatSummary(tree, { select: "first" }),
+    );
+    expect(formatSummary(tree, { select: "deepest", ...opts })).toBe(
+      formatSummary(tree, { select: "deepest" }),
+    );
   });
 
   it("byCode returns the first leaf matching the highest-priority listed code", () => {
@@ -192,7 +225,7 @@ describe("formatSummary", () => {
 });
 
 describe("summarize (deprecated)", () => {
-  it('defaults to "first" — picks the first leaf in tree-traversal order', () => {
+  it('defaults to "first" and picks the first leaf in tree-traversal order', () => {
     expect(summarize(sampleTree())).toBe("body.purr must be boolean");
   });
 

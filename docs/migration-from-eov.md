@@ -200,24 +200,31 @@ string, use `formatSummary` with `{ select: "all" }`:
 ```ts
 import { formatSummary } from "@aahoughton/oav-core";
 
-// Default — first failing leaf, equivalent to eov's default `message`:
+// Default: first failing leaf, equivalent to eov's default `message`.
 formatSummary(err);
 // "body.users[0].email must match format \"email\""
 
-// All leaves, one per line — equivalent in scope to eov's `allErrors`:
+// All leaves, one per line. oav's default all-issues shape.
 formatSummary(err, { select: "all" });
-// body.users[0].email — must match format "email" [format]
-// body.users[1].age — must be >= 0 [minimum]
+// body.users[0].email must match format "email" [format]
+// body.users[1].age must be >= 0 [minimum]
+
+// eov-shaped: comma-joined, no [code] suffix.
+formatSummary(err, { select: "all", separator: ", ", includeCode: false });
+// body.users[0].email must match format "email", body.users[1].age must be >= 0
 ```
 
-Shape differs from eov in three ways: `oav` uses dotted paths
-(`body.users[0].email`) instead of slash-separated
-(`request/body/users/0/email`); separates each entry with `\n`
-rather than `, `; and appends the error `[code]`. If you need exact
-parity for an existing client, post-process the string or render
-your own using `collectIssues(err)`.
+`separator` controls the joiner between leaves. `includeCode` toggles
+the trailing ` [<code>]`. Both are ignored under single-leaf modes
+(`first` / `deepest` / `byCode`). See
+[`FormatSummaryOptions`](../packages/core/src/format.ts) for the type.
+
+One delta from `eov` remains. `oav` uses dotted paths
+(`body.users[0].email`) where `eov` uses slash-separated
+(`request/body/users/0/email`). If your client pattern-matches on the
+exact `eov` string, render your own with `collectLeaves(err)`.
 
 The same `formatSummary` powers the `detail` field of
-`toProblemDetails` — pass `{ detail: formatSummary(err, { select: "all" }) }`
-to override the default and emit the all-issues form in your
-RFC 9457 response body.
+`toProblemDetails`. Pass
+`{ detail: formatSummary(err, { select: "all", separator: ", ", includeCode: false }) }`
+to emit an `eov`-shaped string in your RFC 9457 response body.

@@ -16,9 +16,9 @@ export interface FormatOptions {
  * Render a {@link ValidationError} tree as an indented human-readable string.
  *
  * @remarks
- * Every node renders as `<path> — <message> [<code>]`. Children are indented
- * under their parent. The output is meant for terminals and logs, not for
- * programmatic consumption — use {@link toJsonObject} or
+ * Every node renders as `<path> <message> [<code>]`. Children are indented
+ * under their parent. The output is meant for terminals and logs, not
+ * programmatic consumption; use {@link toJsonObject} or
  * {@link formatSummary} for that.
  *
  * @param error - Root of the error tree.
@@ -44,7 +44,7 @@ export function formatText(error: ValidationError, options: FormatOptions = {}):
     }
     const prefix = indent.repeat(depth);
     const location = joinPath(node.path);
-    const pathPart = location.length > 0 ? `${location} — ` : "";
+    const pathPart = location.length > 0 ? `${location} ` : "";
     lines.push(`${prefix}${pathPart}${node.message} [${node.code}]`);
     for (const child of node.children) render(child, depth + 1);
   };
@@ -83,16 +83,16 @@ export function toJsonObject(error: ValidationError): ValidationError {
 /**
  * Leaf-selection policy for {@link formatSummary}.
  *
- * - `"first"` — the first leaf in tree-traversal order. Matches
+ * - `"first"`: the first leaf in tree-traversal order. Matches
  *   `express-openapi-validator`'s top-level `message`. The default.
- * - `"deepest"` — the leaf with the longest path. More informative
+ * - `"deepest"`: the leaf with the longest path. More informative
  *   on `oneOf` / composition trees where the structural cause sits
  *   one or two levels in. Tiebreak: first encountered.
- * - `"all"` — every leaf, one per line, each prefixed with its path
+ * - `"all"`: every leaf, one per line, each prefixed with its path
  *   and suffixed with its `[code]`. Use this when you want a flat
- *   enumeration of every issue (e.g. EOV-style flat error messages,
+ *   enumeration of every issue (e.g. eov-style flat error messages,
  *   `grep`-friendly logs, CI diffs).
- * - `{ byCode }` — priority list of error codes. Returns the first
+ * - `{ byCode }`: priority list of error codes. Returns the first
  *   leaf whose `code` matches the highest-priority entry; if no leaf
  *   matches any listed code, falls back to the `"first"` policy.
  *
@@ -108,10 +108,22 @@ export type FormatSummarySelect = "first" | "deepest" | "all" | { byCode: readon
 export interface FormatSummaryOptions {
   /** How to pick which leaf (or leaves) to summarise. Defaults to `"first"`. */
   select?: FormatSummarySelect;
+  /**
+   * Separator between leaves under `select: "all"`. Defaults to `"\n"`.
+   * Set to `", "` for `eov`-style flat output. No effect on single-leaf
+   * modes (`"first"`, `"deepest"`, `{ byCode }`).
+   */
+  separator?: string;
+  /**
+   * Whether to suffix each leaf with ` [<code>]` under `select: "all"`.
+   * Defaults to `true`. Set to `false` for `eov`-style output. No effect
+   * on single-leaf modes (which never include the code).
+   */
+  includeCode?: boolean;
 }
 
 /**
- * Render a {@link ValidationError} tree as a string — the workhorse for
+ * Render a {@link ValidationError} tree as a string. The workhorse for
  * HTTP response-body `message` fields, log lines, error-monitoring
  * titles, and `Error.message`.
  *
@@ -120,9 +132,11 @@ export interface FormatSummaryOptions {
  * - **Single-leaf modes** (`"first"`, `"deepest"`, `{ byCode }`) pick one
  *   leaf and render it as `<dotted-path> <message>` (or just `<message>`
  *   when the path is empty). One line.
- * - **All-leaves mode** (`"all"`) enumerates every leaf, one per line,
- *   as `<dotted-path> — <message> [<code>]`. Use this for the EOV-style
- *   "every issue in a single message" shape.
+ * - **All-leaves mode** (`"all"`) enumerates every leaf, one per leaf,
+ *   joined by {@link FormatSummaryOptions.separator} (default `"\n"`),
+ *   each rendered as `<dotted-path> <message> [<code>]`. The trailing
+ *   ` [<code>]` is suppressed when {@link FormatSummaryOptions.includeCode}
+ *   is `false`. Tune both for `eov`-style flat output.
  *
  * For the indented full-tree view, use {@link formatText}; for the raw
  * JSON-safe object, use {@link toJsonObject}.
@@ -133,12 +147,17 @@ export interface FormatSummaryOptions {
  * // "body.users[0].email must match format \"email\""
  *
  * formatSummary(rootError, { select: "deepest" });
- * // The leaf with the longest path — useful on oneOf trees.
+ * // The leaf with the longest path. Useful on oneOf trees.
  *
  * formatSummary(rootError, { select: "all" });
- * // Every leaf, one per line. EOV-style flat output:
- * //   body.users[0].email — must match format "email" [format]
- * //   body.users[1].age — must be >= 0 [minimum]
+ * // Every leaf, one per line:
+ * //   body.users[0].email must match format "email" [format]
+ * //   body.users[1].age must be >= 0 [minimum]
+ *
+ * formatSummary(rootError, { select: "all", separator: ", ", includeCode: false });
+ * // eov-shaped flat output. (Path style still differs: eov uses
+ * // slash-separated paths.)
+ * //   body.users[0].email must match format "email", body.users[1].age must be >= 0
  *
  * formatSummary(rootError, { select: { byCode: ["content-type", "required"] } });
  * // The first content-type leaf if any, else the first required leaf,
@@ -150,17 +169,20 @@ export interface FormatSummaryOptions {
 export function formatSummary(error: ValidationError, options: FormatSummaryOptions = {}): string {
   const select = options.select ?? "first";
   // collectLeaves defines a leaf as any node with no children, so even
-  // a single-leaf root yields one entry — leaves[0] is always present.
+  // a single-leaf root yields one entry; leaves[0] is always present.
   const leaves = collectLeaves(error);
 
   if (select === "all") {
+    const separator = options.separator ?? "\n";
+    const includeCode = options.includeCode ?? true;
     const lines: string[] = [];
     for (const leaf of leaves) {
       const location = joinPath(leaf.path);
-      const pathPart = location.length > 0 ? `${location} — ` : "";
-      lines.push(`${pathPart}${leaf.message} [${leaf.code}]`);
+      const pathPart = location.length > 0 ? `${location} ` : "";
+      const codePart = includeCode ? ` [${leaf.code}]` : "";
+      lines.push(`${pathPart}${leaf.message}${codePart}`);
     }
-    return lines.join("\n");
+    return lines.join(separator);
   }
 
   let chosen: ValidationError = leaves[0]!;
@@ -209,8 +231,8 @@ export function countErrors(error: ValidationError): number {
 // ---------------------------------------------------------------------------
 
 /**
- * @deprecated Use {@link toJsonObject} — same return shape, name reflects
- *   that it returns an object, not a string.
+ * @deprecated Use {@link toJsonObject}. Same return shape; the new name
+ *   reflects that it returns an object, not a string.
  *
  * @public
  */
@@ -240,7 +262,7 @@ export interface SummarizeOptions {
 export type SummarizeSelect = "first" | "deepest" | { byCode: readonly string[] };
 
 /**
- * @deprecated Use {@link formatSummary} — same defaults and behaviour.
+ * @deprecated Use {@link formatSummary}. Same defaults and behaviour.
  *
  * @public
  */
