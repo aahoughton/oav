@@ -18,3 +18,4 @@ export {
   type SpecOverlay,
 } from "./overlay.js";
 export { loadSpec, type LoadSpecOptions } from "./load.js";
+export { lintResolvedSpec, type SpecHygieneIssue } from "./lint.js";

@@ -25,6 +25,9 @@ programmatic API install `oav-core` instead.
 ```bash
 oav resolve <spec>                                       # stitch a multi-file spec
 oav resolve <spec> --overlay overlay1.json --overlay overlay2.json
+oav resolve <spec> --lint                                # spec-hygiene check; findings to stderr
+oav resolve <spec> --lint --fail-on warning              # CI gate: exit 1 on any finding
+oav resolve <spec> --lint --envelope json                # findings folded into JSON envelope
 
 oav validate <spec> --request req.http                   # full HTTP request from a .http file
 oav validate <spec> --path "POST /pets" --body body.json
@@ -54,6 +57,9 @@ below for the expected shape.
 | `--format text\|json\|flat`                   | validate                          | Error rendering. Default `text`.                                                                     |
 | `--depth <n>`                                 | validate                          | Truncate error tree depth (text format).                                                             |
 | `--overlay <file>`                            | resolve / validate / compile-spec | Repeatable; applies overlays in order.                                                               |
+| `--lint`                                      | resolve                           | Run spec-hygiene checks; findings to stderr (or JSON envelope with `--envelope json`).               |
+| `--fail-on <level>`                           | resolve                           | Non-zero exit on any finding at or above `<level>`. Requires `--lint`. Currently only `warning`.     |
+| `--envelope text\|json`                       | resolve                           | `text` (default; document on stdout, findings on stderr) or `json` (single payload).                 |
 | `--dialect 2020-12\|openapi-3.1\|openapi-3.0` | compile-schema / compile-spec     | Schema dialect. Defaults: 2020-12 (compile-schema), auto-detect from `openapi` field (compile-spec). |
 | `--requests-only`                             | compile-spec                      | Skip response-validator emit. Smaller output.                                                        |
 | `--only <method-path...>`                     | compile-spec                      | Repeatable; restrict emit to given ops, e.g. `--only "POST /pets"`.                                  |

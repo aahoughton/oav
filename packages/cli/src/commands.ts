@@ -119,8 +119,11 @@ function primarySink(
 /**
  * Implement the `oav resolve <spec>` subcommand.
  *
- * @param args - Entry spec path + overlay files + base CLI options.
- * @returns The stitched document (as a CommandResult).
+ * @param args - Entry spec path, overlay files, optional lint flags, and
+ *   base CLI options.
+ * @returns Exit code 0 on success, 1 when `--lint --fail-on warning`
+ *   surfaces any findings, 3 on usage errors (`--fail-on` without
+ *   `--lint`).
  *
  * @public
  */
@@ -128,20 +131,49 @@ export async function resolveCommand(
   args: {
     spec: string;
     overlays: string[];
+    /** Run spec-hygiene lint passes and surface findings. Defaults to false. */
+    lint?: boolean;
+    /** Exit non-zero when any finding at or above <level> appears. Requires `lint`. */
+    failOn?: "warning";
+    /** `"text"` (default; document on stdout, findings on stderr) or `"json"` (one envelope). */
+    envelope?: "text" | "json";
     options: CommandOptions;
   },
   io: CommandIo = defaultCommandIo(),
 ): Promise<CommandResult> {
+  if (args.failOn !== undefined && args.lint !== true) {
+    io.stderr("error: --fail-on requires --lint\n");
+    return { exitCode: 3 };
+  }
+
   const overlayDocs = await Promise.all(
     args.overlays.map(async (path) => (await io.reader.read(path)) as SpecOverlay),
   );
-  const { document } = await loadSpec({
+  const { document, specHygieneIssues } = await loadSpec({
     reader: io.reader,
     entry: args.spec,
     overlays: overlayDocs,
+    lint: args.lint === true,
   });
-  const out = JSON.stringify(document, null, 2);
-  await primarySink(io, args.options)(out + "\n");
+
+  const sink = primarySink(io, args.options);
+  if (args.envelope === "json") {
+    // Single envelope: keeps the findings alongside the document for
+    // machine consumers without splitting across stdout/stderr.
+    const out = args.lint ? { document, specHygieneIssues } : { document };
+    await sink(JSON.stringify(out, null, 2) + "\n");
+  } else {
+    await sink(JSON.stringify(document, null, 2) + "\n");
+    if (args.lint && specHygieneIssues.length > 0) {
+      for (const w of specHygieneIssues) {
+        io.stderr(`warning [${w.code}] ${w.pointer}: ${w.message}\n`);
+      }
+    }
+  }
+
+  if (args.lint && args.failOn === "warning" && specHygieneIssues.length > 0) {
+    return { exitCode: 1 };
+  }
   return { exitCode: 0 };
 }
 

@@ -127,3 +127,37 @@ schemas compile to normal recursive calls.
 
 Circular external references are rewritten to internal anchors
 during resolution, so the final document is always self-contained.
+
+## Spec hygiene lint
+
+`loadSpec` and `resolveSpec` accept `lint: true`. When set, the
+returned `ResolvedSpec.specHygieneIssues` carries findings about
+authoring mistakes the structural validation can't catch:
+
+- `unused-component`: a `components.{schemas,parameters,...}` entry
+  with no `$ref` reaching it.
+- `unused-tag`: a `tags[]` entry no operation references.
+- `unreachable-defs`: a per-schema `$defs/<name>` no sibling `$ref`
+  points at.
+- `path-param-undeclared` / `path-param-unused`: mismatch between the
+  `{name}` placeholders in a path template and the path-parameter
+  declarations on the operation or its path-item.
+
+```ts
+const { document, specHygieneIssues } = await loadSpec({ reader, entry, lint: true });
+for (const w of specHygieneIssues) {
+  console.warn(`[${w.code}] ${w.pointer}: ${w.message}`);
+}
+```
+
+The same engine is reachable directly via `lintResolvedSpec(document)`
+for callers that already have a resolved document and just want the
+findings. The validator surfaces it too: `createValidator(spec,
+{ lint: true })` exposes `validator.specHygieneIssues`. Pick whichever
+layer is natural for the flow; running `lint: true` in two places lints
+twice.
+
+`oav resolve --lint` exposes the same checks at the CLI; pair with
+`--fail-on warning` for a CI gate.
+
+See `SpecHygieneIssue` for the per-finding shape.

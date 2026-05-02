@@ -51,6 +51,47 @@ describe("loadSpec", () => {
     expect(Object.keys(document.paths ?? {})).toEqual(["/pets"]);
   });
 
+  it("returns an empty specHygieneIssues array when lint is not requested", async () => {
+    const { specHygieneIssues } = await loadSpec({ reader: baseReader(), entry: "main.json" });
+    expect(specHygieneIssues).toEqual([]);
+  });
+
+  it("populates specHygieneIssues when lint: true and the spec has hygiene issues", async () => {
+    const reader = createMemoryReader(
+      new Map<string, unknown>([
+        [
+          "main.json",
+          {
+            openapi: "3.1.0",
+            info: { title: "X", version: "1" },
+            paths: { "/pets": { get: { responses: { "200": { description: "ok" } } } } },
+            components: { schemas: { Orphan: { type: "object" } } },
+          },
+        ],
+      ]),
+    );
+    const { specHygieneIssues } = await loadSpec({ reader, entry: "main.json", lint: true });
+    expect(specHygieneIssues).toHaveLength(1);
+    expect(specHygieneIssues[0]?.code).toBe("unused-component");
+    expect(specHygieneIssues[0]?.pointer).toBe("/components/schemas/Orphan");
+  });
+
+  it("lints the post-overlay document, not the pre-overlay one", async () => {
+    // Pre-overlay the spec is clean. The overlay adds an unused component
+    // so the lint reflects what the consumer will actually use.
+    const reader = baseReader();
+    const overlays: SpecOverlay[] = [
+      { addPaths: { "/health": { get: { responses: { "200": { description: "ok" } } } } } },
+    ];
+    const { specHygieneIssues } = await loadSpec({
+      reader,
+      entry: "main.json",
+      overlays,
+      lint: true,
+    });
+    expect(specHygieneIssues).toEqual([]);
+  });
+
   it("inlines external $refs first, then applies overlays to the resolved document", async () => {
     // Integration: confirms `loadSpec` runs `resolveSpec` before
     // `applyOverlays`, so an overlay extending `components.schemas.Pet`

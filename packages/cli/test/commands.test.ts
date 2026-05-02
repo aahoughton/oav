@@ -103,6 +103,97 @@ describe("resolveCommand", () => {
     expect(result.exitCode).toBe(0);
     expect(stdout.value).toBe("");
   });
+
+  function dirtySpec(): unknown {
+    return {
+      openapi: "3.1.0",
+      info: { title: "X", version: "1" },
+      paths: { "/pets": { get: { responses: { "200": { description: "ok" } } } } },
+      components: { schemas: { Orphan: { type: "object" } } },
+    };
+  }
+
+  it("--lint emits warnings to stderr, document still on stdout, exit 0", async () => {
+    const { io, stdout, stderr } = memoryIo([["spec.json", dirtySpec()]]);
+    const result = await resolveCommand(
+      { spec: "spec.json", overlays: [], lint: true, options: textOpts },
+      io,
+    );
+    expect(result.exitCode).toBe(0);
+    expect(stderr.value).toContain("warning [unused-component]");
+    expect(stderr.value).toContain("/components/schemas/Orphan");
+    expect(stdout.value).toContain('"openapi"');
+  });
+
+  it("--lint --fail-on warning bumps exit code to 1 when findings exist", async () => {
+    const { io } = memoryIo([["spec.json", dirtySpec()]]);
+    const result = await resolveCommand(
+      {
+        spec: "spec.json",
+        overlays: [],
+        lint: true,
+        failOn: "warning",
+        options: textOpts,
+      },
+      io,
+    );
+    expect(result.exitCode).toBe(1);
+  });
+
+  it("--lint --fail-on warning stays at 0 when the spec is clean", async () => {
+    const cleanSpec = {
+      openapi: "3.1.0",
+      info: { title: "X", version: "1" },
+      paths: { "/pets": { get: { responses: { "200": { description: "ok" } } } } },
+    };
+    const { io } = memoryIo([["spec.json", cleanSpec]]);
+    const result = await resolveCommand(
+      {
+        spec: "spec.json",
+        overlays: [],
+        lint: true,
+        failOn: "warning",
+        options: textOpts,
+      },
+      io,
+    );
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("--envelope json folds findings into the envelope (no stderr split)", async () => {
+    const { io, stdout, stderr } = memoryIo([["spec.json", dirtySpec()]]);
+    const result = await resolveCommand(
+      {
+        spec: "spec.json",
+        overlays: [],
+        lint: true,
+        envelope: "json",
+        options: textOpts,
+      },
+      io,
+    );
+    expect(result.exitCode).toBe(0);
+    expect(stderr.value).toBe("");
+    const envelope = JSON.parse(stdout.value);
+    expect(envelope).toHaveProperty("document");
+    expect(envelope.specHygieneIssues).toHaveLength(1);
+    expect(envelope.specHygieneIssues[0].code).toBe("unused-component");
+  });
+
+  it("--fail-on without --lint is a usage error (exit 3)", async () => {
+    const { io, stderr } = memoryIo([["spec.json", dirtySpec()]]);
+    const result = await resolveCommand(
+      {
+        spec: "spec.json",
+        overlays: [],
+        failOn: "warning",
+        options: textOpts,
+      },
+      io,
+    );
+    expect(result.exitCode).toBe(3);
+    expect(stderr.value).toContain("--fail-on requires --lint");
+  });
 });
 
 describe("validateCommand", () => {
