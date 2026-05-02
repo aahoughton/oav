@@ -26,18 +26,18 @@ const validator = createValidator(document);
 (`oav/schema`, `oav/spec`, `oav/formats`, `oav/core`,
 `oav/schema/internals`, `oav/validator/internals`). Code written
 against one swaps to the other by changing the package name in
-imports — no surface changes.
+imports; no surface changes.
 
 ## What this package adds
 
-- **`createYamlFileReader()`** — file reader for `.yaml` / `.yml`
+- **`createYamlFileReader()`**: file reader for `.yaml` / `.yml`
   paths. Calling `oav-core`'s `createFileReader()` on a YAML path
   throws an install-hint pointing here.
-- **`createSmartHttpReader()`** — HTTP reader that parses both JSON
+- **`createSmartHttpReader()`**: HTTP reader that parses both JSON
   and YAML by inspecting `Content-Type` / file extension.
-- **`parseYamlString(source)`** — exposed for callers loading YAML
+- **`parseYamlString(source)`**: exposed for callers loading YAML
   out-of-band (e.g. fetched from a config service).
-- **The `oav` CLI binary** — `oav resolve`, `oav validate`,
+- **The `oav` CLI binary**: `oav resolve`, `oav validate`,
   `oav compile-schema`, `oav compile-spec`. See
   [`packages/cli/README.md`](../cli/README.md) for commands and
   flags.
@@ -46,15 +46,15 @@ Everything else (`createValidator`, `compileSchema`, error helpers,
 formatters, `formatSummary`, `toProblemDetails`, HTTP-status helpers, …)
 is re-exported from `oav-core`. Documentation for those lives in:
 
-- [`packages/core/README.md`](../core/README.md) — error tree,
+- [`packages/core/README.md`](../core/README.md): error tree,
   formatters, HTTP helpers.
-- [`packages/validator/README.md`](../validator/README.md) — the
+- [`packages/validator/README.md`](../validator/README.md): the
   HTTP validator.
-- [`packages/schema/README.md`](../schema/README.md) — the JSON
+- [`packages/schema/README.md`](../schema/README.md): the JSON
   Schema compiler.
-- [`packages/spec/README.md`](../spec/README.md) — multi-file
+- [`packages/spec/README.md`](../spec/README.md): multi-file
   loader, resolver, overlays.
-- [`packages/formats/README.md`](../formats/README.md) — built-in
+- [`packages/formats/README.md`](../formats/README.md): built-in
   string format validators.
 
 ## Framework integration
@@ -70,10 +70,10 @@ the Web Standards adapter.
 
 ## See also
 
-- [Top-level `README.md`](../../README.md) — full rationale, install
+- [Top-level `README.md`](../../README.md): full rationale, install
   matrix, comparison.
-- [`docs/integration.md`](../../docs/integration.md) — adapter recipes,
+- [`docs/integration.md`](../../docs/integration.md): adapter recipes,
   security wiring, response validation, file uploads, migration.
-- [`docs/overlays.md`](../../docs/overlays.md) — extending an externally-owned
+- [`docs/overlays.md`](../../docs/overlays.md): extending an externally-owned
   base spec at load time.
-- [`docs/comparison.md`](../../docs/comparison.md) — feature comparison vs Ajv.
+- [`docs/comparison.md`](../../docs/comparison.md): feature comparison vs Ajv.

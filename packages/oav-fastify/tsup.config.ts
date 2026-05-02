@@ -3,7 +3,7 @@ import type { Plugin } from "esbuild";
 import { defineConfig } from "tsup";
 
 /**
- * Build config for `oav-fastify` — the Fastify adapter.
+ * Build config for `oav-fastify`, the Fastify adapter.
  * Same shape as oav-express4 / oav-express5: thin tarball,
  * oav-core externalized, fastify marked external (peer dep).
  */

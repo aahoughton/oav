@@ -41,7 +41,7 @@ describe("unevaluated-tracking compile-time gating", () => {
   });
 
   it("keeps evaluated-keys Sets when the trigger is deep inside $defs", () => {
-    // A schema that doesn't mention unevaluated* at its root — but
+    // A schema that doesn't mention unevaluated* at its root, but
     // does through a $def reachable via $ref. The walker descends the
     // full tree so tracking stays on.
     const v = compile({

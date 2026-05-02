@@ -1,24 +1,24 @@
 # Integration guide
 
 A recipe book for wiring `oav` into HTTP frameworks. `oav` is a
-validator, not a middleware package — you write a short adapter
+validator, not a middleware package: you write a short adapter
 between your framework and `validateRequest` / `validateResponse`,
-or use one of the companion adapter packages: `oav-express4`,
-`oav-express5`, `oav-fastify`.
+or use one of the companion adapter packages (`oav-express4`,
+`oav-express5`, `oav-fastify`).
 
 This document is organised:
 
-- **[What the validator expects](#what-the-validator-expects)** —
+- **[What the validator expects](#what-the-validator-expects)**:
   the framework-agnostic shapes `validateRequest` and
   `validateResponse` work with.
-- **[Supporting helpers](#supporting-helpers)** —
+- **[Supporting helpers](#supporting-helpers)**:
   `httpStatusFor`, `allowHeaderFor`, `toProblemDetails`,
   `formatSummary`, `collectIssues`. The recipes below assume these.
-- **[Per-framework integration](#per-framework-integration)** —
+- **[Per-framework integration](#per-framework-integration)**:
   Express 4, Express 5, Fastify, Next.js, Hono, Bun, Deno. Each
   section leads with the adapter (where one exists) and falls back
   to the manual inline recipe.
-- **[Cross-cutting recipes](#cross-cutting-recipes)** — linked from
+- **[Cross-cutting recipes](#cross-cutting-recipes)**, linked from
   the per-framework sections:
   - [Status-code mapping](#status-code-mapping)
   - [Preserving an existing client error envelope](#preserving-an-existing-client-error-envelope)
@@ -30,7 +30,7 @@ This document is organised:
   - [Security / authentication](#security--authentication)
   - [Type coercion on body fields](#type-coercion-on-body-fields)
   - [Ignoring paths not in the spec](#ignoring-paths-not-in-the-spec)
-- **[Migration paths](#migration-paths)** — pointers to focused
+- **[Migration paths](#migration-paths)**: pointers to focused
   migration docs (currently only
   [migration-from-eov.md](./migration-from-eov.md) for
   `express-openapi-validator`).
@@ -69,20 +69,20 @@ children hang off `body`, `query.<name>`, `headers.<name>`, etc.
 All shipped from `oav` (or `oav-core` for the
 lean install). The recipes below assume these are in scope.
 
-- **`httpStatusFor(err, overrides?)`** — maps a `ValidationError`
+- **`httpStatusFor(err, overrides?)`**: maps a `ValidationError`
   tree to an HTTP status: `route` → 404, `method` → 405, `security`
   (leaf) → 401, `content-type` (leaf) → 415, `status` (leaf) → 500,
   everything else → 400. Pass `{ default: 422 }` (or any other key)
-  to override a slot. The helper inspects the tree correctly —
+  to override a slot. The helper inspects the tree correctly:
   writing this switch by hand is a common mistake, because
   `"content-type"` / `"security"` / `"status"` appear as leaves
   under a top-level `"request"` / `"response"` branch, not as
   `err.code` directly.
 
-- **`allowHeaderFor(err)`** — returns the `Allow` header value for a
+- **`allowHeaderFor(err)`**: returns the `Allow` header value for a
   405 (RFC 9110 §15.5.6 requires it) or `undefined` otherwise.
 
-- **`toProblemDetails(err, opts?)`** — renders the error tree as an
+- **`toProblemDetails(err, opts?)`**: renders the error tree as an
   [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457.html)
   `application/problem+json` body with the failing leaves carried in
   an `issues` field (a non-standard field alongside the required
@@ -90,17 +90,17 @@ lean install). The recipes below assume these are in scope.
   one-line description of the first failing leaf); pass `detail`
   explicitly for an override.
 
-- **`formatSummary(err, opts?)`** — render the error tree as a
+- **`formatSummary(err, opts?)`**: render the error tree as a
   string. Default is a single line summarising the first failing
-  leaf as `<dotted-path> <message>` — use it for log lines,
+  leaf as `<dotted-path> <message>`; use it for log lines,
   error-monitoring titles (Sentry/New Relic group by message), or
   as the top-level `message` field in custom response envelopes.
   Pass `{ select: "all" }` for a multi-line enumeration of every
-  leaf — the EOV-style "every issue in a single message" shape.
+  leaf (the EOV-style "every issue in a single message" shape).
   See `FormatSummaryOptions.select` for the full policy
   (`"first"` / `"deepest"` / `"all"` / `{ byCode }`).
 
-- **`collectIssues(err)`** — flat leaf list. Each issue carries both
+- **`collectIssues(err)`**: flat leaf list. Each issue carries both
   a raw `path: PathSegment[]` and a pre-formatted RFC 6901 `pointer`
   string. Use this when you're keeping a custom envelope shape
   rather than RFC 9457 problem-details.
@@ -177,7 +177,7 @@ cross-cutting recipes below.
 ### Express 5
 
 The [`oav-express5`](https://www.npmjs.com/package/@aahoughton/oav-express5)
-companion package ships the middleware as a one-liner — same shape
+companion package ships the middleware as a one-liner: same shape
 as `oav-express4` but promise-native (no `try/catch` wrapper):
 
 ```ts
@@ -222,7 +222,7 @@ Requires `express.json()` (or any equivalent middleware that
 populates `req.body` with a parsed object) registered before this
 middleware, and `cookie-parser` if you use the `cookies` field.
 Custom streaming parsers, `body-parser`, fastify's bridge, and
-app-specific middleware all work the same way — oav doesn't care
+app-specific middleware all work the same way; oav doesn't care
 _how_ `req.body` got populated, only that it's there.
 
 See [body-parser caveats](#body-parser-caveats) for sharp edges
@@ -231,7 +231,7 @@ that affect this pattern.
 ### Fastify
 
 The [`oav-fastify`](https://www.npmjs.com/package/@aahoughton/oav-fastify)
-companion package ships the hook as a one-liner — same shape as the
+companion package ships the hook as a one-liner: same shape as the
 Express adapters but Fastify-native (a `preValidation` hook, not
 middleware):
 
@@ -289,10 +289,10 @@ schema validation when you author schemas inline.
 ### Next.js (App Router), Hono, Bun, Deno
 
 These frameworks dispatch to Web Standards `Request` handlers per
-route. Each also has a cross-cutting hook — Next.js's `proxy.ts`
-(renamed from `middleware.ts` in Next 16; both still work), Hono's
-`app.use('*', ...)`, Bun / Deno framework-specific hooks — so you
-can pick. Use per-route when you want the `<Body>` generic to flow
+route. Each also has a cross-cutting hook (Next.js's `proxy.ts`,
+renamed from `middleware.ts` in Next 16, with both still working;
+Hono's `app.use('*', ...)`; Bun / Deno framework-specific hooks),
+so you can pick. Use per-route when you want the `<Body>` generic to flow
 into the typed success branch; use the cross-cutting hook when you'd
 rather register the adapter once.
 
@@ -338,7 +338,7 @@ Three things to know:
   `?ids=1&ids=2` into `query.ids = ["1", "2"]`. Single values stay
   strings.
 
-**Next.js — cross-cutting alternative.** `proxy.ts` (or
+**Next.js, cross-cutting alternative.** `proxy.ts` (or
 `middleware.ts` on Next 15) runs on every request. Since Next 15
 middleware supports the Node runtime and Next buffers the body,
 you can put the adapter there instead:
@@ -370,7 +370,7 @@ export async function middleware(request: NextRequest) {
 Pick one: per-route gives you `<T>`-typed bodies; the cross-cutting
 hook gives you one-and-done registration but the handler doesn't see
 a typed body (middleware and handler both read the request, and Next
-clones between them — but the per-route handler can't know what the
+clones between them, but the per-route handler can't know what the
 middleware validated).
 
 **Fully bespoke body handling.** If the built-in body parsing doesn't
@@ -385,7 +385,7 @@ const { httpRequest } = await httpRequestFromFetch(request);
 const err = validator.validateRequest(httpRequest);
 ```
 
-**Hono — cross-cutting alternative.** `app.use('*', mw)` can host
+**Hono, cross-cutting alternative.** `app.use('*', mw)` can host
 the adapter. Hono parallels the per-route Standard-Schema validator
 pattern (`@hono/zod-validator` etc.), so per-route with a typed
 `<T>` is the native idiom and `c.req.valid('json')` is the
@@ -394,7 +394,7 @@ the same shape via `c.req.raw`.
 
 **Hono gotcha**: `c.req.raw.body` is a one-shot stream. Don't run
 `validateFetchRequest` in BOTH global middleware AND a per-route
-handler on the same request — the handler's call sees a consumed
+handler on the same request; the handler's call sees a consumed
 body and fails. Pick one. If using global middleware, stash the
 validated body for handlers:
 
@@ -415,7 +415,7 @@ app.post("/pets", (c) => {
 ```
 
 **Bun / Deno.** Pick a framework (Hono, Elysia on Bun; Hono, Oak on
-Deno) and use its hook idiom — same guidance as above, just under a
+Deno) and use its hook idiom; same guidance as above, just under a
 different name. For a raw `Bun.serve` / `Deno.serve` handler,
 `validateFetchRequest` is the natural fit; there's no hook layer to
 register against.
@@ -454,7 +454,7 @@ Default mapping:
 | any leaf `code: "status"`       | 500    |
 | otherwise                       | 400    |
 
-Override any slot with the second argument — e.g. APIs that use 422
+Override any slot with the second argument, e.g. APIs that use 422
 for schema errors:
 
 ```ts
@@ -462,7 +462,7 @@ httpStatusFor(err, { default: 422 });
 ```
 
 Why not write the switch by hand? The obvious `switch (err.code)`
-misses `content-type`, `security`, and `status` — those codes are
+misses `content-type`, `security`, and `status`; those codes are
 leaves under a top-level `"request"` / `"response"` wrapper, not the
 top-level code itself. `httpStatusFor` handles the tree shape
 correctly.
@@ -487,7 +487,7 @@ Migrating an existing service may mean a documented client
 contract you can't change without breaking callers. Keep your
 envelope, fill it from `collectIssues` (per-issue path,
 message, code) plus `formatSummary` (top-level summary) plus
-`httpStatusFor` (status). Don't walk the tree by hand — the helpers
+`httpStatusFor` (status). Don't walk the tree by hand; the helpers
 already do the right thing for nested branches, route/method
 top-levels, and security/content-type leaves under `request` /
 `response` wrappers.
@@ -543,17 +543,17 @@ and `email: "not-an-email"` (fails `format: email`), the response would be:
 ```
 
 `pointer` prefixes are `/body`, `/query`, `/header`, `/path`,
-`/cookie` (not `/params` — that's an `express-openapi-validator`
+`/cookie` (not `/params`, which is an `express-openapi-validator`
 quirk; see [migration-from-eov.md](./migration-from-eov.md) for the
 full diff). Each `issue.params` carries machine-readable detail
 (e.g. `{ maximum: 30, actual: 42 }` for `maximum`,
 `{ format: "email", actual: "not-an-email" }` for `format`) if you
-want to surface structured details too — `BuiltInErrorParams` in
+want to surface structured details too. `BuiltInErrorParams` in
 `oav-core` documents the shape per code.
 
 ### Body parser caveats
 
-oav doesn't parse bodies — it validates already-parsed bodies. Two
+oav doesn't parse bodies; it validates already-parsed bodies. Two
 sharp edges that bite both inline middleware and the
 `oav-express4` adapter:
 
@@ -566,7 +566,7 @@ sharp edges that bite both inline middleware and the
    variants, custom multi-format setups) leave `req.body === undefined`
    for empty `{}`-equivalent payloads instead of an empty object. When
    that happens, oav's `required`-field checks short-circuit on the
-   missing body — validation passes for what the client thinks is an
+   missing body, so validation passes for what the client thinks is an
    empty submission, even when the spec marks fields as `required`.
    If your parser does this, normalise before calling `validateRequest`:
 
@@ -575,7 +575,7 @@ sharp edges that bite both inline middleware and the
    ```
 
    Stock `express.json()` populates `req.body` to `{}` for an empty
-   JSON body, so the default Express stack doesn't hit this — but
+   JSON body, so the default Express stack doesn't hit this, but
    alternative parsers (`body-parser`'s streaming mode, fastify's
    bridge, custom multipart middleware) often do.
 
@@ -595,7 +595,7 @@ sharp edges that bite both inline middleware and the
 even when `express.json()` leaves `req.body` empty for a non-JSON
 request, oav sees the declared header, finds no matching media type
 in the spec, and returns a `content-type` leaf that maps to 415. The
-sibling case — **no Content-Type AND no body** — returns `body` /
+sibling case (**no Content-Type AND no body**) returns `body` /
 400 instead of 415, since there's no client signal about format
 intent to be "wrong about." Tests that exercise the 415 path need to
 send an explicit unmatched Content-Type.)
@@ -647,7 +647,7 @@ or Uint8Array passes without a string-type error. `format: "byte"`
 
 #### Global validator + per-route multer
 
-The recipe above is per-route inline — multer and the validator both
+The recipe above is per-route inline: multer and the validator both
 live inside the route handler. That works for single-upload-route
 apps. For an app with many routes and one (or a few) upload
 endpoints, a more idiomatic shape is **multer mounted at the route
@@ -670,7 +670,7 @@ app.use(
       const httpReq = httpRequestFromExpress(req);
       const files = req.files as Express.Multer.File[] | undefined;
       if (files && files.length > 0) {
-        // Match the spec's binary-field shape — array if many, single buffer if one.
+        // Match the spec's binary-field shape: array if many, single buffer if one.
         // Adjust to your spec's actual field shape (named-files object, single-file
         // property, etc.).
         httpReq.body = files.length === 1 ? files[0]?.buffer : files.map((f) => f.buffer);
@@ -682,7 +682,7 @@ app.use(
 ```
 
 The `toHttpRequest` extension point is a general seam for **any
-"reshape what oav sees"** use case — synthesizing a body from
+"reshape what oav sees"** use case: synthesizing a body from
 `req.files`, normalizing an empty body to `{}`, merging headers
 from an upstream proxy, anything that wants to live above the
 extraction layer without bypassing it. The empty-body normalization
@@ -691,8 +691,8 @@ multer-body-synthesis recipe are two examples of the same pattern.
 
 **Watch out for `oneOf` / `anyOf` with binary fields.** The "accept
 anything" rewrite means every binary branch matches every input. A
-common spec pattern for "one file or many" —
-`oneOf [array<binary>, binary]` — is silently ambiguous: both
+common spec pattern for "one file or many"
+(`oneOf [array<binary>, binary]`) is silently ambiguous: both
 branches match the same payload, so `oneOf` fails with
 `matchCount: 2`. The fix is usually to drop the `oneOf` and accept
 the array form (parsers like multer always deliver arrays anyway);
@@ -732,7 +732,7 @@ app.post("/uploads", upload.any() /* validator + handler as above */);
 `getOperation` returns the resolved, overlay-applied
 `OperationObject` for a (method, path) pair. It does the same
 route-match + `$ref` resolution + overlay application that validation
-does, but hands the result back as plain OpenAPI shapes — read
+does, but hands the result back as plain OpenAPI shapes; read
 whatever declaration you need. `digestOperation` (see
 [`examples/spec-digest.ts`](../examples/spec-digest.ts)) is a recipe
 that pulls the common middleware-config facts into a flat shape:
@@ -743,8 +743,8 @@ recognise, etc.) to fit your domain.
 
 The getter is startup-time introspection, not part of validation. Its
 job is to make the spec the single source of truth for middleware
-configuration — multer's `fileSize`, body-parser content types, auth
-middleware assertions — so duplicated magic numbers can't drift
+configuration (multer's `fileSize`, body-parser content types, auth
+middleware assertions) so duplicated magic numbers can't drift
 against the validator's own view.
 
 ### Streaming bodies, large uploads, and the `readBody` override
@@ -862,7 +862,7 @@ The `res.json` wrapper is ~15 lines.
 #### Failure mode: log, don't fail-hard (by default)
 
 The previous snippets log + send-anyway because that's the right
-default. The instinct to flip the failure into a 500 — don't, at
+default. The instinct to flip the failure into a 500: don't, at
 least not without warning.
 
 **Why.** The strict-mode failure path runs on _every_ response,
@@ -895,7 +895,7 @@ budget burns for free.
 
    Even then, consider gating the hard-fail on `process.env.NODE_ENV
 !== "production"` so dev sees the failure loudly while prod
-   stays log-only — error responses in prod are exactly when you
+   stays log-only; error responses in prod are exactly when you
    least want a 500-on-top-of-a-400.
 
 ### Security / authentication
@@ -917,9 +917,9 @@ The shape check (when enabled) runs against each operation's
 `security:` (or document-level `security:` when the operation doesn't
 override). Supported:
 
-- `http` with `scheme: "bearer"` — requires `Authorization: Bearer <non-empty>`.
-- `http` with `scheme: "basic"` — requires `Authorization: Basic <base64>`; the base64 must decode to a `user:pass` shape (no credential verification).
-- `apiKey` in `header`, `query`, or `cookie` — declared name must be present and non-empty.
+- `http` with `scheme: "bearer"`: requires `Authorization: Bearer <non-empty>`.
+- `http` with `scheme: "basic"`: requires `Authorization: Basic <base64>`; the base64 must decode to a `user:pass` shape (no credential verification).
+- `apiKey` in `header`, `query`, or `cookie`: declared name must be present and non-empty.
 
 `oauth2`, `openIdConnect`, and `mutualTLS` schemes are accepted in the
 spec but not shape-checked at the validator layer. Failures surface as
@@ -993,7 +993,7 @@ async function dispatchSecurity(
 Mount the dispatcher as middleware _before_ `validateRequests` (or
 your inline validator middleware). Reject (`401` / `403` per your
 policy) on `{ ok: false }` before validation runs. The validator's
-own `validateSecurity` shape check is then redundant — leave it at
+own `validateSecurity` shape check is then redundant; leave it at
 its default `false`.
 
 For framework-adapter consumers (`oav-express4`, future siblings),
@@ -1029,7 +1029,7 @@ createValidator(spec, {
 
 `ignorePaths` runs before the router; `ignoreUndocumented` only
 applies to paths the router couldn't match. Both leave `method`
-errors (405 — path exists, verb doesn't) alone. See
+errors (405; path exists, verb doesn't) alone. See
 `ValidatorOptions.ignorePaths` / `ValidatorOptions.ignoreUndocumented`
 for the option contracts.
 
@@ -1052,7 +1052,7 @@ app.use(async (req, res, next) => {
 Focused migration docs live in their own files so this guide can
 stay framework-shaped rather than competitor-shaped:
 
-- **[migration-from-eov.md](./migration-from-eov.md)** — migrating
+- **[migration-from-eov.md](./migration-from-eov.md)**: migrating
   from `express-openapi-validator`. Behavior-difference reference,
   option map (eov → oav), features not carried over, features
   added.

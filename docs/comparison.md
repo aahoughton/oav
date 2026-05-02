@@ -7,7 +7,7 @@ in the ecosystem and have done so for years. This document maps what
 each project does so you can pick the one that fits.
 
 oav covers the same ground as Ajv + `express-openapi-validator`
-combined — schema validation plus HTTP-layer checks — and trades
+combined (schema validation plus HTTP-layer checks), and trades
 differently on a handful of specifics, catalogued below.
 
 This document is about behaviour and capabilities. For raw numbers
@@ -41,13 +41,13 @@ Capabilities that the Ajv stack covers and oav does not.
   OpenAPI 3.0's constrained dialect only; earlier drafts and JTD are
   not supported.
 - **Data-mutating options.** `coerceTypes`, `removeAdditional`, and
-  `useDefaults` let Ajv mutate the validated value in place — coercing
+  `useDefaults` let Ajv mutate the validated value in place: coercing
   strings to numbers, stripping undeclared properties, filling missing
   properties from `default`. oav treats validation as a yes/no
   question and does not mutate inputs.
-- **Schema-level AOT — programmatic surface.** Ajv's `standaloneCode`
+- **Schema-level AOT (programmatic surface).** Ajv's `standaloneCode`
   is a library API that takes a map of named schemas and emits one
-  module with interlinked validators — cross-schema `$ref`s resolve
+  module with interlinked validators: cross-schema `$ref`s resolve
   at emit time, CommonJS or ESM output. `oav compile-schema` is
   CLI-only and single-schema: multi-schema projects need to run it
   per schema, with a preceding `oav resolve` step to inline any
@@ -72,7 +72,7 @@ Capabilities that the Ajv stack covers and oav does not.
 - **`$data` references.** Ajv's non-standard extension where one
   keyword's value comes from the data being validated
   (`{ minimum: { $data: "1/min" } }`). oav doesn't implement it. The
-  common use case — cross-field constraints like `max >= min` —
+  common use case (cross-field constraints like `max >= min`)
   works in oav via an object-level custom keyword that sees the
   whole object and reaches siblings directly; see
   [`examples/cross-field-validation.ts`](../examples/cross-field-validation.ts).
@@ -84,11 +84,11 @@ Capabilities that the Ajv stack covers and oav does not.
 - **`express-openapi-validator` conveniences.** `req.body` /
   `req.query` type coercion, `res.json` interception for response
   validation, `fileUploader` (multer integration), `securityHandlers`
-  (credential-verifying dispatch — oav does shape-only security
+  (credential-verifying dispatch; oav does shape-only security
   validation but doesn't verify credentials),
   `operationHandlers` filesystem auto-loading, and `ignorePaths` /
   `ignoreUndocumented` are one-liner options. oav leaves these to the
-  adapter — see [`integration.md`](./integration.md) for recipes.
+  adapter; see [`integration.md`](./integration.md) for recipes.
 
 ## Where oav does more
 
@@ -97,7 +97,7 @@ Capabilities oav has that Ajv (alone or with
 
 - **HTTP-aware validation.** Route matching, content-type negotiation,
   parameter `style` / `explode` deserialisation, response status
-  matching (exact → NXX class → default) are part of one
+  matching (exact, then NXX class, then default) are part of one
   `validateRequest` / `validateResponse` call. Ajv is a JSON Schema
   validator; wiring the HTTP layer on top of it is what
   `express-openapi-validator` does, and only for Express.
@@ -132,8 +132,8 @@ type: "string" }` to `{ type: ["string", "number", "boolean",
 "object", "array"] }` with an `x-eov-type` side channel to narrow
   back). Different mechanism, equivalent behaviour.
 - **First-class overlays.** `applyOverlays` rewrites an
-  externally-owned base spec at load time — add a required header to
-  every operation, extend a component schema, swap a response shape —
+  externally-owned base spec at load time (add a required header to
+  every operation, extend a component schema, swap a response shape)
   without forking or preprocessing the upstream file.
 - **Structured error tree.** Errors preserve the applicator structure
   (`oneOf` with per-branch `children`, `allOf` with failed-conjunct
@@ -150,13 +150,13 @@ type: "string" }` to `{ type: ["string", "number", "boolean",
   N leaves; the generated code short-circuits hot loops when the
   budget is exhausted. Ajv has `allErrors: true | false` but no
   explicit count budget. When unset, oav's codegen emits plain
-  `errors.push` with no runtime checks — zero overhead for the
+  `errors.push` with no runtime checks; zero overhead for the
   uncapped case.
 - **Direction-aware body transforms.** Request-body validators reject
   `readOnly` properties and exempt them from `required`; response-body
   validators do the same for `writeOnly`. Applied as a pre-compile
   transform so the compiler itself is direction-agnostic.
-- **Discriminator.** First-class OpenAPI discriminator support — a
+- **Discriminator.** First-class OpenAPI discriminator support: a
   single-dispatch alternative to `oneOf` whose error message names the
   offending property and value rather than listing per-branch
   failures. eov supports discriminator by preprocessing the schema
@@ -180,7 +180,7 @@ Ajv 8 has four runtime dependencies:
 | `require-from-string`  | Load compiled-validator source as a module (standalone codegen) |
 
 oav's compiler and validator have zero runtime dependencies. The lean
-`oav-core` package ships exactly that — no runtime deps —
+`oav-core` package ships exactly that (no runtime deps),
 and accepts JSON specs. The batteries-included `oav`
 package layers `yaml` on top for `.yaml` spec files and adds the `oav`
 CLI (with `commander` as an optional peer). The two efficiency
@@ -201,7 +201,7 @@ steady-state validate throughput on a schema you compile once, a
 large userbase, multi-draft support, or the one-line middleware
 integration. Pick oav when you want a structured error tree,
 overlays over specs you don't own, a bundled OpenAPI 3.0 dialect,
-explicit control over where validation runs in your HTTP stack — or
+explicit control over where validation runs in your HTTP stack, or
 when compile throughput matters (1–2 orders of magnitude above ajv,
 8× on Stripe's real-world spec; see the performance sketch above).
 

@@ -28,7 +28,7 @@ describe("array validation keywords", () => {
   });
 
   it("uniqueItems spots mixed-type collisions via the primitive fast path", () => {
-    // Regression for #142 — the Map-backed lookup must treat each
+    // Regression for #142: the Map-backed lookup must treat each
     // primitive identity (number, string, boolean, null) correctly.
     const v = compile({ uniqueItems: true });
     expect(v.validate([1, "1"]).valid).toBe(true); // different types, not equal

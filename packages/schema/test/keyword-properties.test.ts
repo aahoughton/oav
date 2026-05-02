@@ -26,7 +26,7 @@ describe("properties keyword", () => {
 
   it("property names and pattern sources with JS-hostile chars don't break codegen", () => {
     // Property names and regex patterns end up embedded in generated
-    // JavaScript — quoteString + escapeMessage must escape every code
+    // JavaScript; quoteString + escapeMessage must escape every code
     // point that could terminate a literal or inject new source.
     const evilName = 'bad"name\nwith`backticks`${1+1}';
     const evilPattern = "^hi\\${injected}$";

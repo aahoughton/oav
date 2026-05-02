@@ -36,7 +36,7 @@ describe("error paths survive path-array reuse", () => {
 
   // Regression probe for the inline-pathSegments optimisation (#50).
   // A single-keyword leaf inlined with a pending segment must place
-  // the segment in its error's .path — the inliner no longer
+  // the segment in its error's .path; the inliner no longer
   // pre-materializes `[...path, seg]` for the inner ctx, so a leaf
   // that forgets to splice its pending segment would drop it.
   it("inlined const under properties reports path ['kind']", () => {
@@ -56,7 +56,7 @@ describe("error paths survive path-array reuse", () => {
 
   // Regression probe for the multi-keyword inline wrap. When an
   // inlined subschema has 2+ keywords that both fail, the wrap
-  // branch error should live at the extended path too — not at the
+  // branch error should live at the extended path too, not at the
   // caller's unextended path.
   it("inlined multi-keyword wrap reports path ['fins']", () => {
     const { validate } = compileSchema(
@@ -69,7 +69,7 @@ describe("error paths survive path-array reuse", () => {
     const r = validate({ fins: -1.5 });
     if (r.valid) throw new Error("unexpected valid");
     // Two inlined leaves (type + minimum) wrapped in a "schema"
-    // branch — `wrapErrors` unwraps single-child, so the root error
+    // branch; `wrapErrors` unwraps single-child, so the root error
     // IS that "schema" branch.
     const root = r.error! as Err;
     expect(root.code).toBe("schema");

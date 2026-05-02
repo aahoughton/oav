@@ -18,7 +18,7 @@ export interface HttpStatusMap {
   security: number;
   /** Response (response-side only): spec declares no entry for the received status. */
   status: number;
-  /** Anything else — schema violations, missing required fields, etc. */
+  /** Anything else: schema violations, missing required fields, etc. */
   default: number;
 }
 
@@ -49,7 +49,7 @@ export const DEFAULT_HTTP_STATUS_MAP: HttpStatusMap = {
  * a status from {@link DEFAULT_HTTP_STATUS_MAP} (or the caller's
  * overrides).
  *
- * Resolution order matches the HTTP gate semantics — 404 → 405 →
+ * Resolution order matches the HTTP gate semantics: 404 → 405 →
  * 415 → 401 → 500 → 400:
  *
  * ```ts
@@ -61,7 +61,7 @@ export const DEFAULT_HTTP_STATUS_MAP: HttpStatusMap = {
  * }
  * ```
  *
- * Override any slot — e.g. APIs that use 422 for schema errors:
+ * Override any slot, e.g. APIs that use 422 for schema errors:
  *
  * ```ts
  * httpStatusFor(err, { default: 422 });

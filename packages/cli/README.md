@@ -1,6 +1,6 @@
 # oav (CLI)
 
-The `oav` binary — a thin wrapper around the oav library for shell
+The `oav` binary: a thin wrapper around the oav library for shell
 scripts, Makefiles, and CI.
 
 ## Install
@@ -14,7 +14,7 @@ oav --help
 npx @aahoughton/oav validate openapi.yaml --request req.http
 ```
 
-The CLI lives in the `oav` package, not `oav-core` — `oav-core`
+The CLI lives in the `oav` package, not `oav-core`. `oav-core`
 doesn't ship a `bin` or any CLI glue. `oav` carries `commander`
 (argv parsing) and `esbuild` (AOT bundling for `compile-schema` /
 `compile-spec`) as regular dependencies. Users who only need the
@@ -30,10 +30,10 @@ oav validate <spec> --request req.http                   # full HTTP request fro
 oav validate <spec> --path "POST /pets" --body body.json
 oav validate <spec> --path "GET /pets" --response --status 200 --body resp.json
 
-oav compile-schema <schema.json> -o v.mjs                # single JSON Schema → standalone validator
+oav compile-schema <schema.json> -o v.mjs                # single JSON Schema -> standalone validator
 oav compile-schema <schema.json> --dialect openapi-3.0
 
-oav compile-spec <openapi.yaml> -o v.mjs                 # OpenAPI spec → standalone HTTP validator
+oav compile-spec <openapi.yaml> -o v.mjs                 # OpenAPI spec -> standalone HTTP validator
 oav compile-spec <openapi.yaml> --requests-only -o v.mjs
 oav compile-spec <openapi.yaml> --only "POST /pets" -o v.mjs
 ```
@@ -44,7 +44,7 @@ Pass `-` as the file path to read from stdin (e.g. `--body -`).
 and `http://` / `https://` URLs (both JSON and YAML over HTTP). Relative
 `$ref`s inside a URL-hosted spec resolve against the URL's base.
 
-`--request` takes a `.http` file — see [`.http` file format](#http-file-format)
+`--request` takes a `.http` file; see [`.http` file format](#http-file-format)
 below for the expected shape.
 
 ## Flags
@@ -69,7 +69,7 @@ module has zero imports. Typical output is ~13 KB for a small schema,
 ~20–40 KB for a schema that touches every built-in format.
 
 Use for Lambda zips, Cloudflare Workers, Vercel Edge, single-file
-deployments — anywhere `new Function()` is forbidden or the runtime
+deployments: anywhere `new Function()` is forbidden or the runtime
 library footprint is unwanted.
 
 Constraints on the input schema:
@@ -78,7 +78,7 @@ Constraints on the input schema:
   names outside `oav/formats`, compile fails with exit
   code 3 and a listing of the unknown names. Custom formats aren't
   serialisable to standalone source.
-- **No custom keywords.** Same reason — the keyword's validator
+- **No custom keywords.** Same reason: the keyword's validator
   function can't be serialised.
 - **External `$ref`s must be pre-inlined.** Run `oav resolve` over
   a multi-file input first, or use `oav/spec.resolveSpec`
@@ -97,32 +97,32 @@ Consumers who were running `createValidator(await loadSpec(...))` at
 application boot get the same behaviour with no YAML parse, no
 `$ref` walk, no schema compilation at load time. Target use cases:
 
-- **Cloudflare Workers / Vercel Edge** — the runtime sandbox
+- **Cloudflare Workers / Vercel Edge**: the runtime sandbox
   forbids `new Function()`, which rules out `ajv.compile()` at
   runtime. Pre-compiled output sidesteps it.
-- **Lambda@Edge / viewer functions** — 1 MB zipped; the full
+- **Lambda@Edge / viewer functions**: 1 MB zipped; the full
   library + YAML parser graph doesn't fit. A compile-spec output for
   a small-to-medium spec does.
-- **Lambda + API Gateway** — shaves 5–50 ms off cold starts by
+- **Lambda + API Gateway**: shaves 5–50 ms off cold starts by
   removing spec parse + schema compile from the critical path.
 - **Single-file drops** (Deno subhosting, Val.town, `deno compile`,
-  `bun build --compile`) — one `.mjs`, no node_modules.
+  `bun build --compile`): one `.mjs`, no node_modules.
 
 ### Flags
 
-- **`--overlay <file>`** (repeatable) — applies overlays at build
+- **`--overlay <file>`** (repeatable): applies overlays at build
   time. Same semantics as `oav resolve`.
-- **`--dialect <name>`** — forces a specific schema dialect. Default
+- **`--dialect <name>`**: forces a specific schema dialect. Default
   is auto-detected from the spec's `openapi` field.
-- **`--requests-only`** — skips response-validator emit.
+- **`--requests-only`**: skips response-validator emit.
   `validateResponse` / `validateFetchResponse` are still exported
   but return `null`. Output shrinks significantly on response-heavy
   specs (rough rule of thumb: ~50% smaller on Stripe-shape, ~20–30%
   on petstore-shape).
-- **`--only "METHOD PATH"`** (repeatable) — restricts emit to
+- **`--only "METHOD PATH"`** (repeatable): restricts emit to
   specified operations. OR-combined across multiple flags. Paths not
   matching any `--only` are dropped from the router. Methods dropped
-  from a partially-filtered path return `code: "route"` (404) —
+  from a partially-filtered path return `code: "route"` (404),
   treating the filtered emit as "this deployment's surface" rather
   than "a partial view of the full spec". Gateway-routing layers
   that expect 405 (method not implemented here, try another
@@ -146,22 +146,22 @@ of ops. `--requests-only` and `--only` both shrink output materially.
 
 Same limits as `compile-schema`, plus:
 
-- **Custom formats / custom keywords** — the validator function
+- **Custom formats / custom keywords**: the validator function
   can't be serialised. Compile dynamically with `createValidator`
   if you need them.
-- **External `$ref`s** — internal refs within the document compile
+- **External `$ref`s**: internal refs within the document compile
   fine; multi-file external refs must be pre-inlined via `oav
 resolve` or `resolveSpec` before running `compile-spec`.
 
 ### Relationship to ajv's `standaloneCode`
 
-Ajv's `standaloneCode` covers the schema layer — it emits a compiled
+Ajv's `standaloneCode` covers the schema layer: it emits a compiled
 JSON Schema validator as module source. `compile-schema` does the
 same thing. `compile-spec` covers the HTTP layer on top: router
 matching, content-type dispatch, parameter deserialisation
 (style / explode), response status matching, and shape-only
 security checks. Rebuilding that layer on top of ajv's standalone
-output is essentially re-implementing `express-openapi-validator`
+output is re-implementing `express-openapi-validator`
 from scratch; `compile-spec` emits it directly.
 
 ## Exit codes

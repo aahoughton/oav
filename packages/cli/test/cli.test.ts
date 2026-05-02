@@ -66,7 +66,7 @@ const spec = {
   },
 };
 
-describe("buildProgram — argv-level", () => {
+describe("buildProgram: argv-level", () => {
   it("resolve prints the stitched document and exits 0", async () => {
     const mem = memoryIo([["spec.json", spec]]);
     const out = await runCli(["resolve", "spec.json"], mem);
@@ -246,7 +246,7 @@ describe("buildProgram — argv-level", () => {
     expect(out.exitCode).toBe(1);
     const lines = out.stdout.split("\n").filter((l) => l.length > 0);
     expect(lines.length).toBeGreaterThan(0);
-    // Flat format puts each leaf on its own line — no nested indentation.
+    // Flat format puts each leaf on its own line; no nested indentation.
     for (const line of lines) expect(line.startsWith(" ")).toBe(false);
   });
 });

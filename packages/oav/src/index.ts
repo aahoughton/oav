@@ -1,5 +1,5 @@
 /**
- * `oav` — batteries-included distribution. Re-exports the
+ * `oav`: batteries-included distribution. Re-exports the
  * full surface of `oav-core` and adds YAML readers so
  * `loadSpec` works against hand-authored `.yaml` specs out of the
  * box. Also ships the `oav` CLI binary.

@@ -162,7 +162,7 @@ describe("unevaluatedProperties across composition", () => {
     expect(v.validate(["a", "a"]).valid).toBe(true);
     expect(v.validate(["a", "b", "a"]).valid).toBe(true);
     expect(v.validate(["c", "a", "b", "c"]).valid).toBe(true);
-    // Missing `a` — the outer `if` fails, no annotations flow in, so
+    // Missing `a`: the outer `if` fails, no annotations flow in, so
     // every item becomes unevaluated.
     expect(v.validate(["b", "b"]).valid).toBe(false);
   });

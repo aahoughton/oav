@@ -14,7 +14,7 @@ import type { FastifyContext } from "./types.js";
  * 1. You want oav's rendering as the fallback in your own hook —
  *    call this directly when you don't want to handle the error
  *    yourself.
- * 2. You want a slightly different renderer — use this as the
+ * 2. You want a slightly different renderer: use this as the
  *    starting point and adjust (e.g. swap the body, override the
  *    status, add headers).
  *

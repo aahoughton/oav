@@ -6,7 +6,7 @@
  * parameter, the pieces have to be re-assembled into a single object.
  *
  * Extracted from validator.ts so the rules are unit-testable in
- * isolation — the end-to-end validator tests only ever see the
+ * isolation; the end-to-end validator tests only ever see the
  * reassembled value through the schema error leaves, so edge cases
  * in the assembly logic were invisible to structural assertions.
  *
@@ -71,7 +71,7 @@ export function coerceQueryScalar(value: string | undefined, schema: SchemaOrBoo
 
 /**
  * Gather `name[key]=value` pairs from the top-level query into an
- * object — the `style: deepObject` assembly. Single-level only:
+ * object: the `style: deepObject` assembly. Single-level only:
  * OpenAPI 3.0–3.2 do not define nested semantics, so `obj[a][b]=v`
  * yields a property literally named `a][b`.
  *
@@ -95,7 +95,7 @@ export function assembleDeepObject(
 }
 
 /**
- * Reassemble a `style: form + explode: true` object query param —
+ * Reassemble a `style: form + explode: true` object query param:
  * each declared property appears as its own top-level key.
  *
  * @internal
@@ -121,7 +121,7 @@ export function assembleFormExplodedObject(
 /**
  * Dispatch an object-typed query parameter to the appropriate
  * assembler (`deepObject` or `form+explode`). Returns `undefined`
- * when the parameter isn't object-typed — caller should fall through
+ * when the parameter isn't object-typed; caller should fall through
  * to the standard scalar/array deserialization path.
  *
  * When the parameter IS object-typed but no matching query keys are

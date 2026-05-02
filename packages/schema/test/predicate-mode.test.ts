@@ -15,7 +15,7 @@ const tree = (schema: SchemaOrBoolean) =>
  * Every test in this file checks two things:
  *   1. predicate-mode returns the right boolean.
  *   2. predicate's boolean matches tree-mode's `valid` on the same input.
- * That parity check is the main safety net — if the two modes disagree
+ * That parity check is the main safety net: if the two modes disagree
  * on any fixture, we broke something.
  */
 function parity(schema: SchemaOrBoolean, samples: { valid: unknown[]; invalid: unknown[] }) {
@@ -51,7 +51,7 @@ describe("predicate mode: return type", () => {
   });
 });
 
-describe("predicate mode: leaf keywords (bucket A — via emitError)", () => {
+describe("predicate mode: leaf keywords (bucket A, via emitError)", () => {
   it("type", () => {
     parity({ type: "number" }, { valid: [1, 1.5, -0], invalid: ["x", null, [], {}] });
   });
@@ -140,7 +140,7 @@ describe("predicate mode: applicator keywords", () => {
     parity(
       {
         type: "object",
-        // Pattern admits lowercase letters, digits, and underscore —
+        // Pattern admits lowercase letters, digits, and underscore,
         // so `x_1` / `y` are valid keys.
         propertyNames: { pattern: "^[a-z_0-9]+$" },
         patternProperties: { "^x_": { type: "number" } },
@@ -153,7 +153,7 @@ describe("predicate mode: applicator keywords", () => {
   });
 });
 
-describe("predicate mode: composition (bucket B — rewritten)", () => {
+describe("predicate mode: composition (bucket B, rewritten)", () => {
   it("allOf", () => {
     parity(
       { allOf: [{ type: "number" }, { minimum: 0 }, { maximum: 10 }] },
@@ -168,13 +168,13 @@ describe("predicate mode: composition (bucket B — rewritten)", () => {
     );
   });
 
-  it("oneOf — exactly-one semantics", () => {
+  it("oneOf: exactly-one semantics", () => {
     parity({ oneOf: [{ type: "number" }, { minimum: 5 }] }, { valid: ["x", 3], invalid: [7] });
     // 7 matches both branches ({type: number} AND {minimum: 5}), so oneOf fails.
     // 3 matches only {type: number}.
     // "x" matches neither (well, minimum: 5 is vacuously true for non-numbers).
-    // Wait — minimum: 5 with non-number data is vacuously valid. So "x"
-    // passes {minimum: 5} but not {type: number} — single match → oneOf valid.
+    // Wait: minimum: 5 with non-number data is vacuously valid. So "x"
+    // passes {minimum: 5} but not {type: number}; single match → oneOf valid.
   });
 
   it("not", () => {
@@ -369,7 +369,7 @@ describe("predicate mode: discriminator (OAS 3.1)", () => {
     expect(p.validate({ kind: "cat", meow: "not-a-bool" })).toBe(false);
     expect(p.validate({ kind: "fish" })).toBe(false);
     expect(p.validate({ kind: 42 })).toBe(false);
-    // Non-object data is vacuously valid — discriminator only activates
+    // Non-object data is vacuously valid; discriminator only activates
     // on objects; the schema has no sibling `type: "object"` constraint,
     // so that matches tree-mode semantics.
   });
@@ -411,7 +411,7 @@ describe("predicate mode: generated source sanity", () => {
       required: ["a"],
     });
     // The compiler sets `emittedTreeRuntime` iff the source references
-    // `createLeafError` / `createBranchError` / `wrapErrors` — all
+    // `createLeafError` / `createBranchError` / `wrapErrors`, all
     // tree-mode only. Asserting on the stat keeps the invariant stable
     // under codegen renames (compare the `functionCount` precedent in
     // inlining.test.ts).
@@ -420,7 +420,7 @@ describe("predicate mode: generated source sanity", () => {
 
   it("tree mode does emit tree-runtime helpers (control)", () => {
     // Guards the complement: make sure emittedTreeRuntime isn't stuck
-    // at false — a non-predicate schema that actually reports errors
+    // at false; a non-predicate schema that actually reports errors
     // should flip it.
     const v = compileSchema({ type: "string", minLength: 3 }, { dialect: jsonSchemaDialect });
     expect(v.stats.emittedTreeRuntime).toBe(true);

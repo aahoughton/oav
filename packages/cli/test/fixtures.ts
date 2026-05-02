@@ -5,7 +5,7 @@ import type { CommandIo } from "../src/commands.js";
  * Shared helpers for the CLI test suite. The two callers
  * (`cli.test.ts` argv coverage, `commands.test.ts` in-process coverage)
  * both need a `CommandIo` wired to in-memory documents, text files, and
- * capture buffers for stdout / stderr / file writes — factored out
+ * capture buffers for stdout / stderr / file writes, factored out
  * here so the helpers can't drift.
  */
 

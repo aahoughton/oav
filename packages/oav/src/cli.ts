@@ -3,7 +3,7 @@ export {};
 
 // `commander` and `esbuild` are regular dependencies of
 // `oav`, so a normal install puts them in node_modules.
-// If they're missing, the install is corrupted — catch the dynamic
+// If they're missing, the install is corrupted; catch the dynamic
 // import up front and print a clearer message than the default
 // ERR_MODULE_NOT_FOUND trace.
 for (const { name, purpose } of [
@@ -34,7 +34,7 @@ const { createSmartHttpReader, createYamlFileReader } = await import("./yaml.js"
 // front of the JSON-only readers baked into @oav/cli's defaultCommandIo,
 // so `oav resolve spec.yaml` and `oav resolve https://host/openapi`
 // work out of the box. createSmartHttpReader handles both JSON and
-// YAML over HTTP by inspecting Content-Type — it replaces the core
+// YAML over HTTP by inspecting Content-Type; it replaces the core
 // createHttpReader in the chain for any http(s) URI.
 const baseIo = defaultCommandIo();
 const io = {

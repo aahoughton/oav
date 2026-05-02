@@ -1,9 +1,9 @@
 /**
  * Emit a standalone, AOT-compiled HTTP validator from an OpenAPI
  * document. The output is an ES module exporting the same surface as
- * `createValidator(document)` — `validateRequest`, `validateResponse`,
+ * `createValidator(document)`: `validateRequest`, `validateResponse`,
  * `validateFetchRequest`, `validateFetchResponse`, `getOperation`,
- * `detectedVersion`, `warnings` — but with every operation's schemas
+ * `detectedVersion`, `warnings`, but with every operation's schemas
  * already compiled into the module. After bundling through esbuild the
  * module has zero imports.
  *
@@ -11,7 +11,7 @@
  * runtime get the same behaviour with no YAML parse, no `$ref`
  * resolution, no schema compilation at load. Target use cases:
  * Cloudflare Workers, Vercel Edge, Lambda@Edge, Lambda cold-start
- * latency, deno compile, single-file bundles — anywhere runtime
+ * latency, deno compile, single-file bundles: anywhere runtime
  * compilation is either disallowed or too expensive.
  *
  * @packageDocumentation
@@ -57,7 +57,7 @@ export interface EmitSpecOptions {
   /**
    * Whitelist of `(method, path)` pairs to emit. Empty / undefined
    * means "emit every operation." Ops not matching any include are
-   * dropped from the router entirely — requests to them come back as
+   * dropped from the router entirely; requests to them come back as
    * `code: "route"` (404).
    */
   only?: Array<{ method: string; path: string }>;
@@ -89,7 +89,7 @@ export function emitSpec(document: OpenAPIDocument, options: EmitSpecOptions = {
   const refResolver: RefResolver = createRefResolver(graph);
 
   // Anything passed through resolveRef comes back with `{ $ref }`
-  // followed — the schema registry handles internal refs transparently.
+  // followed; the schema registry handles internal refs transparently.
   const resolveRef = <T>(v: T | ReferenceObject | undefined): T | undefined => {
     if (v === undefined) return undefined;
     if (typeof v !== "object" || v === null) return v as T;
@@ -118,7 +118,7 @@ export function emitSpec(document: OpenAPIDocument, options: EmitSpecOptions = {
   // - `pathMethods`: for each path that has ≥ 1 included op, the FULL
   //   set of spec-declared methods. Drives the router's paths table.
   //   A method declared in the spec but dropped by `--only` stays in
-  //   here — the router still sees it and reports method-not-allowed
+  //   here; the router still sees it and reports method-not-allowed
   //   only for methods the spec truly doesn't have. That preserves
   //   405 semantics for unfiltered deployments.
   // - `opsEmitted`: the FILTERED subset. Drives the ops table.
@@ -392,7 +392,7 @@ function buildEmittedOp(args: BuildEmittedOpArgs): EmittedOp {
   );
 
   // Introspection payload for `getOperation`. Matches the runtime's
-  // `match.pathItem` / `match.operation` references — the resolved
+  // `match.pathItem` / `match.operation` references: the resolved
   // top-level objects from the document. Nested `$ref`s (e.g. inside a
   // `requestBody` or `responses[status]`) are left intact, same as
   // runtime.
@@ -522,7 +522,7 @@ function resolveDialect(
   if (bucket === "3.1" || bucket === "3.2") return openapi31Dialect;
 
   // bucket === undefined: classify and warn. We still fall back to the
-  // 3.1 dialect rather than throwing — AOT is a build-time pipeline and
+  // 3.1 dialect rather than throwing; AOT is a build-time pipeline and
   // the consumer's `warnings` export is the appropriate signal.
   const rawOpenapi = (document as { openapi?: unknown }).openapi;
   const reason = classifyUnknownVersion(rawOpenapi);

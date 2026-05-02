@@ -150,7 +150,7 @@ describe("composeReaders", () => {
   it("first reader to claim a URI wins (later readers are shadowed)", async () => {
     // Documented composition contract: composeReaders walks the array and
     // returns the first reader where canRead() is true. A second reader
-    // that also claims the same URI must be shadowed — this is the
+    // that also claims the same URI must be shadowed; this is the
     // mechanism for layering (e.g. a project-specific reader in front of
     // a generic file reader).
     const front = createMemoryReader(new Map([["shared.json", '{"from":"front"}']]));

@@ -16,7 +16,7 @@ describe("strict mode", () => {
     minimumx: 5, // also a typo
   } as unknown as SchemaOrBoolean;
 
-  it("defaults to warn-partial — flags $dynamicRef but not unknown keywords", () => {
+  it("defaults to warn-partial: flags $dynamicRef but not unknown keywords", () => {
     const issues = compileSchema(dynamicSchema, { dialect: jsonSchemaDialect }).stats.strictIssues;
     expect(issues).toHaveLength(1);
     expect(issues[0]).toMatchObject({
@@ -67,8 +67,8 @@ describe("strict mode", () => {
       xml: { name: "Msg" },
       externalDocs: { url: "https://example.com/docs" },
     } as unknown as SchemaOrBoolean;
-    // Base JSON Schema dialect does NOT recognise `xml` / `externalDocs`
-    // — they're OpenAPI extensions, not core JSON Schema keywords.
+    // Base JSON Schema dialect does NOT recognise `xml` / `externalDocs`;
+    // they're OpenAPI extensions, not core JSON Schema keywords.
     const baseIssues = compileSchema(schema, {
       dialect: jsonSchemaDialect,
       strict: "strict",

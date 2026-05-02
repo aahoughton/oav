@@ -6,7 +6,7 @@ import type { ValidationError } from "@oav/core";
  * `onError` callbacks so they can render their own response or
  * delegate to Fastify's error handler.
  *
- * Identical in shape to what an inline hook would close over —
+ * Identical in shape to what an inline hook would close over;
  * the type is exported only so users can annotate their callbacks.
  *
  * Pairs with `ExpressContext` from `oav-express4` / `oav-express5`.
@@ -25,7 +25,7 @@ export interface FastifyContext {
  * Signature shared by `onError` on every adapter in the family
  * (`oav-express4`, `oav-express5`, `oav-fastify`, future
  * `oav-hono`, ...). The `Ctx` parameter is the only thing that
- * varies — same name and shape everywhere.
+ * varies; same name and shape everywhere.
  *
  * Returning a Promise is supported on every adapter. `oav-fastify`
  * awaits the return; rejected promises propagate through Fastify's

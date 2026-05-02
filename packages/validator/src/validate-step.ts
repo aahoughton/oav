@@ -40,7 +40,7 @@ function isJsonMediaType(mediaType: string): boolean {
  * Validate a single parameter against the operation cache: fetch the
  * raw value from the appropriate HTTP frame (path / query / header /
  * cookie), deserialise per `style` + `explode`, and run the pre-
- * compiled schema validator. Pure — no closure over createValidator
+ * compiled schema validator. Pure: no closure over createValidator
  * state; the cache carries everything it needs.
  *
  * @internal
@@ -116,7 +116,7 @@ export function validateParameter(
     }
     return null;
   }
-  // Empty-string is a legitimate value — `minLength`/`pattern` on the
+  // Empty-string is a legitimate value; `minLength`/`pattern` on the
   // parameter schema handles rejection where needed. OpenAPI 3.1 §4.8.12.1
   // explicitly permits `?flag=` on query parameters declaring
   // `allowEmptyValue: true`; exempt those from validation.
@@ -164,9 +164,9 @@ export function validateParameter(
  * unrelated parameter diagnostics.
  *
  * Fires whenever the client declared a `Content-Type` that doesn't
- * match — including the body-absent case, where the wrong header is
+ * match, including the body-absent case, where the wrong header is
  * the more actionable signal than the downstream "body required" leaf.
- * Returns `null` — deliberately not a content-type error — when:
+ * Returns `null` (deliberately not a content-type error) when:
  * - the operation declares no `requestBody`,
  * - the operation's `requestBody.content` map is empty (nothing to
  *   match against),

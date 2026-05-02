@@ -3,10 +3,10 @@ import type { HttpMethod, OperationObject, PathItem } from "@oav/core";
 /**
  * Segments of a parsed OpenAPI path template. Three kinds:
  *
- * - `literal` — a fixed substring (`pets`).
- * - `template` — a single `{name}` parameter occupying the whole
+ * - `literal`: a fixed substring (`pets`).
+ * - `template`: a single `{name}` parameter occupying the whole
  *   segment (`{petId}`).
- * - `compound` — multiple `{name}` parameters interleaved with literal
+ * - `compound`: multiple `{name}` parameters interleaved with literal
  *   text inside one segment (`{sha}.{diffType}`,
  *   `{year}-{month}.json`). Carries a pre-compiled regex with one
  *   non-greedy capture group per template part so the matcher stays a
@@ -32,7 +32,7 @@ export type Segment =
  * `operation` and `pathItem` are the identical references supplied to
  * {@link createRouter}. Downstream consumers (notably `@oav/validator`)
  * key per-operation caches on `operation`'s object identity via
- * `WeakMap`, so any future router change must preserve that identity —
+ * `WeakMap`, so any future router change must preserve that identity:
  * do not clone, merge, or otherwise reconstruct these references.
  *
  * @public
@@ -49,8 +49,8 @@ export interface RouteMatch {
  * Result returned when the path template matched but the requested
  * method isn't declared on it. Semantically a 405 Method Not Allowed
  * rather than a 404. `allowed` is the union of HTTP methods declared
- * across every path template that matched the request path, uppercased
- * — suitable for an RFC 9110 `Allow` response header.
+ * across every path template that matched the request path, uppercased,
+ * suitable for an RFC 9110 `Allow` response header.
  *
  * @public
  */
@@ -65,10 +65,10 @@ export interface MethodNotAllowed {
 /**
  * The router interface. `match` returns:
  *
- * - `RouteMatch` — the path matched and the method is declared on it.
- * - `MethodNotAllowed` — the path matched but no declared method
+ * - `RouteMatch`: the path matched and the method is declared on it.
+ * - `MethodNotAllowed`: the path matched but no declared method
  *   handles the request's verb. Callers map this to HTTP 405.
- * - `undefined` — no path template matched at all. Callers map this
+ * - `undefined`: no path template matched at all. Callers map this
  *   to HTTP 404.
  *
  * @public
@@ -104,7 +104,7 @@ interface Route {
  * declared (RFC 9110 §9.3.2: GET implicitly answers HEAD via the
  * runtime fallback below). Used by the per-(method, structure)
  * ambiguity check so a pattern declaring GET reserves the HEAD slot
- * too — a structurally-identical sibling declaring explicit HEAD would
+ * too; a structurally-identical sibling declaring explicit HEAD would
  * otherwise slip past the check and silently win at match time.
  */
 function methodsDeclaredOn(item: PathItem): Set<HttpMethod> {
@@ -138,16 +138,16 @@ export function parseTemplate(template: string): Segment[] {
 }
 
 function parseSegment(seg: string): Segment {
-  // Pure literal — no template syntax at all. Common case; skip parsing.
+  // Pure literal: no template syntax at all. Common case; skip parsing.
   if (!seg.includes("{")) {
     return { kind: "literal", value: decodeURIComponent(seg) };
   }
-  // Pure template — the whole segment is one `{name}`.
+  // Pure template: the whole segment is one `{name}`.
   const pure = /^\{([^{}]+)\}$/.exec(seg);
   if (pure !== null) {
     return { kind: "template", name: pure[1]! };
   }
-  // Compound — alternating literal and `{name}` parts. Build a regex
+  // Compound: alternating literal and `{name}` parts. Build a regex
   // with one non-greedy `[^/]+?` capture per template part; the trailing
   // `$` anchor + lazy capture resolves multi-param ambiguity left-to-right
   // (e.g. `{x}.{y}` against `a.b.c` captures `x="a"`, `y="b.c"`), matching
@@ -161,7 +161,7 @@ function parseSegment(seg: string): Segment {
     if (ch === "{") {
       const end = seg.indexOf("}", i);
       if (end === -1) {
-        // Unterminated `{` — treat the rest as literal so we don't throw
+        // Unterminated `{`: treat the rest as literal so we don't throw
         // on a malformed template; match `path-to-regexp`'s tolerance.
         pendingLiteral += seg.slice(i);
         break;
@@ -183,7 +183,7 @@ function parseSegment(seg: string): Segment {
     regexSrc += escapeRegex(pendingLiteral);
   }
   regexSrc += "$";
-  // No template parts ended up in the segment despite a `{` — degenerate.
+  // No template parts ended up in the segment despite a `{`; degenerate.
   // Fall back to literal so behaviour matches the !includes("{") branch.
   if (names.length === 0) {
     return { kind: "literal", value: decodeURIComponent(seg) };
@@ -214,7 +214,7 @@ function segmentSignature(s: Segment): string {
  * Build a router from a map of `pathTemplate → PathItem`. Paths with more
  * literal (non-template) segments win over more template-heavy siblings;
  * the route list is sorted once at construction, then each `match` call is
- * a linear scan — O(routes × segments). That is cheap for the route counts
+ * a linear scan: O(routes × segments). That is cheap for the route counts
  * typical in OpenAPI specs (tens to low hundreds); swap in a proper radix
  * tree here if you're routing thousands of paths.
  *
@@ -237,7 +237,7 @@ export function createRouter(paths: Record<string, PathItem>): Router {
   const routes: Route[] = [];
   // Per-(method, structure) ambiguity index. Two patterns that differ
   // only in parameter names are an ill-formed document only when they
-  // also overlap on at least one HTTP method — disjoint-method siblings
+  // also overlap on at least one HTTP method; disjoint-method siblings
   // (e.g. `/items/{id}` GET and `/items/{slug}` POST) describe disjoint
   // routing cells and would never collide at match time. Real-world
   // specs (GitHub, Jira, Gmail, several AWS APIs) declare such pairs.

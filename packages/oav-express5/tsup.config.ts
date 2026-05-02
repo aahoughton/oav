@@ -3,7 +3,7 @@ import type { Plugin } from "esbuild";
 import { defineConfig } from "tsup";
 
 /**
- * Build config for `oav-express5` — the Express 5 adapter.
+ * Build config for `oav-express5`, the Express 5 adapter.
  * Same shape as oav-express4: thin tarball, oav-core externalized,
  * express marked external (peer dep).
  */

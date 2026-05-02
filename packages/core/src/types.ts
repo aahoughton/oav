@@ -190,7 +190,7 @@ export type SecurityRequirementObject = Record<string, string[]>;
  * {@link SecurityRequirementObject}.
  *
  * oav's validator performs shape-only checks on `http` (bearer / basic)
- * and `apiKey` schemes — it confirms the request carries the declared
+ * and `apiKey` schemes; it confirms the request carries the declared
  * credential location and format, but does not verify the credential
  * itself. `oauth2`, `openIdConnect`, and `mutualTLS` are accepted in
  * the spec but not shape-checked at the validator layer; credential
@@ -288,7 +288,7 @@ export interface PathItem {
 /**
  * The HTTP method names that can appear on a {@link PathItem}. `query`
  * is added in OpenAPI 3.2; earlier documents may not use it. Routing
- * is case-insensitive — validators lower-case the request's method
+ * is case-insensitive; validators lower-case the request's method
  * before lookup.
  *
  * @public

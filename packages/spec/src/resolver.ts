@@ -86,7 +86,7 @@ export async function resolveSpec(options: ResolveSpecOptions): Promise<Resolved
         $ref: `#/$defs/__ext__/${encodeUri(targetUri)}${fragment ? `/${encodeFragment(fragment)}` : ""}`,
       };
       if (stitchingUri !== null && stitchingUri === targetUri) {
-        // Self-ref inside the subtree we're currently stitching — keep as
+        // Self-ref inside the subtree we're currently stitching; keep as
         // internal ref (the stitched copy serves as the target).
         return stitchRef;
       }

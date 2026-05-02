@@ -114,7 +114,7 @@ describe("custom keywords", () => {
     expect(leaves).toBe(2);
   });
 
-  it("is optional — omitting keywords has zero impact", () => {
+  it("is optional: omitting keywords has zero impact", () => {
     const compiled = compileSchema({ type: "number" }, { dialect: baseDialect });
     expect(compiled.validate(1).valid).toBe(true);
     expect(compiled.validate("x").valid).toBe(false);

@@ -2,9 +2,9 @@
  * Internal re-exports for `oav/validator/internals`. Exposes
  * the parameter-deserialisation and query-assembly primitives that the
  * validator uses to prepare values before schema compilation, plus the
- * operation-level `$ref` resolver. Reachable when you need them —
- * tests, advanced plugins, tooling that reuses the same style /
- * explode rules outside the normal validator flow — but deliberately
+ * operation-level `$ref` resolver. Reachable when you need them
+ * (tests, advanced plugins, tooling that reuses the same style /
+ * explode rules outside the normal validator flow) but deliberately
  * separated from the main `oav/validator` barrel so the
  * public surface matches what request/response-validation consumers
  * actually need.
@@ -30,7 +30,7 @@ export {
   coerceQueryScalar,
 } from "./query-assembly.js";
 
-// Operation-level `$ref` resolver — used internally by the cache
+// Operation-level `$ref` resolver: used internally by the cache
 // builder; exposed so tests can exercise it without constructing a
 // full validator.
 export { resolveOperationRef } from "./operation-cache.js";

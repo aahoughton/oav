@@ -1,8 +1,8 @@
 # oav-fastify
 
-Fastify adapter for [`oav-core`](https://www.npmjs.com/package/@aahoughton/oav-core) — a `preValidation` hook factory plus standalone helpers (`httpRequestFromFastify`, `renderProblemDetails`) for callers composing their own hooks.
+Fastify adapter for [`oav-core`](https://www.npmjs.com/package/@aahoughton/oav-core): a `preValidation` hook factory plus standalone helpers (`httpRequestFromFastify`, `renderProblemDetails`) for callers composing their own hooks.
 
-Same shape as the Express siblings ([`oav-express4`](../oav-express4/README.md), [`oav-express5`](../oav-express5/README.md)) — only the framework-typed argument and Fastify's hook-vs-middleware distinction differ. Fastify is async-native, so thrown errors and rejected promises propagate to Fastify's error handler automatically, with no `try/catch` wrapper.
+Same shape as the Express siblings ([`oav-express4`](../oav-express4/README.md), [`oav-express5`](../oav-express5/README.md)); only the framework-typed argument and Fastify's hook-vs-middleware distinction differ. Fastify is async-native, so thrown errors and rejected promises propagate to Fastify's error handler automatically, with no `try/catch` wrapper.
 
 Sibling packages: [`oav-express4`](../oav-express4/README.md), [`oav-express5`](../oav-express5/README.md). Same export names, option shapes, and defaults; only the framework-typed argument differs.
 
@@ -16,9 +16,9 @@ npm install @aahoughton/oav-core @aahoughton/oav-fastify fastify
 npm install @aahoughton/oav @aahoughton/oav-fastify fastify
 ```
 
-`fastify` is a peer dep — your app's existing install satisfies it.
+`fastify` is a peer dep; your app's existing install satisfies it.
 
-> **YAML specs.** `oav-core` is JSON-only by design (zero runtime deps). If your spec is YAML, either install [`oav`](https://www.npmjs.com/package/@aahoughton/oav) instead — it bundles the YAML readers and the CLI — or install `yaml` separately and parse the spec yourself before passing the parsed object to `createValidator`.
+> **YAML specs.** `oav-core` is JSON-only by design (zero runtime deps). If your spec is YAML, either install [`oav`](https://www.npmjs.com/package/@aahoughton/oav) instead (it bundles the YAML readers and the CLI), or install `yaml` separately and parse the spec yourself before passing the parsed object to `createValidator`.
 
 ## Quick start
 
@@ -41,14 +41,14 @@ Invalid requests receive a `400 application/problem+json` response (status from 
 
 Fastify runs hooks in a fixed order:
 
-1. `onRequest` — request parsing not yet done
-2. `preParsing` — about to parse the body
-3. `preValidation` — body parsed; **this is where oav runs**
-4. `validation` — Fastify's per-route schema validation
-5. `preHandler` — about to call the route handler
+1. `onRequest`: request parsing not yet done
+2. `preParsing`: about to parse the body
+3. `preValidation`: body parsed; **this is where oav runs**
+4. `validation`: Fastify's per-route schema validation
+5. `preHandler`: about to call the route handler
 6. `handler`
 
-Mount on `preValidation` so oav sees the parsed body. If you also have per-route Fastify schemas declared, Fastify's own validation runs in step 4 (after this hook). Both can coexist — if oav rejects, Fastify's own validation never runs; if oav passes, Fastify's runs as usual. Authoring the same constraints in both places isn't recommended, but mixing them (oav for spec-driven validation, Fastify schemas for app-internal types) works.
+Mount on `preValidation` so oav sees the parsed body. If you also have per-route Fastify schemas declared, Fastify's own validation runs in step 4 (after this hook). Both can coexist: if oav rejects, Fastify's own validation never runs; if oav passes, Fastify's runs as usual. Authoring the same constraints in both places isn't recommended, but mixing them (oav for spec-driven validation, Fastify schemas for app-internal types) works.
 
 ## API
 
@@ -61,17 +61,17 @@ Returns a Fastify `preValidationHookHandler`.
 | `toHttpRequest` | `(request: FastifyRequest) => HttpRequest` | `httpRequestFromFastify` |
 | `onError`       | `(err, ctx) => void \| Promise<void>`      | `renderProblemDetails`   |
 
-`onError` may be async — the hook awaits it. Fastify awaits the returned promise, so thrown extractor errors and rejected `onError` promises propagate to Fastify's `setErrorHandler` automatically, no `try/catch` needed. The hook does **not** call `reply.send()` after `onError` returns — your callback owns the response (write to `ctx.reply`, or throw to delegate to Fastify's error handler).
+`onError` may be async; the hook awaits it. Fastify awaits the returned promise, so thrown extractor errors and rejected `onError` promises propagate to Fastify's `setErrorHandler` automatically, no `try/catch` needed. The hook does **not** call `reply.send()` after `onError` returns; your callback owns the response (write to `ctx.reply`, or throw to delegate to Fastify's error handler).
 
-> **Validation failures don't traverse Fastify's `setErrorHandler` by default.** The default `onError` (`renderProblemDetails`) writes the response directly. If you want validation failures in your existing error pipeline, throw from `onError` (Fastify routes throws to `setErrorHandler`) or compose a logger before `renderProblemDetails` — see [Add observability without changing the response](#add-observability-without-changing-the-response).
+> **Validation failures don't traverse Fastify's `setErrorHandler` by default.** The default `onError` (`renderProblemDetails`) writes the response directly. If you want validation failures in your existing error pipeline, throw from `onError` (Fastify routes throws to `setErrorHandler`) or compose a logger before `renderProblemDetails`; see [Add observability without changing the response](#add-observability-without-changing-the-response).
 
 ### `httpRequestFromFastify(request)`
 
-Convert a `FastifyRequest` to oav's framework-agnostic `HttpRequest` shape. Read what's already on the request — body parsing is Fastify's responsibility (handled by content-type parsers before `preValidation`).
+Convert a `FastifyRequest` to oav's framework-agnostic `HttpRequest` shape. Read what's already on the request; body parsing is Fastify's responsibility (handled by content-type parsers before `preValidation`).
 
 Header keys passed through (Fastify already lowercases per HTTP spec), path stripped of query string from `request.url`, query taken from `request.query` (Fastify parses it into an object), cookies read from `request.cookies` if `@fastify/cookie` populated them.
 
-**Returns a fresh `HttpRequest`.** Top-level fields can be reassigned freely without affecting the original `FastifyRequest` — safe to spread (`{ ...httpRequestFromFastify(req), body: {} }`) or mutate in place.
+**Returns a fresh `HttpRequest`.** Top-level fields can be reassigned freely without affecting the original `FastifyRequest`; safe to spread (`{ ...httpRequestFromFastify(req), body: {} }`) or mutate in place.
 
 Use this when you want to compose your own hook (e.g. validate inside a custom plugin) without re-implementing the extraction.
 
@@ -94,14 +94,14 @@ validateRequests(validator, {
 
 ### Enable shape-only security checks (no auth middleware yet)
 
-`ValidatorOptions.validateSecurity` is off by default — real apps run auth middleware (or hooks) upstream of the validator. During early dev (no auth wired yet) or with decorator-only auth that just attaches `request.user`, opt in:
+`ValidatorOptions.validateSecurity` is off by default; real apps run auth middleware (or hooks) upstream of the validator. During early dev (no auth wired yet) or with decorator-only auth that just attaches `request.user`, opt in:
 
 ```ts
 const validator = createValidator(spec, { validateSecurity: true });
 app.addHook("preValidation", validateRequests(validator));
 ```
 
-The check is shape-only — it confirms the declared credential is _present_, not that it's _valid_. Don't treat it as a substitute for auth middleware.
+The check is shape-only: it confirms the declared credential is _present_, not that it's _valid_. Don't treat it as a substitute for auth middleware.
 
 ### Custom error envelope
 
@@ -121,7 +121,7 @@ app.addHook(
 
 ### Forward to Fastify's `setErrorHandler`
 
-Throw from `onError` — Fastify routes thrown errors to `setErrorHandler`:
+Throw from `onError`; Fastify routes thrown errors to `setErrorHandler`:
 
 ```ts
 app.addHook(
@@ -180,7 +180,7 @@ The hook awaits the returned promise; rejections propagate to Fastify's `setErro
 
 Fastify's idiomatic per-route-schema pattern is independent of oav. The two can coexist in the same app:
 
-- Use **oav-fastify** when the OpenAPI spec is the source of truth — for endpoints whose contract is published / contract-tested / shared with other languages or services.
+- Use **oav-fastify** when the OpenAPI spec is the source of truth, for endpoints whose contract is published / contract-tested / shared with other languages or services.
 - Use **Fastify per-route schemas** for app-internal types where you'd rather author the schema inline.
 
 If both fire on the same route, oav's `preValidation` hook runs first; if it passes, Fastify's `validation` step runs next. Don't author the same constraints in both places.
@@ -191,7 +191,7 @@ If both fire on the same route, oav's `preValidation` hook runs first; if it pas
 
 ## See also
 
-- [`oav-core`](https://www.npmjs.com/package/@aahoughton/oav-core) — `createValidator`, `ValidatorOptions`, `formatSummary`, `collectIssues`, `httpStatusFor`, `toProblemDetails`.
-- [`oav`](https://www.npmjs.com/package/@aahoughton/oav) — batteries-included distribution of oav-core: YAML readers + the `oav` CLI.
-- The repo-root `docs/integration.md` — broader recipes (security, file uploads, response validation, status mapping, type coercion, ignoring paths).
-- The repo-root `docs/migration-from-eov.md` — porting from `express-openapi-validator`.
+- [`oav-core`](https://www.npmjs.com/package/@aahoughton/oav-core): `createValidator`, `ValidatorOptions`, `formatSummary`, `collectIssues`, `httpStatusFor`, `toProblemDetails`.
+- [`oav`](https://www.npmjs.com/package/@aahoughton/oav): batteries-included distribution of oav-core (YAML readers + the `oav` CLI).
+- The repo-root `docs/integration.md`: broader recipes (security, file uploads, response validation, status mapping, type coercion, ignoring paths).
+- The repo-root `docs/migration-from-eov.md`: porting from `express-openapi-validator`.

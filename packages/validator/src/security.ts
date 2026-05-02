@@ -36,7 +36,7 @@ export interface CompiledSecurityRequirement {
 
 /**
  * A pre-compiled, operation-level security check. An OR across one or
- * more `CompiledSecurityRequirement`s — at least one must fully satisfy
+ * more `CompiledSecurityRequirement`s; at least one must fully satisfy
  * for the request to pass. `null` (stored as `undefined` on
  * `OperationCache`) means "no security required" and skips the check.
  *
@@ -52,7 +52,7 @@ export type CompiledSecurity = CompiledSecurityRequirement[];
  * than silently passing.
  *
  * Returns `undefined` when no requirement applies (no check emitted at
- * request time) — distinct from an empty array, which is never returned
+ * request time): distinct from an empty array, which is never returned
  * here: empty means "no security" and we fold that into `undefined`.
  *
  * @internal
@@ -185,7 +185,7 @@ function pickApiKey(
 function tryBase64Decode(s: string): string | undefined {
   try {
     // `atob` is available in Node 16+ and in every modern browser /
-    // runtime — avoid a `Buffer` import to keep this file portable.
+    // runtime; avoid a `Buffer` import to keep this file portable.
     return atob(s);
   } catch {
     return undefined;

@@ -15,7 +15,7 @@ describe("string keywords", () => {
   });
 
   it("maxLength treats a single surrogate-pair code point as length 1", () => {
-    // Regression for #12 — str.length would return 2 for this.
+    // Regression for #12: str.length would return 2 for this.
     const v = compile({ maxLength: 1 });
     expect(v.validate("👨").valid).toBe(true);
     expect(v.validate("ab").valid).toBe(false);
@@ -24,7 +24,7 @@ describe("string keywords", () => {
   it("maxLength rejects a large string without allocating a code-point array", () => {
     // Regression for #143. The legacy `[...s].length` implementation
     // materialised one string-per-code-point for the whole input before
-    // the length check could refuse it — trivially OOM-able. Validate
+    // the length check could refuse it (trivially OOM-able). Validate
     // the fix: a multi-megabyte string against a 10-char cap returns a
     // failure quickly and without crashing.
     const big = "a".repeat(5_000_000);
@@ -33,7 +33,7 @@ describe("string keywords", () => {
     const res = v.validate(big);
     const elapsed = Date.now() - start;
     expect(res.valid).toBe(false);
-    // Generous ceiling — the for...of walk is O(N) in time but O(1) in
+    // Generous ceiling: the for...of walk is O(N) in time but O(1) in
     // memory. 2 s is orders of magnitude above the expected runtime
     // (~50 ms on modern hardware) and still catches a regression to
     // the allocating implementation.
@@ -63,7 +63,7 @@ describe("string keywords", () => {
   });
 
   it("pattern keeps Unicode-only features when `u` does parse", () => {
-    // \p{L} is only meaningful under the `u` flag — without it, the
+    // \p{L} is only meaningful under the `u` flag; without it, the
     // regex would match literal 'p{L}'. Verifies we try `u` first.
     const v = compile({ pattern: "^\\p{L}+$" });
     expect(v.validate("héllo").valid).toBe(true);

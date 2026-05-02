@@ -114,7 +114,7 @@ export interface Validator {
   /**
    * Validate a Web Standards {@link Response} against the operation
    * the {@link Request} resolves to. Mirrors
-   * {@link validateFetchRequest} for the response side — useful when
+   * {@link validateFetchRequest} for the response side; useful when
    * you're calling an upstream API and want to confirm its response
    * matches the spec, or when you're testing your own handler's
    * output against its OpenAPI contract.
@@ -181,7 +181,7 @@ export interface Validator {
    * hatch suppresses a category error that would otherwise throw
    * (missing `openapi` field, wrong major). Empty when neither applies.
    *
-   * The library never writes to `process.stderr` or `console` — this
+   * The library never writes to `process.stderr` or `console`; this
    * array is the library's only record of such events. Callers that
    * want live output pass {@link ValidatorOptions.warn}; the CLI
    * wrapper does this.
@@ -221,7 +221,7 @@ export interface ValidatorStats {
    * or when the linter found nothing to flag.
    *
    * Schema paths are the full path inside each compiled schema, not
-   * HTTP-frame-prefixed — the linter runs over raw JSON Schema, not
+   * HTTP-frame-prefixed; the linter runs over raw JSON Schema, not
    * OpenAPI.
    */
   strictIssues: readonly StrictIssue[];
@@ -233,26 +233,26 @@ export interface ValidatorStats {
  * the canonical contract for each one. The integration guide carries
  * worked examples; this type carries the API.
  *
- * - **Dialect override** — {@link ValidatorOptions.dialect}.
- * - **Schema extension** — {@link ValidatorOptions.formats},
+ * - **Dialect override**: {@link ValidatorOptions.dialect}.
+ * - **Schema extension**: {@link ValidatorOptions.formats},
  *   {@link ValidatorOptions.keywords}.
- * - **Error budget** — {@link ValidatorOptions.maxErrors}.
- * - **Strict-mode linting** — {@link ValidatorOptions.strict}.
- * - **Security gating** — {@link ValidatorOptions.validateSecurity}.
- * - **Path filtering** — {@link ValidatorOptions.ignoreUndocumented},
+ * - **Error budget**: {@link ValidatorOptions.maxErrors}.
+ * - **Strict-mode linting**: {@link ValidatorOptions.strict}.
+ * - **Security gating**: {@link ValidatorOptions.validateSecurity}.
+ * - **Path filtering**: {@link ValidatorOptions.ignoreUndocumented},
  *   {@link ValidatorOptions.ignorePaths}.
- * - **Query strictness** — {@link ValidatorOptions.strictQueryParameters}.
- * - **Version mismatch** — {@link ValidatorOptions.onUnknownVersion}.
- * - **Warn sink** — {@link ValidatorOptions.warn}.
+ * - **Query strictness**: {@link ValidatorOptions.strictQueryParameters}.
+ * - **Version mismatch**: {@link ValidatorOptions.onUnknownVersion}.
+ * - **Warn sink**: {@link ValidatorOptions.warn}.
  *
  * @remarks
  * Ordering convention (shared with
  * {@link @aahoughton/oav/schema!CompileOptions}):
  *
- *   1. Compile essentials — `dialect`.
- *   2. Shared extension points — `formats`, `keywords`.
- *   3. Error-collection policy — `maxErrors`.
- *   4. Surface-specific extras last — here, `strictQueryParameters`,
+ *   1. Compile essentials: `dialect`.
+ *   2. Shared extension points: `formats`, `keywords`.
+ *   3. Error-collection policy: `maxErrors`.
+ *   4. Surface-specific extras last: here, `strictQueryParameters`,
  *      `onUnknownVersion`, `warn`.
  *
  * Options common to both surfaces share names and positions so a
@@ -345,7 +345,7 @@ export interface ValidatorOptions {
    * {@link OpenAPIDocument.security} when the operation doesn't override).
    * **Shape-only**: the check confirms the request carries the declared
    * credential (e.g. a `Bearer` token in `Authorization`, the declared
-   * apiKey header) — it does not verify the credential itself. Credential
+   * apiKey header); it does not verify the credential itself. Credential
    * verification stays with the app's auth middleware.
    *
    * Supported schemes: `http` with `scheme: "bearer"` or `"basic"`, and
@@ -353,8 +353,8 @@ export interface ValidatorOptions {
    * `mutualTLS` are accepted in the spec but not shape-checked at the
    * validator layer.
    *
-   * Defaults to `false`. Real apps gate security upstream of validation
-   * — by the time the validator runs, the auth middleware has already
+   * Defaults to `false`. Real apps gate security upstream of validation:
+   * by the time the validator runs, the auth middleware has already
    * verified (or rejected) the credential. Opt in with `true` when
    * there's no auth middleware (early dev / prototyping) or when the
    * auth layer only decorates `req` without rejecting unauthenticated
@@ -365,7 +365,7 @@ export interface ValidatorOptions {
   /** When `true`, reject unknown query parameters (default: `false`). */
   strictQueryParameters?: boolean;
   /**
-   * When `true`, an unmatched path no longer produces a `route` error —
+   * When `true`, an unmatched path no longer produces a `route` error;
    * `validateRequest` / `validateResponse` return `null`. Mirrors
    * `express-openapi-validator`'s `ignoreUndocumented`. Does not affect
    * the `method` code: a path that matched but whose verb wasn't
@@ -387,23 +387,23 @@ export interface ValidatorOptions {
   ignorePaths?: (path: string) => boolean;
   /**
    * How to handle a spec with an unknown **minor** version inside the
-   * OpenAPI 3.x line — e.g. `openapi: "3.7.0"` if a future minor ships
+   * OpenAPI 3.x line; e.g. `openapi: "3.7.0"` if a future minor ships
    * before oav is updated. Pure forward-compat control; does not govern
    * category errors (missing `openapi` field, wrong major), which
    * always throw unless `dialect` is set.
    *
-   * - `"fallback31"` (default) — accept silently; use the 3.1 dialect.
-   * - `"warn"` — add an entry to {@link Validator.warnings} (and
+   * - `"fallback31"` (default): accept silently; use the 3.1 dialect.
+   * - `"warn"`: add an entry to {@link Validator.warnings} (and
    *   call {@link ValidatorOptions.warn} if provided) and use the 3.1
    *   dialect.
-   * - `"throw"` — throw an `Error`.
+   * - `"throw"`: throw an `Error`.
    *
    * Regardless of the choice, `Validator.detectedVersion` is set to
    * `undefined` so callers can introspect after the fact.
    */
   onUnknownVersion?: "fallback31" | "warn" | "throw";
   /**
-   * Optional live-output sink for warnings — called synchronously
+   * Optional live-output sink for warnings, called synchronously
    * during {@link createValidator} whenever a warning is emitted
    * (currently: `onUnknownVersion: "warn"` path, and the single
    * category-error-overridden-by-`dialect` case). Every warning is
@@ -470,10 +470,10 @@ export function createValidator(spec: OpenAPIDocument, options: ValidatorOptions
   // per request.
   //
   // Three categories of input:
-  //   (1) valid 3.x spec (3.0 / 3.1 / 3.2)  — pick dialect, compile
-  //   (2) missing openapi field / wrong major — category error, throw
+  //   (1) valid 3.x spec (3.0 / 3.1 / 3.2): pick dialect, compile
+  //   (2) missing openapi field / wrong major: category error, throw
   //       (unless `dialect` is set, which is the universal override)
-  //   (3) valid 3.x major but unknown minor (e.g. "3.7.0") — forward
+  //   (3) valid 3.x major but unknown minor (e.g. "3.7.0"): forward
   //       compat, governed by `onUnknownVersion`
   const detectedVersion = detectOpenAPIVersion(spec);
   const dialect: Dialect = (() => {
@@ -826,7 +826,7 @@ export function createValidator(spec: OpenAPIDocument, options: ValidatorOptions
     response: Response,
   ): Promise<{ ok: true; body: T } | { ok: false; error: ValidationError }> => {
     // Build an HttpRequest from the fetch Request without reading its
-    // body — we only need method + path to match the operation.
+    // body; we only need method + path to match the operation.
     const url = new URL(request.url);
     const method = request.method.toUpperCase();
     const httpRequest: HttpRequest = { method, path: url.pathname };

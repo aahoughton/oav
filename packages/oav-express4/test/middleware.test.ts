@@ -183,7 +183,7 @@ describe("validateRequests", () => {
       res,
       next,
     );
-    // Microtask drain — the await inside onError needs the event loop to tick.
+    // Microtask drain; the await inside onError needs the event loop to tick.
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(asyncWorkComplete).toBe(true);
     expect(res.status).toHaveBeenCalledWith(422);

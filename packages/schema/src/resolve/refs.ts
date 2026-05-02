@@ -30,13 +30,13 @@ export interface RefResolver {
  *
  * @remarks
  * Supported forms:
- * - `#` — the root of the enclosing `$id` scope (or the graph root if
+ * - `#`: the root of the enclosing `$id` scope (or the graph root if
  *   the `$ref` appears at the root).
- * - `#/a/b/c` — JSON Pointer into the enclosing scope's root schema.
- * - `#name` — lookup in the enclosing scope's anchor map; falls back to
+ * - `#/a/b/c`: JSON Pointer into the enclosing scope's root schema.
+ * - `#name`: lookup in the enclosing scope's anchor map; falls back to
  *   the flat anchor map for cross-scope references.
- * - absolute URI — lookup in `byId` or the external registry.
- * - absolute URI + fragment — resolve the URI, then the fragment.
+ * - absolute URI: lookup in `byId` or the external registry.
+ * - absolute URI + fragment: resolve the URI, then the fragment.
  *
  * @param graph - Output of {@link resolve}.
  * @returns A resolver ready to hand to the compiler.
@@ -97,7 +97,7 @@ function resolveFragment(
     graph.anchorScopes.get(baseUri)?.get(fragment) ??
     graph.dynamicAnchorScopes.get(baseUri)?.get(fragment);
   if (scoped !== undefined) return scoped;
-  // Fall back to the flat union — lets #anchor refs resolve against
+  // Fall back to the flat union; lets #anchor refs resolve against
   // cousin scopes when the enclosing scope doesn't own the anchor.
   const flat = graph.byAnchor.get(fragment) ?? graph.byDynamicAnchor.get(fragment);
   if (flat !== undefined) return flat;
@@ -110,7 +110,7 @@ function resolveJsonPointer(root: SchemaOrBoolean, pointer: string): SchemaOrBoo
 
 /**
  * Find every distinct schema object reachable via `$dynamicAnchor` from an
- * ancestor chain — used when the compiler needs to decide which dynamic
+ * ancestor chain, used when the compiler needs to decide which dynamic
  * anchor the current `$dynamicRef` should bind to.
  *
  * @remarks

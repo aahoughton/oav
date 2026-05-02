@@ -205,7 +205,7 @@ describe("3.0 support", () => {
     const v = createValidator(spec);
     // If siblings weren't suppressed, "hi" (a string) would fail the
     // type:number sibling check. Under 3.0 semantics, only the
-    // referenced type:string applies — "hi" is valid.
+    // referenced type:string applies; "hi" is valid.
     expect(
       v.validateRequest({
         method: "POST",
@@ -218,7 +218,7 @@ describe("3.0 support", () => {
 
   it("drops nullable when it sits beside a $ref (3.0 sibling suppression)", () => {
     // eov #839: `{ $ref: X, nullable: true }` does NOT make the
-    // referenced schema nullable — 3.0 suppresses siblings of $ref.
+    // referenced schema nullable; 3.0 suppresses siblings of $ref.
     const spec: OpenAPIDocument = {
       openapi: "3.0.3",
       info: { title: "t", version: "1" },
@@ -259,7 +259,7 @@ describe("3.0 support", () => {
     expect(err).not.toBeNull();
   });
 
-  it("nullable combines with string constraints — null ok, short strings fail", () => {
+  it("nullable combines with string constraints: null ok, short strings fail", () => {
     // eov #912: nullable + minLength should treat null as a valid value
     // (bypassing length entirely) and still enforce minLength on strings.
     const spec: OpenAPIDocument = {
@@ -409,7 +409,7 @@ describe("category errors", () => {
   });
 
   it("message for missing openapi mentions the `swagger` sibling-field convention as a hint", () => {
-    // We don't *sniff* the `swagger` field — the check is just
+    // We don't *sniff* the `swagger` field; the check is just
     // "openapi must be a string." But the error text points the user
     // at the common sibling-format convention so they know where to
     // go next.
@@ -448,7 +448,7 @@ describe("category errors", () => {
   });
 
   it("warnings accumulate onto validator.warnings even without a warn callback", () => {
-    // The library never writes to stderr on its own — instead, every
+    // The library never writes to stderr on its own; instead, every
     // would-warn event lands on validator.warnings so the caller can
     // inspect post-construction.
     const v = createValidator(specWith(undefined), { dialect: jsonSchemaDialect });
@@ -469,7 +469,7 @@ describe("category errors", () => {
 });
 
 describe("unknown minor version (forward-compat within 3.x)", () => {
-  // Valid 3.x major with an unknown minor — e.g. 3.7.0. Not a
+  // Valid 3.x major with an unknown minor (e.g. 3.7.0). Not a
   // category error; this is the one case `onUnknownVersion` governs.
 
   function specWith(openapi: string): OpenAPIDocument {
@@ -518,7 +518,7 @@ describe("unknown minor version (forward-compat within 3.x)", () => {
       warn: (msg) => chunks.push(msg),
     });
     expect(v.detectedVersion).toBeUndefined();
-    // No warn here — `dialect` on a valid-shaped 3.x spec is just a
+    // No warn here; `dialect` on a valid-shaped 3.x spec is just a
     // normal override, not a category-error suppression.
     expect(chunks).toHaveLength(0);
   });

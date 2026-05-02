@@ -1,7 +1,7 @@
 /**
  * Behavioural tests for the subschema-inlining optimisation. We assert
- * on `v.stats.functionCount` — the compiler's own tally of
- * `validate_N` helper functions emitted — so the shape of the
+ * on `v.stats.functionCount` (the compiler's own tally of
+ * `validate_N` helper functions emitted), so the shape of the
  * generated source can change without breaking these tests.
  */
 
@@ -30,7 +30,7 @@ describe("subschema inlining", () => {
       type: "array",
       items: { type: "integer", minimum: 1, maximum: 100 },
     });
-    // Only the root validator — items' schema has three leaf keywords
+    // Only the root validator; items' schema has three leaf keywords
     // (no applicators), so it inlines.
     expect(v.stats.functionCount).toBe(1);
   });
@@ -41,7 +41,7 @@ describe("subschema inlining", () => {
       items: { type: "object", required: ["x"], properties: { x: { type: "number" } } },
     });
     // items' schema has `properties` (applicator), so it stays a
-    // function — V8 monomorphises the hot-loop call better that way
+    // function; V8 monomorphises the hot-loop call better that way
     // than inlining would.
     expect(v.stats.functionCount).toBe(2);
   });
@@ -60,7 +60,7 @@ describe("subschema inlining", () => {
   });
 
   it("falls back to a named function past the inline-depth ceiling", () => {
-    // 8 levels of nesting — exceeds MAX_INLINE_DEPTH=6.
+    // 8 levels of nesting; exceeds MAX_INLINE_DEPTH=6.
     let inner: unknown = { type: "number" };
     for (let i = 0; i < 8; i += 1) {
       inner = { type: "object", properties: { nested: inner } };
@@ -71,7 +71,7 @@ describe("subschema inlining", () => {
     expect(v.stats.functionCount).toBeGreaterThanOrEqual(2);
   });
 
-  it("inlining preserves validation behaviour — tree form", () => {
+  it("inlining preserves validation behaviour: tree form", () => {
     const v = compile({ type: "array", items: { type: "number" } });
     expect(v.validate([1, 2, 3]).valid).toBe(true);
     const r = v.validate([1, "two", 3]);
@@ -80,7 +80,7 @@ describe("subschema inlining", () => {
     expect(r.error?.path).toEqual([1]);
   });
 
-  it("inlining preserves validation behaviour — property form", () => {
+  it("inlining preserves validation behaviour: property form", () => {
     const v = compile({ type: "object", properties: { age: { type: "integer" } } });
     expect(v.validate({ age: 5 }).valid).toBe(true);
     const r = v.validate({ age: "x" });
@@ -88,7 +88,7 @@ describe("subschema inlining", () => {
     expect(r.error?.path).toEqual(["age"]);
   });
 
-  it("inlining respects maxErrors — allocated paths still wear the budget cap", () => {
+  it("inlining respects maxErrors: allocated paths still wear the budget cap", () => {
     const v = compileSchema(
       { type: "array", items: { type: "number" } },
       { dialect: jsonSchemaDialect, maxErrors: 3 },

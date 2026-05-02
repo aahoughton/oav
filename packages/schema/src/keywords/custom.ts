@@ -3,7 +3,7 @@ import type { KeywordCompileContext, KeywordDefinition } from "./types.js";
 
 /**
  * Vocabulary URI for user-registered keywords. Not a published JSON
- * Schema vocabulary — just a local tag that keeps custom entries
+ * Schema vocabulary; just a local tag that keeps custom entries
  * alongside the built-in ones in the keyword registry.
  *
  * @public
@@ -34,7 +34,7 @@ export interface CustomKeywordFailure {
  *
  * The `schemaValue` argument is the JSON value the keyword carries in
  * the schema. Since schemas are JSON, `schemaValue` is always
- * JSON-serialisable — callers may close over precomputed values (e.g. a
+ * JSON-serialisable; callers may close over precomputed values (e.g. a
  * compiled regex) at registration time if per-validation work should be
  * avoided.
  *

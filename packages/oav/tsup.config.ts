@@ -3,14 +3,14 @@ import type { Plugin } from "esbuild";
 import { defineConfig } from "tsup";
 
 /**
- * Build config for `oav` — the batteries-included tarball.
+ * Build config for `oav`, the batteries-included tarball.
  * Emits subpath shims that re-export `oav-core/*`, adds
  * the YAML readers at the root entry, and bundles the `oav` CLI.
  *
  * Dependency shape:
  * - `oav-core` and `yaml` are external runtime deps the
  *   consumer's install already provides.
- * - `commander` is an external optional-peer — resolved at CLI run
+ * - `commander` is an external optional-peer, resolved at CLI run
  *   time with a clear error when missing.
  * - `@oav/cli` (the workspace package that owns the CLI logic) is
  *   bundled in, along with everything it transitively imports from
@@ -23,7 +23,7 @@ import { defineConfig } from "tsup";
  * Two configs are exported: the library entries emit both ESM and
  * CJS, while the CLI emits ESM only (top-level `await` in cli.ts
  * isn't legal in a CJS output, and the `bin` field points at
- * `./dist/cli.js` — Node picks up the ESM build regardless of
+ * `./dist/cli.js`. Node picks up the ESM build regardless of
  * consumers' package type).
  */
 const repoRoot = resolve(__dirname, "..", "..");

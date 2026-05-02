@@ -9,7 +9,7 @@ import type { ErrorHandler, FastifyContext } from "./types.js";
  * Options for {@link validateRequests}. Names and semantics are
  * shared with future {@link validateResponses} and with the same
  * options on every other adapter in the family (`oav-express4`,
- * `oav-express5`, future `oav-hono`, ...) — only the
+ * `oav-express5`, future `oav-hono`, ...); only the
  * framework-typed argument differs.
  *
  * @public
@@ -25,11 +25,11 @@ export interface ValidateRequestsOptions {
   toHttpRequest?: (request: FastifyRequest) => HttpRequest;
   /**
    * Called when {@link Validator.validateRequest} returns an error.
-   * Default: {@link renderProblemDetails} — RFC 9457
+   * Default: {@link renderProblemDetails}: RFC 9457
    * `application/problem+json` with status from `httpStatusFor`.
    * Pass your own to render a custom envelope, throw (handed to
    * Fastify's error handler), map to a different status, etc. The
-   * hook does not call `reply.send()` after invoking `onError` —
+   * hook does not call `reply.send()` after invoking `onError`;
    * the callback is the response.
    */
   onError?: ErrorHandler<FastifyContext>;
@@ -42,13 +42,13 @@ export interface ValidateRequestsOptions {
  * `onError` writes an RFC 9457 problem-details response.
  *
  * Plural (`validateRequests`, not `validateRequest`) because the
- * hook intercepts every request — the singular form is the
+ * hook intercepts every request; the singular form is the
  * Validator's own per-call method.
  *
  * Mount on `preValidation` so it runs after Fastify's content-type
  * parsers (which populate `request.body`) but before route
  * handlers and Fastify's own per-route schema validation (which
- * runs in the `validation` step). Both can coexist — Fastify's own
+ * runs in the `validation` step). Both can coexist; Fastify's own
  * per-route schemas run after this hook; oav's failures are
  * surfaced first.
  *
@@ -80,7 +80,7 @@ export function validateRequests(
     if (err === null) return;
     // Fastify awaits the returned promise; thrown errors / rejected
     // promises propagate to Fastify's error handler. The hook
-    // returns once onError settles — Fastify treats a sent reply
+    // returns once onError settles; Fastify treats a sent reply
     // as "we handled it, skip the route handler."
     await onError(err, { request, reply });
   };

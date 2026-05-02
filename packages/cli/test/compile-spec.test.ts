@@ -123,7 +123,7 @@ function collectLeafCodes(err: ValidationError): string[] {
   return err.children.flatMap(collectLeafCodes);
 }
 
-describe("compile-spec — equivalence vs createValidator", () => {
+describe("compile-spec: equivalence vs createValidator", () => {
   it("matches runtime output on the petstore matrix", async () => {
     const runtime = createValidator(petstore);
     const aot = await buildAot(petstore);

@@ -76,7 +76,7 @@ describe("path sharing: correctness under stress", () => {
     // First call: error at ["x"]
     const r1 = v.validate({ x: "not a number" });
     expect(r1.error?.path).toEqual(["x"]);
-    // Second call: same error, same path — not ["x", "x"] from shared leak
+    // Second call: same error, same path, not ["x", "x"] from shared leak
     const r2 = v.validate({ x: "still not a number" });
     expect(r2.error?.path).toEqual(["x"]);
     // Third call, a different shape

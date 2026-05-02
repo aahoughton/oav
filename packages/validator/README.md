@@ -1,7 +1,7 @@
 # oav (validator)
 
 HTTP request/response validator for OpenAPI 3.0, 3.1, and 3.2. This is
-the headline surface of the package — `createValidator` is re-exported
+the headline surface of the package; `createValidator` is re-exported
 from the package root.
 
 ```ts
@@ -32,7 +32,7 @@ can group by location. The top-level node's `code` (`"request"` vs
 
 `validator.detectedVersion` reflects the `openapi` string that was
 detected on construction (or `undefined` if the field was missing or
-unsupported and a fallback was used — see `onUnknownVersion` below).
+unsupported and a fallback was used; see `onUnknownVersion` below).
 
 Companion adapter packages wrap the validator as middleware /
 hooks: [`oav-express4`](../oav-express4/README.md),
@@ -68,7 +68,7 @@ the upstream test suites live in
   `deepObject`, `spaceDelimited`, `pipeDelimited` with `explode`.
 - **Content-type negotiation**: against the request / response
   `Content-Type`, including wildcards (`application/*`, `*/*`).
-- **Response status matching**: exact → `NXX` class → `default`.
+- **Response status matching**: exact, then `NXX` class, then `default`.
 - **Format validators**: the `oav/formats` built-ins merged
   with any extras passed via `options.formats`.
 
@@ -82,7 +82,7 @@ the upstream test suites live in
 | `validateFetchResponse<T>(request, response)` | Symmetric Web Standards `Response` check. Useful for contract-testing an upstream.                                                                                        |
 | `getOperation({ method, path })`              | Startup-time introspection: returns the resolved, overlay-applied `OperationObject` + matched template for a (method, path) pair.                                         |
 | `detectedVersion`                             | The `openapi` string detected on construction, or `undefined` for an unrecognised / missing version (see `onUnknownVersion`).                                             |
-| `warnings`                                    | `readonly string[]` — warnings accumulated at construction time (`onUnknownVersion: "warn"` or `dialect`-suppressed category error). Empty when neither path fires.       |
+| `warnings`                                    | `readonly string[]`: warnings accumulated at construction time (`onUnknownVersion: "warn"` or `dialect`-suppressed category error). Empty when neither path fires.        |
 
 ## Options
 
@@ -141,16 +141,16 @@ true` when the tree was capped.
 
 Two kinds of "unknown":
 
-- **Category errors** — missing / non-string `openapi`, non-semver
+- **Category errors**: missing / non-string `openapi`, non-semver
   string, or a major version that isn't `3`. These **throw** at
   construction by default. Set `dialect` to force a specific
   compiler; that suppresses the throw and adds an entry to
   `validator.warnings` so the override is still visible.
-- **Unknown minor within 3.x** — e.g. `"3.7.0"` if a future minor
+- **Unknown minor within 3.x**: e.g. `"3.7.0"` if a future minor
   ships before oav is updated. Governed by `onUnknownVersion`:
 
   ```ts
-  createValidator(spec); // fallback31 default — silent, uses 3.1 dialect
+  createValidator(spec); // fallback31 default (silent, uses 3.1 dialect)
   createValidator(spec, { onUnknownVersion: "throw" }); // refuse to build
   createValidator(spec, { onUnknownVersion: "warn" }); // populates validator.warnings, uses 3.1 dialect
   createValidator(spec, { onUnknownVersion: "warn", warn: (m) => log.info(m) }); // plus live callback

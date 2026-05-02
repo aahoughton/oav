@@ -28,7 +28,7 @@ describe("httpRequestFromExpress", () => {
 
   it("lowercases header keys defensively", () => {
     // Express already lowercases, but downstream middleware can mutate
-    // req.headers — defensive pass keeps the contract regardless.
+    // req.headers; defensive pass keeps the contract regardless.
     const got = httpRequestFromExpress(
       fakeReq({
         method: "GET",

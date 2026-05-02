@@ -23,7 +23,7 @@ function emitNumericError(
  * relative epsilon so valid multiples aren't rejected when the division
  * produces a non-terminating binary fraction. IEEE-754 rounding error
  * grows roughly with magnitude, so a flat tolerance is wrong at both
- * ends — a value like `143.48 / 0.01` drifts by about `1.82e-12`, while
+ * ends: a value like `143.48 / 0.01` drifts by about `1.82e-12`, while
  * values near `1` stay within `1e-14`. Scaling by `Number.EPSILON *
  * max(1, |q|, |divisor|)` gives each multiple of `divisor` the same
  * proportional slack without letting true non-multiples sneak through.

@@ -8,7 +8,7 @@
 
 /**
  * A segment of a data or schema path. Property names are strings; array
- * indices are numbers. Paths are never pre-joined — consumers choose how
+ * indices are numbers. Paths are never pre-joined; consumers choose how
  * to render them.
  *
  * @public
@@ -27,7 +27,7 @@ export type PathSegment = string | number;
  * }
  * ```
  *
- * Extended via TypeScript interface declaration merging — a custom
+ * Extended via TypeScript interface declaration merging: a custom
  * consumer (or, internally, a new keyword) can augment the map by
  * re-declaring the interface in its own module:
  *
@@ -41,7 +41,7 @@ export type PathSegment = string | number;
  *
  * When adding a new built-in keyword, extend this interface with the
  * entry that describes its `params` shape. Contributors are asked to
- * keep this list in sync — the compiler cannot verify it because
+ * keep this list in sync; the compiler cannot verify it because
  * errors are emitted from generated JS source.
  *
  * @public
@@ -74,49 +74,49 @@ export interface BuiltInErrorParams {
   minItems: { minItems: number; actual: number };
   /** `maxItems` violation. */
   maxItems: { maxItems: number; actual: number };
-  /** `uniqueItems` violation — indices of the first duplicate pair. */
+  /** `uniqueItems` violation: indices of the first duplicate pair. */
   uniqueItems: { duplicates: [number, number] };
   /** `minProperties` violation. */
   minProperties: { minProperties: number; actual: number };
   /** `maxProperties` violation. */
   maxProperties: { maxProperties: number; actual: number };
-  /** `required` — a required property is missing. */
+  /** `required`: a required property is missing. */
   required: { missing: string };
-  /** `items: false` — no items allowed past the prefix. */
+  /** `items: false`: no items allowed past the prefix. */
   items: Record<string, never>;
   /** `contains` with `minContains` unmet. */
   contains: { minContains: number; actual: number };
   /** `contains` with `maxContains` exceeded. */
   maxContains: { maxContains: number; actual: number };
-  /** `additionalProperties: false` — an unexpected property was found. */
+  /** `additionalProperties: false`: an unexpected property was found. */
   additionalProperties: { unexpected: string };
-  /** `unevaluatedProperties` — a property isn't evaluated by the schema. */
+  /** `unevaluatedProperties`: a property isn't evaluated by the schema. */
   unevaluatedProperties: { unexpected: string };
-  /** `unevaluatedItems` — an index isn't evaluated by the schema. */
+  /** `unevaluatedItems`: an index isn't evaluated by the schema. */
   unevaluatedItems: { index: number };
-  /** `not` — the schema matched when it shouldn't. */
+  /** `not`: the schema matched when it shouldn't. */
   not: Record<string, never>;
-  /** `allOf` branch — failing conjuncts listed in `children`. */
+  /** `allOf` branch: failing conjuncts listed in `children`. */
   allOf: { total: number; failed: number };
-  /** `anyOf` branch — no branch matched. */
+  /** `anyOf` branch: no branch matched. */
   anyOf: { total: number };
-  /** `oneOf` branch — zero or >1 matched. */
+  /** `oneOf` branch: zero or >1 matched. */
   oneOf: { total: number; matchCount: number };
-  /** Inline multi-keyword subschema wrapper — matches a compiled function's `wrapErrors` shape. */
+  /** Inline multi-keyword subschema wrapper: matches a compiled function's `wrapErrors` shape. */
   schema: Record<string, never>;
-  /** `discriminator` — property absent/non-string, or value not in the mapping. */
+  /** `discriminator`: property absent/non-string, or value not in the mapping. */
   discriminator: { propertyName: string; value?: string };
-  /** `dependentRequired` — a sibling required by the trigger key is missing. */
+  /** `dependentRequired`: a sibling required by the trigger key is missing. */
   dependentRequired: { trigger: string; missing: string };
-  /** Draft-07 `dependencies` array form — same as dependentRequired. */
+  /** Draft-07 `dependencies` array form: same as dependentRequired. */
   dependencies: { trigger: string; missing: string };
 
   // --- HTTP-level wrappers (emitted by @oav/validator) ---
-  /** No path template matched `path` — semantically HTTP 404. */
+  /** No path template matched `path`: semantically HTTP 404. */
   route: { method: string; path: string };
   /**
    * Path template matched but the requested method isn't declared on
-   * it — semantically HTTP 405. `allowed` is the uppercase list of
+   * it; semantically HTTP 405. `allowed` is the uppercase list of
    * methods the matched path(s) do accept, suitable for an RFC 9110
    * `Allow` response header.
    */
@@ -125,12 +125,12 @@ export interface BuiltInErrorParams {
    * Request body, leaf-only. Emitted when a `required: true` body is
    * absent on the request. When a present body fails schema validation,
    * the schema's own error (with a keyword-specific code) bubbles up
-   * directly with path prefix `["body", ...]` — no `"body"` wrapper.
+   * directly with path prefix `["body", ...]`; no `"body"` wrapper.
    */
   body: Record<string, never>;
-  /** Request branch — children are parameter / body failures. */
+  /** Request branch: children are parameter / body failures. */
   request: { method: string; pathPattern: string };
-  /** Response branch — children are status / content-type / header / body failures. */
+  /** Response branch: children are status / content-type / header / body failures. */
   response: { status: number };
   /** Content-Type negotiation failed. */
   "content-type": { contentType: string | undefined; accepted?: string[]; declared?: string[] };
@@ -143,7 +143,7 @@ export interface BuiltInErrorParams {
   "cookie-param": { name: string; in: "cookie" };
   /**
    * No declared security requirement was satisfied by the request
-   * (shape-only check — presence / format of the declared credential
+   * (shape-only check: presence / format of the declared credential
    * location, not credential verification). `declared` lists the
    * alternatives tried: each inner array is a single requirement
    * (AND across its scheme names), the outer array is the OR set.
@@ -154,7 +154,7 @@ export interface BuiltInErrorParams {
 
 /**
  * Params shape for codes that aren't documented in
- * {@link BuiltInErrorParams} — custom keywords, consumer-defined
+ * {@link BuiltInErrorParams}: custom keywords, consumer-defined
  * HTTP-layer wrappers, or anything reached via a string variable the
  * compiler can't narrow.
  *
@@ -166,7 +166,7 @@ export type CustomErrorParams = Record<string, unknown>;
  * The params shape for an arbitrary error `code`. Built-in codes narrow
  * to the documented {@link BuiltInErrorParams} entry; any other code
  * widens to {@link CustomErrorParams}. Lets downstream code narrow
- * through a variable — `ErrorParams<typeof err.code>` — not just a
+ * through a variable (`ErrorParams<typeof err.code>`), not just a
  * string literal.
  *
  * @public
@@ -253,7 +253,7 @@ export type ErrorParamsFor<Code extends keyof BuiltInErrorParams> = BuiltInError
 /**
  * A single validation error, always a node in a {@link ValidationError} tree.
  *
- * Every error has a `children` array — leaf errors have `children: []`,
+ * Every error has a `children` array; leaf errors have `children: []`,
  * branch errors produced by applicator keywords have one child per relevant
  * subschema. Consumers can traverse without null checks.
  *
@@ -321,7 +321,7 @@ export interface CreateErrorParams {
  * @public
  */
 export function createError(params: CreateErrorParams): ValidationError {
-  // Snapshot path — generated validators reuse a single mutable path array
+  // Snapshot path: generated validators reuse a single mutable path array
   // across traversal (push/pop per depth), so freezing the segments here
   // protects the error from later mutations.
   return {
@@ -364,7 +364,7 @@ export function createLeafError(
   // every leaf. Saves one allocation per failure on hot invalid paths.
   // Leaves never accumulate children; the type is
   // `ValidationError[]` (mutable) for branch uses, but readers should
-  // treat a leaf's array as read-only — which is the existing contract.
+  // treat a leaf's array as read-only, which is the existing contract.
   //
   // The `extraSegment` / `extraSegment2` tail parameters let generated
   // validators append up to two path segments without allocating an
@@ -387,7 +387,7 @@ export function createLeafError(
 // Shared frozen empty array so leaf errors reuse one `children` value
 // instead of allocating a fresh `[]` per failure. `Object.freeze([])`
 // is typed `readonly never[]` which TS refuses to narrow to
-// `ValidationError[]` directly — the double cast expresses intent:
+// `ValidationError[]` directly; the double cast expresses intent:
 // readers treat a leaf's `children` as read-only already, and the
 // freeze is a runtime safety net against accidental mutation.
 const EMPTY_CHILDREN = Object.freeze([]) as unknown as ValidationError[];

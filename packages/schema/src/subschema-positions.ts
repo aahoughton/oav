@@ -31,7 +31,7 @@ export const SUBSCHEMA_ARRAY_POSITIONS = ["allOf", "anyOf", "oneOf", "prefixItem
 /**
  * Known JSON Schema 2020-12 positions that hold a `string -> subschema`
  * map. Callers that treat `properties` specially (e.g. validator's
- * direction transform) should filter it out themselves — it's included
+ * direction transform) should filter it out themselves; it's included
  * here so generic walkers see the complete set of schema positions.
  *
  * @internal
@@ -47,7 +47,7 @@ export const SUBSCHEMA_MAP_POSITIONS = [
 /**
  * Visitor callback shape for {@link walkSubschemas}. Receives each
  * visited subschema plus the dotted-path string leading to it (relative
- * to the walk root — empty string for the root itself). Returning
+ * to the walk root; empty string for the root itself). Returning
  * `false` from the visitor prunes the subtree; any other value (or
  * `void`) continues the walk.
  *
@@ -61,7 +61,7 @@ export type SubschemaVisitor = (schema: SchemaOrBoolean, path: string) => void |
  * (plus the keys OpenAPI adds on top) declares. Boolean schemas and
  * `$ref` nodes are visited but not descended.
  *
- * Intended for tooling — linters, introspection, tree rewriters — that
+ * Intended for tooling (linters, introspection, tree rewriters) that
  * would otherwise re-derive the set of schema-valued keys and risk
  * drifting from the vocabulary. Callers that need to *rewrite* schemas
  * in place can instead reach for the underlying

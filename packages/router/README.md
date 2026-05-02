@@ -1,6 +1,6 @@
 # @oav/router
 
-> **Internal package — not published.** `@oav/router` is a workspace-private
+> **Internal package, not published.** `@oav/router` is a workspace-private
 > dependency of `oav`; it does not appear on npm and has no
 > published subpath. This README documents the internal surface for
 > contributors navigating the monorepo. Third-party consumers get the
@@ -33,5 +33,5 @@ case-insensitive. Path segments are percent-decoded.
 `RouteMatch.operation` is the same reference that was supplied to
 `createRouter`. The validator keys per-operation caches on this
 identity via `WeakMap`, so the router must not clone, merge, or
-otherwise reconstruct operations — if you write a custom router,
+otherwise reconstruct operations. If you write a custom router,
 preserve the spec-provided reference.

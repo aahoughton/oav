@@ -56,7 +56,7 @@ describe("emitStandalone", () => {
     }
   });
 
-  it("includes built-in formats — emitted validator checks email", async () => {
+  it("includes built-in formats: emitted validator checks email", async () => {
     const schema: SchemaOrBoolean = {
       type: "object",
       properties: { contact: { type: "string", format: "email" } },
@@ -82,7 +82,7 @@ describe("emitStandalone", () => {
     ).toThrow(/not in the built-in set/);
   });
 
-  it("compiles under the OpenAPI 3.0 dialect — boolean exclusiveMaximum honoured", async () => {
+  it("compiles under the OpenAPI 3.0 dialect: boolean exclusiveMaximum honoured", async () => {
     const schema: SchemaOrBoolean = {
       type: "integer",
       maximum: 10,

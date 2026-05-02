@@ -1,5 +1,5 @@
 /**
- * Email format validators. These are pragmatic — the full RFC 5321 grammar
+ * Email format validators. These are pragmatic; the full RFC 5321 grammar
  * is enormous and most real-world "email validators" reject too few
  * strings. We allow any ASCII local-part + a sensible domain.
  *

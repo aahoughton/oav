@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createValidator } from "../src/validator.js";
 
 /**
- * Shape-only security validation coverage — bearer / basic / apiKey.
+ * Shape-only security validation coverage: bearer / basic / apiKey.
  * Credential verification is explicitly out of scope; these tests only
  * exercise presence + structural shape of the declared credential
  * location.
@@ -222,7 +222,7 @@ describe("security validation: OR across alternatives, AND within", () => {
     );
     const andV = createValidator(andSpec, { validateSecurity: true });
 
-    // Only the bearer is present — AND fails.
+    // Only the bearer is present; AND fails.
     const err = andV.validateRequest({
       method: "GET",
       path: "/ping",
@@ -230,7 +230,7 @@ describe("security validation: OR across alternatives, AND within", () => {
     });
     expect(firstLeaf(err)?.code).toBe("security");
 
-    // Both present — passes.
+    // Both present; passes.
     expect(
       andV.validateRequest({
         method: "GET",
@@ -264,7 +264,7 @@ describe("security validation: top-level vs operation-level", () => {
 });
 
 describe("security validation: configuration", () => {
-  it("defaults to off — security is not enforced unless validateSecurity: true is set", () => {
+  it("defaults to off: security is not enforced unless validateSecurity: true is set", () => {
     // The default reflects the "auth middleware runs upstream" reality:
     // by the time the validator sees a request, the credential has
     // already been verified (or rejected) by the host app's auth layer.
@@ -282,7 +282,7 @@ describe("security validation: configuration", () => {
     expect(firstLeaf(err)?.code).toBe("security");
   });
 
-  it("short-circuits before parameter / body checks — only a security error surfaces", () => {
+  it("short-circuits before parameter / body checks: only a security error surfaces", () => {
     const doc: OpenAPIDocument = {
       openapi: "3.1.0",
       info: { title: "t", version: "1" },
@@ -311,7 +311,7 @@ describe("security validation: configuration", () => {
       method: "POST",
       path: "/echo",
       contentType: "application/json",
-      body: {}, // missing `name` — normally a second error
+      body: {}, // missing `name`, normally a second error
     });
     // Only one child error (security); body violation is suppressed.
     expect(err?.code).toBe("request");
@@ -330,7 +330,7 @@ describe("security validation: configuration", () => {
       [{ oauth: ["read"] }],
     );
     const v = createValidator(spec, { validateSecurity: true });
-    // No headers / query — oauth2 isn't shape-checked, so pass.
+    // No headers / query; oauth2 isn't shape-checked, so pass.
     expect(v.validateRequest({ method: "GET", path: "/ping" })).toBeNull();
   });
 });

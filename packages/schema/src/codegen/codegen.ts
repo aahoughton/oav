@@ -18,7 +18,7 @@ export interface NameGenerator {
  * implementation.
  *
  * If you find yourself wanting a method that isn't here (e.g. `forIn`,
- * `forRange`), open an issue — the interface is intentionally small so
+ * `forRange`), open an issue; the interface is intentionally small so
  * it's stable.
  *
  * @public

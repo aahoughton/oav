@@ -12,7 +12,7 @@ const EMPTY_PATH_SEGMENTS: readonly string[] = Object.freeze([]);
 
 /**
  * Inputs accepted by {@link createKeywordContext}. The compiler assembles
- * these from its own state — keyword authors never construct them directly.
+ * these from its own state; keyword authors never construct them directly.
  *
  * @public
  */
@@ -36,7 +36,7 @@ export interface KeywordContextInputs {
   /**
    * When `true`, a finite `maxErrors` was configured and push / loop
    * sites should emit the extra budget checks. When `false`, emit plain
-   * `errors.push(x)` / unchecked loops — zero runtime overhead.
+   * `errors.push(x)` / unchecked loops; zero runtime overhead.
    */
   gated?: boolean;
   /**
@@ -56,7 +56,7 @@ export interface KeywordContextInputs {
   byKeyword?: ReadonlyMap<string, KeywordDefinition>;
   /**
    * Depth counter for recursive multi-keyword inlining. Callers never
-   * set this directly — the context threads it through
+   * set this directly; the context threads it through
    * {@link KeywordCompileContext.validateSubschema} so deeply-nested
    * inline chains eventually fall back to the function-call path
    * rather than blowing up the compiled source.
@@ -89,7 +89,7 @@ export interface KeywordContextInputs {
  * nested subschemas. When a subschema contains exactly one of these
  * keywords and nothing else that can emit errors, we can emit its
  * validation code inline in the enclosing function instead of
- * compiling it to a separate function — saving the per-call dispatch
+ * compiling it to a separate function, saving the per-call dispatch
  * cost and, more importantly, the eager `[...path, seg]` allocation
  * that function boundaries force.
  *
@@ -128,7 +128,7 @@ const INLINEABLE_SINGLE_KEYWORDS = new Set([
  * The unevaluated-keys keywords (`unevaluatedProperties`,
  * `unevaluatedItems`) also need per-function state, but they are
  * already tagged `applicator: true` so the applicator check below
- * catches them — no need to list them here.
+ * catches them; no need to list them here.
  */
 const INLINE_DISQUALIFIERS = new Set(["$ref", "$dynamicRef"]);
 
@@ -180,7 +180,7 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
   // Fall back to a local-scope const when no compiler-provided hoist sink
   // is threaded in (for tests or out-of-tree callers that build a
   // context directly). In that case the "hoisted" value just lives in
-  // the current validator body — correct but not optimized.
+  // the current validator body; correct but not optimized.
   let localHoistCounter = 0;
   const hoistConstant =
     inputs.hoistConstant ??
@@ -195,7 +195,7 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     if (predicate) {
       // Predicate mode: we don't construct an error tree, so any
       // error-emission site just short-circuits. The `errExpr` is
-      // intentionally discarded — its `ctx.path` / `createLeafError`
+      // intentionally discarded; its `ctx.path` / `createLeafError`
       // references never reach the generated source.
       void kind;
       void errExpr;
@@ -304,7 +304,7 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     const validationKeys: string[] = [];
     for (const k of allKeys) {
       // Annotation keywords (title, description, $comment, etc.) are
-      // registered with `annotation: true` and emit no code — safe to
+      // registered with `annotation: true` and emit no code; safe to
       // skip. Unknown keys fall through to `validationKeys` so the
       // inliner conservatively refuses to inline them, which matches
       // the old behaviour for pre-`annotation`-flag unknowns.
@@ -312,9 +312,9 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
       if (INLINE_DISQUALIFIERS.has(k)) return false;
       validationKeys.push(k);
     }
-    if (validationKeys.length === 0) return true; // empty-ish schema — nothing to emit
+    if (validationKeys.length === 0) return true; // empty-ish schema; nothing to emit
 
-    // Single-keyword: simplest case — whitelist match, no wrapping needed.
+    // Single-keyword: simplest case, whitelist match, no wrapping needed.
     if (validationKeys.length === 1) {
       const k = validationKeys[0]!;
       if (!INLINEABLE_SINGLE_KEYWORDS.has(k)) return false;
@@ -344,7 +344,7 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
 
     // Multi-keyword inline is limited to pure-leaf combinations
     // (type + required + bounds, etc.). Schemas that contain any
-    // applicator are left to the function-call path — the per-call
+    // applicator are left to the function-call path; the per-call
     // dispatch pays for itself on hot loops because V8 monomorphises
     // the function better than it can optimise a massive inlined
     // loop body.
@@ -355,7 +355,7 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     // Snapshot the errors array length; if >1 new error fires, wrap
     // the new ones in a "schema" branch so the tree shape matches a
     // named function's `wrapErrors` output. Predicate mode skips the
-    // snapshot/wrap entirely — inlined keywords return `false` on
+    // snapshot/wrap entirely; inlined keywords return `false` on
     // failure so there's nothing to wrap.
     const startVar = predicate ? null : inputs.gen.scope.name("_start");
     // errors may be null (lazy allocation). Treat null as length-0 for
@@ -365,7 +365,7 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
 
     // Keyword ordering mirrors the compiler's top-level dispatch: run
     // validation keywords first (leaf checks) in their defined vocab
-    // order, then applicators, then unevaluated — this matches what
+    // order, then applicators, then unevaluated; this matches what
     // `compileSchemaKeywords` does for function-compiled subschemas.
     const present = new Set(validationKeys);
     const runOrder: string[] = [];
@@ -403,14 +403,14 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
       kw.compile(innerCtx);
     }
 
-    // Wrap if >1 new error actually fired — error-tree mode only.
+    // Wrap if >1 new error actually fired; error-tree mode only.
     // errors may still be null here if no keyword pushed anything (or
     // only the budget got exhausted without pushing); the null-check
     // short-circuits the wrap.
     if (startVar !== null) {
       const wrappedVar = inputs.gen.scope.name("_wrapped");
       // The wrap expression lives at the same extended path as its
-      // leaf children — use the inner-scope segments directly (not
+      // leaf children; use the inner-scope segments directly (not
       // the outer ctx's `pathSegments`, which is what the public
       // helpers would concat).
       // Always include the empty `params` slot so the runtime
@@ -441,7 +441,7 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
   ): void => {
     const segment = options?.segment;
     // Inline path threads `pathSegments` through the inner keyword
-    // contexts — leaves splice the segments as trailing
+    // contexts: leaves splice the segments as trailing
     // createLeafError args, avoiding the pre-materialized
     // `[...path, seg]` double-allocation. Function-call fallback
     // keeps the classic push/pop-then-call shape because the callee
@@ -470,7 +470,7 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
           ? [segment]
           : [...pathSegments, segment];
     if (tryInline(schema, dataExpr, innerSegments)) return;
-    // Function-call fallback — push/pop around the call so the callee
+    // Function-call fallback: push/pop around the call so the callee
     // sees the extended path via the shared array (no per-call
     // allocation just to pass a path).
     const fn = inputs.compileSubschema(schema);
@@ -499,7 +499,7 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     // When the enclosing scope tracks evaluated props or items, each
     // call gets its own branch-local Set so annotations from a failing
     // branch don't leak into the caller. When tracking is off for both,
-    // we can skip the branch vars entirely — the sub-validator's trailing
+    // we can skip the branch vars entirely; the sub-validator's trailing
     // params default to `undefined`.
     const needBranchVars = evaluatedPropertiesVar !== null || evaluatedItemsVar !== null;
     const branchProps = needBranchVars ? inputs.gen.scope.name("bProps") : null;

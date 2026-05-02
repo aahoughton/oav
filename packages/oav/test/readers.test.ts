@@ -82,7 +82,7 @@ describe("createSmartHttpReader", () => {
     ]) {
       stubFetch("openapi: 3.1.0\ninfo: { title: X, version: '1' }", ct);
       const r = createSmartHttpReader();
-      // URL has no yaml extension on purpose — Content-Type drives the pick.
+      // URL has no yaml extension on purpose; Content-Type drives the pick.
       expect(await r.read("https://api.example.com/openapi"), `ct=${ct}`).toEqual({
         openapi: "3.1.0",
         info: { title: "X", version: "1" },

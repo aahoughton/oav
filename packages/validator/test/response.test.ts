@@ -170,14 +170,14 @@ describe("validateResponse", () => {
       },
     };
     const sv = createValidator(spec);
-    // Response omits writeOnly password — should pass.
+    // Response omits writeOnly password; should pass.
     expect(
       sv.validateResponse(
         { method: "GET", path: "/users" },
         { status: 200, contentType: "application/json", body: { id: "u1" } },
       ),
     ).toBeNull();
-    // Response includes writeOnly password — rejected.
+    // Response includes writeOnly password; rejected.
     const err = sv.validateResponse(
       { method: "GET", path: "/users" },
       {

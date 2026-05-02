@@ -45,7 +45,7 @@ describe("httpStatusFor", () => {
     expect(httpStatusFor(err)).toBe(500);
   });
 
-  it("returns 400 for anything else — schema violations, missing required, etc.", () => {
+  it("returns 400 for anything else: schema violations, missing required, etc.", () => {
     const err = createBranchError("request", [], "request validation failed", [
       createLeafError("required", ["body"], "missing name", { missing: "name" }),
       createLeafError("type", ["body", "age"], "must be number", {
@@ -71,7 +71,7 @@ describe("httpStatusFor", () => {
     // HTTP gate semantics: auth is the stricter gate ("we can't even tell
     // what you're asking for"), and 401 should surface ahead of 415. In
     // practice the validator short-circuits on security before checking
-    // content-type, so both rarely coexist — but the helper's priority
+    // content-type, so both rarely coexist, but the helper's priority
     // guarantees the behaviour regardless.
     const err = createBranchError("request", [], "request validation failed", [
       createLeafError("content-type", ["body"], "Content-Type not accepted", {

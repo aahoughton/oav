@@ -75,7 +75,7 @@ export const itemsKeyword: KeywordDefinition = {
  * The `contains` keyword. The array must have at least `minContains`
  * (default 1) and at most `maxContains` items matching the subschema.
  *
- * Dispatches for `minContains` and `maxContains` are suppressed — this
+ * Dispatches for `minContains` and `maxContains` are suppressed; this
  * keyword handles them.
  *
  * @public

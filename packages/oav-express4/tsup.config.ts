@@ -3,7 +3,7 @@ import type { Plugin } from "esbuild";
 import { defineConfig } from "tsup";
 
 /**
- * Build config for `oav-express4` — the Express 4 adapter.
+ * Build config for `oav-express4`, the Express 4 adapter.
  *
  * Thin tarball: nothing from `oav-core` is bundled. The adapter
  * imports `@oav/core` / `@oav/validator` (workspace aliases) in
@@ -12,7 +12,7 @@ import { defineConfig } from "tsup";
  * from the consumer's install of `@aahoughton/oav-core` (or
  * `@aahoughton/oav`, which transitively provides it).
  *
- * `express` is a peer dep — never bundled. `@types/express` is a
+ * `express` is a peer dep, never bundled. `@types/express` is a
  * dev dep and only contributes to the .d.ts emit.
  */
 const oavCoreRewrite: Record<string, string> = {

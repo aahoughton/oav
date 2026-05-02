@@ -2,8 +2,8 @@
  * Internal re-exports for `oav/schema/internals`. Exposes
  * the codegen mechanics, runtime helpers, resolve internals, and
  * subschema-position constants that sit below the public extension
- * recipe. Reachable when you really need them — tests, advanced
- * plugins, tooling that walks or rewrites schemas — but deliberately
+ * recipe. Reachable when you really need them (tests, advanced
+ * plugins, tooling that walks or rewrites schemas) but deliberately
  * separated from the main `oav/schema` barrel so the
  * public surface matches what keyword authors actually need.
  *
@@ -13,7 +13,7 @@
  * @packageDocumentation
  */
 
-// Codegen mechanics — used by keyword authors that need to emit
+// Codegen mechanics: used by keyword authors that need to emit
 // non-boilerplate JS (path joining, string quoting, raw JS injection).
 export {
   CodeGen,
@@ -28,7 +28,7 @@ export {
   type RawExpression,
 } from "./codegen/index.js";
 
-// Runtime helpers — the objects bundled into `deps` and fed to every
+// Runtime helpers: the objects bundled into `deps` and fed to every
 // generated validator. Callers building custom compilers or dialect
 // harnesses can reach for these; normal consumers don't.
 export {
@@ -49,7 +49,7 @@ export { SchemaRegistry, collectDynamicAnchors } from "./resolve/index.js";
 // keyword in isolation) need to build one.
 export { createKeywordContext, type KeywordContextInputs } from "./keywords/context.js";
 
-// Subschema-position constants — the raw sets of schema-valued keys.
+// Subschema-position constants: the raw sets of schema-valued keys.
 // Prefer the public `walkSubschemas` helper when a read-walk suffices;
 // reach for these only when you need to transform / rewrite.
 export {

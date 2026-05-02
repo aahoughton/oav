@@ -63,7 +63,7 @@ export const builtInFormats: Record<string, (value: string) => boolean> = {
 };
 
 /**
- * An Ajv-shaped format definition — `{ type, validate }`. oav's
+ * An Ajv-shaped format definition: `{ type, validate }`. oav's
  * `format` keyword only applies to string values (per JSON Schema
  * 2020-12 §6.3), so `type` is carried for shape compatibility but
  * not acted on; non-string values skip format validation regardless.
@@ -80,7 +80,7 @@ export interface AjvFormatDef {
 
 /**
  * Convert a map of Ajv-shaped format definitions to the plain
- * predicate shape oav's `formats` option expects. One-way — pass the
+ * predicate shape oav's `formats` option expects. One-way; pass the
  * result straight into `createValidator` / `compileSchema`.
  *
  * Main audience: migrants from `ajv-formats` or

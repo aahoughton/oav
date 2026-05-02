@@ -21,7 +21,7 @@ export function leafAt(
 
 /**
  * Minimal 3.1 Pet Store covering GET /pets, POST /pets, and
- * GET /pets/{petId} — enough surface area for tests that need a
+ * GET /pets/{petId}, enough surface area for tests that need a
  * realistic multi-operation spec without inlining a large literal.
  */
 export function petSpec(): OpenAPIDocument {

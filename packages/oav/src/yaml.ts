@@ -3,7 +3,7 @@
  * `oav` distribution. Each implements
  * {@link @aahoughton/oav/spec!DocumentReader} and is designed to be
  * composed via
- * {@link @aahoughton/oav/spec!composeReaders} — order YAML readers
+ * {@link @aahoughton/oav/spec!composeReaders}: order YAML readers
  * first so the JSON-only readers in `oav-core/spec` act
  * as the fallback for `.json` paths.
  *
@@ -130,7 +130,7 @@ export function createSmartHttpReader(): DocumentReader {
       // Ambiguous Content-Type: use URL extension as the tiebreaker,
       // defaulting to JSON for extensionless URLs. A misconfigured
       // server that returns YAML with `text/plain` and a URL like
-      // `/openapi` will fail with a JSON parse error — escape hatch is
+      // `/openapi` will fail with a JSON parse error; escape hatch is
       // to supply a `.yaml` suffix or plug in a custom reader.
       if (hasYamlExtension(uri)) return parseYaml(text);
       return JSON.parse(text);

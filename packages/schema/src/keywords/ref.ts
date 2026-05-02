@@ -38,7 +38,7 @@ export const refKeyword: KeywordDefinition = {
 
 /**
  * The JSON Schema 2020-12 `$dynamicRef` keyword. For schemas that do not use
- * `$dynamicAnchor` extension points this behaves exactly like `$ref` — the
+ * `$dynamicAnchor` extension points this behaves exactly like `$ref`: the
  * anchor is resolved statically against the schema tree.
  *
  * @public
@@ -65,7 +65,7 @@ export const dynamicAnchorKeyword: KeywordDefinition = {
   vocabulary: CORE_VOCAB,
   annotation: true,
   compile(): void {
-    // intentionally empty — anchor is consumed at resolve time
+    // intentionally empty: anchor is consumed at resolve time
   },
 };
 
@@ -80,7 +80,7 @@ export const anchorKeyword: KeywordDefinition = {
   vocabulary: CORE_VOCAB,
   annotation: true,
   compile(): void {
-    // intentionally empty — anchor is consumed at resolve time
+    // intentionally empty: anchor is consumed at resolve time
   },
 };
 
@@ -110,7 +110,7 @@ export const defsKeyword: KeywordDefinition = {
   vocabulary: CORE_VOCAB,
   annotation: true,
   compile(): void {
-    // intentionally empty — resolved on demand via $ref
+    // intentionally empty: resolved on demand via $ref
   },
 };
 

@@ -95,7 +95,7 @@ describe("maxErrors option", () => {
 
   it("rejects maxErrors: 0 at compile time", () => {
     // A cap of 0 collects no errors and would silently return
-    // `valid: true` for invalid data — a correctness trap. Predicate
+    // `valid: true` for invalid data, a correctness trap. Predicate
     // mode is the explicit way to skip error collection entirely.
     expect(() => compile({ type: "number" }, 0)).toThrow(
       /must be a positive integer.*Use `predicate: true`/,

@@ -18,7 +18,7 @@ import { createValidator } from "../src/index.js";
  *   - every HTTP-layer named code is observed at least once
  *
  * Adding a new keyword or HTTP-layer wrapper should force a PR update
- * here — otherwise the `BuiltInErrorParams` contract silently drifts.
+ * here; otherwise the `BuiltInErrorParams` contract silently drifts.
  */
 
 function collectCodes(err: ValidationError | null): Set<string> {
@@ -149,7 +149,7 @@ describe("BuiltInErrorParams registry cross-check", () => {
     // requests. Bidirectional coverage across rarer codes
     // (path-param / cookie-param, which only fire on content-JSON
     // parameter deserialisation failures) is intentionally not
-    // enforced — the forward check above already catches undocumented
+    // enforced; the forward check above already catches undocumented
     // emissions, which is the drift mode that actually bites consumers.
     const v = createValidator(sampleSpec());
     const observed = new Set<string>();
@@ -211,7 +211,7 @@ describe("BuiltInErrorParams registry cross-check", () => {
       body: { name: "x" },
     });
     expect(e).not.toBeNull();
-    // `request` branch must carry method + pathPattern — the documented
+    // `request` branch must carry method + pathPattern, the documented
     // shape that drifted previously.
     expect(e?.code).toBe("request");
     expect(e?.params).toEqual({ method: "POST", pathPattern: "/items/{id}" });
@@ -221,7 +221,7 @@ describe("BuiltInErrorParams registry cross-check", () => {
     // Declared required keys per HTTP-layer code. Runtime assertion
     // that the validator's emitted params include every documented key.
     // Errors are emitted imperatively (not through generated JS), so
-    // TypeScript can't enforce the contract — this test is the backstop.
+    // TypeScript can't enforce the contract; this test is the backstop.
     const requiredKeys: Record<string, readonly string[]> = {
       route: ["method", "path"],
       method: ["method", "pathPattern", "allowed"],
@@ -308,7 +308,7 @@ describe("BuiltInErrorParams registry cross-check", () => {
     // `*-param` wrapper. Declared shape trusted by construction
     // (same `{ name, in }` builder as the reachable siblings).
     check(v.validateRequest({ method: "GET", path: "/items/1" }), "header-param");
-    // Strict query parameters — unknown key triggers query-param.
+    // Strict query parameters: unknown key triggers query-param.
     check(
       v.validateRequest({
         method: "GET",
@@ -320,7 +320,7 @@ describe("BuiltInErrorParams registry cross-check", () => {
     );
     check(v.validateResponse({ method: "GET", path: "/items/1" }, { status: 500 }), "response");
     check(v.validateResponse({ method: "GET", path: "/items/1" }, { status: 500 }), "status");
-    // Response-side missing required header — must carry name + in.
+    // Response-side missing required header; must carry name + in.
     check(
       vWithResponseHeader.validateResponse(
         { method: "GET", path: "/r" },

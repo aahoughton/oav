@@ -31,7 +31,7 @@ export interface PathOverride {
  * - `replace` is wholesale and cannot be combined with the additive /
  *   removal fields below. Setting both throws at apply time.
  * - `removeParameters` / `removeResponses` silently no-op when the
- *   target isn't present — wildcard overrides (`"*"`) fan out to many
+ *   target isn't present; wildcard overrides (`"*"`) fan out to many
  *   operations and can't assume every target has the same surface.
  *
  * @public

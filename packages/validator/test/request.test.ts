@@ -102,7 +102,7 @@ describe("validateRequest", () => {
       },
     };
     const vi = createValidator(spec, { strict: "strict" });
-    // Schemas compile lazily — first touch to the route triggers it.
+    // Schemas compile lazily; first touch to the route triggers it.
     vi.validateRequest({ method: "POST", path: "/p", contentType: "application/json", body: "x" });
     const unknown = vi.stats.strictIssues.find((i) => i.code === "unknown-keyword");
     expect(unknown).toBeDefined();
@@ -124,7 +124,7 @@ describe("validateRequest", () => {
     // Spec accepts only multipart/form-data. Client says text/plain and
     // sends no body. Today's bug: the gate skipped body-absent requests
     // entirely, so validateBody fired "missing required request body"
-    // (400) — true but downstream of the actual cause. Now the gate
+    // (400), true but downstream of the actual cause. Now the gate
     // sees the unmatched header and surfaces a content-type leaf (415),
     // which is the actionable signal.
     const spec: OpenAPIDocument = {
@@ -185,7 +185,7 @@ describe("validateRequest", () => {
 
   it("content-type gate short-circuits before parameter validation", () => {
     // Wrong Content-Type AND missing required X-Tenant header. The gate
-    // fires first, so the tree is a single content-type leaf — no
+    // fires first, so the tree is a single content-type leaf, no
     // paired header-param diagnostic. Motivation: a client who fixes
     // the content-type can't act on a header-param complaint anyway;
     // surface the upstream problem unambiguously.
@@ -415,7 +415,7 @@ describe("validateRequest", () => {
     const leaves = collectLeaves(err ?? undefined!).filter((l) => l.code === "required");
     const paths = leaves.map((l) => l.path.join("."));
     // Each error's path carries the parent property's slot (weight vs
-    // temperature) — not a single shared location derived from the
+    // temperature), not a single shared location derived from the
     // $ref site.
     expect(paths.sort()).toEqual(["body.temperature.value", "body.weight.value"]);
   });
@@ -439,7 +439,7 @@ describe("validateRequest", () => {
 
   it("optional requestBody:required=false passes when the body is omitted", () => {
     // openapi-backend #817 / #292. Distinct from the bareboss no-body
-    // case — here the spec declares content but explicitly marks it
+    // case; here the spec declares content but explicitly marks it
     // non-required.
     const spec: OpenAPIDocument = {
       openapi: "3.1.0",
@@ -556,7 +556,7 @@ describe("validateRequest", () => {
   it("operation-level parameters replace path-level ones with the same name+in", () => {
     // openapi-backend #46. Path-level param: minLength 1; op-level
     // override: minLength 10. Per OAS 3.x the op-level fully replaces
-    // the path-level — a single error with the op-level constraint.
+    // the path-level: a single error with the op-level constraint.
     const spec: OpenAPIDocument = {
       openapi: "3.1.0",
       info: { title: "t", version: "1" },
@@ -672,7 +672,7 @@ describe("validateRequest", () => {
 
   it("accepts an optional-body POST with no body and no content-type", () => {
     // eov #397 / #646 / #655: when requestBody is not required and the
-    // caller sends nothing, there's nothing to validate — don't error
+    // caller sends nothing, there's nothing to validate; don't error
     // on the missing content-type.
     const spec: OpenAPIDocument = {
       openapi: "3.1.0",
@@ -695,7 +695,7 @@ describe("validateRequest", () => {
 
   it("format validators let null pass through on nullable OAS 3.0 fields", () => {
     // eov #382 / #108: format checks should not fire for null values on
-    // nullable properties — the format predicate only applies to strings.
+    // nullable properties; the format predicate only applies to strings.
     const spec: OpenAPIDocument = {
       openapi: "3.0.3",
       info: { title: "t", version: "1" },
@@ -841,7 +841,7 @@ describe("validateRequest", () => {
   });
 
   it("readOnly inside an allOf-referenced subschema is enforced on request bodies", () => {
-    // eov #149 / #389: the classic OpenAPI composition pattern — a
+    // eov #149 / #389: the classic OpenAPI composition pattern, a
     // per-entity schema extends a shared "timestamps" fragment via
     // allOf + $ref. The shared fragment's readOnly fields (and their
     // required-ness) must be transformed on the request side.
@@ -882,7 +882,7 @@ describe("validateRequest", () => {
       },
     };
     const sv = createValidator(spec);
-    // Omitting createdAt should pass — the readOnly field is exempt
+    // Omitting createdAt should pass; the readOnly field is exempt
     // from required on the request side.
     expect(
       sv.validateRequest({
@@ -892,7 +892,7 @@ describe("validateRequest", () => {
         body: { name: "n" },
       }),
     ).toBeNull();
-    // Sending createdAt should fail — clients must not supply it.
+    // Sending createdAt should fail; clients must not supply it.
     const err = sv.validateRequest({
       method: "POST",
       path: "/users",
@@ -945,7 +945,7 @@ describe("validateRequest", () => {
 
   it("parameter.content parses JSON and validates its schema", () => {
     // OpenAPI 3.1 §4.8.12.1 lets a parameter carry `content` instead of
-    // `schema` — standard pattern for structured-JSON query params.
+    // `schema`: standard pattern for structured-JSON query params.
     const spec: OpenAPIDocument = {
       openapi: "3.1.0",
       info: { title: "t", version: "1" },
@@ -1020,7 +1020,7 @@ describe("validateRequest", () => {
                 in: "query",
                 required: false,
                 allowEmptyValue: true,
-                // A schema that would normally reject "" — allowEmptyValue skips it.
+                // A schema that would normally reject "" (allowEmptyValue skips it).
                 schema: { type: "string", minLength: 4 },
               },
             ],
