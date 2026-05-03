@@ -1,4 +1,4 @@
-import { NAMES, quoteString } from "../codegen/index.js";
+import { NAMES, nonNegativeIntegerLiteral, quoteString } from "../codegen/index.js";
 import type { KeywordCompileContext, KeywordDefinition } from "./types.js";
 import { CORE_VALIDATION_VOCAB, FORMAT_ASSERTION_VOCAB, FORMAT_VOCAB } from "./vocabulary-uris.js";
 
@@ -12,7 +12,7 @@ export const maxLengthKeyword: KeywordDefinition = {
   keyword: "maxLength",
   vocabulary: CORE_VALIDATION_VOCAB,
   compile(ctx: KeywordCompileContext): void {
-    const limit = ctx.schema as number;
+    const limit = nonNegativeIntegerLiteral(ctx.schema, "maxLength");
     const lenExpr = codePointLengthExpr(ctx.data);
     ctx.gen.if(`typeof ${ctx.data} === "string" && ${lenExpr} > ${limit}`, () => {
       ctx.emitError(
@@ -37,7 +37,7 @@ export const minLengthKeyword: KeywordDefinition = {
   keyword: "minLength",
   vocabulary: CORE_VALIDATION_VOCAB,
   compile(ctx: KeywordCompileContext): void {
-    const limit = ctx.schema as number;
+    const limit = nonNegativeIntegerLiteral(ctx.schema, "minLength");
     const lenExpr = codePointLengthExpr(ctx.data);
     ctx.gen.if(`typeof ${ctx.data} === "string" && ${lenExpr} < ${limit}`, () => {
       ctx.emitError(

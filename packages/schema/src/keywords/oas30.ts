@@ -21,7 +21,7 @@
  * @packageDocumentation
  */
 
-import { NAMES, quoteString } from "../codegen/index.js";
+import { NAMES, numberLiteral, quoteString } from "../codegen/index.js";
 import { buildTypeMismatchCondition } from "./type-predicates.js";
 import type { KeywordCompileContext, KeywordDefinition } from "./types.js";
 import { OAS30_VOCAB } from "./vocabulary-uris.js";
@@ -91,9 +91,10 @@ export const oas30MaximumKeyword: KeywordDefinition = {
   keyword: "maximum",
   vocabulary: OAS30_VOCAB,
   compile(ctx: KeywordCompileContext): void {
-    const limit = ctx.schema as number;
+    const limit = numberLiteral(ctx.schema, "maximum");
     const exclusive = ctx.parentSchema.exclusiveMaximum === true;
     const op = exclusive ? ">=" : ">";
+    const exclusiveLit = exclusive ? "true" : "false";
     ctx.gen.if(
       `typeof ${ctx.data} === "number" && Number.isFinite(${ctx.data}) && ${ctx.data} ${op} ${limit}`,
       () => {
@@ -102,7 +103,7 @@ export const oas30MaximumKeyword: KeywordDefinition = {
           ctx.leafErrorExpr(
             quoteString("maximum"),
             `\`must be ${exclusive ? "<" : "<="} ${limit}\``,
-            `{ maximum: ${limit}, exclusive: ${exclusive}, actual: ${ctx.data} }`,
+            `{ maximum: ${limit}, exclusive: ${exclusiveLit}, actual: ${ctx.data} }`,
           ),
         );
       },
@@ -120,9 +121,10 @@ export const oas30MinimumKeyword: KeywordDefinition = {
   keyword: "minimum",
   vocabulary: OAS30_VOCAB,
   compile(ctx: KeywordCompileContext): void {
-    const limit = ctx.schema as number;
+    const limit = numberLiteral(ctx.schema, "minimum");
     const exclusive = ctx.parentSchema.exclusiveMinimum === true;
     const op = exclusive ? "<=" : "<";
+    const exclusiveLit = exclusive ? "true" : "false";
     ctx.gen.if(
       `typeof ${ctx.data} === "number" && Number.isFinite(${ctx.data}) && ${ctx.data} ${op} ${limit}`,
       () => {
@@ -131,7 +133,7 @@ export const oas30MinimumKeyword: KeywordDefinition = {
           ctx.leafErrorExpr(
             quoteString("minimum"),
             `\`must be ${exclusive ? ">" : ">="} ${limit}\``,
-            `{ minimum: ${limit}, exclusive: ${exclusive}, actual: ${ctx.data} }`,
+            `{ minimum: ${limit}, exclusive: ${exclusiveLit}, actual: ${ctx.data} }`,
           ),
         );
       },

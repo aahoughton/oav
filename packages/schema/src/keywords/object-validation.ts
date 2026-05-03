@@ -1,4 +1,4 @@
-import { quoteString } from "../codegen/index.js";
+import { nonNegativeIntegerLiteral, quoteString } from "../codegen/index.js";
 import type { KeywordCompileContext, KeywordDefinition } from "./types.js";
 import { CORE_VALIDATION_VOCAB } from "./vocabulary-uris.js";
 
@@ -19,7 +19,7 @@ export const maxPropertiesKeyword: KeywordDefinition = {
   keyword: "maxProperties",
   vocabulary: CORE_VALIDATION_VOCAB,
   compile(ctx: KeywordCompileContext): void {
-    const limit = ctx.schema as number;
+    const limit = nonNegativeIntegerLiteral(ctx.schema, "maxProperties");
     const count = ctx.gen.scope.name("count");
     ctx.gen.if(isObjectGuard(ctx.data), (g) => {
       g.const(count, keyCountExpr(ctx.data));
@@ -46,7 +46,7 @@ export const minPropertiesKeyword: KeywordDefinition = {
   keyword: "minProperties",
   vocabulary: CORE_VALIDATION_VOCAB,
   compile(ctx: KeywordCompileContext): void {
-    const limit = ctx.schema as number;
+    const limit = nonNegativeIntegerLiteral(ctx.schema, "minProperties");
     const count = ctx.gen.scope.name("count");
     ctx.gen.if(isObjectGuard(ctx.data), (g) => {
       g.const(count, keyCountExpr(ctx.data));
