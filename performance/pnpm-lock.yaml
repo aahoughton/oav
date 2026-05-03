@@ -18,8 +18,8 @@ importers:
         specifier: ^8.20.0
         version: 8.20.0
       tinybench:
-        specifier: ^6.0.0
-        version: 6.0.0
+        specifier: ^6.0.1
+        version: 6.0.1
       tsx:
         specifier: ^4.21.0
         version: 4.21.0
@@ -272,8 +272,8 @@ packages:
   resolve-pkg-maps@1.0.0:
     resolution: {integrity: sha512-seS2Tj26TBVOC2NIc2rOe2y2ZO7efxITtLZcGSOnHHNOQ7CkiUBfw0Iw2ck6xkIhPwLhKNLS8BO+hEpngQlqzw==}
 
-  tinybench@6.0.0:
-    resolution: {integrity: sha512-BWlWpVbbZXaYjRV0twGLNQO00Zj4HA/sjLOQP2IvzQqGwRGp+2kh7UU3ijyJ3ywFRogYDRbiHDMrUOfaMnN56g==}
+  tinybench@6.0.1:
+    resolution: {integrity: sha512-cMdWsxmysdg8mNWf1pujiWl3TW0cU6m8QuNw55QlnP3I6N96Grb0wnu5N0syHIu3LbiVZCNqlfWzWDq84HZphA==}
     engines: {node: '>=20.0.0'}
 
   tsx@4.21.0:
@@ -478,7 +478,7 @@ snapshots:
 
   resolve-pkg-maps@1.0.0: {}
 
-  tinybench@6.0.0: {}
+  tinybench@6.0.1: {}
 
   tsx@4.21.0:
     dependencies:
