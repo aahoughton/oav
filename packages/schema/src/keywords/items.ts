@@ -1,4 +1,4 @@
-import { quoteString } from "../codegen/index.js";
+import { nonNegativeIntegerLiteral, quoteString } from "../codegen/index.js";
 import type { SchemaOrBoolean } from "@oav/core";
 import type { KeywordCompileContext, KeywordDefinition } from "./types.js";
 import { APPLICATOR_VOCAB } from "./vocabulary-uris.js";
@@ -88,8 +88,15 @@ export const containsKeyword: KeywordDefinition = {
   compile(ctx: KeywordCompileContext): void {
     const subSchema = ctx.schema as SchemaOrBoolean;
     const fn = ctx.compileSubschema(subSchema);
-    const min = ctx.parentSchema.minContains ?? 1;
-    const max = ctx.parentSchema.maxContains;
+    const minLit =
+      ctx.parentSchema.minContains === undefined
+        ? "1"
+        : nonNegativeIntegerLiteral(ctx.parentSchema.minContains, "minContains");
+    const min = Number(minLit);
+    const maxLit =
+      ctx.parentSchema.maxContains === undefined
+        ? null
+        : nonNegativeIntegerLiteral(ctx.parentSchema.maxContains, "maxContains");
     ctx.gen.if(`Array.isArray(${ctx.data})`, (g) => {
       const count = g.scope.name("count");
       g.let(count, "0");
@@ -107,8 +114,8 @@ export const containsKeyword: KeywordDefinition = {
             }
           });
         });
-        if (min > 0) g.line(`if (${count} < ${min}) return false;`);
-        if (max !== undefined) g.line(`if (${count} > ${max}) return false;`);
+        if (min > 0) g.line(`if (${count} < ${minLit}) return false;`);
+        if (maxLit !== null) g.line(`if (${count} > ${maxLit}) return false;`);
         return;
       }
       const matchedIdx = g.scope.name("matched");
@@ -130,27 +137,27 @@ export const containsKeyword: KeywordDefinition = {
         });
       });
       if (min > 0) {
-        g.if(`${count} < ${min}`, () => {
+        g.if(`${count} < ${minLit}`, () => {
           // actual count lives in params.actual; dropping it from the
           // message turns the emitted string into a constant literal.
           ctx.emitError(
             "leaf",
             ctx.leafErrorExpr(
               quoteString("contains"),
-              `\`must contain at least ${min} matching item(s)\``,
-              `{ minContains: ${min}, actual: ${count} }`,
+              `\`must contain at least ${minLit} matching item(s)\``,
+              `{ minContains: ${minLit}, actual: ${count} }`,
             ),
           );
         });
       }
-      if (max !== undefined) {
-        g.if(`${count} > ${max}`, () => {
+      if (maxLit !== null) {
+        g.if(`${count} > ${maxLit}`, () => {
           ctx.emitError(
             "leaf",
             ctx.leafErrorExpr(
               quoteString("maxContains"),
-              `\`must contain at most ${max} matching item(s)\``,
-              `{ maxContains: ${max}, actual: ${count} }`,
+              `\`must contain at most ${maxLit} matching item(s)\``,
+              `{ maxContains: ${maxLit}, actual: ${count} }`,
             ),
           );
         });

@@ -1,4 +1,4 @@
-import { quoteString } from "../codegen/index.js";
+import { numberLiteral, positiveNumberLiteral, quoteString } from "../codegen/index.js";
 import type { KeywordCompileContext, KeywordDefinition } from "./types.js";
 import { CORE_VALIDATION_VOCAB } from "./vocabulary-uris.js";
 
@@ -34,7 +34,7 @@ export const multipleOfKeyword: KeywordDefinition = {
   keyword: "multipleOf",
   vocabulary: CORE_VALIDATION_VOCAB,
   compile(ctx: KeywordCompileContext): void {
-    const divisor = ctx.schema as number;
+    const divisor = positiveNumberLiteral(ctx.schema, "multipleOf");
     const q = ctx.gen.scope.name("q");
     const tol = ctx.gen.scope.name("tol");
     // 16 * Number.EPSILON ≈ 3.55e-15; at |q| = 1e15 that admits ~3.55
@@ -68,7 +68,7 @@ export const maximumKeyword: KeywordDefinition = {
   keyword: "maximum",
   vocabulary: CORE_VALIDATION_VOCAB,
   compile(ctx: KeywordCompileContext): void {
-    const limit = ctx.schema as number;
+    const limit = numberLiteral(ctx.schema, "maximum");
     ctx.gen.if(`${numberGuard(ctx.data)} && ${ctx.data} > ${limit}`, () => {
       emitNumericError(
         ctx,
@@ -89,7 +89,7 @@ export const exclusiveMaximumKeyword: KeywordDefinition = {
   keyword: "exclusiveMaximum",
   vocabulary: CORE_VALIDATION_VOCAB,
   compile(ctx: KeywordCompileContext): void {
-    const limit = ctx.schema as number;
+    const limit = numberLiteral(ctx.schema, "exclusiveMaximum");
     ctx.gen.if(`${numberGuard(ctx.data)} && ${ctx.data} >= ${limit}`, () => {
       emitNumericError(
         ctx,
@@ -110,7 +110,7 @@ export const minimumKeyword: KeywordDefinition = {
   keyword: "minimum",
   vocabulary: CORE_VALIDATION_VOCAB,
   compile(ctx: KeywordCompileContext): void {
-    const limit = ctx.schema as number;
+    const limit = numberLiteral(ctx.schema, "minimum");
     ctx.gen.if(`${numberGuard(ctx.data)} && ${ctx.data} < ${limit}`, () => {
       emitNumericError(
         ctx,
@@ -131,7 +131,7 @@ export const exclusiveMinimumKeyword: KeywordDefinition = {
   keyword: "exclusiveMinimum",
   vocabulary: CORE_VALIDATION_VOCAB,
   compile(ctx: KeywordCompileContext): void {
-    const limit = ctx.schema as number;
+    const limit = numberLiteral(ctx.schema, "exclusiveMinimum");
     ctx.gen.if(`${numberGuard(ctx.data)} && ${ctx.data} <= ${limit}`, () => {
       emitNumericError(
         ctx,

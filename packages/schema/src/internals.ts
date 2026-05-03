@@ -14,12 +14,18 @@
  */
 
 // Codegen mechanics: used by keyword authors that need to emit
-// non-boilerplate JS (path joining, string quoting, raw JS injection).
+// non-boilerplate JS (path joining, string quoting, raw JS injection,
+// and the safe-literal helpers that coerce schema-supplied values
+// before interpolating them into generated source).
 export {
+  booleanLiteral,
   CodeGen,
   NAMES,
   Scope,
+  nonNegativeIntegerLiteral,
+  numberLiteral,
   pathJoinExpr,
+  positiveNumberLiteral,
   quoteString,
   rawExpr,
   type CodeEmitter,

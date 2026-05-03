@@ -385,7 +385,7 @@ export const dependenciesKeyword: KeywordDefinition = {
                     "leaf",
                     ctx.leafErrorExpr(
                       quoteString("dependencies"),
-                      `\`property "${prop}" is required when "${trigger}" is present\``,
+                      quoteString(`property "${prop}" is required when "${trigger}" is present`),
                       `{ trigger: ${triggerLit}, missing: ${propLit} }`,
                       [propLit],
                     ),
@@ -438,7 +438,7 @@ export const dependentRequiredKeyword: KeywordDefinition = {
                   "leaf",
                   ctx.leafErrorExpr(
                     quoteString("dependentRequired"),
-                    `\`property "${prop}" is required when "${trigger}" is present\``,
+                    quoteString(`property "${prop}" is required when "${trigger}" is present`),
                     `{ trigger: ${triggerLit}, missing: ${propLit} }`,
                     [propLit],
                   ),

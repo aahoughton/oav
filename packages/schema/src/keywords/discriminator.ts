@@ -75,7 +75,7 @@ export const discriminatorKeyword: KeywordDefinition = {
               "leaf",
               ctx.leafErrorExpr(
                 quoteString("discriminator"),
-                `\`discriminator property "${propertyName}" must be a string\``,
+                quoteString(`discriminator property "${propertyName}" must be a string`),
                 `{ propertyName: ${propLit} }`,
                 [propLit],
               ),

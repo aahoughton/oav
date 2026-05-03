@@ -1,4 +1,4 @@
-import { NAMES, quoteString } from "../codegen/index.js";
+import { NAMES, nonNegativeIntegerLiteral, quoteString } from "../codegen/index.js";
 import type { KeywordCompileContext, KeywordDefinition } from "./types.js";
 import { CORE_VALIDATION_VOCAB } from "./vocabulary-uris.js";
 
@@ -11,7 +11,7 @@ export const maxItemsKeyword: KeywordDefinition = {
   keyword: "maxItems",
   vocabulary: CORE_VALIDATION_VOCAB,
   compile(ctx: KeywordCompileContext): void {
-    const limit = ctx.schema as number;
+    const limit = nonNegativeIntegerLiteral(ctx.schema, "maxItems");
     ctx.gen.if(`Array.isArray(${ctx.data}) && ${ctx.data}.length > ${limit}`, () => {
       ctx.emitError(
         "leaf",
@@ -34,7 +34,7 @@ export const minItemsKeyword: KeywordDefinition = {
   keyword: "minItems",
   vocabulary: CORE_VALIDATION_VOCAB,
   compile(ctx: KeywordCompileContext): void {
-    const limit = ctx.schema as number;
+    const limit = nonNegativeIntegerLiteral(ctx.schema, "minItems");
     ctx.gen.if(`Array.isArray(${ctx.data}) && ${ctx.data}.length < ${limit}`, () => {
       ctx.emitError(
         "leaf",

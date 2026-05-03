@@ -191,8 +191,8 @@ export class CodeGen implements CodeEmitter {
   }
 
   /**
-   * Enter an indentation level without emitting a brace pair. Rarely used —
-   * prefer {@link CodeGen.if} / {@link CodeGen.forRange} / etc.
+   * Enter an indentation level without emitting a brace pair. Rarely
+   * used; prefer {@link CodeGen.if} / {@link CodeGen.forRange} / etc.
    *
    * @returns `this`, for chaining.
    */
@@ -237,6 +237,100 @@ export class CodeGen implements CodeEmitter {
  */
 export function quoteString(value: string): string {
   return JSON.stringify(value);
+}
+
+/**
+ * Coerce a schema-supplied finite number into a JavaScript numeric
+ * literal that is safe to interpolate directly into generated source.
+ * Throws at compile time on non-numbers, NaN, and infinities.
+ *
+ * Use this for any keyword whose value lands raw in a generated JS
+ * expression (e.g. `${data} > ${limit}`). Interpolating
+ * `ctx.schema` directly is a codegen-injection vector when the
+ * schema is attacker-supplied; this helper closes that path by
+ * validating the value first and returning a known-safe `String(n)`.
+ *
+ * @param value - The schema-supplied value (untrusted).
+ * @param keyword - The schema keyword being compiled. Surfaced in the
+ *   error message so callers know which schema position to fix.
+ * @returns The value rendered as a numeric literal, e.g. `"5"` or `"-1.5"`.
+ * @throws Error when `value` is not a finite number.
+ *
+ * @public
+ */
+export function numberLiteral(value: unknown, keyword: string): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(`keyword "${keyword}" requires a finite number; got ${describeValue(value)}`);
+  }
+  return String(value);
+}
+
+/**
+ * Like {@link numberLiteral}, but additionally requires a non-negative
+ * integer. Used for `maxLength`, `minItems`, `maxProperties`, etc.
+ *
+ * @param value - The schema-supplied value (untrusted).
+ * @param keyword - The schema keyword being compiled.
+ * @returns The value rendered as a numeric literal.
+ * @throws Error if `value` is not an integer >= 0.
+ *
+ * @public
+ */
+export function nonNegativeIntegerLiteral(value: unknown, keyword: string): string {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    throw new Error(
+      `keyword "${keyword}" requires a non-negative integer; got ${describeValue(value)}`,
+    );
+  }
+  return String(value);
+}
+
+/**
+ * Like {@link numberLiteral}, but additionally requires a strictly positive
+ * value. Used for `multipleOf`, where zero would mean "every number is a
+ * multiple of zero" (vacuous, and triggers a division by zero in the
+ * generated check).
+ *
+ * @param value - The schema-supplied value (untrusted).
+ * @param keyword - The schema keyword being compiled.
+ * @returns The value rendered as a numeric literal.
+ * @throws Error if `value` is not a finite number > 0.
+ *
+ * @public
+ */
+export function positiveNumberLiteral(value: unknown, keyword: string): string {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    throw new Error(
+      `keyword "${keyword}" requires a finite positive number; got ${describeValue(value)}`,
+    );
+  }
+  return String(value);
+}
+
+/**
+ * Coerce a schema-supplied boolean into a JavaScript boolean literal
+ * (`"true"` or `"false"`) safe to interpolate into generated source.
+ *
+ * @param value - The schema-supplied value (untrusted).
+ * @param keyword - The schema keyword being compiled.
+ * @returns `"true"` or `"false"`.
+ * @throws Error if `value` is not a boolean.
+ *
+ * @public
+ */
+export function booleanLiteral(value: unknown, keyword: string): string {
+  if (typeof value !== "boolean") {
+    throw new Error(`keyword "${keyword}" requires a boolean; got ${describeValue(value)}`);
+  }
+  return value ? "true" : "false";
+}
+
+function describeValue(value: unknown): string {
+  if (typeof value === "string") return `string ${JSON.stringify(value)}`;
+  if (typeof value === "number") return `number ${String(value)}`;
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+  return typeof value;
 }
 
 /**
