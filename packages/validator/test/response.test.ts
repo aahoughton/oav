@@ -79,6 +79,12 @@ describe("validateResponse", () => {
       { status: 200, headers: { "x-count": "-1" } },
     );
     expect(leafAt(invalid, "header.X-Count")).toBeDefined();
+
+    // Regression for #255: a runtime response with required headers
+    // declared in the spec but no `headers` object at all used to slip
+    // past validation entirely. Treat absent `headers` as `{}`.
+    const absent = sv.validateResponse({ method: "GET", path: "/items" }, { status: 200 });
+    expect(leafAt(absent, "header.X-Count")).toBeDefined();
   });
 
   it("writeOnly properties are rejected in response bodies", () => {

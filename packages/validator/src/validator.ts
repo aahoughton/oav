@@ -812,11 +812,12 @@ export function createValidator(spec: OpenAPIDocument, options: ValidatorOptions
     } else {
       const responseCompiled = cache.responses.get(statusKey);
       if (responseCompiled !== undefined) {
-        if (res.headers && responseCompiled.headers.size > 0) {
+        if (responseCompiled.headers.size > 0) {
+          const headers = res.headers ?? {};
           for (const [lowered, entry] of responseCompiled.headers) {
             const hdr = entry.object;
             const name = entry.name;
-            const raw = res.headers[lowered] ?? res.headers[name];
+            const raw = headers[lowered] ?? headers[name];
             if (hdr.required && (raw === undefined || raw === "")) {
               children.push(
                 createLeafError(
