@@ -63,9 +63,8 @@ export const patternKeyword: KeywordDefinition = {
   vocabulary: CORE_VALIDATION_VOCAB,
   compile(ctx: KeywordCompileContext): void {
     const source = ctx.schema as string;
-    const patternVar = ctx.gen.scope.name("pattern");
     const patternLit = quoteString(source);
-    ctx.gen.line(`const ${patternVar} = ${NAMES.DEPS}.compilePattern(${patternLit});`);
+    const patternVar = ctx.hoistConstant(`${NAMES.DEPS}.compilePattern(${patternLit})`, "pattern");
     ctx.gen.if(`typeof ${ctx.data} === "string" && !${patternVar}.test(${ctx.data})`, () => {
       ctx.emitError(
         "leaf",

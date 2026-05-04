@@ -51,16 +51,15 @@ export const patternPropertiesKeyword: KeywordDefinition = {
     const patterns = ctx.schema as Record<string, SchemaOrBoolean>;
     const entries = Object.keys(patterns);
     if (entries.length === 0) return;
+    const subs: Array<{ regex: string; sub: SchemaOrBoolean | undefined }> = entries.map(
+      (pattern) => {
+        const subSchema = patterns[pattern];
+        const patternLit = quoteString(pattern);
+        const regexVar = ctx.hoistConstant(`${NAMES.DEPS}.compilePattern(${patternLit})`, "re");
+        return { regex: regexVar, sub: subSchema };
+      },
+    );
     ctx.gen.if(isObjectGuard(ctx.data), (g) => {
-      const subs: Array<{ regex: string; sub: SchemaOrBoolean | undefined }> = entries.map(
-        (pattern) => {
-          const subSchema = patterns[pattern];
-          const patternLit = quoteString(pattern);
-          const regexVar = g.scope.name("re");
-          g.line(`const ${regexVar} = ${NAMES.DEPS}.compilePattern(${patternLit});`);
-          return { regex: regexVar, sub: subSchema };
-        },
-      );
       const keyVar = g.scope.name("key");
       g.forIn(keyVar, ctx.data, (gi) => {
         for (const { regex, sub } of subs) {
@@ -94,15 +93,11 @@ export const additionalPropertiesKeyword: KeywordDefinition = {
     const knownProps = Object.keys(ctx.parentSchema.properties ?? {});
     const patterns = Object.keys(ctx.parentSchema.patternProperties ?? {});
     const knownSet = knownProps.length > 0 ? JSON.stringify(knownProps) : "[]";
-    const patternVars: string[] = [];
+    const patternVars: string[] = patterns.map((p) =>
+      ctx.hoistConstant(`${NAMES.DEPS}.compilePattern(${quoteString(p)})`, "re"),
+    );
+    const known = ctx.hoistConstant(`new Set(${knownSet})`, "known");
     ctx.gen.if(isObjectGuard(ctx.data), (g) => {
-      for (const p of patterns) {
-        const v = g.scope.name("re");
-        const lit = quoteString(p);
-        g.line(`const ${v} = ${NAMES.DEPS}.compilePattern(${lit});`);
-        patternVars.push(v);
-      }
-      const known = ctx.hoistConstant(`new Set(${knownSet})`, "known");
       const key = g.scope.name("key");
       g.forIn(key, ctx.data, (gi) => {
         gi.if(`${known}.has(${key})`, (gii) => gii.line("continue;"));

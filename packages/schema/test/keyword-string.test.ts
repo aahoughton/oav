@@ -70,9 +70,8 @@ describe("string keywords", () => {
     expect(v.validate("abc123").valid).toBe(false);
   });
 
-  it("pattern surfaces the error when the regex is malformed under both modes", () => {
-    const v = compile({ pattern: "(" });
-    expect(() => v.validate("anything")).toThrow(/Invalid regular expression/);
+  it("pattern with a malformed regex throws at compile time (fail-fast on bad spec)", () => {
+    expect(() => compile({ pattern: "(" })).toThrow(/Invalid regular expression/);
   });
 
   it("format is annotation-only by default (spec default)", () => {
