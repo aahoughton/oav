@@ -227,12 +227,12 @@ export function countErrors(error: ValidationError): number {
 
 // ---------------------------------------------------------------------------
 // Deprecated: kept exported for source compatibility; absent from user-facing
-// docs. Behavior identical to the new canonical names. Removal in v2.0.
+// docs. Behavior identical to the new canonical names. Removal in v3.
 // ---------------------------------------------------------------------------
 
 /**
  * @deprecated Use {@link toJsonObject}. Same return shape; the new name
- *   reflects that it returns an object, not a string.
+ *   reflects that it returns an object, not a string. Removal in v3.
  *
  * @public
  */
@@ -244,18 +244,18 @@ export function formatJson(error: ValidationError): ValidationError {
  * Options for the deprecated {@link summarize}. Use
  * {@link FormatSummaryOptions} instead.
  *
- * @deprecated Use {@link FormatSummaryOptions}.
+ * @deprecated Use {@link FormatSummaryOptions}. Removal in v3.
  *
  * @public
  */
 export interface SummarizeOptions {
-  /** @deprecated See {@link FormatSummaryOptions.select}. */
+  /** @deprecated See {@link FormatSummaryOptions.select}. Removal in v3. */
   select?: SummarizeSelect;
 }
 
 /**
  * @deprecated Use {@link FormatSummarySelect}. Note: the new type also
- *   accepts `"all"` for flat all-leaves output.
+ *   accepts `"all"` for flat all-leaves output. Removal in v3.
  *
  * @public
  */
@@ -263,6 +263,7 @@ export type SummarizeSelect = "first" | "deepest" | { byCode: readonly string[] 
 
 /**
  * @deprecated Use {@link formatSummary}. Same defaults and behavior.
+ *   Removal in v3.
  *
  * @public
  */
@@ -271,7 +272,7 @@ export function summarize(error: ValidationError, options: SummarizeOptions = {}
 }
 
 /**
- * @deprecated Use `formatSummary(err, { select: "all" })`.
+ * @deprecated Use `formatSummary(err, { select: "all" })`. Removal in v3.
  *
  * @public
  */

@@ -9,8 +9,7 @@
  *   reusable from any custom middleware.
  *
  * Naming and option shapes are deliberately consistent with the
- * future `oav-express5`, `oav-fastify`, and `oav-hono` adapters,
- * and pair with future `validateResponses` on this package.
+ * sibling `oav-express5` / `oav-fastify` adapters.
  *
  * @packageDocumentation
  */

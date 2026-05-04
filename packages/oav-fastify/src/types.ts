@@ -23,9 +23,9 @@ export interface FastifyContext {
 
 /**
  * Signature shared by `onError` on every adapter in the family
- * (`oav-express4`, `oav-express5`, `oav-fastify`, future
- * `oav-hono`, ...). The `Ctx` parameter is the only thing that
- * varies; same name and shape everywhere.
+ * (`oav-express4`, `oav-express5`, `oav-fastify`). The `Ctx`
+ * parameter is the only thing that varies; same name and shape
+ * everywhere.
  *
  * Returning a Promise is supported on every adapter. `oav-fastify`
  * awaits the return; rejected promises propagate through Fastify's

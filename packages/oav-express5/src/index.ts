@@ -9,9 +9,7 @@
  *   reusable from any custom middleware.
  *
  * Naming and option shapes are deliberately consistent with the
- * sibling `oav-express4` adapter and future `oav-fastify` /
- * `oav-hono` adapters, and pair with future `validateResponses`
- * on this package.
+ * sibling `oav-express4` / `oav-fastify` adapters.
  *
  * Express 5 is promise-native: the returned middleware is `async`,
  * and thrown errors / rejected promises propagate to the host's

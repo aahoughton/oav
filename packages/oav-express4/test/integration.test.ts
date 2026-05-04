@@ -12,8 +12,9 @@ import { validateRequests } from "../src/middleware.js";
  * Real-server integration tests. Spin up Express 4 on a random port,
  * round-trip via native fetch, close the server when done.
  *
- * Same `it()` names as future oav-express5 / oav-fastify integration
- * suites; adapter implementations differ, scenarios stay identical.
+ * Same `it()` names as the sibling oav-express5 / oav-fastify
+ * integration suites; adapter implementations differ, scenarios
+ * stay identical.
  */
 
 function petSpec(): OpenAPIDocument {

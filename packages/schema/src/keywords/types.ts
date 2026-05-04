@@ -307,11 +307,34 @@ export interface KeywordDefinition {
   vocabulary: string;
   /** Generate validation code for this keyword. */
   compile: (ctx: KeywordCompileContext) => void;
-  /** Other keywords this keyword depends on (all must be compiled first). */
+  /**
+   * Reserved for declarative compile-time ordering. Currently unused;
+   * keyword execution order comes from the vocabulary's `keywords`
+   * array order (with `unevaluatedProperties` / `unevaluatedItems`
+   * pushed to the tail). Author your vocabulary's array in the order
+   * keywords should run; do not rely on this field.
+   */
   dependsOn?: string[];
-  /** Keywords this keyword semantically implements (compiler skips those). */
+  /**
+   * Names of keywords whose semantics this keyword subsumes. The
+   * dispatcher treats them as already-handled when this keyword is
+   * present, so the strict-mode unknown-key check doesn't flag them
+   * and the per-keyword inliner doesn't emit duplicate code.
+   *
+   * Use when a custom keyword semantically replaces a built-in pair:
+   * `discriminator` declares `implements: ["oneOf", "anyOf"]` because
+   * its dispatch logic supersedes both; `if`/`then`/`else` declares
+   * `implements: ["then", "else"]` so the partner keys aren't dispatched
+   * a second time on their own; `contains` declares
+   * `implements: ["minContains", "maxContains"]` so the bounds-only
+   * keys are folded into the `contains` codegen.
+   */
   implements?: string[];
-  /** If set, this keyword runs before the named keyword. */
+  /**
+   * Reserved for declarative compile-time ordering. Currently unused;
+   * see {@link KeywordDefinition.dependsOn}. Set the vocabulary's
+   * `keywords` array order instead.
+   */
   before?: string;
   /** Marks whether this keyword tracks evaluated properties/items. */
   evaluates?: { properties?: boolean; items?: boolean };

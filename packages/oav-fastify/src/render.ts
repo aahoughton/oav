@@ -2,16 +2,16 @@ import { allowHeaderFor, httpStatusFor, toProblemDetails, type ValidationError }
 import type { FastifyContext } from "./types.js";
 
 /**
- * The default `onError` for {@link validateRequests} (and future
- * `validateResponses`). Renders the validation tree as an
- * RFC 9457 `application/problem+json` response: status from
- * {@link httpStatusFor}, `Allow` header from {@link allowHeaderFor}
- * on a 405, body from {@link toProblemDetails} (whose `detail` is
- * the first failing leaf via {@link formatSummary}).
+ * The default `onError` for {@link validateRequests}. Renders the
+ * validation tree as an RFC 9457 `application/problem+json` response:
+ * status from {@link httpStatusFor}, `Allow` header from
+ * {@link allowHeaderFor} on a 405, body from {@link toProblemDetails}
+ * (whose `detail` is the first failing leaf via
+ * {@link formatSummary}).
  *
  * Exported standalone for two cases:
  *
- * 1. You want oav's rendering as the fallback in your own hook —
+ * 1. You want oav's rendering as the fallback in your own hook:
  *    call this directly when you don't want to handle the error
  *    yourself.
  * 2. You want a slightly different renderer: use this as the

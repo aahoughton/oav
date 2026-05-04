@@ -46,13 +46,13 @@ to add a comment.
 
 Design v0 surfaces so v1 additions land as new exports / new options,
 not changed semantics. The Express 4 adapter shipped with
-`validateRequests` knowing future `validateResponses` would need to
-share option names, the default renderer, and the context shape.
-Picking those identifiers up front cost nothing; doing it after the
-fact would have meant a breaking rename. When you can't tell whether
-a new option will need to extend later, lean toward shapes that widen
-additively (`select: "first" | "deepest" | { byCode }`, not
-`byCodeOnly: boolean`).
+`validateRequests` named so that any response-validating sibling
+added later would slot in additively, sharing option names, the
+default renderer, and the context shape. Picking those identifiers
+up front cost nothing; doing it after the fact would have meant a
+breaking rename. When you can't tell whether a new option will need
+to extend later, lean toward shapes that widen additively (`select:
+"first" | "deepest" | { byCode }`, not `byCodeOnly: boolean`).
 
 ### No magic
 
@@ -161,7 +161,7 @@ in CI; they're tsx-run dev tooling, breakage shows up when you run them.
   (children always an array), path segments as `(string | number)[]`,
   the canonical formatters (`formatText` / `formatSummary` / `toJsonObject`;
   legacy aliases `formatJson` / `formatFlat` / `summarize` are still exported
-  but deprecated, removal in v2.0)
+  but deprecated, removal in v3)
   and the named-format dispatch (`formatError`, `formatErrors`,
   `KNOWN_OUTPUT_FORMATS`), `httpStatusFor` / `allowHeaderFor` /
   `toProblemDetails` for HTTP framing, RFC 6901 `resolveJsonPointer`,
@@ -210,8 +210,8 @@ options)` returns a `Validator` exposing `validateRequest(req)`,
   framework-native field names (`ExpressContext { req, res, next }`,
   `FastifyContext { request, reply }`). The `oav-express5` / Fastify
   variants are async-native and don't need `try/catch`; `oav-express4`
-  forwards thrown errors via `next(err)`. A future `validateResponses`
-  slots in additively on each adapter.
+  forwards thrown errors via `next(err)`. Any response-validating
+  sibling added later slots in additively on each adapter.
 
 ## Dependency graph (strictly enforced; no cycles)
 
