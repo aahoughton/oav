@@ -227,7 +227,7 @@ export function countErrors(error: ValidationError): number {
 
 // ---------------------------------------------------------------------------
 // Deprecated: kept exported for source compatibility; absent from user-facing
-// docs. Behaviour identical to the new canonical names. Removal in v2.0.
+// docs. Behavior identical to the new canonical names. Removal in v2.0.
 // ---------------------------------------------------------------------------
 
 /**

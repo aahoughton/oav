@@ -42,7 +42,7 @@ Invalid requests receive a `400 application/problem+json` response (status from 
 
 > **Body parser ordering matters.** `express.json()` (or your equivalent) must run **before** `validateRequests(...)`, otherwise `req.body` is `undefined` and the validator emits `body required` for every request: a misleading error that points at the schema, not at the missing parser. Same for `cookie-parser` if your spec validates cookies. Any middleware that populates `req.body` with a parsed object satisfies oav: `express.json()`, custom streaming parsers, `body-parser`, fastify's bridge, app-specific middleware all work the same way.
 >
-> **Empty-body normalisation.** Some parsers (streaming variants, custom multi-format setups) leave `req.body === undefined` even after they run, for empty `{}`-equivalent payloads. When that happens, `required`-field checks short-circuit on the missing body, so empty submissions pass validation. Normalise via `toHttpRequest`:
+> **Empty-body normalization.** Some parsers (streaming variants, custom multi-format setups) leave `req.body === undefined` even after they run, for empty `{}`-equivalent payloads. When that happens, `required`-field checks short-circuit on the missing body, so empty submissions pass validation. Normalize via `toHttpRequest`:
 >
 > ```ts
 > import { httpRequestFromExpress, validateRequests } from "@aahoughton/oav-express4";

@@ -10,7 +10,7 @@ import { createValidator } from "../src/validator.js";
 /**
  * Four concerns under test here:
  *   - `httpRequestFromFetch`: content-type dispatch, URL parsing,
- *     header normalisation, multipart + form-urlencoded + JSON + text
+ *     header normalization, multipart + form-urlencoded + JSON + text
  *     + unknown media types.
  *   - `httpResponseFromFetch`: mirrored coverage on the response side.
  *   - `validator.validateFetchRequest`: the discriminated-union result

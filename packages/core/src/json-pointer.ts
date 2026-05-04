@@ -5,7 +5,7 @@ import type { JsonValue } from "./types.js";
  * `#`) against a root document. Percent-encoded octets are decoded
  * before `~0`/`~1` per RFC 6901 §5.
  *
- * Behaviour:
+ * Behavior:
  *   - `""` or `"/"` returns the root (the whole-document pointer).
  *   - Any other pointer MUST start with `/`.
  *   - Stray `%` characters that aren't a valid `%XX` escape are

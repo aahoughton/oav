@@ -42,7 +42,7 @@ Invalid requests receive a `400 application/problem+json` response (status from 
 
 > **Body parser ordering matters.** `express.json()` (or any equivalent that populates `req.body` with a parsed object) must run **before** `validateRequests(...)`. Same for `cookie-parser` if your spec validates cookies. Any middleware that populates `req.body` works: `express.json()`, `body-parser`, custom streaming parsers, app-specific middleware all work the same way.
 >
-> **Empty-body normalisation.** Some parsers leave `req.body === undefined` for empty `{}`-equivalent payloads. When that happens, `required`-field checks short-circuit on the missing body. Normalise via `toHttpRequest`:
+> **Empty-body normalization.** Some parsers leave `req.body === undefined` for empty `{}`-equivalent payloads. When that happens, `required`-field checks short-circuit on the missing body. Normalize via `toHttpRequest`:
 >
 > ```ts
 > import { httpRequestFromExpress, validateRequests } from "@aahoughton/oav-express5";

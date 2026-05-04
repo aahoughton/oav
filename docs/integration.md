@@ -563,7 +563,7 @@ adapter:
    emits an HTML page. Install an Express error middleware to convert
    it to `application/problem+json` upstream of the validator.
 
-2. **Empty-body normalisation.** Some body parsers (streaming
+2. **Empty-body normalization.** Some body parsers (streaming
    variants, custom multi-format setups) leave `req.body === undefined`
    for empty `{}`-equivalent payloads instead of an empty object. When
    that happens, oav's `required`-field checks short-circuit on the
