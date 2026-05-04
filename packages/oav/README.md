@@ -1,8 +1,7 @@
 # oav
 
-Batteries-included distribution of `oav-core`. Adds YAML
-readers and the `oav` CLI on top of the lean validator package; the
-programmatic surface is identical.
+Distribution of `oav-core` with YAML readers and the `oav` CLI added.
+The programmatic validator surface is identical to the lean package.
 
 ```ts
 import { createValidator, createYamlFileReader } from "@aahoughton/oav";

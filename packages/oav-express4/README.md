@@ -272,6 +272,6 @@ For per-route inline multer (validator called from inside the route handler) and
 ## See also
 
 - [`oav-core`](https://www.npmjs.com/package/@aahoughton/oav-core): `createValidator`, `ValidatorOptions`, `formatSummary`, `collectIssues`, `httpStatusFor`, `toProblemDetails`.
-- [`oav`](https://www.npmjs.com/package/@aahoughton/oav): batteries-included distribution of oav-core (YAML readers + the `oav` CLI).
+- [`oav`](https://www.npmjs.com/package/@aahoughton/oav): oav-core plus YAML readers and the `oav` CLI.
 - The repo-root [`docs/integration.md`](../../docs/integration.md): broader recipes (security, file uploads, response validation, status mapping, type coercion, ignoring paths).
 - The repo-root [`docs/migration-from-eov.md`](../../docs/migration-from-eov.md): porting from `express-openapi-validator`.

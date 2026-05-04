@@ -1,7 +1,7 @@
 # oav
 
 OpenAPI **3.0** / **3.1** / **3.2** HTTP request and response
-validator. Two primary drivers:
+validator for JavaScript and TypeScript services. Two primary drivers:
 
 - **Tenant overrides over a base spec.** When tenants extend a
   shared API (adding a required header on one route, refining a
@@ -11,33 +11,43 @@ validator. Two primary drivers:
   at load time. Custom keywords, formats, and dialects plug into
   the compiler the same way, so per-tenant validation rules don't
   require forking. See [docs/overlays.md](./docs/overlays.md).
-- **Validators that fit in microservice runners.** `oav
-compile-spec openapi.yaml` emits a single zero-dependency ES
-  module exposing the full validator surface. Targets Cloudflare
-  Workers, Vercel Edge, Lambda@Edge, Deno Deploy: runtimes where
-  `new Function()` is unavailable, or where dependency footprint
-  matters. `--only "POST /pets"` (repeatable) scopes the output to
-  specific operations without touching the source spec.
+- **Validators that fit in microservice runners.** `oav compile-spec
+openapi.yaml` emits a single zero-dependency ES module exposing
+  the full validator surface. Targets Cloudflare Workers, Vercel
+  Edge, Lambda@Edge, Deno Deploy: runtimes where `new Function()`
+  is unavailable, or where dependency footprint matters. `--only
+"POST /pets"` (repeatable) scopes the output to specific
+  operations without touching the source spec.
 
 Errors come back as a typed tree (`code`, `path`, `message`,
 `params`, `children`). One validator call covers the full HTTP
 frame: method, path, parameters, body, content type, status, and
 headers.
 
+If you only need generic JSON Schema validation across many drafts,
+start with Ajv. If you want a one-line Express middleware with file
+upload and auth handler conveniences built in, start with
+`express-openapi-validator`. See
+[docs/comparison.md](./docs/comparison.md) for the feature map.
+
 ## Install
 
-`oav` ships in two core packages, plus framework adapter packages that
-build on either `oav` or `oav-core` -- if you don't need YAML support,
-you can skip `oav` entirely (the lean path for zero-dependency / edge
-targets):
+`oav` is the package shorthand used throughout the docs. Install uses
+the scoped npm package names shown below.
 
-| Package        | When to use                                                                                                                                                                                                                                                                                      |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `oav`          | Batteries-included: YAML readers + the `oav` CLI. Depends on `yaml`; pulls in `commander` + `esbuild` for the CLI only (never imported from the library entry points, so bundlers tree-shake them out of application bundles; Node server runs load them only when the `oav` binary is invoked). |
-| `oav-core`     | Lean. Zero runtime dependencies. Same programmatic surface as `oav`, minus the YAML readers and CLI. Feed it JSON specs (or pre-parsed objects via the memory reader).                                                                                                                           |
-| `oav-express4` | Express 4 framework adapter. Thin: imports the validator from `oav-core`, exports a middleware factory plus standalone helpers. See [`docs/integration.md`](./docs/integration.md).                                                                                                              |
-| `oav-express5` | Express 5 framework adapter. Same exports as `oav-express4`; promise-native middleware shape.                                                                                                                                                                                                    |
-| `oav-fastify`  | Fastify framework adapter. Same exports as the Express adapters; ships a `preValidation` hook instead of middleware.                                                                                                                                                                             |
+| You need                                         | Package choice                  |
+| ------------------------------------------------ | ------------------------------- |
+| YAML specs, HTTP/YAML readers, and the `oav` CLI | `oav`                           |
+| JSON or pre-parsed specs with zero runtime deps  | `oav-core`                      |
+| Express 4 request middleware                     | `oav` + `oav-express4`          |
+| Express 5 request middleware                     | `oav` + `oav-express5`          |
+| Fastify `preValidation` hook                     | `oav` + `oav-fastify`           |
+| Edge/serverless validator emitted at build time  | `oav` as a dev/build dependency |
+
+`oav` is a superset of `oav-core`: same programmatic surface plus YAML
+readers and the `oav` CLI. The CLI's `commander` and `esbuild` deps
+load on demand from the binary entry, never from the library
+entrypoints, so application bundles tree-shake them out.
 
 ```bash
 npm install @aahoughton/oav            # YAML + CLI
@@ -54,6 +64,34 @@ npm install @aahoughton/oav-fastify    # Fastify adapter
 [`docs/modules.md`](./docs/modules.md) for what each subpath exports.
 
 ## Quick start
+
+### Express
+
+```ts
+import express from "express";
+import { createValidator, createYamlFileReader } from "@aahoughton/oav";
+import { loadSpec } from "@aahoughton/oav/spec";
+import { validateRequests } from "@aahoughton/oav-express5";
+
+const { document } = await loadSpec({
+  reader: createYamlFileReader(),
+  entry: "openapi.yaml",
+});
+const validator = createValidator(document);
+
+const app = express();
+app.use(express.json());
+app.use(validateRequests(validator));
+
+app.post("/pets", (req, res) => res.json({ ok: true }));
+```
+
+Invalid requests receive an `application/problem+json` response.
+Valid requests continue to your route handlers. Express 4 uses the
+same shape with `oav-express4`; Fastify uses `oav-fastify` as a
+`preValidation` hook. See [docs/integration.md](./docs/integration.md).
+
+### Framework-agnostic
 
 ```ts
 import { createValidator, createYamlFileReader, formatText } from "@aahoughton/oav";
@@ -92,14 +130,27 @@ custom formats, custom keywords, cross-field constraints, error
 budgets, version differences, overlays, and spec-derived middleware
 config.
 
+## Where to go next
+
+| Task                                      | Read                                                                   |
+| ----------------------------------------- | ---------------------------------------------------------------------- |
+| Wire into Express, Fastify, Next.js, Hono | [docs/integration.md](./docs/integration.md)                           |
+| Patch a spec you do not own               | [docs/overlays.md](./docs/overlays.md)                                 |
+| Emit standalone validators                | [packages/cli/README.md](./packages/cli/README.md#compile-spec-output) |
+| Compare against Ajv and other tools       | [docs/comparison.md](./docs/comparison.md)                             |
+| Migrate from express-openapi-validator    | [docs/migration-from-eov.md](./docs/migration-from-eov.md)             |
+| Use custom formats, keywords, or limits   | [docs/configuration.md](./docs/configuration.md)                       |
+
 ## How it compares
 
-oav's primary alternative is
-[Ajv](https://github.com/ajv-validator/ajv): directly for
-`compileSchema`, or via
-[`express-openapi-validator`](https://github.com/cdimascio/express-openapi-validator)
-for HTTP validation. (Migrating from EOV specifically:
-[docs/migration-from-eov.md](./docs/migration-from-eov.md).)
+The JavaScript ecosystem already has solid OpenAPI validation tools:
+Ajv for JSON Schema, `express-openapi-validator` for Express,
+`openapi-backend` for operationId routing plus validation, and smaller
+request/response validators for custom stacks. oav is aimed at
+HTTP-aware validation with structured errors, overlays, and standalone
+OpenAPI validator output. See [docs/comparison.md](./docs/comparison.md)
+for the feature map, and [docs/migration-from-eov.md](./docs/migration-from-eov.md)
+if you are migrating from `express-openapi-validator`.
 
 Numbers below are from the [`performance/`](./performance/README.md)
 benchmark on AWS c7i.large (Intel Sapphire Rapids, Node 22). Your
@@ -214,7 +265,8 @@ The canonical contract is the `ValidatorOptions` TSDoc.
 
 `oav` is a validator, not a middleware package: you write a short
 adapter between your framework and `validateRequest` /
-`validateResponse`. An Express 5 adapter is about this long:
+`validateResponse`, or use one of the companion adapter packages. An
+inline Express 5 adapter is about this long:
 
 ```ts
 import { allowHeaderFor, httpStatusFor, toProblemDetails } from "@aahoughton/oav";
@@ -238,34 +290,32 @@ app.use(async (req, res, next) => {
 });
 ```
 
-See [**docs/integration.md**](./docs/integration.md) for:
-
-- Adapter packages for Express 4, Express 5, and Fastify; recipes for Next.js, Hono, Bun, and Deno via the Web Standards adapter.
-- Recipes for file uploads (multer), response validation, security,
-  ignoring paths, and the full status-code switch.
-- A migration table from `express-openapi-validator`, including
-  where oav is stricter or more conformant and where you'll do more
-  wiring by hand.
-
-Companion adapter packages cover the common framework wiring:
+Companion adapter packages cover common request-validation wiring:
 [`oav-express4`](./packages/oav-express4/README.md),
-[`oav-express5`](./packages/oav-express5/README.md),
-[`oav-fastify`](./packages/oav-fastify/README.md). They
-share the same export names and option shapes; only the
-framework-typed argument differs.
+[`oav-express5`](./packages/oav-express5/README.md), and
+[`oav-fastify`](./packages/oav-fastify/README.md). They share export
+names and option shapes; only the framework type differs.
 
-`oav` is not a drop-in for `express-openapi-validator`: the
-adapters cover the request-validation middleware, but you own the
-error → HTTP mapping if you customize it, you wire up multer if you
-need file uploads, and you run your own auth middleware. The error
-tree is structured (`code`/`path`/`message`/`params`/`children`),
-the OpenAPI 3.0 dialect is built in rather than translated to
-2020-12, and the validator does not mutate `req` or `res`.
+For Next.js, Hono, Bun, Deno, and custom frameworks, use the
+framework-agnostic `validateRequest` / `validateResponse` calls or the
+Fetch helpers (`validateFetchRequest`, `validateFetchResponse`). See
+[docs/integration.md](./docs/integration.md) for body parsing,
+response validation, uploads, security, ignored paths, and custom error
+envelopes.
+
+`oav` is not a drop-in replacement for `express-openapi-validator`.
+The adapters cover request validation; response validation, auth
+dispatch, upload parsing, and custom error envelopes stay explicit in
+your application. In return, the validator does not mutate `req` or
+`res`, OpenAPI 3.0 behavior is built into the dialect, and failures
+come back as structured error trees rather than framework-specific
+error classes.
 
 ## Known limitations
 
-Runtime-behavior corners. For a feature-scope comparison against
-Ajv (draft versions, `$data`, async validation, etc.) see
+Runtime behavior corners. For feature-scope tradeoffs against Ajv and
+OpenAPI middleware packages (draft versions, `$data`, async
+validation, response interception, upload helpers), see
 [docs/comparison.md](./docs/comparison.md).
 
 - `$dynamicRef` behaves like `$ref` with anchor lookup; no runtime dynamic-scope traversal.
