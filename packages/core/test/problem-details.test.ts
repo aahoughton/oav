@@ -80,12 +80,12 @@ describe("toProblemDetails", () => {
     expect(pd.detail).toBe("x");
   });
 
-  it("honours a caller-supplied `detail` override", () => {
+  it("honors a caller-supplied `detail` override", () => {
     const pd = toProblemDetails(err, { detail: "2 validation errors" });
     expect(pd.detail).toBe("2 validation errors");
   });
 
-  it("honours caller-supplied type / title / status / instance", () => {
+  it("honors caller-supplied type / title / status / instance", () => {
     const pd = toProblemDetails(err, {
       type: "https://example.com/errors/validation",
       title: "Bad pets",

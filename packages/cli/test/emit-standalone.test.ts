@@ -66,7 +66,7 @@ describe("emitStandalone", () => {
       expect(validate({ contact: "user@example.com" })).toEqual({ valid: true });
       // format defaults to annotation-only under jsonSchemaDialect, so a
       // malformed email still passes. The emitter correctly wires the
-      // formats regardless; stricter behaviour requires the assertion
+      // formats regardless; stricter behavior requires the assertion
       // vocabulary, which isn't the JSON-Schema default.
       expect(validate({ contact: "not-an-email" }).valid).toBe(true);
     } finally {
@@ -82,7 +82,7 @@ describe("emitStandalone", () => {
     ).toThrow(/not in the built-in set/);
   });
 
-  it("compiles under the OpenAPI 3.0 dialect: boolean exclusiveMaximum honoured", async () => {
+  it("compiles under the OpenAPI 3.0 dialect: boolean exclusiveMaximum honored", async () => {
     const schema: SchemaOrBoolean = {
       type: "integer",
       maximum: 10,

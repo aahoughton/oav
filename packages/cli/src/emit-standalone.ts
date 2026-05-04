@@ -42,7 +42,7 @@ export interface EmitStandaloneOptions {
 /**
  * Compile a JSON Schema and emit a standalone ES module source string.
  *
- * The module exports a `validate(data)` function whose behaviour
+ * The module exports a `validate(data)` function whose behavior
  * matches `compileSchema(schema, { dialect }).validate(data)`, but
  * which requires no `new Function()` at load time. Useful for edge
  * runtimes (Cloudflare Workers, Vercel Edge) and build-time-prepared

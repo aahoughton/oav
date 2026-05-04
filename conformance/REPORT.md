@@ -86,13 +86,13 @@ live under `tests/draft2020-12/optional/`. Current state:
 | `non-bmp-regex.json`, `id.json`, `no-schema.json`, `unknownKeyword.json`, `refOfUnknownKeyword.json` | pass.                                                                                                                 |
 
 The per-format subtree (`optional/format/*.json`) isn't traversed by
-our runner. Those tests target strict-format-assertion behaviour; by
+our runner. Those tests target strict-format-assertion behavior; by
 spec default and our default, format is annotation-only, so most tests
 there would vacuously pass. Enabling format-assertion and running them
 is a separate exercise: each format brings its own tail of RFC edge
 cases that the suite tightens every few revisions.
 
-## Behavioural parity notes
+## Behavioral parity notes
 
 Where we agree with upstream on pass/fail, we don't try to match their
 error-message text. Our error `code`s, `path`s, and `params` are the

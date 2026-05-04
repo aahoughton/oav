@@ -79,7 +79,7 @@ describe("additionalProperties keyword", () => {
     expect(v.validate({ a: "x", b: "not num" }).valid).toBe(false);
   });
 
-  it("honours patternProperties as a coverage source", () => {
+  it("honors patternProperties as a coverage source", () => {
     const v = compile({
       patternProperties: { "^x-": true },
       additionalProperties: false,

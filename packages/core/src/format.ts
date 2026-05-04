@@ -262,7 +262,7 @@ export interface SummarizeOptions {
 export type SummarizeSelect = "first" | "deepest" | { byCode: readonly string[] };
 
 /**
- * @deprecated Use {@link formatSummary}. Same defaults and behaviour.
+ * @deprecated Use {@link formatSummary}. Same defaults and behavior.
  *
  * @public
  */

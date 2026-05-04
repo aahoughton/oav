@@ -6,7 +6,7 @@ between your framework and `validateRequest` / `validateResponse`,
 or use one of the companion adapter packages (`oav-express4`,
 `oav-express5`, `oav-fastify`).
 
-This document is organised:
+This document is organized:
 
 - **[What the validator expects](#what-the-validator-expects)**:
   the framework-agnostic shapes `validateRequest` and
@@ -568,7 +568,7 @@ sharp edges that bite both inline middleware and the
    that happens, oav's `required`-field checks short-circuit on the
    missing body, so validation passes for what the client thinks is an
    empty submission, even when the spec marks fields as `required`.
-   If your parser does this, normalise before calling `validateRequest`:
+   If your parser does this, normalize before calling `validateRequest`:
 
    ```ts
    body: req.body ?? {},
@@ -739,7 +739,7 @@ that pulls the common middleware-config facts into a flat shape:
 content types, body limits, required headers, security. Copy it into
 your project and adjust the interpretation choices
 (`maxLength`-as-bytes vs code points, which `x-*` extensions to
-recognise, etc.) to fit your domain.
+recognize, etc.) to fit your domain.
 
 The getter is startup-time introspection, not part of validation. Its
 job is to make the spec the single source of truth for middleware
@@ -836,7 +836,7 @@ app.get("/pets/:id", async (req, res) => {
 ```
 
 **Per-app wrapper.** Wrap `res.json` yourself if you want
-auto-interception behaviour for every response:
+auto-interception behavior for every response:
 
 ```ts
 app.use((req, res, next) => {

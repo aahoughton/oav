@@ -87,7 +87,7 @@ export interface Validator {
    * in practice). On failure, `error` is the same
    * {@link ValidationError} tree `validateRequest` would return.
    *
-   * Body parsing recognises `application/json` (and `*+json`),
+   * Body parsing recognizes `application/json` (and `*+json`),
    * `application/x-www-form-urlencoded`, `multipart/form-data`
    * (file fields come through as `Uint8Array`), and `text/*`. Any
    * other content type is read as raw bytes; the spec's
@@ -202,9 +202,9 @@ export interface Validator {
    */
   readonly specHygieneIssues: readonly SpecHygieneIssue[];
   /**
-   * Runtime observability for compile-time-specialisation optimisations.
+   * Runtime observability for compile-time-specialization optimizations.
    * The counters live on the validator, not inside a ValidationError
-   * tree, so tests can assert on the optimisation directly rather than
+   * tree, so tests can assert on the optimization directly rather than
    * through indirect signals (throwing test schemas, source grepping).
    */
   readonly stats: ValidatorStats;

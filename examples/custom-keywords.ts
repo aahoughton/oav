@@ -1,5 +1,5 @@
 /**
- * Custom keywords: register a schema keyword whose behaviour depends on
+ * Custom keywords: register a schema keyword whose behavior depends on
  * runtime state the spec itself can't capture — here, an "active tenant"
  * check backed by an in-memory cache. Good for Luhn checks, tick-size
  * multiples, currency-whitelists, etc.

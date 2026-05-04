@@ -2,7 +2,7 @@
  * OpenAPI version detection and dialect identity.
  *
  * The OpenAPI Specification has two major variants that affect
- * validator behaviour:
+ * validator behavior:
  *
  * - **3.0.x**: uses a draft-Wright-00-based JSON Schema dialect with
  *   its own flavours of `type` (single string only), `nullable: true`,
@@ -30,7 +30,7 @@ export type OpenAPIVersion = "3.0" | "3.1" | "3.2";
 /**
  * Inspect an OpenAPI document's `openapi` field and bucket it by
  * major.minor. Returns `undefined` when the field is missing, malformed,
- * or targets a line we don't recognise.
+ * or targets a line we don't recognize.
  *
  * @param spec - Anything shaped like an OpenAPI document. Safe on
  *               arbitrary input; returns `undefined` without throwing.

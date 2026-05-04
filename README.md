@@ -186,7 +186,7 @@ and picks the matching dialect. No per-request branching.
 | 3.1.x | JSON Schema 2020-12   | Assertive `format`                                          |
 | 3.2.x | JSON Schema 2020-12   | Same as 3.1 + the `QUERY` HTTP method                       |
 
-Override via `createValidator(spec, { dialect })` to force or customise
+Override via `createValidator(spec, { dialect })` to force or customize
 one of the built-in dialects (`jsonSchemaDialect`, `openapi31Dialect`,
 `oas30Dialect`). Unknown / missing `openapi` strings fall back to the
 3.1 dialect by default; configure with
@@ -256,7 +256,7 @@ framework-typed argument differs.
 
 `oav` is not a drop-in for `express-openapi-validator`: the
 adapters cover the request-validation middleware, but you own the
-error → HTTP mapping if you customise it, you wire up multer if you
+error → HTTP mapping if you customize it, you wire up multer if you
 need file uploads, and you run your own auth middleware. The error
 tree is structured (`code`/`path`/`message`/`params`/`children`),
 the OpenAPI 3.0 dialect is built in rather than translated to
@@ -264,7 +264,7 @@ the OpenAPI 3.0 dialect is built in rather than translated to
 
 ## Known limitations
 
-Runtime-behaviour corners. For a feature-scope comparison against
+Runtime-behavior corners. For a feature-scope comparison against
 Ajv (draft versions, `$data`, async validation, etc.) see
 [docs/comparison.md](./docs/comparison.md).
 

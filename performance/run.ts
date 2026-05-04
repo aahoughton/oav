@@ -288,7 +288,7 @@ async function benchSpec(path: string): Promise<void> {
       // `logger: false` suppresses "unknown format X" warnings that
       // would otherwise flood the output; the schemas use OAS-specific
       // formats (`duration`, `float`) that neither ajv nor
-      // ajv-formats recognise by default.
+      // ajv-formats recognize by default.
       new Ajv({ allErrors: true, strict: false, logger: false }).compile(schema as never);
       ajvTimes.push(performance.now() - t0);
     } catch (err) {
@@ -394,7 +394,7 @@ if (specPath !== undefined) {
   const filtered = filter ? perfSchemas.filter((s) => s.name.includes(filter)) : perfSchemas;
   for (const s of filtered) await benchSchema(s);
 
-  // Relative table: each library's ops/sec normalised to ajv's.
+  // Relative table: each library's ops/sec normalized to ajv's.
   console.log("\n=== Relative throughput (vs ajv = 1.00) ===");
   console.log(
     "schema".padEnd(14) +

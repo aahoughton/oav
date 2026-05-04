@@ -11,7 +11,7 @@ import type { KeywordCompileContext, KeywordDefinition } from "./types.js";
 export const customKeywordVocabulary = "https://oav.dev/vocab/custom-keywords";
 
 /**
- * Failure detail a {@link CustomKeywordValidator} may return to customise
+ * Failure detail a {@link CustomKeywordValidator} may return to customize
  * the emitted {@link import("@oav/core").ValidationError}. Omitted fields
  * take sensible defaults: `message` becomes
  * `"value failed custom keyword \"<name>\""`; `params` defaults to `{}`.
@@ -29,7 +29,7 @@ export interface CustomKeywordFailure {
  *
  * - Return `true` for a valid value.
  * - Return `false` to emit a generic failure error for that keyword.
- * - Return a {@link CustomKeywordFailure} object to customise the error
+ * - Return a {@link CustomKeywordFailure} object to customize the error
  *   `message` and/or `params`.
  *
  * The `schemaValue` argument is the JSON value the keyword carries in

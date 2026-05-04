@@ -92,7 +92,7 @@ describe("applyOverlays", () => {
   });
 
   it("extendSchemas inserts the extension verbatim when the target schema doesn't exist", () => {
-    // Pin the silent-create behaviour explicitly so a future "throw on
+    // Pin the silent-create behavior explicitly so a future "throw on
     // missing target" change is a deliberate decision, not an accident.
     const patched = applyOverlays(base(), [
       { extendSchemas: { NewType: { type: "string", minLength: 1 } } },

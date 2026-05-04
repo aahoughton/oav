@@ -363,7 +363,7 @@ export interface DialectRules {
   /**
    * OpenAPI 3.0 semantics: when a schema has `$ref`, every sibling
    * keyword is ignored. Default `false` (JSON Schema 2020-12 and
-   * OpenAPI 3.1+ semantics, where siblings are honoured).
+   * OpenAPI 3.1+ semantics, where siblings are honored).
    */
   refSuppressesSiblings: boolean;
 }

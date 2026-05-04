@@ -8,7 +8,7 @@ function fakeReq(overrides: Partial<Request>): Request {
 
 describe("httpRequestFromExpress", () => {
   it("extracts method, path, headers, contentType, query, and body", () => {
-    // Express normalises header keys to lowercase before middleware sees
+    // Express normalizes header keys to lowercase before middleware sees
     // them; our fixtures match that contract so the assertions are honest.
     const got = httpRequestFromExpress(
       fakeReq({

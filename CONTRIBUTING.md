@@ -46,7 +46,7 @@ pnpm test
 pnpm build
 ```
 
-For schema or validator changes that could affect HTTP behaviour:
+For schema or validator changes that could affect HTTP behavior:
 
 ```bash
 cd conformance

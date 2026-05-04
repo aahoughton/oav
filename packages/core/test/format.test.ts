@@ -164,7 +164,7 @@ describe("formatSummary", () => {
     expect(formatSummary(tree, { select: "all" })).toBe(formatFlat(tree));
   });
 
-  it('"all" honours a custom separator', () => {
+  it('"all" honors a custom separator', () => {
     const out = formatSummary(sampleTree(), { select: "all", separator: ", " });
     expect(out).toBe(
       'body.purr must be boolean [type], body must have required property "bark" [required]',

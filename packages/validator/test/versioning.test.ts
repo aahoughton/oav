@@ -153,7 +153,7 @@ describe("3.0 support", () => {
     expect(err).not.toBeNull();
   });
 
-  it("honours boolean exclusiveMaximum (priority < 10, not ≤)", () => {
+  it("honors boolean exclusiveMaximum (priority < 10, not ≤)", () => {
     const v = createValidator(spec30());
     // priority = 9 is fine
     expect(

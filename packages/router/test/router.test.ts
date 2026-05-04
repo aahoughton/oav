@@ -18,7 +18,7 @@ describe("parseTemplate", () => {
     expect(parseTemplate("/")).toEqual([]);
   });
 
-  it("recognises compound segments with multiple {name} parts and a literal separator", () => {
+  it("recognizes compound segments with multiple {name} parts and a literal separator", () => {
     const segs = parseTemplate("/commits/{sha}.{ext}");
     expect(segs).toHaveLength(2);
     expect(segs[0]).toEqual({ kind: "literal", value: "commits" });

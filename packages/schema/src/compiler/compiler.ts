@@ -27,7 +27,7 @@ const TREE_RUNTIME_HELPERS = /\b(?:createLeafError|createBranchError|wrapErrors)
 /**
  * Default mode for {@link CompileOptions.strict}. Warns on partially-
  * implemented keywords (currently `$dynamicRef`); silent on unknown
- * keys. Callers opt into stricter behaviour with `"strict"` or opt
+ * keys. Callers opt into stricter behavior with `"strict"` or opt
  * out with `"off"`.
  */
 const DEFAULT_STRICT_MODE = "warn-partial" as const;
@@ -101,7 +101,7 @@ function runStrictLint(
   mode: "warn-partial" | "strict",
   rules: { refSuppressesSiblings: boolean },
 ): StrictIssue[] {
-  // The full set of names the active dialect recognises, including
+  // The full set of names the active dialect recognizes, including
   // `implements` entries on existing definitions (e.g. `if` implements
   // `then` + `else`; those don't have their own KeywordDefinition but
   // are legitimate keys).
@@ -227,7 +227,7 @@ export interface ValidationResult {
 
 /**
  * Compile-time statistics about the generated validator. Exposed so
- * tests can assert on compiler behaviour (e.g. "did subschema inlining
+ * tests can assert on compiler behavior (e.g. "did subschema inlining
  * fire?") without grepping the generated source.
  *
  * @public
@@ -242,10 +242,10 @@ export interface CompileStats {
   /**
    * `true` iff the compiler actually emitted `evalProps` / `evalItems`
    * Set machinery anywhere in the generated source. When `false`, the
-   * unevaluated-keys-gating optimisation is taking effect: the schema
+   * unevaluated-keys-gating optimization is taking effect: the schema
    * doesn't use `unevaluatedProperties` / `unevaluatedItems`, so the
    * compiler suppressed the per-function Set allocation and merge loop.
-   * Surfaced so tests can assert on the optimisation directly instead
+   * Surfaced so tests can assert on the optimization directly instead
    * of grepping the generated JS.
    */
   unevaluatedTrackingEmitted: boolean;
@@ -420,7 +420,7 @@ export interface CompileOptions {
    * effectively predicate mode (no errors collected, validation
    * collapses to yes/no); for that, prefer
    * {@link CompileOptions.predicate} which compiles a fully
-   * specialised function with no error infrastructure at all.
+   * specialized function with no error infrastructure at all.
    * `compileSchema` throws on `maxErrors <= 0`.
    */
   maxErrors?: number;
@@ -428,7 +428,7 @@ export interface CompileOptions {
    * Compile-time schema linting. All modes collect to
    * {@link CompileStats.strictIssues} rather than throwing.
    *
-   * - `"off"`: silence on everything (pre-v-strict behaviour).
+   * - `"off"`: silence on everything (pre-v-strict behavior).
    * - `"warn-partial"` (default): warn on keywords flagged as
    *   partially-implemented (currently `$dynamicRef`; its runtime
    *   dynamic-scope rebinding is not emitted).
@@ -512,7 +512,7 @@ export interface CompileState {
    * Set to `true` the first time any generated function actually
    * allocates an `evalProps` / `evalItems` Set. Surfaced in
    * {@link CompileStats.unevaluatedTrackingEmitted} so callers can
-   * observe the gating optimisation's effect.
+   * observe the gating optimization's effect.
    */
   unevaluatedEmitted: boolean;
 }

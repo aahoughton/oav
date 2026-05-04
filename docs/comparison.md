@@ -8,9 +8,9 @@ each project does so you can pick the one that fits.
 
 oav covers the same ground as Ajv + `express-openapi-validator`
 combined (schema validation plus HTTP-layer checks), and trades
-differently on a handful of specifics, catalogued below.
+differently on a handful of specifics, cataloged below.
 
-This document is about behaviour and capabilities. For raw numbers
+This document is about behavior and capabilities. For raw numbers
 and methodology see [`performance/README.md`](../performance/README.md);
 the shape of the trade-off is sketched below.
 
@@ -130,7 +130,7 @@ Capabilities oav has that Ajv (alone or with
   out of the schema before compile (rewriting `{ nullable: true,
 type: "string" }` to `{ type: ["string", "number", "boolean",
 "object", "array"] }` with an `x-eov-type` side channel to narrow
-  back). Different mechanism, equivalent behaviour.
+  back). Different mechanism, equivalent behavior.
 - **First-class overlays.** `applyOverlays` rewrites an
   externally-owned base spec at load time (add a required header to
   every operation, extend a component schema, swap a response shape)
@@ -165,7 +165,7 @@ type: "string" }` to `{ type: ["string", "number", "boolean",
   implementation shape.
 - **Compile-time observability.** `CompiledSchema.stats` exposes
   `functionCount`, `unevaluatedTrackingEmitted`, and
-  `emittedTreeRuntime` so tests can assert on compiler optimisations
+  `emittedTreeRuntime` so tests can assert on compiler optimizations
   directly rather than grepping the generated source.
 
 ## Runtime dependencies
