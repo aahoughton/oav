@@ -87,7 +87,7 @@ export type Validator = (data: unknown, path: (string | number)[]) => Validation
 /**
  * The JSON-Schema-flavored typeof function: distinguishes `integer`,
  * `number`, `null`, `array`, `object`, etc. (everything that JSON Schema
- * 2020-12's `type` keyword recognises).
+ * 2020-12's `type` keyword recognizes).
  *
  * @param value - Any value.
  * @returns The JSON Schema type name.
@@ -114,7 +114,7 @@ export function typeOf(value: unknown): string {
 }
 
 /**
- * Structural equality for JSON values: honours array ordering, object key
+ * Structural equality for JSON values: honors array ordering, object key
  * sets (not ordering), and NaN-as-not-equal. Used by `enum`, `const`, and
  * `uniqueItems`.
  *

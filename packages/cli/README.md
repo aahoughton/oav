@@ -100,7 +100,7 @@ parameter / body / response schemas are pre-compiled and inlined.
 esbuild bundles everything; the resulting module has zero imports.
 
 Consumers who were running `createValidator(await loadSpec(...))` at
-application boot get the same behaviour with no YAML parse, no
+application boot get the same behavior with no YAML parse, no
 `$ref` walk, no schema compilation at load time. Target use cases:
 
 - **Cloudflare Workers / Vercel Edge**: the runtime sandbox

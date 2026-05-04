@@ -6,7 +6,7 @@
  * route-level handlers in Next.js App Router, Hono, Bun, Deno, and
  * any other runtime whose HTTP primitives are `Request` / `Response`.
  *
- * The content-type dispatcher recognises JSON (`application/json` and
+ * The content-type dispatcher recognizes JSON (`application/json` and
  * `*+json`), URL-encoded forms, multipart/form-data, and text/*. For
  * anything else, the raw bytes come through as a `Uint8Array`; the
  * validator's `format: "binary"` opaque-body bypass accepts any value
@@ -38,8 +38,8 @@ export interface FetchRequestOptions {
    * unchanged, so opaque placeholders (a temp-file path, a Buffer
    * handle, etc.) are valid.
    *
-   * If you want default behaviour for most content types and custom
-   * behaviour for one or two, import {@link readBodyFromFetch} and
+   * If you want default behavior for most content types and custom
+   * behavior for one or two, import {@link readBodyFromFetch} and
    * delegate to it from inside your callback.
    *
    * @example
@@ -101,7 +101,7 @@ export async function httpRequestFromFetch(
  * The default content-type-driven body reader exposed for composition.
  * Call this from inside a {@link FetchRequestOptions.readBody} callback
  * when you want to handle some content types yourself and delegate the
- * rest to the built-in behaviour. Recognises JSON, `*+json`,
+ * rest to the built-in behavior. Recognizes JSON, `*+json`,
  * URL-encoded forms, `multipart/form-data`, and `text/*`; anything
  * else comes through as a `Uint8Array`.
  *

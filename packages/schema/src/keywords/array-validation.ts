@@ -64,7 +64,7 @@ export const uniqueItemsKeyword: KeywordDefinition = {
       // Runtime helper does one Map-backed scan for primitives plus a
       // pairwise deepEqual sweep of object/array items. Replaces the
       // previous inline O(N^2) nested loop; generated code stays tiny
-      // and V8 gets to monomorphise the hot helper.
+      // and V8 gets to monomorphize the hot helper.
       g.const(dup, `${NAMES.DEPS}.findDuplicate(${ctx.data})`);
       g.if(`${dup} !== null`, () => {
         // Duplicate indices live in params.duplicates; keep the

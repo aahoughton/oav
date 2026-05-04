@@ -17,8 +17,8 @@ import type { HttpRequest } from "@oav/core";
  * populated them, otherwise omitted.
  *
  * Pairs with sibling `httpRequestFromExpress` in `oav-express4` /
- * `oav-express5`, future `httpRequestFromHono`, etc.; same name
- * pattern as oav's existing {@link httpRequestFromFetch}.
+ * `oav-express5`: same name pattern as oav's existing
+ * {@link httpRequestFromFetch}.
  *
  * @public
  */

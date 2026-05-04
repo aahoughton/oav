@@ -1,7 +1,7 @@
 /**
  * End-to-end tests for `oav compile-spec`. Each test compiles a small
  * OpenAPI document through the real emit + esbuild bundle path, loads
- * the resulting module via a data URL, and compares its behaviour
+ * the resulting module via a data URL, and compares its behavior
  * against `createValidator(document).validateRequest` on a fixture
  * matrix. A pass means the AOT output matches the runtime validator's
  * tree shape on the covered cases.

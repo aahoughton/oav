@@ -1,39 +1,40 @@
 # Integration guide
 
-A recipe book for wiring `oav` into HTTP frameworks. `oav` is a
-validator, not a middleware package: you write a short adapter
-between your framework and `validateRequest` / `validateResponse`,
-or use one of the companion adapter packages (`oav-express4`,
-`oav-express5`, `oav-fastify`).
+Use this guide when you already have an OpenAPI document and want to
+run request or response validation inside an HTTP framework.
 
-This document is organised:
+The common integrations have adapter packages. The remaining runtimes
+use the same framework-agnostic validator surface, or the Fetch helpers
+when the framework exposes Web Standards `Request` / `Response`.
 
-- **[What the validator expects](#what-the-validator-expects)**:
-  the framework-agnostic shapes `validateRequest` and
-  `validateResponse` work with.
-- **[Supporting helpers](#supporting-helpers)**:
-  `httpStatusFor`, `allowHeaderFor`, `toProblemDetails`,
-  `formatSummary`, `collectIssues`. The recipes below assume these.
-- **[Per-framework integration](#per-framework-integration)**:
-  Express 4, Express 5, Fastify, Next.js, Hono, Bun, Deno. Each
-  section leads with the adapter (where one exists) and falls back
-  to the manual inline recipe.
-- **[Cross-cutting recipes](#cross-cutting-recipes)**, linked from
-  the per-framework sections:
-  - [Status-code mapping](#status-code-mapping)
-  - [Preserving an existing client error envelope](#preserving-an-existing-client-error-envelope)
-  - [Body parser caveats](#body-parser-caveats)
-  - [File uploads with multer](#file-uploads-with-multer)
-  - [Deriving middleware config from the spec](#deriving-middleware-config-from-the-spec)
-  - [Streaming bodies, large uploads, and the `readBody` override](#streaming-bodies-large-uploads-and-the-readbody-override)
-  - [Response validation (no monkey-patching)](#response-validation-no-monkey-patching)
-  - [Security / authentication](#security--authentication)
-  - [Type coercion on body fields](#type-coercion-on-body-fields)
-  - [Ignoring paths not in the spec](#ignoring-paths-not-in-the-spec)
-- **[Migration paths](#migration-paths)**: pointers to focused
-  migration docs (currently only
-  [migration-from-eov.md](./migration-from-eov.md) for
-  `express-openapi-validator`).
+| Your app uses                        | Start here                                                                                    |
+| ------------------------------------ | --------------------------------------------------------------------------------------------- |
+| Express 4                            | [`oav-express4`](../packages/oav-express4/README.md), then [Express 4](#express-4)            |
+| Express 5                            | [`oav-express5`](../packages/oav-express5/README.md), then [Express 5](#express-5)            |
+| Fastify                              | [`oav-fastify`](../packages/oav-fastify/README.md), then [Fastify](#fastify)                  |
+| Next.js, Hono, Bun, Deno, Fetch APIs | [`validateFetchRequest`](#nextjs-app-router-hono-bun-deno)                                    |
+| Another framework                    | [What the validator expects](#what-the-validator-expects)                                     |
+| A custom error response shape        | [Preserving an existing client error envelope](#preserving-an-existing-client-error-envelope) |
+| File uploads, auth, response checks  | [Cross-cutting recipes](#cross-cutting-recipes)                                               |
+
+Adapters handle request validation and default
+`application/problem+json` responses. Response validation, upload
+parsing, authentication, and application-specific error envelopes stay
+explicit so they fit the service you already have.
+
+The cross-cutting recipes section covers concerns that show up across
+frameworks:
+
+- [Status-code mapping](#status-code-mapping)
+- [Preserving an existing client error envelope](#preserving-an-existing-client-error-envelope)
+- [Body parser caveats](#body-parser-caveats)
+- [File uploads with multer](#file-uploads-with-multer)
+- [Deriving middleware config from the spec](#deriving-middleware-config-from-the-spec)
+- [Streaming bodies, large uploads, and the `readBody` override](#streaming-bodies-large-uploads-and-the-readbody-override)
+- [Response validation (no monkey-patching)](#response-validation-no-monkey-patching)
+- [Security / authentication](#security--authentication)
+- [Type coercion on body fields](#type-coercion-on-body-fields)
+- [Ignoring paths not in the spec](#ignoring-paths-not-in-the-spec)
 
 ## What the validator expects
 
@@ -225,8 +226,8 @@ Custom streaming parsers, `body-parser`, fastify's bridge, and
 app-specific middleware all work the same way; oav doesn't care
 _how_ `req.body` got populated, only that it's there.
 
-See [body-parser caveats](#body-parser-caveats) for sharp edges
-that affect this pattern.
+See [body-parser caveats](#body-parser-caveats) for sharp edges that
+affect this pattern.
 
 ### Fastify
 
@@ -554,21 +555,21 @@ want to surface structured details too. `BuiltInErrorParams` in
 ### Body parser caveats
 
 oav doesn't parse bodies; it validates already-parsed bodies. Two
-sharp edges that bite both inline middleware and the
-`oav-express4` adapter:
+sharp edges that bite both inline middleware and the `oav-express4`
+adapter:
 
 1. **Malformed JSON throws before oav runs.** `express.json()` throws
    a `SyntaxError` on bad JSON, and Express's default error handler
    emits an HTML page. Install an Express error middleware to convert
    it to `application/problem+json` upstream of the validator.
 
-2. **Empty-body normalisation.** Some body parsers (streaming
+2. **Empty-body normalization.** Some body parsers (streaming
    variants, custom multi-format setups) leave `req.body === undefined`
    for empty `{}`-equivalent payloads instead of an empty object. When
    that happens, oav's `required`-field checks short-circuit on the
    missing body, so validation passes for what the client thinks is an
    empty submission, even when the spec marks fields as `required`.
-   If your parser does this, normalise before calling `validateRequest`:
+   If your parser does this, normalize before calling `validateRequest`:
 
    ```ts
    body: req.body ?? {},
@@ -739,7 +740,7 @@ that pulls the common middleware-config facts into a flat shape:
 content types, body limits, required headers, security. Copy it into
 your project and adjust the interpretation choices
 (`maxLength`-as-bytes vs code points, which `x-*` extensions to
-recognise, etc.) to fit your domain.
+recognize, etc.) to fit your domain.
 
 The getter is startup-time introspection, not part of validation. Its
 job is to make the spec the single source of truth for middleware
@@ -836,7 +837,7 @@ app.get("/pets/:id", async (req, res) => {
 ```
 
 **Per-app wrapper.** Wrap `res.json` yourself if you want
-auto-interception behaviour for every response:
+auto-interception behavior for every response:
 
 ```ts
 app.use((req, res, next) => {

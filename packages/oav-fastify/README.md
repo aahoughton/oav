@@ -187,11 +187,11 @@ If both fire on the same route, oav's `preValidation` hook runs first; if it pas
 
 ### Comparison with `fastify-openapi-glue`
 
-[`fastify-openapi-glue`](https://www.npmjs.com/package/fastify-openapi-glue) reads an OpenAPI spec at startup and **generates routes + handler stubs from it**. oav-fastify is a different shape: it validates against the spec but you own the route declarations. Use `fastify-openapi-glue` if you want spec-driven scaffolding; use oav-fastify if your routes already exist and you want OpenAPI as the validation source of truth.
+[`fastify-openapi-glue`](https://www.npmjs.com/package/fastify-openapi-glue) reads an OpenAPI spec at startup and **generates routes + handler stubs from it**. oav-fastify is a different shape: it validates against the spec while leaving route declarations in your app. Use `fastify-openapi-glue` if you want spec-driven scaffolding; use oav-fastify if your routes already exist and you want OpenAPI as the validation source of truth.
 
 ## See also
 
 - [`oav-core`](https://www.npmjs.com/package/@aahoughton/oav-core): `createValidator`, `ValidatorOptions`, `formatSummary`, `collectIssues`, `httpStatusFor`, `toProblemDetails`.
-- [`oav`](https://www.npmjs.com/package/@aahoughton/oav): batteries-included distribution of oav-core (YAML readers + the `oav` CLI).
+- [`oav`](https://www.npmjs.com/package/@aahoughton/oav): oav-core plus YAML readers and the `oav` CLI.
 - The repo-root `docs/integration.md`: broader recipes (security, file uploads, response validation, status mapping, type coercion, ignoring paths).
 - The repo-root `docs/migration-from-eov.md`: porting from `express-openapi-validator`.

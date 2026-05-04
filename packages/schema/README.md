@@ -114,7 +114,7 @@ short-circuits hot loops once the budget is exhausted. `maxErrors: 1`
 is classic fast-fail; larger values bound CPU/memory on huge invalid
 payloads. Results carry `truncated: true` when the tree was capped.
 Omit the option for zero-overhead unlimited collection: codegen is
-specialised so uncapped callers emit plain `errors.push` with no
+specialized so uncapped callers emit plain `errors.push` with no
 budget checks.
 
 ## `$ref` and cycles

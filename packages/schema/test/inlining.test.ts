@@ -1,5 +1,5 @@
 /**
- * Behavioural tests for the subschema-inlining optimisation. We assert
+ * Behavioral tests for the subschema-inlining optimization. We assert
  * on `v.stats.functionCount` (the compiler's own tally of
  * `validate_N` helper functions emitted), so the shape of the
  * generated source can change without breaking these tests.
@@ -41,7 +41,7 @@ describe("subschema inlining", () => {
       items: { type: "object", required: ["x"], properties: { x: { type: "number" } } },
     });
     // items' schema has `properties` (applicator), so it stays a
-    // function; V8 monomorphises the hot-loop call better that way
+    // function; V8 monomorphizes the hot-loop call better that way
     // than inlining would.
     expect(v.stats.functionCount).toBe(2);
   });
@@ -71,7 +71,7 @@ describe("subschema inlining", () => {
     expect(v.stats.functionCount).toBeGreaterThanOrEqual(2);
   });
 
-  it("inlining preserves validation behaviour: tree form", () => {
+  it("inlining preserves validation behavior: tree form", () => {
     const v = compile({ type: "array", items: { type: "number" } });
     expect(v.validate([1, 2, 3]).valid).toBe(true);
     const r = v.validate([1, "two", 3]);
@@ -80,7 +80,7 @@ describe("subschema inlining", () => {
     expect(r.error?.path).toEqual([1]);
   });
 
-  it("inlining preserves validation behaviour: property form", () => {
+  it("inlining preserves validation behavior: property form", () => {
     const v = compile({ type: "object", properties: { age: { type: "integer" } } });
     expect(v.validate({ age: 5 }).valid).toBe(true);
     const r = v.validate({ age: "x" });

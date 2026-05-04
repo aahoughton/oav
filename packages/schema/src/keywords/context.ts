@@ -307,7 +307,7 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
       // registered with `annotation: true` and emit no code; safe to
       // skip. Unknown keys fall through to `validationKeys` so the
       // inliner conservatively refuses to inline them, which matches
-      // the old behaviour for pre-`annotation`-flag unknowns.
+      // the old behavior for pre-`annotation`-flag unknowns.
       if (inputs.byKeyword.get(k)?.annotation === true) continue;
       if (INLINE_DISQUALIFIERS.has(k)) return false;
       validationKeys.push(k);
@@ -345,8 +345,8 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     // Multi-keyword inline is limited to pure-leaf combinations
     // (type + required + bounds, etc.). Schemas that contain any
     // applicator are left to the function-call path; the per-call
-    // dispatch pays for itself on hot loops because V8 monomorphises
-    // the function better than it can optimise a massive inlined
+    // dispatch pays for itself on hot loops because V8 monomorphizes
+    // the function better than it can optimize a massive inlined
     // loop body.
     if (validationKeys.some((k) => isApplicatorKey(inputs.byKeyword, k))) return false;
     if (validationKeys.length > MAX_INLINE_KEYWORDS) return false;
@@ -555,7 +555,7 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
 
 /**
  * Build a JS statement that pushes a single {@link ValidationError}
- * expression into the errors accumulator, optionally honouring the
+ * expression into the errors accumulator, optionally honoring the
  * `maxErrors` budget when `gated` is `true`. Callers of this helper
  * pass it to {@link CodeGen.line} or embed it into a generated block.
  *

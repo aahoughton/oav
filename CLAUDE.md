@@ -46,13 +46,13 @@ to add a comment.
 
 Design v0 surfaces so v1 additions land as new exports / new options,
 not changed semantics. The Express 4 adapter shipped with
-`validateRequests` knowing future `validateResponses` would need to
-share option names, the default renderer, and the context shape.
-Picking those identifiers up front cost nothing; doing it after the
-fact would have meant a breaking rename. When you can't tell whether
-a new option will need to extend later, lean toward shapes that widen
-additively (`select: "first" | "deepest" | { byCode }`, not
-`byCodeOnly: boolean`).
+`validateRequests` named so that any response-validating sibling
+added later would slot in additively, sharing option names, the
+default renderer, and the context shape. Picking those identifiers
+up front cost nothing; doing it after the fact would have meant a
+breaking rename. When you can't tell whether a new option will need
+to extend later, lean toward shapes that widen additively (`select:
+"first" | "deepest" | { byCode }`, not `byCodeOnly: boolean`).
 
 ### No magic
 
@@ -161,7 +161,7 @@ in CI; they're tsx-run dev tooling, breakage shows up when you run them.
   (children always an array), path segments as `(string | number)[]`,
   the canonical formatters (`formatText` / `formatSummary` / `toJsonObject`;
   legacy aliases `formatJson` / `formatFlat` / `summarize` are still exported
-  but deprecated, removal in v2.0)
+  but deprecated, removal in v3)
   and the named-format dispatch (`formatError`, `formatErrors`,
   `KNOWN_OUTPUT_FORMATS`), `httpStatusFor` / `allowHeaderFor` /
   `toProblemDetails` for HTTP framing, RFC 6901 `resolveJsonPointer`,
@@ -210,8 +210,8 @@ options)` returns a `Validator` exposing `validateRequest(req)`,
   framework-native field names (`ExpressContext { req, res, next }`,
   `FastifyContext { request, reply }`). The `oav-express5` / Fastify
   variants are async-native and don't need `try/catch`; `oav-express4`
-  forwards thrown errors via `next(err)`. A future `validateResponses`
-  slots in additively on each adapter.
+  forwards thrown errors via `next(err)`. Any response-validating
+  sibling added later slots in additively on each adapter.
 
 ## Dependency graph (strictly enforced; no cycles)
 
@@ -234,14 +234,14 @@ oav-fastify   → same chain, peer: fastify ^5
 
 1. Create `packages/schema/src/keywords/<area>.ts` exporting a
    `KeywordDefinition` with `keyword`, `vocabulary`, `compile(ctx)`.
-   Flags on the definition itself drive compiler specialisation.
-   Set them correctly or performance optimisations silently mis-fire:
+   Flags on the definition itself drive compiler specialization.
+   Set them correctly or performance optimizations silently mis-fire:
    - `applicator: true`: keyword descends into subschemas (items,
      properties, allOf, not, …). Drives the inliner to use the
      function-call path for multi-keyword schemas containing this
      keyword. A missed flag costs correctness (inlined applicators can
      skip per-function evaluated-keys state) and speed (V8 can't
-     monomorphise a huge inline body).
+     monomorphize a huge inline body).
    - `annotation: true`: keyword is metadata only, emits no runtime
      code (`title`, `description`, `$id`, `$schema`, `$comment`, …).
      Lets the inliner count keyword density correctly and avoids
@@ -330,7 +330,7 @@ same way) that's wasted CPU and memory. `compileSchema(schema,
 `createValidator`) caps the tree at N leaves and short-circuits the
 hot loops once the budget is exhausted. `maxErrors: 1` is the classic
 fast-fail mode; the returned `{ valid: false, error, truncated: true }`
-tells consumers their report is partial. Codegen is specialised: when
+tells consumers their report is partial. Codegen is specialized: when
 `maxErrors` is left unset, the generated source is identical to before
 (no budget checks, no `truncated` tracking); zero overhead for
 callers who don't opt in.
@@ -437,7 +437,7 @@ having an unknown field, which 2020-12 allows in every dialect.
   `nullable`, boolean `exclusiveMinimum`; 3.2: QUERY method).
 - **Validator integration tests** in
   `packages/validator/test/versioning.test.ts` cover dispatch,
-  dialect-specific keyword behaviour, and the `dialect` override.
+  dialect-specific keyword behavior, and the `dialect` override.
 
 ## Known limitations
 

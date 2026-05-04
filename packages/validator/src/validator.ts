@@ -70,10 +70,70 @@ function dialectFor(version: OpenAPIVersion): Dialect {
  * `validateRequest` / `validateResponse` each return a full
  * {@link ValidationError} tree (or `null`).
  *
+ * - **Per-call HTTP validation**: {@link Validator.validateRequest},
+ *   {@link Validator.validateResponse}.
+ * - **Web Standards convenience**: {@link Validator.validateFetchRequest},
+ *   {@link Validator.validateFetchResponse}. Wrap the per-call methods
+ *   with body-parsing for `Request` / `Response` consumers (Next.js,
+ *   Hono, Bun, Deno).
+ * - **Spec introspection**: {@link Validator.getOperation},
+ *   {@link Validator.detectedVersion}.
+ * - **Construction-time output**: {@link Validator.warnings},
+ *   {@link Validator.specHygieneIssues}.
+ * - **Live observability**: {@link Validator.stats}.
+ *
  * @public
  */
 export interface Validator {
+  /**
+   * Validate one HTTP request against the spec. Returns `null` when the
+   * request matches the operation declared at its method + path,
+   * including parameters, headers, cookies, body, and content type;
+   * returns a {@link ValidationError} tree otherwise.
+   *
+   * The returned tree's top-level `code` is `"request"` for any failure,
+   * with branch children under `body`, `query.<name>`, `header.<name>`,
+   * `cookie.<name>`, `path-param.<name>`, or `security`. Route and
+   * method mismatches surface as top-level `"route"` / `"method"`
+   * codes; see {@link httpStatusFor} for the canonical status mapping.
+   *
+   * Does not mutate `req`. Synchronous: parameter deserialization,
+   * content-type matching, and schema validation all run inline. Per
+   * `req` cost is dominated by the schema validation; bodies that
+   * pass validation incur a single tree walk and no allocation.
+   *
+   * Paths the spec doesn't declare are treated according to
+   * {@link ValidatorOptions.ignoreUndocumented} and
+   * {@link ValidatorOptions.ignorePaths}: by default an undeclared
+   * path returns a `"route"` error; configure to bypass the validator
+   * entirely.
+   *
+   * @see {@link Validator.validateResponse} for the response-side pair.
+   * @see {@link Validator.validateFetchRequest} for the Web Standards convenience wrapper.
+   * @see {@link Validator.getOperation} to look up the matched operation without validating.
+   */
   validateRequest(req: HttpRequest): ValidationError | null;
+  /**
+   * Validate one HTTP response against the spec, given the request it
+   * answers. Returns `null` when the response status, content type,
+   * headers, and body all match the responses declared on the operation
+   * `req` resolves to; returns a {@link ValidationError} tree otherwise.
+   *
+   * The returned tree's top-level `code` is `"response"`, with branch
+   * children under `body`, `header.<name>`, or `status`. The `req`
+   * argument is used only to locate the operation; its body isn't
+   * read.
+   *
+   * Response-body schemas compile lazily on first use per `(status,
+   * mediaType)` pairing; {@link ValidatorStats.responseBodiesCompiled}
+   * counts how many have been compiled since construction.
+   *
+   * Does not mutate `req` or `res`. Synchronous, like
+   * {@link Validator.validateRequest}.
+   *
+   * @see {@link Validator.validateRequest} for the request-side pair.
+   * @see {@link Validator.validateFetchResponse} for the Web Standards convenience wrapper.
+   */
   validateResponse(req: HttpRequest, res: HttpResponse): ValidationError | null;
   /**
    * Parse a Web Standards {@link Request} and validate it in one call.
@@ -87,7 +147,7 @@ export interface Validator {
    * in practice). On failure, `error` is the same
    * {@link ValidationError} tree `validateRequest` would return.
    *
-   * Body parsing recognises `application/json` (and `*+json`),
+   * Body parsing recognizes `application/json` (and `*+json`),
    * `application/x-www-form-urlencoded`, `multipart/form-data`
    * (file fields come through as `Uint8Array`), and `text/*`. Any
    * other content type is read as raw bytes; the spec's
@@ -202,9 +262,9 @@ export interface Validator {
    */
   readonly specHygieneIssues: readonly SpecHygieneIssue[];
   /**
-   * Runtime observability for compile-time-specialisation optimisations.
+   * Runtime observability for compile-time-specialization optimizations.
    * The counters live on the validator, not inside a ValidationError
-   * tree, so tests can assert on the optimisation directly rather than
+   * tree, so tests can assert on the optimization directly rather than
    * through indirect signals (throwing test schemas, source grepping).
    */
   readonly stats: ValidatorStats;

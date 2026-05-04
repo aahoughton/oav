@@ -16,9 +16,9 @@ import type { HttpRequest } from "@oav/core";
  * Cookies are read from `req.cookies` if `cookie-parser` populated
  * them, otherwise omitted.
  *
- * Pairs with future `httpRequestFromExpress5`, `httpRequestFromFastify`,
- * etc.: same name pattern as oav's existing
- * {@link httpRequestFromFetch}.
+ * Pairs with sibling `httpRequestFromExpress` in `oav-express5` and
+ * `httpRequestFromFastify` in `oav-fastify`: same name pattern as
+ * oav's existing {@link httpRequestFromFetch}.
  *
  * @public
  */

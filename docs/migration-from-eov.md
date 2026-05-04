@@ -11,7 +11,7 @@ or write the middleware inline.
 
 ## What you give up; what you get
 
-eov registers as a single middleware that wraps a lot of behaviour:
+eov registers as a single middleware that wraps a lot of behavior:
 file upload (multer), security check dispatch, response wrapping,
 typed error classes. `oav` is a ~20-line middleware (or one
 `validateRequests(...)` call via the adapter) plus your own multer /
@@ -40,7 +40,7 @@ auth wiring where needed. In exchange:
 
 ## Behavior differences to watch for
 
-The behaviour deltas surfaced by real eov-to-oav migrations. Most are
+The behavior deltas surfaced by real eov-to-oav migrations. Most are
 defensible improvements; a few are cosmetic. Either way, expect
 fixture / test churn.
 

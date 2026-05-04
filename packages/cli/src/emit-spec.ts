@@ -8,7 +8,7 @@
  * module has zero imports.
  *
  * Consumers who were doing `createValidator(await loadSpec(...))` at
- * runtime get the same behaviour with no YAML parse, no `$ref`
+ * runtime get the same behavior with no YAML parse, no `$ref`
  * resolution, no schema compilation at load. Target use cases:
  * Cloudflare Workers, Vercel Edge, Lambda@Edge, Lambda cold-start
  * latency, deno compile, single-file bundles: anywhere runtime
@@ -113,7 +113,7 @@ export function emitSpec(document: OpenAPIDocument, options: EmitSpecOptions = {
     return name;
   };
 
-  // Operations to emit, honouring `only`. Two parallel structures:
+  // Operations to emit, honoring `only`. Two parallel structures:
   //
   // - `pathMethods`: for each path that has ≥ 1 included op, the FULL
   //   set of spec-declared methods. Drives the router's paths table.
@@ -503,7 +503,7 @@ function resolveDialect(
   const bucket = detectVersionBucket(document);
 
   // Explicit override short-circuits detection. Mirror the runtime's
-  // behaviour of surfacing a warning when the override is hiding a
+  // behavior of surfacing a warning when the override is hiding a
   // category error.
   if (override !== undefined) {
     if (bucket === undefined) {

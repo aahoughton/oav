@@ -10,7 +10,7 @@ function walkLeaves(err: Err, acc: Err[] = []): Err[] {
 }
 
 describe("error paths survive path-array reuse", () => {
-  // Regression probe for the lazy-path optimisation. Generated
+  // Regression probe for the lazy-path optimization. Generated
   // validators traverse a shared mutable path array (push/pop around
   // function-call boundaries); errors constructed inside a callee
   // must snapshot the path so the caller's subsequent pop doesn't
@@ -34,7 +34,7 @@ describe("error paths survive path-array reuse", () => {
     expect(typeErr?.path).toEqual([0]);
   });
 
-  // Regression probe for the inline-pathSegments optimisation (#50).
+  // Regression probe for the inline-pathSegments optimization (#50).
   // A single-keyword leaf inlined with a pending segment must place
   // the segment in its error's .path; the inliner no longer
   // pre-materializes `[...path, seg]` for the inner ctx, so a leaf

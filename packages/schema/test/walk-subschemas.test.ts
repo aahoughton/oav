@@ -43,7 +43,7 @@ describe("walkSubschemas", () => {
     expect(paths).toContain("dependentSchemas.trigger");
   });
 
-  it("honours a `false` return to prune the subtree", () => {
+  it("honors a `false` return to prune the subtree", () => {
     const schema: SchemaOrBoolean = {
       properties: { a: { properties: { aa: { type: "string" } } } },
     };

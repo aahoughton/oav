@@ -109,7 +109,7 @@ function coerceScalar(value: string, schema: SchemaObject | boolean | undefined)
  * patterns (which may use wildcards like `application/*` or `*\/*`). Returns
  * the most-specific match, or `undefined`.
  *
- * Media-type parameters (the bits after `;`) are honoured on both sides:
+ * Media-type parameters (the bits after `;`) are honored on both sides:
  * a pattern like `application/json; version=1` only matches a concrete
  * `application/json; version=1` (extra parameters on the concrete side
  * are allowed). A pattern with no parameters matches any concrete type
@@ -181,7 +181,7 @@ function parseMediaType(
 }
 
 /**
- * Find the response entry that matches a given status code, honouring the
+ * Find the response entry that matches a given status code, honoring the
  * OpenAPI precedence: exact status > `NXX` class > `default`.
  *
  * @param status - The response status.

@@ -361,7 +361,7 @@ export function pathJoinExpr(baseExpr: string, segments: PathSegmentLike[]): str
  * path segment. Used by {@link pathJoinExpr}.
  *
  * @param expr - The raw JavaScript expression.
- * @returns A tagged object recognised by path helpers.
+ * @returns A tagged object recognized by path helpers.
  *
  * @example
  * ```ts

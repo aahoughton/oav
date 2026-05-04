@@ -10,9 +10,7 @@
  *   reusable from any custom hook.
  *
  * Naming and option shapes are deliberately consistent with the
- * sibling `oav-express4` / `oav-express5` adapters and future
- * `oav-hono` adapter, and pair with future `validateResponses` on
- * this package.
+ * sibling `oav-express4` / `oav-express5` adapters.
  *
  * Fastify is async-native: the returned hook is `async`, and
  * thrown errors / rejected promises propagate to Fastify's error

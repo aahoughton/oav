@@ -9,7 +9,7 @@
  *
  * This file is **documentation, not library API.** Copy it into your
  * project and adapt the interpretation choices — what `maxLength`
- * means on a binary field, which `x-*` extensions to recognise, how
+ * means on a binary field, which `x-*` extensions to recognize, how
  * nested `properties` roll up — to match your domain. Keeping those
  * decisions in application code (rather than in oav) avoids baking
  * one team's conventions into every team's startup.
@@ -90,7 +90,7 @@ function bodyLimitsByMediaType(op: OperationObject): Record<string, { maxBytes?:
  * field. `maxLength` on a `format: binary` field is the OpenAPI
  * convention for byte-count; on a plain string it means code
  * points. This recipe treats only the binary case as a byte ceiling
- * — your domain may want to recognise an `x-max-bytes` extension, a
+ * — your domain may want to recognize an `x-max-bytes` extension, a
  * custom annotation keyword, or something else entirely.
  */
 function declaredMaxBytes(schema: SchemaObject | boolean | undefined): number | undefined {

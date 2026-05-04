@@ -62,7 +62,7 @@ describe("custom keywords", () => {
     expect(received[1]?.path).toEqual(["b"]);
   });
 
-  it("honours custom message and params on failure objects", () => {
+  it("honors custom message and params on failure objects", () => {
     const fn: CustomKeywordValidator = (data) => {
       if (typeof data !== "string") return true;
       if (data.includes(" ")) {

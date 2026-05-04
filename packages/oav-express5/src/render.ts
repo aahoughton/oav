@@ -2,12 +2,12 @@ import { allowHeaderFor, httpStatusFor, toProblemDetails, type ValidationError }
 import type { ExpressContext } from "./types.js";
 
 /**
- * The default `onError` for {@link validateRequests} (and future
- * `validateResponses`). Renders the validation tree as an
- * RFC 9457 `application/problem+json` response: status from
- * {@link httpStatusFor}, `Allow` header from {@link allowHeaderFor}
- * on a 405, body from {@link toProblemDetails} (whose `detail` is
- * the first failing leaf via {@link formatSummary}).
+ * The default `onError` for {@link validateRequests}. Renders the
+ * validation tree as an RFC 9457 `application/problem+json` response:
+ * status from {@link httpStatusFor}, `Allow` header from
+ * {@link allowHeaderFor} on a 405, body from {@link toProblemDetails}
+ * (whose `detail` is the first failing leaf via
+ * {@link formatSummary}).
  *
  * Exported standalone for two cases:
  *
@@ -17,9 +17,6 @@ import type { ExpressContext } from "./types.js";
  * 2. You want a slightly different renderer: use this as the
  *    starting point and adjust (e.g. swap the body, override the
  *    status, add headers).
- *
- * Pairs with future `validateResponses`'s default; the same
- * function works for both sides.
  *
  * @public
  */

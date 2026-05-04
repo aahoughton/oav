@@ -6,11 +6,9 @@ import { renderProblemDetails } from "./render.js";
 import type { ErrorHandler, FastifyContext } from "./types.js";
 
 /**
- * Options for {@link validateRequests}. Names and semantics are
- * shared with future {@link validateResponses} and with the same
- * options on every other adapter in the family (`oav-express4`,
- * `oav-express5`, future `oav-hono`, ...); only the
- * framework-typed argument differs.
+ * Options for {@link validateRequests}. The same option shape is
+ * used by every adapter in the family (`oav-express4`,
+ * `oav-express5`); only the framework-typed argument differs.
  *
  * @public
  */
@@ -25,12 +23,18 @@ export interface ValidateRequestsOptions {
   toHttpRequest?: (request: FastifyRequest) => HttpRequest;
   /**
    * Called when {@link Validator.validateRequest} returns an error.
-   * Default: {@link renderProblemDetails}: RFC 9457
-   * `application/problem+json` with status from `httpStatusFor`.
-   * Pass your own to render a custom envelope, throw (handed to
-   * Fastify's error handler), map to a different status, etc. The
-   * hook does not call `reply.send()` after invoking `onError`;
-   * the callback is the response.
+   * Default: {@link renderProblemDetails}, which writes an RFC 9457
+   * `application/problem+json` response with status from
+   * {@link httpStatusFor}.
+   *
+   * Pass your own to render a custom envelope, map to a different
+   * status, or throw to delegate to Fastify's error handler. May be
+   * async; the hook awaits it. Thrown errors and rejected promises
+   * propagate to Fastify's error handler automatically (no try/catch
+   * wrapper needed).
+   *
+   * The hook does not call `reply.send()` after `onError` returns;
+   * the callback owns the response.
    */
   onError?: ErrorHandler<FastifyContext>;
 }

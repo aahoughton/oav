@@ -67,14 +67,14 @@ describe("strict mode", () => {
       xml: { name: "Msg" },
       externalDocs: { url: "https://example.com/docs" },
     } as unknown as SchemaOrBoolean;
-    // Base JSON Schema dialect does NOT recognise `xml` / `externalDocs`;
+    // Base JSON Schema dialect does NOT recognize `xml` / `externalDocs`;
     // they're OpenAPI extensions, not core JSON Schema keywords.
     const baseIssues = compileSchema(schema, {
       dialect: jsonSchemaDialect,
       strict: "strict",
     }).stats.strictIssues;
     expect(baseIssues.map((i) => i.keyword).sort()).toEqual(["externalDocs", "xml"]);
-    // Both OpenAPI dialects DO recognise them.
+    // Both OpenAPI dialects DO recognize them.
     for (const dialect of [openapi31Dialect, oas30Dialect]) {
       const issues = compileSchema(schema, { dialect, strict: "strict" }).stats.strictIssues;
       expect(issues).toEqual([]);

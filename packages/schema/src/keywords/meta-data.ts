@@ -45,7 +45,7 @@ export const descriptionKeyword = annotationKeyword("description");
  * `default`: a suggested default value for the schema. Preserved as
  * metadata only; oav never injects defaults into request bodies or
  * response bodies (see the `useDefaults` discussion in
- * [`docs/comparison.md`](../../../docs/comparison.md) if you need that behaviour).
+ * [`docs/comparison.md`](../../../docs/comparison.md) if you need that behavior).
  *
  * @public
  */
@@ -93,7 +93,7 @@ export const examplesKeyword = annotationKeyword("examples");
 
 /**
  * OpenAPI-specific annotation: `example` (singular). Deprecated in
- * favour of `examples` per OpenAPI 3.1, still widely used in 3.0 specs.
+ * favor of `examples` per OpenAPI 3.1, still widely used in 3.0 specs.
  *
  * @public
  */

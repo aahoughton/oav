@@ -1,16 +1,39 @@
-# oav vs Ajv (+ express-openapi-validator)
+# oav vs other JavaScript OpenAPI validators
 
 Ajv is the canonical JSON Schema validator for JavaScript, and
 `express-openapi-validator` is the most widely-used middleware built
-on top of it. Together they cover most real-world OpenAPI validation
-in the ecosystem and have done so for years. This document maps what
-each project does so you can pick the one that fits.
+on top of it. Together they cover a large share of OpenAPI request /
+response validation in JavaScript services and have done so for years.
 
-oav covers the same ground as Ajv + `express-openapi-validator`
-combined (schema validation plus HTTP-layer checks), and trades
-differently on a handful of specifics, catalogued below.
+They are not the only options. `openapi-backend` combines routing,
+validation, auth, and mocking around operation handlers.
+`openapi-enforcer` and `openapi-enforcer-middleware` cover document
+loading, request/response validation, serialization, and mocks, with a
+stronger OpenAPI 2.0 / 3.0 story than 3.1+. `openapi-request-validator`
+and `openapi-response-validator` are smaller request/response pieces.
+Spec validators and parsers such as `@seriousme/openapi-schema-validator`
+and `@scalar/openapi-parser` validate the OpenAPI document at
+build/load time; they don't sit in the request path.
 
-This document is about behaviour and capabilities. For raw numbers
+This document spends most of its space on Ajv and
+`express-openapi-validator` because they are the closest comparison for
+oav's core surface: schema validation plus HTTP-layer request/response
+checks. The broader ecosystem matters, but the same decision usually
+comes down to the shape of integration you want.
+
+## Ecosystem map
+
+| Tool family                                    | Best fit                                                                                      |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Ajv                                            | JSON Schema validation, many drafts, maximum ecosystem maturity                               |
+| `express-openapi-validator`                    | Existing Express apps that want one middleware to validate requests/responses                 |
+| `openapi-backend`                              | OperationId routing, auth handlers, validation, and mocking together                          |
+| `openapi-enforcer` / middleware                | OpenAPI 2.0 / 3.0 services that want validation plus serialization/mocking                    |
+| `openapi-request-validator` / response sibling | Lower-level request or response checks around your own routing                                |
+| Spec validators/parsers                        | Validating the OpenAPI document, resolving refs, linting, or tooling                          |
+| oav                                            | HTTP-aware validation with structured errors, overlays, and standalone OpenAPI validator emit |
+
+This document is about behavior and capabilities. For raw numbers
 and methodology see [`performance/README.md`](../performance/README.md);
 the shape of the trade-off is sketched below.
 
@@ -130,7 +153,7 @@ Capabilities oav has that Ajv (alone or with
   out of the schema before compile (rewriting `{ nullable: true,
 type: "string" }` to `{ type: ["string", "number", "boolean",
 "object", "array"] }` with an `x-eov-type` side channel to narrow
-  back). Different mechanism, equivalent behaviour.
+  back). Different mechanism, equivalent behavior.
 - **First-class overlays.** `applyOverlays` rewrites an
   externally-owned base spec at load time (add a required header to
   every operation, extend a component schema, swap a response shape)
@@ -165,7 +188,7 @@ type: "string" }` to `{ type: ["string", "number", "boolean",
   implementation shape.
 - **Compile-time observability.** `CompiledSchema.stats` exposes
   `functionCount`, `unevaluatedTrackingEmitted`, and
-  `emittedTreeRuntime` so tests can assert on compiler optimisations
+  `emittedTreeRuntime` so tests can assert on compiler optimizations
   directly rather than grepping the generated source.
 
 ## Runtime dependencies
@@ -181,9 +204,8 @@ Ajv 8 has four runtime dependencies:
 
 oav's compiler and validator have zero runtime dependencies. The lean
 `oav-core` package ships exactly that (no runtime deps),
-and accepts JSON specs. The batteries-included `oav`
-package layers `yaml` on top for `.yaml` spec files and adds the `oav`
-CLI (with `commander` as an optional peer). The two efficiency
+and accepts JSON specs. The `oav` package adds YAML readers for
+`.yaml` spec files and the `oav` CLI. The two efficiency
 libraries Ajv pulls in (`fast-deep-equal`, `json-schema-traverse`)
 have equivalents in-tree; the two capability libraries (`fast-uri`,
 `require-from-string`) map to features oav doesn't implement (see
@@ -191,19 +213,25 @@ have equivalents in-tree; the two capability libraries (`fast-uri`,
 
 ## Summary
 
-oav and Ajv + `express-openapi-validator` cover the same ground: both
-validate OpenAPI requests and responses by 3.0 / 3.1 / 3.2 rules,
-both support custom keywords and formats, both produce
-machine-readable errors. Differences are real but bounded.
+The JavaScript ecosystem has several OpenAPI validation tools with
+different integration shapes. Pick the one whose shape fits how your
+service is already wired.
 
 Pick Ajv + `express-openapi-validator` when you want the fastest
 steady-state validate throughput on a schema you compile once, a
 large userbase, multi-draft support, or the one-line middleware
-integration. Pick oav when you want a structured error tree,
-overlays over specs you don't own, a bundled OpenAPI 3.0 dialect,
-explicit control over where validation runs in your HTTP stack, or
-when compile throughput matters (1–2 orders of magnitude above ajv,
-8× on Stripe's real-world spec; see the performance sketch above).
+integration for Express. Pick `openapi-backend` when routing and
+operation handlers should be driven by the spec. Pick
+`openapi-enforcer` when its OpenAPI 2.0 / 3.0 validation,
+serialization, and mocking model fits your service.
+
+Pick oav when you want a structured error tree, overlays over specs you
+don't own, an OpenAPI 3.0 dialect built into the validator, explicit
+control over where validation runs in your HTTP stack, or standalone
+OpenAPI HTTP validator output for edge/serverless deployments. It also
+fits compile-heavy workloads: current benchmarks show one to two orders
+of magnitude faster schema compile than Ajv, including 8× on Stripe's
+real-world spec; see the performance sketch above.
 
 For benchmark numbers rather than feature comparisons, see
 [`performance/README.md`](../performance/README.md).

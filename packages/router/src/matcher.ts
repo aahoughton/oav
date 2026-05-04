@@ -16,7 +16,7 @@ import type { HttpMethod, OperationObject, PathItem } from "@oav/core";
  * that template expressions be delimited by `{}`; multiple per segment
  * with literal separators are spec-legal (cf. RFC 6570). Mainstream
  * routers (path-to-regexp, hono, find-my-way, gorilla/mux, werkzeug)
- * all use the non-greedy left-to-right rule modelled here.
+ * all use the non-greedy left-to-right rule modeled here.
  *
  * @public
  */
@@ -151,7 +151,7 @@ function parseSegment(seg: string): Segment {
   // with one non-greedy `[^/]+?` capture per template part; the trailing
   // `$` anchor + lazy capture resolves multi-param ambiguity left-to-right
   // (e.g. `{x}.{y}` against `a.b.c` captures `x="a"`, `y="b.c"`), matching
-  // path-to-regexp / hono / find-my-way / werkzeug behaviour.
+  // path-to-regexp / hono / find-my-way / werkzeug behavior.
   const names: string[] = [];
   let regexSrc = "^";
   let i = 0;
@@ -184,7 +184,7 @@ function parseSegment(seg: string): Segment {
   }
   regexSrc += "$";
   // No template parts ended up in the segment despite a `{`; degenerate.
-  // Fall back to literal so behaviour matches the !includes("{") branch.
+  // Fall back to literal so behavior matches the !includes("{") branch.
   if (names.length === 0) {
     return { kind: "literal", value: decodeURIComponent(seg) };
   }

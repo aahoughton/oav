@@ -72,7 +72,7 @@ describe("httpStatusFor", () => {
     // what you're asking for"), and 401 should surface ahead of 415. In
     // practice the validator short-circuits on security before checking
     // content-type, so both rarely coexist, but the helper's priority
-    // guarantees the behaviour regardless.
+    // guarantees the behavior regardless.
     const err = createBranchError("request", [], "request validation failed", [
       createLeafError("content-type", ["body"], "Content-Type not accepted", {
         contentType: "text/plain",

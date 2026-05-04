@@ -120,7 +120,7 @@ validate:
 
 Per-library line per task. `ops/s` is tinybench's measured throughput,
 `/ op` is mean latency per call. Bigger ops/s = faster. The relative
-table at the end normalises against ajv as baseline.
+table at the end normalizes against ajv as baseline.
 
 ### Spec mode
 
@@ -190,7 +190,7 @@ Raw per-batch data lands in `results/mem-<timestamp>.json`.
 
 Deliberately omitted. Without paired valid/invalid fixtures per
 schema, any choice of synthetic input (`{}`, an example mined from
-the spec, a type-driven synthesised value) would favour one library's
+the spec, a type-driven synthesized value) would favor one library's
 fast-path over another in ways that don't reflect real workloads. If
 you need validate throughput numbers on real shapes, copy the
 relevant body schema into `schemas.ts` with hand-authored inputs and
@@ -233,7 +233,7 @@ ajv for parity with oav's always-collect-everything default.
   here; oav is roughly 1.4× on trivial shapes, ~3× on object and
   composition shapes, ~3× on large-array shapes. `maxErrors: 1`
   closes the ajv gap on invalid payloads (apples-to-apples with
-  ajv's default fail-fast behaviour).
+  ajv's default fail-fast behavior).
 - **Predicate mode (`predicate: true`).** When consumers only need a
   yes/no answer — routing, gating, hot-path filtering — `oav-predicate`
   brings oav onto parity with ajv's default (fail-fast) mode on invalid
@@ -249,7 +249,7 @@ ajv for parity with oav's always-collect-everything default.
 - **`@oav/schema`**'s remaining validate overhead vs ajv comes from
   two structural choices: schemas that contain applicators
   (`properties` / `items` / `allOf` / ...) compile to a function
-  call rather than inlining into the enclosing body (V8 monomorphises
+  call rather than inlining into the enclosing body (V8 monomorphizes
   hot-loop calls better than massive inline bodies); and oav collects
   complete error trees by default, while ajv defaults to
   `allErrors: false`. Set `maxErrors: 1` on oav for apples-to-apples
