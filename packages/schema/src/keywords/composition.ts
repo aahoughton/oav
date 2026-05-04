@@ -181,6 +181,15 @@ export const oneOfKeyword: KeywordDefinition = {
     schemas.forEach((sub) => {
       const fn = ctx.compileSubschema(sub);
       const errVar = ctx.gen.scope.name("e");
+      if (outProps === null && outItems === null) {
+        ctx.gen.const(errVar, `${fn}(${ctx.data}, ${ctx.path})`);
+        ctx.gen.if(
+          `${errVar} === null`,
+          (g) => g.line(`${matchCount} += 1;`),
+          (g) => g.line(`${errsVar}.push(${errVar});`),
+        );
+        return;
+      }
       const propsVar = ctx.gen.scope.name("bProps");
       const itemsVar = ctx.gen.scope.name("bItems");
       ctx.gen.const(propsVar, outProps !== null ? "new Set()" : "undefined");
