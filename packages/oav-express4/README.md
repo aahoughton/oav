@@ -103,7 +103,7 @@ validateRequests(validator, {
 `ValidatorOptions.validateSecurity` is off by default; real apps run auth middleware upstream of the validator, so by the time `validateRequests` runs the credential has already been verified. During early dev (no auth wired yet) or with decorator-only auth that just attaches `req.user`, opt in:
 
 ```ts
-const validator = createValidator(spec, { validateSecurity: true });
+const validator = createValidator(spec, { validateSecurity: "shape" });
 app.use(validateRequests(validator));
 ```
 

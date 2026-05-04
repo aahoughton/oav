@@ -45,6 +45,18 @@ export interface CompiledSecurityRequirement {
 export type CompiledSecurity = CompiledSecurityRequirement[];
 
 /**
+ * Strictness toggle for shape-only security validation. `"shape"`
+ * checks recognized schemes (`bearer`, `basic`, `apiKey`) and silently
+ * passes on everything else (oauth2, openIdConnect, mutualTLS, HTTP
+ * non-bearer/non-basic). `"strict"` checks recognized schemes and
+ * fails the request on any unrecognized scheme. Mirrors the `"shape"`
+ * / `"strict"` values of {@link ValidatorOptions.validateSecurity}.
+ *
+ * @internal
+ */
+export type SecurityMode = "shape" | "strict";
+
+/**
  * Compile the effective security for one operation. Applies OAS
  * precedence: operation-level `security` (including an explicit empty
  * array opt-out) overrides `document.security`. Unknown scheme names
@@ -61,6 +73,7 @@ export function compileOperationSecurity(
   operation: OperationObject,
   document: OpenAPIDocument,
   resolveRef: <T>(v: T | ReferenceObject | undefined) => T | undefined,
+  mode: SecurityMode = "shape",
 ): CompiledSecurity | undefined {
   const effective = operation.security ?? document.security;
   if (effective === undefined || effective.length === 0) return undefined;
@@ -71,17 +84,18 @@ export function compileOperationSecurity(
     resolvedSchemes[name] = resolveRef<SecuritySchemeObject>(raw);
   }
 
-  return effective.map((req) => compileRequirement(req, resolvedSchemes));
+  return effective.map((req) => compileRequirement(req, resolvedSchemes, mode));
 }
 
 function compileRequirement(
   req: SecurityRequirementObject,
   schemes: Record<string, SecuritySchemeObject | undefined>,
+  mode: SecurityMode,
 ): CompiledSecurityRequirement {
   const compiled: CompiledSchemeCheck[] = [];
   for (const name of Object.keys(req)) {
     const scheme = schemes[name];
-    compiled.push(compileSchemeCheck(name, scheme));
+    compiled.push(compileSchemeCheck(name, scheme, mode));
   }
   return { schemes: compiled };
 }
@@ -89,6 +103,7 @@ function compileRequirement(
 function compileSchemeCheck(
   name: string,
   scheme: SecuritySchemeObject | undefined,
+  mode: SecurityMode,
 ): CompiledSchemeCheck {
   if (scheme === undefined) {
     return {
@@ -100,18 +115,37 @@ function compileSchemeCheck(
     case "http":
       if (scheme.scheme?.toLowerCase() === "bearer") return bearerCheck(name);
       if (scheme.scheme?.toLowerCase() === "basic") return basicCheck(name);
-      // Other http schemes (digest, mutual, etc.) aren't shape-checked
-      // in v1. Accept to avoid false 401s on schemes we don't yet
-      // understand.
-      return { scheme: name, check: () => null };
+      return unsupportedSchemeCheck(name, `http "${scheme.scheme ?? "?"}"`, mode);
     case "apiKey":
       return apiKeyCheck(name, scheme);
-    // oauth2 / openIdConnect / mutualTLS: v1 non-goals. See oav#104.
-    // Treat as pass rather than block, so specs using them continue
-    // to validate requests without security producing spurious 401s.
+    case "oauth2":
+      return unsupportedSchemeCheck(name, "oauth2", mode);
+    case "openIdConnect":
+      return unsupportedSchemeCheck(name, "openIdConnect", mode);
+    case "mutualTLS":
+      return unsupportedSchemeCheck(name, "mutualTLS", mode);
     default:
-      return { scheme: name, check: () => null };
+      return unsupportedSchemeCheck(name, String(scheme.type), mode);
   }
+}
+
+function unsupportedSchemeCheck(
+  name: string,
+  description: string,
+  mode: SecurityMode,
+): CompiledSchemeCheck {
+  // Shape mode: pass. The validator can't shape-check the credential
+  // (oauth2, openIdConnect, mutualTLS, HTTP digest/mutual/etc.), so
+  // declaring it satisfied avoids spurious 401s. Strict mode: fail,
+  // surfacing the gap rather than letting the caller assume coverage.
+  if (mode === "shape") return { scheme: name, check: () => null };
+  return {
+    scheme: name,
+    check: () =>
+      `scheme "${name}" (${description}) is not shape-checkable; ` +
+      `set validateSecurity to "shape" to allow it through, ` +
+      `or verify the credential in your auth middleware`,
+  };
 }
 
 function bearerCheck(name: string): CompiledSchemeCheck {

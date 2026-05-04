@@ -44,8 +44,25 @@ import {
   resolveOperationRef,
   type OperationCache,
 } from "./operation-cache.js";
-import { checkSecurity, compileOperationSecurity } from "./security.js";
+import { checkSecurity, compileOperationSecurity, type SecurityMode } from "./security.js";
 import { checkBodyContentType, validateBody, validateParameter } from "./validate-step.js";
+
+/**
+ * Coerce {@link ValidatorOptions.validateSecurity} (boolean | enum
+ * string | undefined) to the `"off" | "shape" | "strict"` value the
+ * security compiler reads. `true` aliases `"shape"`; `false` and
+ * `undefined` alias `"off"`. The boolean form is deprecated and will
+ * be removed in v3.
+ *
+ * @internal
+ */
+function normalizeSecurityMode(
+  value: boolean | "off" | "shape" | "strict" | undefined,
+): "off" | SecurityMode {
+  if (value === true) return "shape";
+  if (value === false || value === undefined) return "off";
+  return value;
+}
 
 /**
  * Pick the dialect for a given OpenAPI version. 3.1 and 3.2 share the
@@ -419,20 +436,33 @@ export interface ValidatorOptions {
    * apiKey header); it does not verify the credential itself. Credential
    * verification stays with the app's auth middleware.
    *
-   * Supported schemes: `http` with `scheme: "bearer"` or `"basic"`, and
-   * `apiKey` in header / query / cookie. `oauth2`, `openIdConnect`, and
-   * `mutualTLS` are accepted in the spec but not shape-checked at the
-   * validator layer.
+   * Modes:
    *
-   * Defaults to `false`. Real apps gate security upstream of validation:
-   * by the time the validator runs, the auth middleware has already
-   * verified (or rejected) the credential. Opt in with `true` when
+   * - `"off"` (default): no security check.
+   * - `"shape"`: shape-check recognized schemes (`http` with
+   *   `scheme: "bearer"` or `"basic"`, and `apiKey` in header / query /
+   *   cookie). Silently passes on schemes the validator can't inspect
+   *   (`oauth2`, `openIdConnect`, `mutualTLS`, HTTP digest/mutual/etc.):
+   *   declaring them satisfied avoids spurious 401s on specs that use
+   *   them.
+   * - `"strict"`: shape-check recognized schemes; fail with a `security`
+   *   leaf error on any unrecognized scheme. The strict opt-in for
+   *   callers who want the gap to surface rather than silently pass.
+   *
+   * Real apps gate security upstream of validation: by the time the
+   * validator runs, the auth middleware has already verified (or
+   * rejected) the credential. Opt in to `"shape"` or `"strict"` when
    * there's no auth middleware (early dev / prototyping) or when the
    * auth layer only decorates `req` without rejecting unauthenticated
-   * traffic. Opting in is shape-only and is **not** a substitute for
-   * actual credential verification.
+   * traffic. None of the modes substitute for actual credential
+   * verification.
+   *
+   * The boolean form is a deprecated alias preserved for compatibility:
+   * `true` aliases `"shape"`, `false` aliases `"off"`. Both will be
+   * removed in v3 alongside the other deprecations queued for that
+   * release. New code should use the strings.
    */
-  validateSecurity?: boolean;
+  validateSecurity?: boolean | "off" | "shape" | "strict";
   /** When `true`, reject unknown query parameters (default: `false`). */
   strictQueryParameters?: boolean;
   /**
@@ -678,14 +708,19 @@ export function createValidator(spec: OpenAPIDocument, options: ValidatorOptions
 
   const operationCache = new WeakMap<OperationObject, OperationCache>();
 
-  const validateSecurity = options.validateSecurity === true;
+  const securityMode = normalizeSecurityMode(options.validateSecurity);
 
   const cacheFor = (pathMatch: RouteMatch): OperationCache => {
     const existing = operationCache.get(pathMatch.operation);
     if (existing !== undefined) return existing;
     const cache = buildOperationCache(pathMatch, { resolveRef, compile, compileForDirection });
-    if (validateSecurity) {
-      cache.security = compileOperationSecurity(pathMatch.operation, spec, resolveRef);
+    if (securityMode !== "off") {
+      cache.security = compileOperationSecurity(
+        pathMatch.operation,
+        spec,
+        resolveRef,
+        securityMode,
+      );
     }
     operationCache.set(pathMatch.operation, cache);
     return cache;

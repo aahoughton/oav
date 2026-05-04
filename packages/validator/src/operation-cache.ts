@@ -32,7 +32,7 @@ export interface OperationCache {
    * Pre-compiled shape-only security check, or `undefined` when the
    * operation has no effective security requirement (either because
    * nothing was declared, it's opted out via `security: []`, or the
-   * `validateSecurity` option is `false`).
+   * `validateSecurity` option is `"off"`).
    */
   security: CompiledSecurity | undefined;
 }

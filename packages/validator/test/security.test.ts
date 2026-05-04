@@ -333,4 +333,123 @@ describe("security validation: configuration", () => {
     // No headers / query; oauth2 isn't shape-checked, so pass.
     expect(v.validateRequest({ method: "GET", path: "/ping" })).toBeNull();
   });
+
+  describe('validateSecurity: "off" | "shape" | "strict"', () => {
+    it('"off" skips the check (same as default / `false`)', () => {
+      const spec = specWith({ bearerAuth: { type: "http", scheme: "bearer" } }, [
+        { bearerAuth: [] },
+      ]);
+      const v = createValidator(spec, { validateSecurity: "off" });
+      expect(v.validateRequest({ method: "GET", path: "/ping" })).toBeNull();
+    });
+
+    it('"shape" matches the legacy `true` behavior on recognized schemes', () => {
+      const spec = specWith({ bearerAuth: { type: "http", scheme: "bearer" } }, [
+        { bearerAuth: [] },
+      ]);
+      const v = createValidator(spec, { validateSecurity: "shape" });
+      expect(v.validateRequest({ method: "GET", path: "/ping" })?.code).toBe("request");
+      expect(
+        v.validateRequest({
+          method: "GET",
+          path: "/ping",
+          headers: { authorization: "Bearer abc" },
+        }),
+      ).toBeNull();
+    });
+
+    it('"shape" silently passes on oauth2 (matching legacy `true`)', () => {
+      const spec = specWith(
+        {
+          oauth: {
+            type: "oauth2",
+            flows: { implicit: { authorizationUrl: "https://example.com/auth", scopes: {} } },
+          },
+        },
+        [{ oauth: ["read"] }],
+      );
+      const v = createValidator(spec, { validateSecurity: "shape" });
+      expect(v.validateRequest({ method: "GET", path: "/ping" })).toBeNull();
+    });
+
+    it('"strict" rejects oauth2 with a security leaf error', () => {
+      const spec = specWith(
+        {
+          oauth: {
+            type: "oauth2",
+            flows: { implicit: { authorizationUrl: "https://example.com/auth", scopes: {} } },
+          },
+        },
+        [{ oauth: ["read"] }],
+      );
+      const v = createValidator(spec, { validateSecurity: "strict" });
+      const err = v.validateRequest({ method: "GET", path: "/ping" });
+      expect(firstLeaf(err)?.code).toBe("security");
+    });
+
+    it('"strict" rejects openIdConnect / mutualTLS', () => {
+      const oidcSpec = specWith(
+        { oidc: { type: "openIdConnect", openIdConnectUrl: "https://example.com/.well-known" } },
+        [{ oidc: [] }],
+      );
+      const oidcV = createValidator(oidcSpec, { validateSecurity: "strict" });
+      expect(firstLeaf(oidcV.validateRequest({ method: "GET", path: "/ping" }))?.code).toBe(
+        "security",
+      );
+
+      const mtlsSpec = specWith({ mtls: { type: "mutualTLS" } }, [{ mtls: [] }]);
+      const mtlsV = createValidator(mtlsSpec, { validateSecurity: "strict" });
+      expect(firstLeaf(mtlsV.validateRequest({ method: "GET", path: "/ping" }))?.code).toBe(
+        "security",
+      );
+    });
+
+    it('"strict" rejects HTTP non-bearer / non-basic (digest etc.)', () => {
+      const spec = specWith({ digestAuth: { type: "http", scheme: "digest" } }, [
+        { digestAuth: [] },
+      ]);
+      const v = createValidator(spec, { validateSecurity: "strict" });
+      expect(firstLeaf(v.validateRequest({ method: "GET", path: "/ping" }))?.code).toBe("security");
+    });
+
+    it('"strict" still accepts recognized schemes when the credential is well-formed', () => {
+      const spec = specWith({ bearerAuth: { type: "http", scheme: "bearer" } }, [
+        { bearerAuth: [] },
+      ]);
+      const v = createValidator(spec, { validateSecurity: "strict" });
+      expect(
+        v.validateRequest({
+          method: "GET",
+          path: "/ping",
+          headers: { authorization: "Bearer abc" },
+        }),
+      ).toBeNull();
+    });
+
+    it('boolean form: `true` aliases "shape", `false` aliases "off"', () => {
+      const spec = specWith(
+        {
+          oauth: {
+            type: "oauth2",
+            flows: { implicit: { authorizationUrl: "https://example.com/auth", scopes: {} } },
+          },
+        },
+        [{ oauth: ["read"] }],
+      );
+      // `true` -> "shape": oauth2 silently passes.
+      expect(
+        createValidator(spec, { validateSecurity: true }).validateRequest({
+          method: "GET",
+          path: "/ping",
+        }),
+      ).toBeNull();
+      // `false` -> "off": no check at all (same as default).
+      expect(
+        createValidator(spec, { validateSecurity: false }).validateRequest({
+          method: "GET",
+          path: "/ping",
+        }),
+      ).toBeNull();
+    });
+  });
 });
