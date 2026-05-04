@@ -86,17 +86,17 @@ the upstream test suites live in
 
 ## Options
 
-| Option                  | Effect                                                                                                                                          |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `dialect`               | Force a specific {@link Dialect}, bypassing version detection.                                                                                  |
-| `formats`               | Extra string format validators merged with `oav/formats`.                                                                                       |
-| `keywords`              | User-registered schema keywords (see below).                                                                                                    |
-| `maxErrors`             | Cap on leaf errors; `1` is fast-fail. Default: uncapped.                                                                                        |
-| `strictQueryParameters` | Reject undeclared query parameters. Default `false`.                                                                                            |
-| `validateSecurity`      | Shape-only security check (bearer / basic / apiKey credential location). Default `false` (auth middleware runs upstream); set `true` to opt in. |
-| `ignoreUndocumented`    | Return `null` on requests whose path the router can't match. Default `false`.                                                                   |
-| `ignorePaths`           | `(path: string) => boolean` predicate that short-circuits validation when it returns `true` (runs before routing).                              |
-| `onUnknownVersion`      | `"fallback31"` \| `"warn"` \| `"throw"` when `openapi` is missing or unsupported. Default `"fallback31"`.                                       |
+| Option                  | Effect                                                                                                                                                                                         |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `dialect`               | Force a specific {@link Dialect}, bypassing version detection.                                                                                                                                 |
+| `formats`               | Extra string format validators merged with `oav/formats`.                                                                                                                                      |
+| `keywords`              | User-registered schema keywords (see below).                                                                                                                                                   |
+| `maxErrors`             | Cap on leaf errors; `1` is fast-fail. Default: uncapped.                                                                                                                                       |
+| `strictQueryParameters` | Reject undeclared query parameters. Default `false`.                                                                                                                                           |
+| `validateSecurity`      | `"off"` (default), `"shape"` (check recognized schemes; pass on oauth2/oidc/mTLS), or `"strict"` (fail on unrecognized schemes). Boolean form deprecated; `true`->`"shape"`, `false`->`"off"`. |
+| `ignoreUndocumented`    | Return `null` on requests whose path the router can't match. Default `false`.                                                                                                                  |
+| `ignorePaths`           | `(path: string) => boolean` predicate that short-circuits validation when it returns `true` (runs before routing).                                                                             |
+| `onUnknownVersion`      | `"fallback31"` \| `"warn"` \| `"throw"` when `openapi` is missing or unsupported. Default `"fallback31"`.                                                                                      |
 
 ## Custom keywords
 

@@ -103,11 +103,11 @@ makes sense for your API.
 
 ### Security and file uploads
 
-| eov option                  | oav equivalent                                                                                                                                                                                                                      |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `validateSecurity: true`    | Off by default in oav (real apps gate security upstream of validation). Opt in with `createValidator(spec, { validateSecurity: true })` for shape-only checks on `bearer` / `basic` / `apiKey`.                                     |
-| `validateSecurity.handlers` | Your own auth middleware, run before the validator. `oav` only checks credential **shape**, not validity. For declarative per-scheme dispatch, see the [integration.md security recipe](./integration.md#per-scheme-auth-dispatch). |
-| `fileUploader: true`        | Your own multer middleware; see [integration.md file uploads](./integration.md#file-uploads-with-multer).                                                                                                                           |
+| eov option                  | oav equivalent                                                                                                                                                                                                                                                                              |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `validateSecurity: true`    | Off by default in oav (real apps gate security upstream of validation). Opt in with `createValidator(spec, { validateSecurity: "shape" })` for shape-only checks on `bearer` / `basic` / `apiKey`, or `"strict"` to fail on schemes the validator can't shape-check (oauth2 / oidc / mTLS). |
+| `validateSecurity.handlers` | Your own auth middleware, run before the validator. `oav` only checks credential **shape**, not validity. For declarative per-scheme dispatch, see the [integration.md security recipe](./integration.md#per-scheme-auth-dispatch).                                                         |
+| `fileUploader: true`        | Your own multer middleware; see [integration.md file uploads](./integration.md#file-uploads-with-multer).                                                                                                                                                                                   |
 
 ### Handler wiring
 

@@ -902,12 +902,12 @@ budget burns for free.
 ### Security / authentication
 
 `oav` performs **shape-only** security validation (when opted in
-via `validateSecurity: true`): it confirms the request carries the
-credential location declared by the spec (a `Bearer` token in
-`Authorization`, the declared apiKey header / query / cookie, a
-base64 `Basic user:pass` pair), but it does **not** verify the
-credential itself. That's your auth middleware's job; keep it
-upstream of the validator.
+via `validateSecurity: "shape"` or `"strict"`): it confirms the
+request carries the credential location declared by the spec (a
+`Bearer` token in `Authorization`, the declared apiKey header /
+query / cookie, a base64 `Basic user:pass` pair), but it does
+**not** verify the credential itself. That's your auth middleware's
+job; keep it upstream of the validator.
 
 ```ts
 app.use(authenticateJwt); // verifies tokens, populates req.user
@@ -922,20 +922,27 @@ override). Supported:
 - `http` with `scheme: "basic"`: requires `Authorization: Basic <base64>`; the base64 must decode to a `user:pass` shape (no credential verification).
 - `apiKey` in `header`, `query`, or `cookie`: declared name must be present and non-empty.
 
-`oauth2`, `openIdConnect`, and `mutualTLS` schemes are accepted in the
-spec but not shape-checked at the validator layer. Failures surface as
-a single leaf error with `code: "security"` and `path: ["security"]`,
-mapping to HTTP 401 in the default status recipe.
+`oauth2`, `openIdConnect`, and `mutualTLS` schemes (and HTTP schemes
+other than bearer / basic) aren't shape-checkable at the validator
+layer. In `"shape"` mode they silently pass; in `"strict"` mode they
+fail with a `security` leaf error so the gap surfaces rather than
+slipping through. Failures (recognized or strict-mode unrecognized)
+surface as a single leaf error with `code: "security"` and
+`path: ["security"]`, mapping to HTTP 401 in the default status
+recipe.
 
 **Off by default.** Real apps run auth middleware upstream of the
 validator, so by the time `validateRequest` runs the credential has
 already been verified. Enable with `createValidator(spec, {
-validateSecurity: true })` when there's no auth middleware (early
+validateSecurity: "shape" })` when there's no auth middleware (early
 dev / prototyping) or when the auth layer only decorates `req`
-without rejecting unauthenticated traffic. The check is shape-only
-and is **not** a substitute for actual credential verification.
-See `ValidatorOptions.validateSecurity` for the option contract;
-this section is the recipe.
+without rejecting unauthenticated traffic. Use `"strict"` when you
+want every declared scheme to either be shape-checkable or fail
+loudly. None of the modes substitute for actual credential
+verification. The boolean form (`true` / `false`) is a deprecated
+alias preserved through v3; `true` aliases `"shape"`, `false`
+aliases `"off"`. See `ValidatorOptions.validateSecurity` for the
+option contract; this section is the recipe.
 
 #### Per-scheme auth dispatch
 
@@ -995,7 +1002,7 @@ Mount the dispatcher as middleware _before_ `validateRequests` (or
 your inline validator middleware). Reject (`401` / `403` per your
 policy) on `{ ok: false }` before validation runs. The validator's
 own `validateSecurity` shape check is then redundant; leave it at
-its default `false`.
+its default `"off"`.
 
 For framework-adapter consumers (`oav-express4`, future siblings),
 the same dispatcher pattern works; only the request-shape extraction

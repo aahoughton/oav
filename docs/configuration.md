@@ -5,18 +5,18 @@ canonical reference is the
 [`ValidatorOptions`](../packages/validator/src/validator.ts) TSDoc;
 this page is a recipe-oriented overview.
 
-| Option                  | Effect                                                                                                                                |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `dialect`               | Force a specific schema dialect, bypassing version detection.                                                                         |
-| `formats`               | Extra string format validators merged on top of the built-ins.                                                                        |
-| `keywords`              | Register user-defined schema keywords (see below).                                                                                    |
-| `maxErrors`             | Cap on leaf errors; `1` is fast-fail, default is uncapped.                                                                            |
-| `strict`                | Compile-time schema lint mode: `"off"`, `"warn-partial"` (default), or `"strict"`. Issues surface via `validator.stats.strictIssues`. |
-| `strictQueryParameters` | Reject undeclared query parameters. Default `false`.                                                                                  |
-| `validateSecurity`      | Shape-only security check (bearer / basic / apiKey). Default `false` (auth middleware runs upstream); set `true` to opt in.           |
-| `ignoreUndocumented`    | Return `null` on requests whose path the router can't match. Default `false`.                                                         |
-| `ignorePaths`           | Predicate `(path) => boolean`; returning `true` short-circuits validation to `null` before routing.                                   |
-| `onUnknownVersion`      | Policy for specs with missing/unsupported `openapi`: `"fallback31"` (default), `"warn"`, or `"throw"`.                                |
+| Option                  | Effect                                                                                                                                                                                         |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `dialect`               | Force a specific schema dialect, bypassing version detection.                                                                                                                                  |
+| `formats`               | Extra string format validators merged on top of the built-ins.                                                                                                                                 |
+| `keywords`              | Register user-defined schema keywords (see below).                                                                                                                                             |
+| `maxErrors`             | Cap on leaf errors; `1` is fast-fail, default is uncapped.                                                                                                                                     |
+| `strict`                | Compile-time schema lint mode: `"off"`, `"warn-partial"` (default), or `"strict"`. Issues surface via `validator.stats.strictIssues`.                                                          |
+| `strictQueryParameters` | Reject undeclared query parameters. Default `false`.                                                                                                                                           |
+| `validateSecurity`      | `"off"` (default), `"shape"` (check recognized schemes; pass on oauth2/oidc/mTLS), or `"strict"` (fail on unrecognized schemes). Boolean form deprecated; `true`->`"shape"`, `false`->`"off"`. |
+| `ignoreUndocumented`    | Return `null` on requests whose path the router can't match. Default `false`.                                                                                                                  |
+| `ignorePaths`           | Predicate `(path) => boolean`; returning `true` short-circuits validation to `null` before routing.                                                                                            |
+| `onUnknownVersion`      | Policy for specs with missing/unsupported `openapi`: `"fallback31"` (default), `"warn"`, or `"throw"`.                                                                                         |
 
 ## Custom keywords
 

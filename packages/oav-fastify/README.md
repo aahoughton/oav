@@ -97,7 +97,7 @@ validateRequests(validator, {
 `ValidatorOptions.validateSecurity` is off by default; real apps run auth middleware (or hooks) upstream of the validator. During early dev (no auth wired yet) or with decorator-only auth that just attaches `request.user`, opt in:
 
 ```ts
-const validator = createValidator(spec, { validateSecurity: true });
+const validator = createValidator(spec, { validateSecurity: "shape" });
 app.addHook("preValidation", validateRequests(validator));
 ```
 
