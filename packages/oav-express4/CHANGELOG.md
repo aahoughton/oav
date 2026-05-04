@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.1.0](https://github.com/aahoughton/oav/compare/oav-express4-v2.0.0...oav-express4-v2.1.0) (2026-05-04)
+
+
+### Features
+
+* **validator:** enum-valued validateSecurity with strict mode ([#262](https://github.com/aahoughton/oav/issues/262)) ([df1bb4d](https://github.com/aahoughton/oav/commit/df1bb4d20a2662d927a0758a772f1c546ebec6c8))
+
+
+### Documentation
+
+* cleanup pass, spelling normalization, TSDoc tightening ([#260](https://github.com/aahoughton/oav/issues/260)) ([77fcf4d](https://github.com/aahoughton/oav/commit/77fcf4ddafe8e6a30b8108fc0dee78a31a8e1a6b))
+
 ## [2.0.0](https://github.com/aahoughton/oav/compare/oav-express4-v1.1.1...oav-express4-v2.0.0) (2026-05-02)
 
 

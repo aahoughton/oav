@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.0](https://github.com/aahoughton/oav/compare/oav-v2.0.0...oav-v2.1.0) (2026-05-04)
+
+
+### Documentation
+
+* cleanup pass, spelling normalization, TSDoc tightening ([#260](https://github.com/aahoughton/oav/issues/260)) ([77fcf4d](https://github.com/aahoughton/oav/commit/77fcf4ddafe8e6a30b8108fc0dee78a31a8e1a6b))
+
 ## [2.0.0](https://github.com/aahoughton/oav/compare/oav-v1.1.1...oav-v2.0.0) (2026-05-02)
 
 
