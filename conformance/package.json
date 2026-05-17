@@ -11,9 +11,9 @@
     "setup": "git clone --depth 1 https://github.com/json-schema-org/JSON-Schema-Test-Suite.git"
   },
   "devDependencies": {
-    "tsx": "^4.21.0",
+    "tsx": "^4.22.1",
     "typescript": "^5.7.3",
-    "yaml": "^2.8.4"
+    "yaml": "^2.9.0"
   },
   "engines": {
     "node": ">=20"
