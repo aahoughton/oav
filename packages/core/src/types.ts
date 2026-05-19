@@ -249,17 +249,70 @@ export interface TagObject {
 }
 
 /**
+ * OpenAPI `externalDocumentationObject`.
+ *
+ * @public
+ */
+export interface ExternalDocumentationObject {
+  url: string;
+  description?: string;
+}
+
+/**
+ * OpenAPI `exampleObject`. Either `value` or `externalValue` carries
+ * the example data; `summary` / `description` are metadata. Not
+ * validated by oav today.
+ *
+ * @public
+ */
+export interface ExampleObject {
+  summary?: string;
+  description?: string;
+  value?: JsonValue;
+  externalValue?: string;
+}
+
+/**
+ * OpenAPI `linkObject`. The runtime payload (`parameters`, `requestBody`)
+ * uses runtime-expression syntax that oav does not evaluate today, so
+ * those slots are typed loosely.
+ *
+ * @public
+ */
+export interface LinkObject {
+  operationRef?: string;
+  operationId?: string;
+  parameters?: Record<string, JsonValue | undefined>;
+  requestBody?: JsonValue;
+  description?: string;
+  server?: ServerObject;
+}
+
+/**
+ * OpenAPI `callbackObject`: a map of runtime-expression strings to the
+ * {@link PathItem} that should be invoked when the expression evaluates.
+ * The expression dialect is documented in the OAS spec; oav does not
+ * evaluate it.
+ *
+ * @public
+ */
+export type CallbackObject = Record<string, PathItem | ReferenceObject>;
+
+/**
  * OpenAPI reusable `components` container.
  *
  * @public
  */
 export interface ComponentsObject {
   schemas?: Record<string, SchemaOrBoolean>;
-  parameters?: Record<string, ParameterObject>;
-  requestBodies?: Record<string, RequestBodyObject>;
-  responses?: Record<string, ResponseObject>;
-  headers?: Record<string, HeaderObject>;
+  parameters?: Record<string, ParameterObject | ReferenceObject>;
+  requestBodies?: Record<string, RequestBodyObject | ReferenceObject>;
+  responses?: Record<string, ResponseObject | ReferenceObject>;
+  headers?: Record<string, HeaderObject | ReferenceObject>;
   securitySchemes?: Record<string, SecuritySchemeObject | ReferenceObject>;
+  links?: Record<string, LinkObject | ReferenceObject>;
+  callbacks?: Record<string, CallbackObject | ReferenceObject>;
+  examples?: Record<string, ExampleObject | ReferenceObject>;
 }
 
 /**
@@ -324,6 +377,12 @@ export interface OperationObject {
    * {@link SecurityRequirementObject}.
    */
   security?: SecurityRequirementObject[];
+  /** Per-operation server overrides. Overrides the document-level servers. */
+  servers?: ServerObject[];
+  /** Per-operation callbacks, keyed by callback name. */
+  callbacks?: Record<string, CallbackObject | ReferenceObject>;
+  /** Additional external documentation. */
+  externalDocs?: ExternalDocumentationObject;
   deprecated?: boolean;
 }
 
