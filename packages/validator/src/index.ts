@@ -26,4 +26,9 @@ export {
   readBodyFromFetch,
   type FetchRequestOptions,
 } from "./from-fetch.js";
-export type { CustomKeywordFailure, CustomKeywordValidator } from "@oav/schema";
+export type {
+  CompiledRegex,
+  CustomKeywordFailure,
+  CustomKeywordValidator,
+  RegexCompiler,
+} from "@oav/schema";

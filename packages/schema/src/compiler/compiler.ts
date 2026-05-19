@@ -16,7 +16,7 @@ import {
   SUBSCHEMA_SINGLE_POSITIONS,
   walkSubschemas,
 } from "../subschema-positions.js";
-import { createDeps, type ValidatorDeps } from "./runtime.js";
+import { createDeps, type RegexCompiler, type ValidatorDeps } from "./runtime.js";
 
 // Token scan fed into CompileStats.emittedTreeRuntime. Word-boundaried
 // so stray mentions inside string literals (e.g. an error message that
@@ -458,6 +458,27 @@ export interface CompileOptions {
    * both are supplied.
    */
   predicate?: boolean;
+  /**
+   * Custom compiler for schema `pattern` keywords and the `format:
+   * "regex"` assertion. Defaults to `new RegExp(pattern, "u")` with a
+   * non-`u` fallback. Override to plug in a library like `re2`, wrap
+   * with a complexity check, or reject patterns that fail a
+   * safe-regex analysis.
+   *
+   * JavaScript's built-in `RegExp` has no execution timeout, so a
+   * catastrophic pattern like `(a+)+$` is a denial-of-service vector
+   * against any string the validator checks. Reach for this option
+   * when the spec is attacker-controlled (multi-tenant SaaS,
+   * spec-editing tools, mock-as-a-service).
+   *
+   * The runtime only reads `.test(s: string): boolean` off the
+   * returned object; built-in `RegExp` already satisfies the shape.
+   * Memoization is split by audience: schema `pattern` strings cache
+   * for the validator's lifetime (bounded by spec size), `format:
+   * "regex"` runs the compiler per call (runtime values are not).
+   * See {@link RegexCompiler}.
+   */
+  regexCompiler?: RegexCompiler;
 }
 
 /** @internal */
@@ -632,7 +653,7 @@ export function compileSchema(
         "Predicate mode short-circuits on the first failure, so there is nothing to count.",
     );
   }
-  const deps = createDeps(maxErrors);
+  const deps = createDeps({ maxErrors, regexCompiler: options.regexCompiler });
   if (options.formats) {
     for (const name of Object.keys(options.formats)) {
       const fn = options.formats[name];

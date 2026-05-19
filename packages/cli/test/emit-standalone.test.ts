@@ -82,6 +82,26 @@ describe("emitStandalone", () => {
     ).toThrow(/not in the built-in set/);
   });
 
+  it('accepts schemas using format: "regex" (auto-registered by @oav/schema\'s createDeps)', async () => {
+    // Regression guard: the `regex` format was removed from
+    // builtInFormats when @oav/schema started auto-registering it
+    // inside createDeps. The standalone preflight has to know about
+    // the auto-registration set, otherwise it rejects a legitimate
+    // built-in format. Round-trip the emitted module to confirm the
+    // format is actually wired (not just permitted).
+    const schema: SchemaOrBoolean = {
+      type: "object",
+      properties: { pattern: { type: "string", format: "regex" } },
+    };
+    const { validate, dir } = await compileModule(schema, { dialect: "openapi-3.1" });
+    try {
+      expect(validate({ pattern: "^abc$" })).toEqual({ valid: true });
+      expect(validate({ pattern: "(unclosed" }).valid).toBe(false);
+    } finally {
+      await rm(dir, { recursive: true });
+    }
+  });
+
   it("compiles under the OpenAPI 3.0 dialect: boolean exclusiveMaximum honored", async () => {
     const schema: SchemaOrBoolean = {
       type: "integer",

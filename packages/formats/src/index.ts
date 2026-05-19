@@ -17,7 +17,11 @@ import { validateDate, validateDateTime, validateDuration, validateTime } from "
 import { validateEmail, validateIdnEmail } from "./email.js";
 import { validateHostname, validateIdnHostname } from "./hostname.js";
 import { validateIpv4, validateIpv6 } from "./ip.js";
-import { validateRegex, validateUuid } from "./misc.js";
+// Note: validateRegex is intentionally not imported into builtInFormats.
+// @oav/schema's createDeps auto-registers a `regex` format that shares the
+// pattern-keyword compile path (and the regexCompiler hook). The standalone
+// validateRegex export still lives in ./misc.ts as a u-mode utility.
+import { validateUuid } from "./misc.js";
 import {
   validateIri,
   validateIriReference,
@@ -32,6 +36,12 @@ import {
  * Every built-in format validator, keyed by its JSON Schema format name.
  * Hand to {@link @oav/schema!compileSchema#formats | compileSchema's formats
  * option} to get out-of-the-box format validation.
+ *
+ * `regex` is intentionally absent: `@oav/schema` registers its own
+ * `regex` validator inside `createDeps` so it routes through the same
+ * compiler as the `pattern` keyword (and honors the `regexCompiler`
+ * option). Override by setting `formats: { regex: yourFn, ... }` if you
+ * want a different policy.
  *
  * @public
  *
@@ -58,7 +68,6 @@ export const builtInFormats: Record<string, (value: string) => boolean> = {
   "uri-template": validateUriTemplate,
   "json-pointer": validateJsonPointer,
   "relative-json-pointer": validateRelativeJsonPointer,
-  regex: validateRegex,
   uuid: validateUuid,
 };
 

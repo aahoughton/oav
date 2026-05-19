@@ -12,6 +12,9 @@ export {
   deepEqual,
   typeOf,
   wrapErrors,
+  type CompiledRegex,
+  type CreateDepsOptions,
+  type RegexCompiler,
   type Validator,
   type ValidatorDeps,
 } from "./runtime.js";

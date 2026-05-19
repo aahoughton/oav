@@ -18,16 +18,20 @@ export interface ValidatorDeps {
     path: readonly (string | number)[],
     errs: ValidationError[],
   ) => ValidationError | null;
-  patterns: Map<string, RegExp>;
+  patterns: Map<string, CompiledRegex>;
   /**
-   * Compile a user-supplied regex. Tries the `u` (Unicode) flag first
-   * (JSON Schema 2020-12 recommends it) and falls back to no-flag when
-   * the pattern trips strict `u`-mode rules (stray `\-`, `\:`, `\/` etc.,
-   * common in real-world OpenAPI specs). Results are memoized in
-   * `patterns`. Throws `SyntaxError` only when the pattern is malformed
-   * under both modes.
+   * Compile a user-supplied regex. By default tries the `u` (Unicode)
+   * flag first (JSON Schema 2020-12 recommends it) and falls back to
+   * no-flag when the pattern trips strict `u`-mode rules (stray `\-`,
+   * `\:`, `\/` etc., common in real-world OpenAPI specs). When a custom
+   * {@link RegexCompiler} is passed to {@link createDeps}, this routes
+   * through it instead, and the fallback logic doesn't apply (the
+   * compiler is the authority on what's accepted). Results are memoized
+   * in `patterns`. The default path throws `SyntaxError` only when the
+   * pattern is malformed under both modes; a custom compiler may throw
+   * whatever it likes.
    */
-  compilePattern: (pattern: string) => RegExp;
+  compilePattern: (pattern: string) => CompiledRegex;
   /**
    * Count the Unicode code points in `s` without allocating an
    * intermediate array. Used by `minLength` / `maxLength`, which the
@@ -83,6 +87,66 @@ export interface ValidatorDeps {
  * @public
  */
 export type Validator = (data: unknown, path: (string | number)[]) => ValidationError | null;
+
+/**
+ * The minimal interface required of a value returned by a
+ * {@link RegexCompiler}. The runtime only ever calls `.test()` on
+ * the result; nothing else is read. JavaScript's built-in `RegExp`
+ * already satisfies this shape.
+ *
+ * @public
+ */
+export interface CompiledRegex {
+  test(s: string): boolean;
+}
+
+/**
+ * Custom compiler for schema `pattern` keywords and the `format:
+ * "regex"` assertion. Defaults to `new RegExp(pattern, "u")` (with a
+ * non-`u` fallback for patterns that trip strict `u`-mode rules).
+ *
+ * Override to plug in `re2`, wrap with a complexity check, or reject
+ * patterns that fail a safe-regex analysis. JavaScript's built-in
+ * `RegExp` has no execution timeout, which makes catastrophic
+ * patterns (e.g. `(a+)+$`) a denial-of-service vector against any
+ * string the validator checks.
+ *
+ * Invocation cadence:
+ * - For `pattern` keywords, the runtime memoizes by pattern string;
+ *   the compiler runs once per unique schema-authored pattern for
+ *   the lifetime of the validator (bounded by spec size).
+ * - For `format: "regex"`, the runtime bypasses the cache; the
+ *   compiler runs per validate() call against the candidate string.
+ *   Caching there would retain runtime values indefinitely, which is
+ *   the opposite of what hardening callers want.
+ *
+ * @public
+ *
+ * @example
+ * ```ts
+ * import RE2 from "re2";
+ *
+ * createValidator(spec, {
+ *   regexCompiler: (pattern) => new RE2(pattern),
+ * });
+ * ```
+ */
+export type RegexCompiler = (pattern: string) => CompiledRegex;
+
+/**
+ * Options bag accepted by {@link createDeps}. Prefer this form when
+ * passing a {@link RegexCompiler}; the legacy `createDeps(maxErrors)`
+ * positional form is preserved for back-compat with AOT-emitted
+ * modules built before the option existed.
+ *
+ * @public
+ */
+export interface CreateDepsOptions {
+  /** Cap on leaf errors collected per `validate()` call. */
+  maxErrors?: number;
+  /** Custom compiler for `pattern` keywords and `format: "regex"`. */
+  regexCompiler?: RegexCompiler;
+}
 
 /**
  * The JSON-Schema-flavored typeof function: distinguishes `integer`,
@@ -243,14 +307,73 @@ export function wrapErrors(
 /**
  * Build a {@link ValidatorDeps} bundle with fresh mutable caches.
  *
- * @param maxErrors - Cap on leaf errors collected per `validate()` call.
- *                    Defaults to `Number.POSITIVE_INFINITY` (uncapped).
- * @returns A new deps object wired with the default runtime helpers.
+ * Accepts either a positional `maxErrors` (legacy) or an options
+ * bag with `maxErrors` and `regexCompiler`. The positional form is
+ * kept for back-compat with AOT-emitted modules built before the
+ * options bag existed.
+ *
+ * @returns A new deps object wired with the default runtime helpers
+ *          and a built-in `regex` format that shares the
+ *          {@link RegexCompiler} hook with the `pattern` keyword but
+ *          bypasses the {@link ValidatorDeps.patterns} cache so
+ *          runtime values aren't retained.
  *
  * @public
  */
-export function createDeps(maxErrors: number = Number.POSITIVE_INFINITY): ValidatorDeps {
-  const patterns = new Map<string, RegExp>();
+export function createDeps(maxErrors?: number): ValidatorDeps;
+export function createDeps(options?: CreateDepsOptions): ValidatorDeps;
+export function createDeps(arg?: number | CreateDepsOptions): ValidatorDeps {
+  const options: CreateDepsOptions = typeof arg === "number" ? { maxErrors: arg } : (arg ?? {});
+  const maxErrors = options.maxErrors ?? Number.POSITIVE_INFINITY;
+  const regexCompiler = options.regexCompiler;
+  const patterns = new Map<string, CompiledRegex>();
+
+  // The actual compile path (with `u`-then-fallback or the
+  // user-supplied compiler). Used by:
+  //   - `compilePattern` (below), which memoizes against `patterns`.
+  //     Safe to cache: callers pass schema-authored pattern strings,
+  //     bounded by spec size.
+  //   - the `regex` format validator, which receives runtime data
+  //     values. Caching those would grow `patterns` without bound on
+  //     a long-lived validator that sees many unique inputs, so it
+  //     bypasses the cache.
+  const compileRegex = (pattern: string): CompiledRegex => {
+    if (regexCompiler !== undefined) return regexCompiler(pattern);
+    try {
+      return new RegExp(pattern, "u");
+    } catch (errU) {
+      try {
+        return new RegExp(pattern);
+      } catch {
+        // Surface the stricter (`u`-mode) error; it's more informative
+        // when both modes reject the pattern.
+        throw errU;
+      }
+    }
+  };
+
+  const compilePattern = (pattern: string): CompiledRegex => {
+    const cached = patterns.get(pattern);
+    if (cached !== undefined) return cached;
+    const re = compileRegex(pattern);
+    patterns.set(pattern, re);
+    return re;
+  };
+
+  // Auto-register the `regex` format. It shares the compile path with
+  // the `pattern` keyword (and the `regexCompiler` hook), but skips
+  // the memoization to keep memory bounded: runtime values aren't
+  // bounded by spec size.
+  const formats = new Map<string, (value: string) => boolean>();
+  formats.set("regex", (value: string) => {
+    try {
+      compileRegex(value);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+
   return {
     createError,
     createLeafError,
@@ -261,25 +384,8 @@ export function createDeps(maxErrors: number = Number.POSITIVE_INFINITY): Valida
     findDuplicate,
     wrapErrors,
     patterns,
-    compilePattern(pattern: string): RegExp {
-      const cached = patterns.get(pattern);
-      if (cached !== undefined) return cached;
-      let re: RegExp;
-      try {
-        re = new RegExp(pattern, "u");
-      } catch (errU) {
-        try {
-          re = new RegExp(pattern);
-        } catch {
-          // Surface the stricter (`u`-mode) error; it's more informative
-          // when both modes reject the pattern.
-          throw errU;
-        }
-      }
-      patterns.set(pattern, re);
-      return re;
-    },
-    formats: new Map<string, (value: string) => boolean>(),
+    compilePattern,
+    formats,
     refs: new Map<string, Validator>(),
     customKeywords: new Map<string, CustomKeywordValidator>(),
     maxErrors,

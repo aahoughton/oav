@@ -17,7 +17,14 @@ export function validateUuid(value: string): boolean {
 
 /**
  * ECMA 262 `regex`: the value must compile as a JavaScript regular
- * expression (with the `u` flag, to match JSON Schema 2020-12).
+ * expression with the `u` flag (per JSON Schema 2020-12 recommendation).
+ *
+ * Standalone utility. `compileSchema` no longer wires this into
+ * `builtInFormats`: the schema compiler registers its own `regex`
+ * format inside `createDeps` so it shares the `regexCompiler` hook
+ * with the `pattern` keyword. Reach for this function directly when
+ * you want u-mode strictness independent of whatever compiler is
+ * configured.
  *
  * @public
  */

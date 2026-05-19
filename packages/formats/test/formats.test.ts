@@ -167,10 +167,13 @@ describe("builtInFormats map", () => {
       "uri-template",
       "json-pointer",
       "relative-json-pointer",
-      "regex",
       "uuid",
     ];
     for (const k of keys) expect(typeof builtInFormats[k]).toBe("function");
+  });
+
+  it("does not include `regex` (registered by @oav/schema's createDeps)", () => {
+    expect(builtInFormats["regex"]).toBeUndefined();
   });
 });
 
