@@ -28,11 +28,24 @@ updates:
       types:
         patterns:
           - "@types/*"
+        exclude-patterns:
+          # Keep @types/express out of the group: per-package grouping
+          # converges to one workspace-wide version, which would pin the
+          # oav-express4 and oav-express5 adapters to the same @types/express
+          # major and break one of them.
+          - "@types/express"
       dev-minor-and-patch:
         dependency-type: development
         update-types:
           - minor
           - patch
+        exclude-patterns:
+          # See note above. The major-version ignore on `express` doesn't
+          # fire when grouping presents the change as a patch (oav-express5
+          # silently gets rewritten from 5.x to a 4.x patch), so keep both
+          # out of the group entirely.
+          - "express"
+          - "@types/express"
 
   - package-ecosystem: npm
     directory: "/performance"
