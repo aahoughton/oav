@@ -16,14 +16,19 @@ updates:
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
       # Each oav-express{4,5} adapter pins to its corresponding express
-      # major on purpose — that's the whole point of having two
-      # packages. A semver-major bump here would silently turn the v4
-      # adapter into a v5 adapter (or vice versa). Within-major patch /
-      # minor bumps still flow through dev-minor-and-patch.
+      # major on purpose: that's the whole point of having two packages.
+      # Dependabot has a workspace-wide version-unification step that
+      # picks one target version for any given dep name and rewrites
+      # every package.json that names it; with express 4.x in one
+      # adapter and 5.x in the other, every bump round downgrades one
+      # adapter (#276, #283). The major-version ignore below doesn't
+      # catch this because dependabot files the cross-major rewrite as
+      # a patch. Excluding express from groups also doesn't help: the
+      # per-dep PR still unifies. Until dependabot supports per-package
+      # version scoping, ignore express family entirely and bump it by
+      # hand when an in-major patch lands upstream.
       - dependency-name: "express"
-        update-types: ["version-update:semver-major"]
       - dependency-name: "@types/express"
-        update-types: ["version-update:semver-major"]
     groups:
       types:
         patterns:
