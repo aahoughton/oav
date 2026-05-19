@@ -1,13 +1,27 @@
 import type {
+  CallbackObject,
+  ComponentsObject,
+  ExampleObject,
+  ExternalDocumentationObject,
+  HeaderObject,
   HttpMethod,
+  InfoObject,
+  JsonValue,
+  LinkObject,
+  MediaTypeObject,
   OpenAPIDocument,
   OperationObject,
   ParameterLocation,
   ParameterObject,
   PathItem,
+  ReferenceObject,
   RequestBodyObject,
   ResponseObject,
   SchemaObject,
+  SecurityRequirementObject,
+  SecuritySchemeObject,
+  ServerObject,
+  TagObject,
 } from "@oav/core";
 
 /**
@@ -23,13 +37,57 @@ export interface PathOverride {
 }
 
 /**
+ * Recipe for patching a single {@link ResponseObject} inside an
+ * operation. Used by {@link OperationOverride.patchResponses} to modify
+ * a response in place rather than replace the whole thing (the
+ * coarse-grained replacement lives on {@link OperationOverride.responses}).
+ *
+ * @public
+ */
+export interface ResponseOverride {
+  /**
+   * Shallow-merge into the response's `headers` map, keyed by header
+   * name. Existing entries with the same key are overwritten.
+   */
+  headers?: Record<string, HeaderObject | ReferenceObject>;
+  /**
+   * Patch the response's `content` map, keyed by media type. When the
+   * media type exists in the base, the override and base are
+   * shallow-merged. When both supply a `schema`, the override schema
+   * is wrapped as `allOf: [existing, override]` (mirrors
+   * {@link SpecOverlay.extendSchemas}); when only the override supplies
+   * one, it's applied as-is.
+   */
+  content?: Record<string, MediaTypeObject>;
+}
+
+/**
  * Recipe for patching a single {@link OperationObject}. Each field is
- * independent; use any subset. Supported verbs across the patchable
- * slots are summarised below.
+ * independent; use any subset. Field groups, in the order they apply:
+ *
+ * - {@link OperationOverride.replace | replace}: wholesale swap; mutually
+ *   exclusive with every other field on this interface.
+ * - Parameters: {@link OperationOverride.upsertParameters | upsertParameters},
+ *   {@link OperationOverride.removeParameters | removeParameters}.
+ * - Body: {@link OperationOverride.requestBody | requestBody}.
+ * - Responses: {@link OperationOverride.responses | responses} (per-status
+ *   replace), {@link OperationOverride.patchResponses | patchResponses}
+ *   (per-status patch), {@link OperationOverride.removeResponses | removeResponses}.
+ * - Tags: {@link OperationOverride.tags | tags} (replace),
+ *   {@link OperationOverride.addTags | addTags},
+ *   {@link OperationOverride.removeTags | removeTags}.
+ * - Security: {@link OperationOverride.security | security} (replace),
+ *   {@link OperationOverride.addSecurity | addSecurity},
+ *   {@link OperationOverride.removeSecurity | removeSecurity}.
+ * - Metadata: {@link OperationOverride.servers | servers},
+ *   {@link OperationOverride.callbacks | callbacks},
+ *   {@link OperationOverride.externalDocs | externalDocs},
+ *   {@link OperationOverride.setExtensions | setExtensions}.
  *
  * Conflict rules applied by {@link applyOverlays}:
- * - `replace` is wholesale and cannot be combined with the additive /
- *   removal fields below. Setting both throws at apply time.
+ * - `replace` is wholesale and cannot be combined with any other field.
+ * - Within tags / security, the replace field cannot coexist with the
+ *   matching add / remove additives.
  * - `removeParameters` / `removeResponses` silently no-op when the
  *   target isn't present; wildcard overrides (`"*"`) fan out to many
  *   operations and can't assume every target has the same surface.
@@ -37,7 +95,7 @@ export interface PathOverride {
  * @public
  */
 export interface OperationOverride {
-  /** Replace the whole OperationObject. Mutually exclusive with the additive / remove fields. */
+  /** Replace the whole OperationObject. Mutually exclusive with every other field. */
   replace?: OperationObject;
   /**
    * Add-or-replace parameters by (`name`, `in`). Existing entries with
@@ -53,32 +111,264 @@ export interface OperationOverride {
   requestBody?: RequestBodyObject;
   /** Merge-by-status-code into responses. Status codes present in both base and override take the override. */
   responses?: Record<string, ResponseObject>;
+  /**
+   * Per-status response patches. Unlike {@link OperationOverride.responses}
+   * which replaces a whole response by status code, `patchResponses`
+   * modifies the existing response (headers / content) in place. Throws
+   * if the target status code isn't present on the operation.
+   */
+  patchResponses?: Record<string, ResponseOverride>;
   /** Remove response status codes. Silent no-op on missing entries. */
   removeResponses?: string[];
+  /** Replace the operation's tags wholesale. Cannot combine with `addTags` / `removeTags`. */
+  tags?: string[];
+  /** Append tag names. Duplicates against existing tags are dropped. */
+  addTags?: string[];
+  /** Remove tag names. Silent no-op on missing entries. */
+  removeTags?: string[];
+  /** Replace the operation's security requirement wholesale. Cannot combine with the additives. */
+  security?: SecurityRequirementObject[];
+  /** Append security requirements. */
+  addSecurity?: SecurityRequirementObject[];
+  /**
+   * Remove security requirements that deep-equal one of the listed
+   * entries. Silent no-op on missing entries (operations rarely list
+   * the same requirement twice).
+   */
+  removeSecurity?: SecurityRequirementObject[];
+  /** Replace the operation's `servers` list wholesale. */
+  servers?: ServerObject[];
+  /**
+   * Add or replace callbacks by key. Existing callback names are
+   * overwritten with the override's value.
+   */
+  callbacks?: Record<string, CallbackObject | ReferenceObject>;
+  /** Set the operation's `externalDocs`. Replaces any existing value. */
+  externalDocs?: ExternalDocumentationObject;
+  /**
+   * Set or remove `x-*` extension fields on the operation. A `undefined`
+   * value deletes the field; any other value sets / replaces it.
+   */
+  setExtensions?: Record<`x-${string}`, JsonValue | undefined>;
+}
+
+/**
+ * Predicate filter used by {@link SpecOverlay.modifyOperations}. All
+ * present fields must match (AND); an undefined `where` matches every
+ * operation under `paths` and `webhooks`.
+ *
+ * @public
+ */
+export interface OperationWhere {
+  /** Match operations whose `tags` array contains any of these. */
+  tags?: string[];
+  /** Restrict by HTTP method. */
+  methods?: HttpMethod[];
+  /** Restrict by path; tested against the path string with `RegExp.test`. */
+  pathPattern?: RegExp;
+}
+
+/**
+ * One entry in {@link SpecOverlay.modifyOperations}.
+ *
+ * @public
+ */
+export interface ModifyOperationsEntry {
+  where?: OperationWhere;
+  apply: OperationOverride;
+}
+
+/**
+ * Predicate filter used by {@link SpecOverlay.modifyParameters}.
+ *
+ * @public
+ */
+export interface ParameterWhere {
+  /** Restrict by parameter location. */
+  in?: ParameterLocation;
+  /** Match the parameter `name` with `RegExp.test`. */
+  nameMatches?: RegExp;
+}
+
+/**
+ * One entry in {@link SpecOverlay.modifyParameters}. The `apply`
+ * fragment is shallow-merged into each matching parameter; passing
+ * `undefined` does not delete a field (use a different overlay verb
+ * for deletion).
+ *
+ * @public
+ */
+export interface ModifyParametersEntry {
+  where?: ParameterWhere;
+  apply: Partial<ParameterObject>;
 }
 
 /**
  * A spec overlay: instructions to patch the base OpenAPI document.
  * Overlays apply in order; later overlays win on conflict.
  *
+ * Field groups, applied in this order within a single overlay:
+ *
+ * - Document metadata: {@link SpecOverlay.info | info},
+ *   {@link SpecOverlay.servers | servers} (replace) /
+ *   {@link SpecOverlay.addServers | addServers},
+ *   {@link SpecOverlay.tags | tags} (replace) /
+ *   {@link SpecOverlay.extendTags | extendTags} /
+ *   {@link SpecOverlay.replaceTags | replaceTags} /
+ *   {@link SpecOverlay.removeTags | removeTags},
+ *   {@link SpecOverlay.security | security} (replace) /
+ *   {@link SpecOverlay.addSecurity | addSecurity},
+ *   {@link SpecOverlay.setExtensions | setExtensions}.
+ * - Paths: {@link SpecOverlay.addPaths | addPaths} /
+ *   {@link SpecOverlay.removePaths | removePaths} /
+ *   {@link SpecOverlay.overrides | overrides}.
+ * - Webhooks: {@link SpecOverlay.addWebhooks | addWebhooks} /
+ *   {@link SpecOverlay.removeWebhooks | removeWebhooks}.
+ * - Iterators: {@link SpecOverlay.modifyOperations | modifyOperations} /
+ *   {@link SpecOverlay.modifyParameters | modifyParameters} run after
+ *   the path / webhook edits above have settled.
+ * - Components: schemas, parameters, requestBodies, responses, headers,
+ *   securitySchemes, links, callbacks, examples each get
+ *   `extend<Bucket>` / `replace<Bucket>` / `remove<Bucket>` verbs. The
+ *   `extendSchemas` verb wraps in `allOf`; the other extend verbs
+ *   shallow-merge.
+ *
  * @public
  */
 export interface SpecOverlay {
+  /** Shallow-merge into the document's `info` object. */
+  info?: Partial<InfoObject>;
+  /** Replace the document's `servers` array wholesale. Cannot combine with `addServers`. */
+  servers?: ServerObject[];
+  /** Append to the document's `servers` array. */
+  addServers?: ServerObject[];
+  /** Replace the document's `tags` array wholesale. Cannot combine with the per-name tag verbs. */
+  tags?: TagObject[];
+  /**
+   * Merge or insert tags by name. For an existing tag of the same name,
+   * the entry is shallow-merged (override fields win). Tags absent from
+   * the base are appended.
+   */
+  extendTags?: TagObject[];
+  /** Replace tags by name. Tags absent from the base are appended. */
+  replaceTags?: TagObject[];
+  /** Remove tags by name. Throws if any name isn't present in the base. */
+  removeTags?: string[];
+  /**
+   * Replace the document-level security requirement wholesale. Cannot
+   * combine with `addSecurity`. Note that the OAS-defined "empty array
+   * means anonymous" semantics are preserved: setting this to `[]`
+   * removes the requirement.
+   */
+  security?: SecurityRequirementObject[];
+  /** Append security requirements to the document's `security` array. */
+  addSecurity?: SecurityRequirementObject[];
+  /** Add webhook paths. Throws if a target name already exists. */
+  addWebhooks?: Record<string, PathItem>;
+  /** Remove webhook paths by name. Throws if a target name isn't present. */
+  removeWebhooks?: string[];
+  /**
+   * Set or remove document-level `x-*` extension fields. A value of
+   * `undefined` deletes the field; any other value sets / replaces it.
+   */
+  setExtensions?: Record<`x-${string}`, JsonValue | undefined>;
+
   /** Add new paths. Throws if a target path already exists in the base document. */
   addPaths?: Record<string, PathItem>;
   /** Remove paths. Throws if a target path isn't present in the base document. */
   removePaths?: string[];
   /** Per-path modifications; see {@link PathOverride}. */
   overrides?: Record<string, PathOverride>;
+
+  /**
+   * Walk every operation under `paths` (and `webhooks` when present),
+   * run the {@link ModifyOperationsEntry.where} predicate, and apply
+   * the override on matches. Entries run in declaration order.
+   */
+  modifyOperations?: ModifyOperationsEntry[];
+  /**
+   * Walk every operation's parameters (and each path-item-level
+   * parameters list) and apply the patch on matches. Reference-object
+   * parameters are skipped (their name / location aren't inspectable
+   * without resolution).
+   */
+  modifyParameters?: ModifyParametersEntry[];
+
   /** Extend a component schema via `allOf` (original + extension both apply). */
   extendSchemas?: Record<string, SchemaObject>;
   /** Replace a component schema wholesale. */
   replaceSchemas?: Record<string, SchemaObject>;
   /** Remove component schemas. Throws if a target schema isn't present. */
   removeSchemas?: string[];
+
+  /** Shallow-merge into existing `components.parameters` entries; new keys append. */
+  extendParameters?: Record<string, ParameterObject | ReferenceObject>;
+  /** Replace `components.parameters` entries by name. New keys append. */
+  replaceParameters?: Record<string, ParameterObject | ReferenceObject>;
+  /** Remove `components.parameters` entries by name. Throws on missing. */
+  removeComponentParameters?: string[];
+
+  /** Shallow-merge into existing `components.responses` entries; new keys append. */
+  extendComponentResponses?: Record<string, ResponseObject | ReferenceObject>;
+  /** Replace `components.responses` entries by name. New keys append. */
+  replaceComponentResponses?: Record<string, ResponseObject | ReferenceObject>;
+  /** Remove `components.responses` entries by name. Throws on missing. */
+  removeComponentResponses?: string[];
+
+  /** Shallow-merge into existing `components.requestBodies` entries; new keys append. */
+  extendRequestBodies?: Record<string, RequestBodyObject | ReferenceObject>;
+  /** Replace `components.requestBodies` entries by name. New keys append. */
+  replaceRequestBodies?: Record<string, RequestBodyObject | ReferenceObject>;
+  /** Remove `components.requestBodies` entries by name. Throws on missing. */
+  removeRequestBodies?: string[];
+
+  /** Shallow-merge into existing `components.headers` entries; new keys append. */
+  extendHeaders?: Record<string, HeaderObject | ReferenceObject>;
+  /** Replace `components.headers` entries by name. New keys append. */
+  replaceHeaders?: Record<string, HeaderObject | ReferenceObject>;
+  /** Remove `components.headers` entries by name. Throws on missing. */
+  removeHeaders?: string[];
+
+  /** Shallow-merge into existing `components.securitySchemes` entries; new keys append. */
+  extendSecuritySchemes?: Record<string, SecuritySchemeObject | ReferenceObject>;
+  /** Replace `components.securitySchemes` entries by name. New keys append. */
+  replaceSecuritySchemes?: Record<string, SecuritySchemeObject | ReferenceObject>;
+  /** Remove `components.securitySchemes` entries by name. Throws on missing. */
+  removeSecuritySchemes?: string[];
+
+  /** Shallow-merge into existing `components.links` entries; new keys append. */
+  extendLinks?: Record<string, LinkObject | ReferenceObject>;
+  /** Replace `components.links` entries by name. New keys append. */
+  replaceLinks?: Record<string, LinkObject | ReferenceObject>;
+  /** Remove `components.links` entries by name. Throws on missing. */
+  removeLinks?: string[];
+
+  /** Shallow-merge into existing `components.callbacks` entries; new keys append. */
+  extendCallbacks?: Record<string, CallbackObject | ReferenceObject>;
+  /** Replace `components.callbacks` entries by name. New keys append. */
+  replaceCallbacks?: Record<string, CallbackObject | ReferenceObject>;
+  /** Remove `components.callbacks` entries by name. Throws on missing. */
+  removeCallbacks?: string[];
+
+  /** Shallow-merge into existing `components.examples` entries; new keys append. */
+  extendExamples?: Record<string, ExampleObject | ReferenceObject>;
+  /** Replace `components.examples` entries by name. New keys append. */
+  replaceExamples?: Record<string, ExampleObject | ReferenceObject>;
+  /** Remove `components.examples` entries by name. Throws on missing. */
+  removeExamples?: string[];
 }
 
-const METHODS: HttpMethod[] = ["get", "put", "post", "delete", "options", "head", "patch", "trace"];
+const METHODS: HttpMethod[] = [
+  "get",
+  "put",
+  "post",
+  "delete",
+  "options",
+  "head",
+  "patch",
+  "trace",
+  "query",
+];
 
 /**
  * Apply a sequence of overlays to a base OpenAPI document, returning a new
@@ -104,9 +394,85 @@ export function applyOverlays(base: OpenAPIDocument, overlays: SpecOverlay[]): O
 
 function applyOverlay(doc: OpenAPIDocument, overlay: SpecOverlay): OpenAPIDocument {
   assertNoSelfConflict(overlay);
+  let next: OpenAPIDocument = { ...doc };
+
+  next = applyDocumentMetadata(next, overlay);
+  next = applyDocumentPaths(next, overlay);
+  next = applyDocumentWebhooks(next, overlay);
+  next = applyDocumentIterators(next, overlay);
+  next = applyComponents(next, overlay);
+
+  return next;
+}
+
+function applyDocumentMetadata(doc: OpenAPIDocument, overlay: SpecOverlay): OpenAPIDocument {
+  const next: OpenAPIDocument = { ...doc };
+
+  if (overlay.info) {
+    next.info = { ...doc.info, ...overlay.info };
+  }
+
+  if (overlay.servers !== undefined) {
+    next.servers = [...overlay.servers];
+  }
+  if (overlay.addServers) {
+    next.servers = [...(next.servers ?? []), ...overlay.addServers];
+  }
+
+  if (overlay.tags !== undefined) {
+    next.tags = [...overlay.tags];
+  }
+  if (overlay.extendTags || overlay.replaceTags || overlay.removeTags) {
+    next.tags = applyTagOps(next.tags ?? [], overlay);
+  }
+
+  if (overlay.security !== undefined) {
+    next.security = [...overlay.security];
+  }
+  if (overlay.addSecurity) {
+    next.security = [...(next.security ?? []), ...overlay.addSecurity];
+  }
+
+  if (overlay.setExtensions) {
+    for (const [key, value] of Object.entries(overlay.setExtensions) as Array<
+      [`x-${string}`, JsonValue | undefined]
+    >) {
+      if (value === undefined) {
+        delete next[key];
+      } else {
+        next[key] = value;
+      }
+    }
+  }
+
+  return next;
+}
+
+function applyTagOps(tags: TagObject[], overlay: SpecOverlay): TagObject[] {
+  const byName = new Map(tags.map((t) => [t.name, t]));
+
+  for (const entry of overlay.extendTags ?? []) {
+    const existing = byName.get(entry.name);
+    byName.set(entry.name, existing ? { ...existing, ...entry } : entry);
+  }
+  for (const entry of overlay.replaceTags ?? []) {
+    byName.set(entry.name, entry);
+  }
+  for (const name of overlay.removeTags ?? []) {
+    if (!byName.has(name)) {
+      throw new Error(`overlay removeTags targets unknown tag ${name}`);
+    }
+    byName.delete(name);
+  }
+
+  return Array.from(byName.values());
+}
+
+function applyDocumentPaths(doc: OpenAPIDocument, overlay: SpecOverlay): OpenAPIDocument {
+  if (!overlay.addPaths && !overlay.removePaths && !overlay.overrides) return doc;
+
   const next: OpenAPIDocument = { ...doc };
   const paths: Record<string, PathItem> = { ...next.paths };
-  let pathsChanged = false;
 
   if (overlay.addPaths) {
     for (const [path, item] of Object.entries(overlay.addPaths)) {
@@ -114,7 +480,6 @@ function applyOverlay(doc: OpenAPIDocument, overlay: SpecOverlay): OpenAPIDocume
         throw new Error(`overlay conflict: path ${path} already exists in the base document`);
       }
       paths[path] = item;
-      pathsChanged = true;
     }
   }
 
@@ -124,7 +489,6 @@ function applyOverlay(doc: OpenAPIDocument, overlay: SpecOverlay): OpenAPIDocume
         throw new Error(`overlay removePaths targets unknown path ${path}`);
       }
       delete paths[path];
-      pathsChanged = true;
     }
   }
 
@@ -137,39 +501,299 @@ function applyOverlay(doc: OpenAPIDocument, overlay: SpecOverlay): OpenAPIDocume
           throw new Error(`overlay override targets unknown path ${path}`);
         }
         paths[path] = applyPathOverride(item, override);
-        pathsChanged = true;
       }
     }
   }
 
-  if (pathsChanged) next.paths = paths;
+  next.paths = paths;
+  return next;
+}
 
-  if (overlay.extendSchemas || overlay.replaceSchemas || overlay.removeSchemas) {
-    const components = { ...next.components };
-    const schemas: Record<string, SchemaObject> = {
-      ...((components.schemas ?? {}) as Record<string, SchemaObject>),
+function applyDocumentWebhooks(doc: OpenAPIDocument, overlay: SpecOverlay): OpenAPIDocument {
+  if (!overlay.addWebhooks && !overlay.removeWebhooks) return doc;
+
+  const next: OpenAPIDocument = { ...doc };
+  const webhooks: Record<string, PathItem | ReferenceObject> = { ...next.webhooks };
+
+  if (overlay.addWebhooks) {
+    for (const [name, item] of Object.entries(overlay.addWebhooks)) {
+      if (webhooks[name] !== undefined) {
+        throw new Error(`overlay conflict: webhook ${name} already exists in the base document`);
+      }
+      webhooks[name] = item;
+    }
+  }
+
+  if (overlay.removeWebhooks) {
+    for (const name of overlay.removeWebhooks) {
+      if (webhooks[name] === undefined) {
+        throw new Error(`overlay removeWebhooks targets unknown webhook ${name}`);
+      }
+      delete webhooks[name];
+    }
+  }
+
+  next.webhooks = webhooks;
+  return next;
+}
+
+function applyDocumentIterators(doc: OpenAPIDocument, overlay: SpecOverlay): OpenAPIDocument {
+  if (!overlay.modifyOperations && !overlay.modifyParameters) return doc;
+
+  let next: OpenAPIDocument = { ...doc };
+  if (overlay.modifyOperations) {
+    for (const entry of overlay.modifyOperations) {
+      next = applyModifyOperations(next, entry);
+    }
+  }
+  if (overlay.modifyParameters) {
+    for (const entry of overlay.modifyParameters) {
+      next = applyModifyParameters(next, entry);
+    }
+  }
+  return next;
+}
+
+function applyModifyOperations(
+  doc: OpenAPIDocument,
+  entry: ModifyOperationsEntry,
+): OpenAPIDocument {
+  const next: OpenAPIDocument = { ...doc };
+  if (doc.paths) {
+    next.paths = walkPathsForModify(doc.paths, entry);
+  }
+  if (doc.webhooks) {
+    next.webhooks = walkWebhooksForModify(doc.webhooks, entry);
+  }
+  return next;
+}
+
+function walkPathsForModify(
+  paths: Record<string, PathItem>,
+  entry: ModifyOperationsEntry,
+): Record<string, PathItem> {
+  const out: Record<string, PathItem> = {};
+  for (const [path, item] of Object.entries(paths)) {
+    out[path] = applyOpModifyToPathItem(path, item, entry);
+  }
+  return out;
+}
+
+function walkWebhooksForModify(
+  webhooks: Record<string, PathItem | ReferenceObject>,
+  entry: ModifyOperationsEntry,
+): Record<string, PathItem | ReferenceObject> {
+  const out: Record<string, PathItem | ReferenceObject> = {};
+  for (const [name, item] of Object.entries(webhooks)) {
+    if ("$ref" in item) {
+      out[name] = item;
+      continue;
+    }
+    out[name] = applyOpModifyToPathItem(name, item, entry);
+  }
+  return out;
+}
+
+function applyOpModifyToPathItem(
+  pathOrName: string,
+  item: PathItem,
+  entry: ModifyOperationsEntry,
+): PathItem {
+  if (entry.where?.pathPattern && !entry.where.pathPattern.test(pathOrName)) {
+    return item;
+  }
+  const next: PathItem = { ...item };
+  let changed = false;
+  for (const method of METHODS) {
+    const op = next[method];
+    if (op === undefined) continue;
+    if (entry.where?.methods && !entry.where.methods.includes(method)) continue;
+    if (entry.where?.tags && !operationHasAnyTag(op, entry.where.tags)) continue;
+    next[method] = applyOperationOverride(op, entry.apply);
+    changed = true;
+  }
+  return changed ? next : item;
+}
+
+function operationHasAnyTag(op: OperationObject, tags: string[]): boolean {
+  if (!op.tags) return false;
+  return op.tags.some((t) => tags.includes(t));
+}
+
+function applyModifyParameters(
+  doc: OpenAPIDocument,
+  entry: ModifyParametersEntry,
+): OpenAPIDocument {
+  const next: OpenAPIDocument = { ...doc };
+  if (doc.paths) {
+    const paths: Record<string, PathItem> = {};
+    for (const [path, item] of Object.entries(doc.paths)) {
+      paths[path] = applyParamModifyToPathItem(item, entry);
+    }
+    next.paths = paths;
+  }
+  if (doc.webhooks) {
+    const webhooks: Record<string, PathItem | ReferenceObject> = {};
+    for (const [name, item] of Object.entries(doc.webhooks)) {
+      if ("$ref" in item) {
+        webhooks[name] = item;
+        continue;
+      }
+      webhooks[name] = applyParamModifyToPathItem(item, entry);
+    }
+    next.webhooks = webhooks;
+  }
+  return next;
+}
+
+function applyParamModifyToPathItem(item: PathItem, entry: ModifyParametersEntry): PathItem {
+  const next: PathItem = { ...item };
+  if (item.parameters) {
+    next.parameters = item.parameters.map((p) => mergeParamIfMatch(p, entry));
+  }
+  for (const method of METHODS) {
+    const op = next[method];
+    if (op === undefined) continue;
+    if (op.parameters) {
+      next[method] = {
+        ...op,
+        parameters: op.parameters.map((p) => mergeParamIfMatch(p, entry)),
+      };
+    }
+  }
+  return next;
+}
+
+function mergeParamIfMatch(
+  param: ParameterObject | ReferenceObject,
+  entry: ModifyParametersEntry,
+): ParameterObject | ReferenceObject {
+  if (!("name" in param)) return param;
+  if (entry.where?.in && param.in !== entry.where.in) return param;
+  if (entry.where?.nameMatches && !entry.where.nameMatches.test(param.name)) return param;
+  return { ...param, ...entry.apply };
+}
+
+interface ComponentBucketVerbs<T> {
+  bucket: keyof ComponentsObject;
+  extend?: Record<string, T>;
+  replace?: Record<string, T>;
+  remove?: string[];
+  /** Label for error messages (e.g. "removeSchemas"). */
+  removeVerb: string;
+}
+
+function applyComponents(doc: OpenAPIDocument, overlay: SpecOverlay): OpenAPIDocument {
+  const buckets: ComponentBucketVerbs<unknown>[] = [
+    {
+      bucket: "schemas",
+      extend: overlay.extendSchemas,
+      replace: overlay.replaceSchemas,
+      remove: overlay.removeSchemas,
+      removeVerb: "removeSchemas",
+    },
+    {
+      bucket: "parameters",
+      extend: overlay.extendParameters,
+      replace: overlay.replaceParameters,
+      remove: overlay.removeComponentParameters,
+      removeVerb: "removeComponentParameters",
+    },
+    {
+      bucket: "responses",
+      extend: overlay.extendComponentResponses,
+      replace: overlay.replaceComponentResponses,
+      remove: overlay.removeComponentResponses,
+      removeVerb: "removeComponentResponses",
+    },
+    {
+      bucket: "requestBodies",
+      extend: overlay.extendRequestBodies,
+      replace: overlay.replaceRequestBodies,
+      remove: overlay.removeRequestBodies,
+      removeVerb: "removeRequestBodies",
+    },
+    {
+      bucket: "headers",
+      extend: overlay.extendHeaders,
+      replace: overlay.replaceHeaders,
+      remove: overlay.removeHeaders,
+      removeVerb: "removeHeaders",
+    },
+    {
+      bucket: "securitySchemes",
+      extend: overlay.extendSecuritySchemes,
+      replace: overlay.replaceSecuritySchemes,
+      remove: overlay.removeSecuritySchemes,
+      removeVerb: "removeSecuritySchemes",
+    },
+    {
+      bucket: "links",
+      extend: overlay.extendLinks,
+      replace: overlay.replaceLinks,
+      remove: overlay.removeLinks,
+      removeVerb: "removeLinks",
+    },
+    {
+      bucket: "callbacks",
+      extend: overlay.extendCallbacks,
+      replace: overlay.replaceCallbacks,
+      remove: overlay.removeCallbacks,
+      removeVerb: "removeCallbacks",
+    },
+    {
+      bucket: "examples",
+      extend: overlay.extendExamples,
+      replace: overlay.replaceExamples,
+      remove: overlay.removeExamples,
+      removeVerb: "removeExamples",
+    },
+  ];
+
+  const touched = buckets.some((b) => b.extend || b.replace || b.remove);
+  if (!touched) return doc;
+
+  const next: OpenAPIDocument = { ...doc };
+  const components: ComponentsObject = { ...next.components };
+
+  for (const b of buckets) {
+    if (!b.extend && !b.replace && !b.remove) continue;
+    const entries: Record<string, unknown> = {
+      ...(components[b.bucket] as Record<string, unknown> | undefined),
     };
-    for (const [name, extension] of Object.entries(overlay.extendSchemas ?? {})) {
-      const existing = schemas[name];
-      if (existing === undefined) {
-        schemas[name] = extension;
-      } else {
-        schemas[name] = { allOf: [existing, extension] };
+
+    if (b.bucket === "schemas") {
+      // Schemas use allOf-extend, not shallow-merge.
+      for (const [name, extension] of Object.entries(b.extend ?? {})) {
+        const existing = entries[name];
+        entries[name] = existing === undefined ? extension : { allOf: [existing, extension] };
+      }
+    } else {
+      for (const [name, extension] of Object.entries(b.extend ?? {})) {
+        const existing = entries[name];
+        if (existing === undefined || typeof existing !== "object") {
+          entries[name] = extension;
+        } else {
+          entries[name] = { ...(existing as object), ...(extension as object) };
+        }
       }
     }
-    for (const [name, replacement] of Object.entries(overlay.replaceSchemas ?? {})) {
-      schemas[name] = replacement;
+
+    for (const [name, replacement] of Object.entries(b.replace ?? {})) {
+      entries[name] = replacement;
     }
-    for (const name of overlay.removeSchemas ?? []) {
-      if (schemas[name] === undefined) {
-        throw new Error(`overlay removeSchemas targets unknown schema ${name}`);
+
+    for (const name of b.remove ?? []) {
+      if (!(name in entries)) {
+        throw new Error(`overlay ${b.removeVerb} targets unknown ${b.bucket} entry ${name}`);
       }
-      delete schemas[name];
+      delete entries[name];
     }
-    components.schemas = schemas;
-    next.components = components;
+
+    (components as Record<string, unknown>)[b.bucket] = entries;
   }
 
+  next.components = components;
   return next;
 }
 
@@ -187,22 +811,151 @@ function assertNoSelfConflict(overlay: SpecOverlay): void {
       }
     }
   }
-  if (overlay.replaceSchemas && overlay.removeSchemas) {
-    for (const name of overlay.removeSchemas) {
-      if (name in overlay.replaceSchemas) {
+  if (overlay.addWebhooks && overlay.removeWebhooks) {
+    for (const name of overlay.removeWebhooks) {
+      if (name in overlay.addWebhooks) {
+        throw new Error(`overlay self-conflict: addWebhooks and removeWebhooks both name ${name}`);
+      }
+    }
+  }
+
+  assertWholesaleVsAdditive(
+    overlay.servers !== undefined,
+    overlay.addServers !== undefined,
+    "servers",
+    "addServers",
+  );
+  assertWholesaleVsAdditive(
+    overlay.security !== undefined,
+    overlay.addSecurity !== undefined,
+    "security",
+    "addSecurity",
+  );
+
+  const tagsWholesale = overlay.tags !== undefined;
+  const tagsAdditives =
+    overlay.extendTags !== undefined ||
+    overlay.replaceTags !== undefined ||
+    overlay.removeTags !== undefined;
+  if (tagsWholesale && tagsAdditives) {
+    throw new Error(
+      "overlay self-conflict: tags (wholesale) cannot combine with extendTags / replaceTags / removeTags",
+    );
+  }
+  if (overlay.replaceTags && overlay.removeTags) {
+    const names = new Set(overlay.replaceTags.map((t) => t.name));
+    for (const n of overlay.removeTags) {
+      if (names.has(n)) {
+        throw new Error(`overlay self-conflict: replaceTags and removeTags both name ${n}`);
+      }
+    }
+  }
+  if (overlay.extendTags && overlay.removeTags) {
+    const names = new Set(overlay.extendTags.map((t) => t.name));
+    for (const n of overlay.removeTags) {
+      if (names.has(n)) {
+        throw new Error(`overlay self-conflict: extendTags and removeTags both name ${n}`);
+      }
+    }
+  }
+
+  assertBucketSelfConflicts(
+    "schemas",
+    overlay.extendSchemas,
+    overlay.replaceSchemas,
+    overlay.removeSchemas,
+  );
+  assertBucketSelfConflicts(
+    "parameters",
+    overlay.extendParameters,
+    overlay.replaceParameters,
+    overlay.removeComponentParameters,
+  );
+  assertBucketSelfConflicts(
+    "responses",
+    overlay.extendComponentResponses,
+    overlay.replaceComponentResponses,
+    overlay.removeComponentResponses,
+  );
+  assertBucketSelfConflicts(
+    "requestBodies",
+    overlay.extendRequestBodies,
+    overlay.replaceRequestBodies,
+    overlay.removeRequestBodies,
+  );
+  assertBucketSelfConflicts(
+    "headers",
+    overlay.extendHeaders,
+    overlay.replaceHeaders,
+    overlay.removeHeaders,
+  );
+  assertBucketSelfConflicts(
+    "securitySchemes",
+    overlay.extendSecuritySchemes,
+    overlay.replaceSecuritySchemes,
+    overlay.removeSecuritySchemes,
+  );
+  assertBucketSelfConflicts(
+    "links",
+    overlay.extendLinks,
+    overlay.replaceLinks,
+    overlay.removeLinks,
+  );
+  assertBucketSelfConflicts(
+    "callbacks",
+    overlay.extendCallbacks,
+    overlay.replaceCallbacks,
+    overlay.removeCallbacks,
+  );
+  assertBucketSelfConflicts(
+    "examples",
+    overlay.extendExamples,
+    overlay.replaceExamples,
+    overlay.removeExamples,
+  );
+}
+
+function assertWholesaleVsAdditive(
+  hasWholesale: boolean,
+  hasAdditive: boolean,
+  wholesaleName: string,
+  additiveName: string,
+): void {
+  if (hasWholesale && hasAdditive) {
+    throw new Error(
+      `overlay self-conflict: ${wholesaleName} (wholesale) cannot combine with ${additiveName}`,
+    );
+  }
+}
+
+function assertBucketSelfConflicts(
+  bucket: string,
+  extend: Record<string, unknown> | undefined,
+  replace: Record<string, unknown> | undefined,
+  remove: string[] | undefined,
+): void {
+  if (replace && remove) {
+    for (const n of remove) {
+      if (n in replace) {
         throw new Error(
-          `overlay self-conflict: replaceSchemas and removeSchemas both name ${name}`,
+          `overlay self-conflict: replace${capitalize(bucket)} and remove${capitalize(bucket)} both name ${n}`,
         );
       }
     }
   }
-  if (overlay.extendSchemas && overlay.removeSchemas) {
-    for (const name of overlay.removeSchemas) {
-      if (name in overlay.extendSchemas) {
-        throw new Error(`overlay self-conflict: extendSchemas and removeSchemas both name ${name}`);
+  if (extend && remove) {
+    for (const n of remove) {
+      if (n in extend) {
+        throw new Error(
+          `overlay self-conflict: extend${capitalize(bucket)} and remove${capitalize(bucket)} both name ${n}`,
+        );
       }
     }
   }
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 function applyPathOverride(item: PathItem, override: PathOverride): PathItem {
@@ -224,15 +977,28 @@ function applyPathOverride(item: PathItem, override: PathOverride): PathItem {
   return next;
 }
 
+const OPERATION_OVERRIDE_ADDITIVE_KEYS = [
+  "upsertParameters",
+  "removeParameters",
+  "requestBody",
+  "responses",
+  "patchResponses",
+  "removeResponses",
+  "tags",
+  "addTags",
+  "removeTags",
+  "security",
+  "addSecurity",
+  "removeSecurity",
+  "servers",
+  "callbacks",
+  "externalDocs",
+  "setExtensions",
+] as const;
+
 function applyOperationOverride(op: OperationObject, override: OperationOverride): OperationObject {
   if (override.replace !== undefined) {
-    for (const key of [
-      "upsertParameters",
-      "removeParameters",
-      "requestBody",
-      "responses",
-      "removeResponses",
-    ] as const) {
+    for (const key of OPERATION_OVERRIDE_ADDITIVE_KEYS) {
       if (override[key] !== undefined) {
         throw new Error(
           `overlay conflict: OperationOverride.replace cannot be combined with ${key}`,
@@ -242,7 +1008,19 @@ function applyOperationOverride(op: OperationObject, override: OperationOverride
     return override.replace;
   }
 
+  if (override.tags !== undefined && (override.addTags || override.removeTags)) {
+    throw new Error(
+      "overlay conflict: OperationOverride.tags (wholesale) cannot combine with addTags / removeTags",
+    );
+  }
+  if (override.security !== undefined && (override.addSecurity || override.removeSecurity)) {
+    throw new Error(
+      "overlay conflict: OperationOverride.security (wholesale) cannot combine with addSecurity / removeSecurity",
+    );
+  }
+
   const next: OperationObject = { ...op };
+
   if (override.upsertParameters) {
     const existing = [...(op.parameters ?? [])];
     for (const newParam of override.upsertParameters) {
@@ -268,8 +1046,25 @@ function applyOperationOverride(op: OperationObject, override: OperationOverride
     if (filtered.length !== existing.length) next.parameters = filtered;
   }
   if (override.requestBody) next.requestBody = override.requestBody;
+
   if (override.responses) {
     next.responses = { ...op.responses, ...override.responses };
+  }
+  if (override.patchResponses) {
+    const responses = { ...(next.responses ?? op.responses) };
+    for (const [status, patch] of Object.entries(override.patchResponses)) {
+      const existing = responses[status];
+      if (existing === undefined) {
+        throw new Error(`overlay patchResponses targets unknown response status ${status}`);
+      }
+      if ("$ref" in existing) {
+        throw new Error(
+          `overlay patchResponses cannot patch reference-object response (status ${status})`,
+        );
+      }
+      responses[status] = applyResponseOverride(existing, patch);
+    }
+    next.responses = responses;
   }
   if (override.removeResponses) {
     const source = next.responses ?? op.responses ?? {};
@@ -283,5 +1078,96 @@ function applyOperationOverride(op: OperationObject, override: OperationOverride
     }
     if (removed) next.responses = copy;
   }
+
+  if (override.tags !== undefined) {
+    next.tags = [...override.tags];
+  } else if (override.addTags || override.removeTags) {
+    const existing = new Set(op.tags ?? []);
+    for (const t of override.addTags ?? []) existing.add(t);
+    for (const t of override.removeTags ?? []) existing.delete(t);
+    next.tags = Array.from(existing);
+  }
+
+  if (override.security !== undefined) {
+    next.security = [...override.security];
+  } else if (override.addSecurity || override.removeSecurity) {
+    let security = [...(op.security ?? [])];
+    if (override.addSecurity) security = [...security, ...override.addSecurity];
+    if (override.removeSecurity) {
+      security = security.filter(
+        (req) => !override.removeSecurity!.some((rm) => securityRequirementEquals(req, rm)),
+      );
+    }
+    next.security = security;
+  }
+
+  if (override.servers !== undefined) next.servers = [...override.servers];
+
+  if (override.callbacks) {
+    next.callbacks = { ...op.callbacks, ...override.callbacks };
+  }
+
+  if (override.externalDocs) next.externalDocs = override.externalDocs;
+
+  if (override.setExtensions) {
+    for (const [key, value] of Object.entries(override.setExtensions) as Array<
+      [`x-${string}`, JsonValue | undefined]
+    >) {
+      if (value === undefined) {
+        delete (next as Record<string, unknown>)[key];
+      } else {
+        (next as Record<string, unknown>)[key] = value;
+      }
+    }
+  }
+
   return next;
+}
+
+function applyResponseOverride(
+  response: ResponseObject,
+  override: ResponseOverride,
+): ResponseObject {
+  const next: ResponseObject = { ...response };
+  if (override.headers) {
+    next.headers = { ...response.headers, ...override.headers };
+  }
+  if (override.content) {
+    const content: Record<string, MediaTypeObject> = { ...response.content };
+    for (const [mediaType, patch] of Object.entries(override.content)) {
+      const existing = content[mediaType];
+      if (existing === undefined) {
+        content[mediaType] = patch;
+        continue;
+      }
+      const merged: MediaTypeObject = { ...existing, ...patch };
+      if (patch.schema !== undefined && existing.schema !== undefined) {
+        merged.schema = { allOf: [existing.schema, patch.schema] };
+      }
+      content[mediaType] = merged;
+    }
+    next.content = content;
+  }
+  return next;
+}
+
+function securityRequirementEquals(
+  a: SecurityRequirementObject,
+  b: SecurityRequirementObject,
+): boolean {
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  for (const k of aKeys) {
+    if (!(k in b)) return false;
+    const av = a[k] ?? [];
+    const bv = b[k] ?? [];
+    if (av.length !== bv.length) return false;
+    const aSorted = [...av].sort();
+    const bSorted = [...bv].sort();
+    for (let i = 0; i < aSorted.length; i++) {
+      if (aSorted[i] !== bSorted[i]) return false;
+    }
+  }
+  return true;
 }

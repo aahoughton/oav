@@ -232,3 +232,532 @@ describe("applyOverlays", () => {
     ).toThrow(/replace cannot be combined with upsertParameters/);
   });
 });
+
+describe("applyOverlays: top-level verbs", () => {
+  it("info shallow-merges into the document's info object", () => {
+    const patched = applyOverlays(base(), [{ info: { description: "added", title: "renamed" } }]);
+    expect(patched.info).toEqual({ title: "renamed", version: "1", description: "added" });
+  });
+
+  it("servers replaces wholesale; addServers appends", () => {
+    const withServers = { ...base(), servers: [{ url: "https://a.example" }] };
+    const replaced = applyOverlays(withServers, [{ servers: [{ url: "https://b.example" }] }]);
+    expect(replaced.servers).toEqual([{ url: "https://b.example" }]);
+
+    const appended = applyOverlays(withServers, [{ addServers: [{ url: "https://c.example" }] }]);
+    expect(appended.servers).toEqual([{ url: "https://a.example" }, { url: "https://c.example" }]);
+  });
+
+  it("servers + addServers in one overlay throws", () => {
+    expect(() =>
+      applyOverlays(base(), [{ servers: [{ url: "a" }], addServers: [{ url: "b" }] }]),
+    ).toThrow(/servers \(wholesale\) cannot combine with addServers/);
+  });
+
+  it("tags wholesale replaces; extendTags merges by name; replaceTags replaces by name; removeTags drops", () => {
+    const withTags = {
+      ...base(),
+      tags: [{ name: "pets", description: "old" }],
+    };
+    const wholesale = applyOverlays(withTags, [{ tags: [{ name: "fresh" }] }]);
+    expect(wholesale.tags).toEqual([{ name: "fresh" }]);
+
+    const extended = applyOverlays(withTags, [
+      { extendTags: [{ name: "pets", description: "new" }, { name: "new" }] },
+    ]);
+    expect(extended.tags).toEqual([{ name: "pets", description: "new" }, { name: "new" }]);
+
+    const replaced = applyOverlays(withTags, [{ replaceTags: [{ name: "pets" }] }]);
+    expect(replaced.tags).toEqual([{ name: "pets" }]);
+
+    const removed = applyOverlays(withTags, [{ removeTags: ["pets"] }]);
+    expect(removed.tags).toEqual([]);
+  });
+
+  it("removeTags throws on a missing tag name", () => {
+    expect(() => applyOverlays(base(), [{ removeTags: ["nope"] }])).toThrow(
+      /removeTags targets unknown tag nope/,
+    );
+  });
+
+  it("tags wholesale + extendTags throws as a self-conflict", () => {
+    expect(() =>
+      applyOverlays(base(), [{ tags: [{ name: "a" }], extendTags: [{ name: "b" }] }]),
+    ).toThrow(/tags \(wholesale\) cannot combine/);
+  });
+
+  it("replaceTags + removeTags naming the same tag throws", () => {
+    expect(() =>
+      applyOverlays(base(), [{ replaceTags: [{ name: "x" }], removeTags: ["x"] }]),
+    ).toThrow(/self-conflict: replaceTags and removeTags both name x/);
+  });
+
+  it("security replaces; addSecurity appends; both in one overlay throws", () => {
+    const replaced = applyOverlays(base(), [{ security: [{ apiKey: [] }] }]);
+    expect(replaced.security).toEqual([{ apiKey: [] }]);
+
+    const appended = applyOverlays(replaced, [{ addSecurity: [{ oauth: ["read"] }] }]);
+    expect(appended.security).toEqual([{ apiKey: [] }, { oauth: ["read"] }]);
+
+    expect(() =>
+      applyOverlays(base(), [{ security: [{ a: [] }], addSecurity: [{ b: [] }] }]),
+    ).toThrow(/security \(wholesale\) cannot combine with addSecurity/);
+  });
+
+  it("addWebhooks inserts; removeWebhooks drops; conflicts throw", () => {
+    const added = applyOverlays(base(), [
+      { addWebhooks: { "pet.created": { post: { responses: { "204": { description: "ok" } } } } } },
+    ]);
+    expect(added.webhooks?.["pet.created"]).toBeDefined();
+
+    const removed = applyOverlays(added, [{ removeWebhooks: ["pet.created"] }]);
+    expect(removed.webhooks?.["pet.created"]).toBeUndefined();
+
+    expect(() => applyOverlays(added, [{ addWebhooks: { "pet.created": { post: {} } } }])).toThrow(
+      /webhook pet\.created already exists/,
+    );
+
+    expect(() => applyOverlays(base(), [{ removeWebhooks: ["nope"] }])).toThrow(
+      /removeWebhooks targets unknown webhook nope/,
+    );
+
+    expect(() =>
+      applyOverlays(base(), [
+        {
+          addWebhooks: { x: { post: {} } },
+          removeWebhooks: ["x"],
+        },
+      ]),
+    ).toThrow(/addWebhooks and removeWebhooks both name x/);
+  });
+
+  it("setExtensions sets x-* fields and deletes on undefined", () => {
+    const withExt = applyOverlays(base(), [{ setExtensions: { "x-owner": "ml" } }]);
+    expect(withExt["x-owner"]).toBe("ml");
+
+    const deleted = applyOverlays(withExt, [{ setExtensions: { "x-owner": undefined } }]);
+    expect(deleted["x-owner"]).toBeUndefined();
+  });
+});
+
+describe("applyOverlays: component bucket fan-out", () => {
+  function baseWithComponents(): OpenAPIDocument {
+    return {
+      ...base(),
+      components: {
+        schemas: { Pet: { type: "object" } },
+        parameters: {
+          TraceId: { name: "X-Trace", in: "header", schema: { type: "string" } },
+        },
+        responses: {
+          NotFound: { description: "missing" },
+        },
+        requestBodies: {
+          PetBody: { content: { "application/json": { schema: { type: "object" } } } },
+        },
+        headers: {
+          RateLimit: { schema: { type: "integer" } },
+        },
+        securitySchemes: {
+          apiKey: { type: "apiKey", name: "X-Key", in: "header" },
+        },
+        links: {
+          GetPet: { operationId: "getPet" },
+        },
+        callbacks: {
+          onCreate: { "{$request.body#/callback}": { post: {} } },
+        },
+        examples: {
+          one: { value: { name: "rex" } },
+        },
+      },
+    };
+  }
+
+  it("extendParameters shallow-merges existing entries; new keys append", () => {
+    const patched = applyOverlays(baseWithComponents(), [
+      {
+        extendParameters: {
+          TraceId: { description: "traces" },
+          NewParam: { name: "X-New", in: "header" },
+        },
+      },
+    ]);
+    expect(patched.components?.parameters?.TraceId).toMatchObject({
+      name: "X-Trace",
+      in: "header",
+      description: "traces",
+    });
+    expect(patched.components?.parameters?.NewParam).toBeDefined();
+  });
+
+  it("replaceParameters fully replaces an entry", () => {
+    const patched = applyOverlays(baseWithComponents(), [
+      {
+        replaceParameters: {
+          TraceId: { name: "Y", in: "query" },
+        },
+      },
+    ]);
+    expect(patched.components?.parameters?.TraceId).toEqual({ name: "Y", in: "query" });
+  });
+
+  it("removeComponentParameters drops by name; missing throws", () => {
+    const patched = applyOverlays(baseWithComponents(), [
+      { removeComponentParameters: ["TraceId"] },
+    ]);
+    expect(patched.components?.parameters?.TraceId).toBeUndefined();
+
+    expect(() =>
+      applyOverlays(baseWithComponents(), [{ removeComponentParameters: ["Missing"] }]),
+    ).toThrow(/removeComponentParameters targets unknown parameters entry Missing/);
+  });
+
+  it("each non-schema bucket fans out extend / replace / remove", () => {
+    const patched = applyOverlays(baseWithComponents(), [
+      {
+        extendComponentResponses: { NotFound: { description: "not found 2" } },
+        replaceComponentResponses: { New: { description: "fresh" } },
+        extendRequestBodies: { PetBody: { description: "pet" } },
+        replaceRequestBodies: { NewBody: { content: {} } },
+        extendHeaders: { RateLimit: { description: "limit" } },
+        replaceHeaders: { Other: { schema: { type: "string" } } },
+        extendSecuritySchemes: { apiKey: { description: "key" } },
+        replaceSecuritySchemes: { bearer: { type: "http", scheme: "bearer" } },
+        extendLinks: { GetPet: { description: "fetch" } },
+        replaceLinks: { Other: { operationId: "x" } },
+        extendCallbacks: { onCreate: {} },
+        replaceCallbacks: { onDelete: { "{$url}": { post: {} } } },
+        extendExamples: { one: { summary: "one" } },
+        replaceExamples: { two: { value: 2 } },
+      },
+    ]);
+    expect(patched.components?.responses?.NotFound).toMatchObject({ description: "not found 2" });
+    expect(patched.components?.responses?.New).toBeDefined();
+    expect(patched.components?.requestBodies?.PetBody).toMatchObject({ description: "pet" });
+    expect(patched.components?.requestBodies?.NewBody).toBeDefined();
+    expect(patched.components?.headers?.RateLimit).toMatchObject({ description: "limit" });
+    expect(patched.components?.headers?.Other).toBeDefined();
+    expect(patched.components?.securitySchemes?.apiKey).toMatchObject({ description: "key" });
+    expect(patched.components?.securitySchemes?.bearer).toBeDefined();
+    expect(patched.components?.links?.GetPet).toMatchObject({ description: "fetch" });
+    expect(patched.components?.links?.Other).toBeDefined();
+    expect(patched.components?.callbacks?.onDelete).toBeDefined();
+    expect(patched.components?.examples?.one).toMatchObject({ summary: "one" });
+    expect(patched.components?.examples?.two).toBeDefined();
+  });
+
+  it("removeLinks throws on a missing entry", () => {
+    expect(() => applyOverlays(baseWithComponents(), [{ removeLinks: ["Nope"] }])).toThrow(
+      /removeLinks targets unknown links entry Nope/,
+    );
+  });
+
+  it("bucket self-conflicts: replaceParameters + removeComponentParameters naming the same key throws", () => {
+    expect(() =>
+      applyOverlays(baseWithComponents(), [
+        {
+          replaceParameters: { TraceId: { name: "Y", in: "query" } },
+          removeComponentParameters: ["TraceId"],
+        },
+      ]),
+    ).toThrow(/replaceParameters and removeParameters both name TraceId/);
+  });
+
+  it("extend on non-schema bucket creates the entry when missing", () => {
+    const patched = applyOverlays(baseWithComponents(), [
+      { extendHeaders: { NewHeader: { schema: { type: "string" } } } },
+    ]);
+    expect(patched.components?.headers?.NewHeader).toEqual({ schema: { type: "string" } });
+  });
+});
+
+describe("applyOverlays: operation-level expansion", () => {
+  function basePlus(): OpenAPIDocument {
+    return {
+      openapi: "3.1.0",
+      info: { title: "X", version: "1" },
+      paths: {
+        "/pets": {
+          get: {
+            tags: ["pets"],
+            security: [{ apiKey: [] }],
+            responses: {
+              "200": {
+                description: "ok",
+                headers: { Existing: { schema: { type: "string" } } },
+                content: { "application/json": { schema: { type: "object" } } },
+              },
+            },
+          },
+        },
+      },
+    };
+  }
+
+  it("addTags / removeTags update the tag set", () => {
+    const patched = applyOverlays(basePlus(), [
+      {
+        overrides: {
+          "/pets": {
+            operations: {
+              get: { addTags: ["v2"], removeTags: ["pets"] },
+            },
+          },
+        },
+      },
+    ]);
+    expect(patched.paths?.["/pets"]?.get?.tags).toEqual(["v2"]);
+  });
+
+  it("tags wholesale replaces and conflicts with addTags", () => {
+    const patched = applyOverlays(basePlus(), [
+      {
+        overrides: {
+          "/pets": { operations: { get: { tags: ["fresh"] } } },
+        },
+      },
+    ]);
+    expect(patched.paths?.["/pets"]?.get?.tags).toEqual(["fresh"]);
+
+    expect(() =>
+      applyOverlays(basePlus(), [
+        {
+          overrides: {
+            "/pets": {
+              operations: { get: { tags: ["x"], addTags: ["y"] } },
+            },
+          },
+        },
+      ]),
+    ).toThrow(/tags \(wholesale\) cannot combine with addTags/);
+  });
+
+  it("addSecurity appends; removeSecurity drops a deep-equal requirement", () => {
+    const patched = applyOverlays(basePlus(), [
+      {
+        overrides: {
+          "/pets": {
+            operations: {
+              get: {
+                addSecurity: [{ oauth: ["read"] }],
+                removeSecurity: [{ apiKey: [] }],
+              },
+            },
+          },
+        },
+      },
+    ]);
+    expect(patched.paths?.["/pets"]?.get?.security).toEqual([{ oauth: ["read"] }]);
+  });
+
+  it("servers / callbacks / externalDocs are set on the operation", () => {
+    const patched = applyOverlays(basePlus(), [
+      {
+        overrides: {
+          "/pets": {
+            operations: {
+              get: {
+                servers: [{ url: "https://x" }],
+                callbacks: { onX: { "{$url}": { post: {} } } },
+                externalDocs: { url: "https://docs" },
+              },
+            },
+          },
+        },
+      },
+    ]);
+    const op = patched.paths?.["/pets"]?.get;
+    expect(op?.servers).toEqual([{ url: "https://x" }]);
+    expect(op?.callbacks?.onX).toBeDefined();
+    expect(op?.externalDocs).toEqual({ url: "https://docs" });
+  });
+
+  it("setExtensions on an operation sets and deletes x-* fields", () => {
+    const patched = applyOverlays(basePlus(), [
+      {
+        overrides: {
+          "/pets": {
+            operations: {
+              get: { setExtensions: { "x-owner": "ml" } },
+            },
+          },
+        },
+      },
+    ]);
+    const getOp = patched.paths?.["/pets"]?.get;
+    expect((getOp as Record<string, unknown>)["x-owner"]).toBe("ml");
+
+    const removed = applyOverlays(patched, [
+      {
+        overrides: {
+          "/pets": {
+            operations: {
+              get: { setExtensions: { "x-owner": undefined } },
+            },
+          },
+        },
+      },
+    ]);
+    const removedOp = removed.paths?.["/pets"]?.get;
+    expect((removedOp as Record<string, unknown>)["x-owner"]).toBeUndefined();
+  });
+
+  it("patchResponses merges headers and allOf-extends content schemas", () => {
+    const patched = applyOverlays(basePlus(), [
+      {
+        overrides: {
+          "/pets": {
+            operations: {
+              get: {
+                patchResponses: {
+                  "200": {
+                    headers: { New: { schema: { type: "integer" } } },
+                    content: {
+                      "application/json": { schema: { required: ["id"] } },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    ]);
+    const r200 = patched.paths?.["/pets"]?.get?.responses?.["200"];
+    expect(r200).toBeDefined();
+    if (r200 && "$ref" in r200) throw new Error("unexpected ref");
+    expect(r200?.headers?.Existing).toBeDefined();
+    expect(r200?.headers?.New).toBeDefined();
+    expect(r200?.content?.["application/json"]?.schema).toMatchObject({
+      allOf: [{ type: "object" }, { required: ["id"] }],
+    });
+  });
+
+  it("patchResponses on a missing status code throws", () => {
+    expect(() =>
+      applyOverlays(basePlus(), [
+        {
+          overrides: {
+            "/pets": {
+              operations: {
+                get: { patchResponses: { "404": { headers: {} } } },
+              },
+            },
+          },
+        },
+      ]),
+    ).toThrow(/patchResponses targets unknown response status 404/);
+  });
+});
+
+describe("applyOverlays: predicate iterators", () => {
+  function multi(): OpenAPIDocument {
+    return {
+      openapi: "3.1.0",
+      info: { title: "X", version: "1" },
+      paths: {
+        "/pets": {
+          parameters: [{ name: "x-trace", in: "header", schema: { type: "string" } }],
+          get: {
+            tags: ["pets"],
+            parameters: [{ name: "limit", in: "query", schema: { type: "integer" } }],
+            responses: { "200": { description: "ok" } },
+          },
+          post: {
+            tags: ["pets", "writes"],
+            responses: { "201": { description: "created" } },
+          },
+        },
+        "/vets": {
+          get: {
+            tags: ["vets"],
+            responses: { "200": { description: "ok" } },
+          },
+        },
+      },
+      webhooks: {
+        "pet.created": {
+          post: {
+            tags: ["pets"],
+            responses: { "204": { description: "ack" } },
+          },
+        },
+      },
+    };
+  }
+
+  it("modifyOperations with no where applies to every operation under paths and webhooks", () => {
+    const patched = applyOverlays(multi(), [
+      { modifyOperations: [{ apply: { addTags: ["traced"] } }] },
+    ]);
+    expect(patched.paths?.["/pets"]?.get?.tags).toContain("traced");
+    expect(patched.paths?.["/pets"]?.post?.tags).toContain("traced");
+    expect(patched.paths?.["/vets"]?.get?.tags).toContain("traced");
+    const webhook = patched.webhooks?.["pet.created"];
+    if (webhook && !("$ref" in webhook)) {
+      expect(webhook.post?.tags).toContain("traced");
+    }
+  });
+
+  it("modifyOperations filters by tag, method, pathPattern (AND)", () => {
+    const patched = applyOverlays(multi(), [
+      {
+        modifyOperations: [
+          {
+            where: { tags: ["pets"], methods: ["get"], pathPattern: /^\/pets/ },
+            apply: { addTags: ["matched"] },
+          },
+        ],
+      },
+    ]);
+    expect(patched.paths?.["/pets"]?.get?.tags).toContain("matched");
+    expect(patched.paths?.["/pets"]?.post?.tags ?? []).not.toContain("matched");
+    expect(patched.paths?.["/vets"]?.get?.tags ?? []).not.toContain("matched");
+  });
+
+  it("modifyParameters filters by in and nameMatches; merges fields into matching params", () => {
+    const patched = applyOverlays(multi(), [
+      {
+        modifyParameters: [
+          {
+            where: { in: "header", nameMatches: /^x-/ },
+            apply: { description: "traced", required: true },
+          },
+        ],
+      },
+    ]);
+    const pathItemParam = patched.paths?.["/pets"]?.parameters?.[0];
+    expect(pathItemParam).toMatchObject({
+      name: "x-trace",
+      in: "header",
+      description: "traced",
+      required: true,
+    });
+    const opParam = patched.paths?.["/pets"]?.get?.parameters?.[0];
+    expect(opParam).toMatchObject({ name: "limit", in: "query" });
+    expect(opParam).not.toHaveProperty("description");
+  });
+
+  it("modifyParameters skips reference-object parameters silently", () => {
+    const doc: OpenAPIDocument = {
+      ...multi(),
+      paths: {
+        ...multi().paths!,
+        "/refs": {
+          get: {
+            parameters: [{ $ref: "#/components/parameters/X" }],
+            responses: { "200": { description: "ok" } },
+          },
+        },
+      },
+    };
+    const patched = applyOverlays(doc, [
+      {
+        modifyParameters: [{ apply: { description: "irrelevant" } }],
+      },
+    ]);
+    const params = patched.paths?.["/refs"]?.get?.parameters;
+    expect(params?.[0]).toEqual({ $ref: "#/components/parameters/X" });
+  });
+});
