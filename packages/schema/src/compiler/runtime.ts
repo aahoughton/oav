@@ -109,9 +109,16 @@ export interface CompiledRegex {
  * patterns that fail a safe-regex analysis. JavaScript's built-in
  * `RegExp` has no execution timeout, which makes catastrophic
  * patterns (e.g. `(a+)+$`) a denial-of-service vector against any
- * string the validator checks. The runtime calls the compiler once
- * per unique pattern per validator instance; memoization further
- * upstream is the compiler's own responsibility.
+ * string the validator checks.
+ *
+ * Invocation cadence:
+ * - For `pattern` keywords, the runtime memoizes by pattern string;
+ *   the compiler runs once per unique schema-authored pattern for
+ *   the lifetime of the validator (bounded by spec size).
+ * - For `format: "regex"`, the runtime bypasses the cache; the
+ *   compiler runs per validate() call against the candidate string.
+ *   Caching there would retain runtime values indefinitely, which is
+ *   the opposite of what hardening callers want.
  *
  * @public
  *

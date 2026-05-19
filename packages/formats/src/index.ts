@@ -17,6 +17,10 @@ import { validateDate, validateDateTime, validateDuration, validateTime } from "
 import { validateEmail, validateIdnEmail } from "./email.js";
 import { validateHostname, validateIdnHostname } from "./hostname.js";
 import { validateIpv4, validateIpv6 } from "./ip.js";
+// Note: validateRegex is intentionally not imported into builtInFormats.
+// @oav/schema's createDeps auto-registers a `regex` format that shares the
+// pattern-keyword compile path (and the regexCompiler hook). The standalone
+// validateRegex export still lives in ./misc.ts as a u-mode utility.
 import { validateUuid } from "./misc.js";
 import {
   validateIri,

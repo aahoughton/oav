@@ -76,9 +76,15 @@ const validator = createValidator(spec, {
 });
 ```
 
-The compiler is called once per unique pattern per validator
-instance. The runtime only reads `.test(s)` off the returned object,
-so anything that satisfies `{ test(s: string): boolean }` works. A
+Invocation cadence is split: schema-authored `pattern` strings are
+memoized for the validator's lifetime (bounded by spec size), so
+the compiler runs once per unique pattern there. `format: "regex"`
+runs the compiler per `validate()` call against the candidate
+string; caching runtime values would retain user input indefinitely,
+which is the opposite of what hardening callers want.
+
+The runtime only reads `.test(s)` off the returned object, so
+anything that satisfies `{ test(s: string): boolean }` works. A
 typical complexity-check wrapper:
 
 ```ts

@@ -471,10 +471,12 @@ export interface CompileOptions {
    * when the spec is attacker-controlled (multi-tenant SaaS,
    * spec-editing tools, mock-as-a-service).
    *
-   * The compiler is called once per unique pattern per validator
-   * instance; the returned object only has `.test(s: string): boolean`
-   * read off it. JavaScript's built-in `RegExp` already satisfies the
-   * shape. See {@link RegexCompiler}.
+   * The runtime only reads `.test(s: string): boolean` off the
+   * returned object; built-in `RegExp` already satisfies the shape.
+   * Memoization is split by audience: schema `pattern` strings cache
+   * for the validator's lifetime (bounded by spec size), `format:
+   * "regex"` runs the compiler per call (runtime values are not).
+   * See {@link RegexCompiler}.
    */
   regexCompiler?: RegexCompiler;
 }
