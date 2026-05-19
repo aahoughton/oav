@@ -1,6 +1,6 @@
 {
   "name": "@aahoughton/oav-express5",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Express 5 adapter for @aahoughton/oav-core. Promise-native middleware factory plus standalone helpers (httpRequestFromExpress, renderProblemDetails) for callers composing their own middleware.",
   "keywords": [
     "express",
