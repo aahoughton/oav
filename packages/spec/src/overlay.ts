@@ -116,8 +116,10 @@ export interface OperationOverride {
   /**
    * Per-status response patches. Unlike {@link OperationOverride.responses}
    * which replaces a whole response by status code, `patchResponses`
-   * modifies the existing response (headers / content) in place. Throws
-   * if the target status code isn't present on the operation.
+   * modifies the existing response (description / headers / content) in
+   * place. When the target status isn't present on the operation, the
+   * patch is applied to an empty response and becomes the new entry
+   * (matches OpenAPI Overlay 1.0 merge-on-missing semantics).
    */
   patchResponses?: Record<string, ResponseOverride>;
   /** Remove response status codes. Silent no-op on missing entries. */
@@ -1090,7 +1092,11 @@ function applyOperationOverride(op: OperationObject, override: OperationOverride
     for (const [status, patch] of Object.entries(override.patchResponses)) {
       const existing = responses[status];
       if (existing === undefined) {
-        throw new Error(`overlay patchResponses targets unknown response status ${status}`);
+        // Status not on the operation yet: treat the patch as the
+        // initial response. Matches OpenAPI Overlay 1.0 merge
+        // semantics, which create on missing rather than erroring.
+        responses[status] = applyResponseOverride({}, patch);
+        continue;
       }
       if ("$ref" in existing) {
         throw new Error(

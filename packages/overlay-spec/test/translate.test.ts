@@ -457,6 +457,41 @@ describe("applySpecOverlay", () => {
     expect(r?.content?.["application/json"]).toBeDefined();
   });
 
+  it("operation update with `responses` field can add a NEW status code (Overlay 1.0 merge-on-missing)", () => {
+    // Per OpenAPI Overlay 1.0 deep-merge, missing keys in the target
+    // are created from the update. patchResponses must apply the
+    // patch to an empty response on missing, not throw.
+    const patched = applySpecOverlay(
+      base(),
+      doc([
+        {
+          target: "$.paths['/pets'].get",
+          update: { responses: { "404": { description: "missing" } } },
+        },
+      ]),
+    );
+    const r404 = patched.paths?.["/pets"]?.get?.responses?.["404"];
+    if (r404 && "$ref" in r404) throw new Error("unexpected ref");
+    expect(r404?.description).toBe("missing");
+    // Existing 200 untouched.
+    expect(patched.paths?.["/pets"]?.get?.responses?.["200"]).toBeDefined();
+  });
+
+  it("response leaf update can create a new status code", () => {
+    const patched = applySpecOverlay(
+      base(),
+      doc([
+        {
+          target: "$.paths['/pets'].get.responses['404']",
+          update: { description: "missing" },
+        },
+      ]),
+    );
+    const r404 = patched.paths?.["/pets"]?.get?.responses?.["404"];
+    if (r404 && "$ref" in r404) throw new Error("unexpected ref");
+    expect(r404?.description).toBe("missing");
+  });
+
   it("operation update with `responses` field merges per-status (preserves existing fields)", () => {
     const start: typeof base extends () => infer T ? T : never = {
       ...base(),

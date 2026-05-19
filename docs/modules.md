@@ -1,16 +1,17 @@
 # Modules
 
-The package publishes a small root and four subpath entrypoints.
-`oav-core` exposes the same five entrypoints; substitute
+The package publishes a small root and five subpath entrypoints.
+`oav-core` exposes the same six entrypoints; substitute
 `oav-core/...` to import from the lean package.
 
-| Import                    | Surface                                                  |
-| ------------------------- | -------------------------------------------------------- |
-| `@aahoughton/oav`         | `createValidator`, error helpers, formatters, types      |
-| `@aahoughton/oav/schema`  | `compileSchema`, dialects, vocabularies, custom keywords |
-| `@aahoughton/oav/spec`    | `loadSpec`, `resolveSpec`, `applyOverlays`, readers      |
-| `@aahoughton/oav/formats` | Built-in string format validators                        |
-| `@aahoughton/oav/core`    | Error tree model, shared OpenAPI / HTTP types            |
+| Import                         | Surface                                                                         |
+| ------------------------------ | ------------------------------------------------------------------------------- |
+| `@aahoughton/oav`              | `createValidator`, error helpers, formatters, types                             |
+| `@aahoughton/oav/schema`       | `compileSchema`, dialects, vocabularies, custom keywords                        |
+| `@aahoughton/oav/spec`         | `loadSpec`, `resolveSpec`, `applyOverlays`, readers                             |
+| `@aahoughton/oav/overlay-spec` | `translateOverlay`, `applySpecOverlay`: OpenAPI Overlay 1.0 → typed SpecOverlay |
+| `@aahoughton/oav/formats`      | Built-in string format validators                                               |
+| `@aahoughton/oav/core`         | Error tree model, shared OpenAPI / HTTP types                                   |
 
 `oav` also exports `createYamlFileReader`, `createSmartHttpReader`
 (HTTP reader that handles both JSON and YAML by inspecting
