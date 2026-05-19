@@ -28,16 +28,32 @@ overlays exist to avoid.
 
 ## Verb matrix
 
-Every overlay verb falls into one of four categories.
+Every overlay verb falls into one of four categories. Top-level
+metadata (`info`, `servers`, `tags`, `security`, `webhooks`,
+`setExtensions`) and the structured iterators (`modifyOperations`,
+`modifyParameters`) sit alongside the path / operation / component
+verbs below.
 
-| Target                | add                | augment                  | replace                            | remove              |
-| --------------------- | ------------------ | ------------------------ | ---------------------------------- | ------------------- |
-| Paths                 | `addPaths`         | (via `overrides`)        | (via `overrides.replace`)          | `removePaths`       |
-| Component schemas     |                    | `extendSchemas`          | `replaceSchemas`                   | `removeSchemas`     |
-| Operations            |                    | (via additive op fields) | `overrides.operations.<m>.replace` | (via `removePaths`) |
-| Parameters (per op)   | `upsertParameters` |                          | `upsertParameters`                 | `removeParameters`  |
-| Request body (per op) |                    |                          | `requestBody`                      |                     |
-| Responses (per op)    | `responses`        |                          | `responses`                        | `removeResponses`   |
+| Target                  | add                | augment                              | replace                            | remove                      |
+| ----------------------- | ------------------ | ------------------------------------ | ---------------------------------- | --------------------------- |
+| `info`                  |                    | `info` (shallow merge)               |                                    |                             |
+| `servers`               | `addServers`       |                                      | `servers`                          |                             |
+| `tags`                  |                    | `extendTags`                         | `tags` / `replaceTags`             | `removeTags`                |
+| `security`              | `addSecurity`      |                                      | `security`                         |                             |
+| `webhooks`              | `addWebhooks`      |                                      |                                    | `removeWebhooks`            |
+| Root extensions (`x-*`) |                    |                                      | `setExtensions`                    | `setExtensions` (undefined) |
+| Paths                   | `addPaths`         | (via `overrides`)                    | (via `overrides.replace`)          | `removePaths`               |
+| Operations              |                    | (via additive op fields / iterators) | `overrides.operations.<m>.replace` | (via `removePaths`)         |
+| Parameters (per op)     | `upsertParameters` |                                      | `upsertParameters`                 | `removeParameters`          |
+| Request body (per op)   |                    |                                      | `requestBody`                      |                             |
+| Responses (per op)      | `responses`        | `patchResponses`                     | `responses`                        | `removeResponses`           |
+| Component schemas       |                    | `extendSchemas`                      | `replaceSchemas`                   | `removeSchemas`             |
+| Component buckets       |                    | `extend<Bucket>`                     | `replace<Bucket>`                  | `remove<Bucket>`            |
+
+The component bucket trio fans out across `parameters`, `responses`,
+`requestBodies`, `headers`, `securitySchemes`, `links`, `callbacks`,
+and `examples`. The schemas variant wraps in `allOf`; the others
+shallow-merge.
 
 ## Applying an overlay
 
@@ -73,19 +89,44 @@ document is deep-cloned; the input is never mutated.
 
 ## Shape
 
+The full surface lives on the `SpecOverlay`, `PathOverride`,
+`OperationOverride`, `ResponseOverride`, `ModifyOperationsEntry`, and
+`ModifyParametersEntry` types in `@aahoughton/oav/spec`. The roadmap
+TSDoc on each interface lists every field with semantics. The
+snippets below cover the common shapes; see the types for the full
+list.
+
 ```ts
 interface SpecOverlay {
+  // document metadata
+  info?: Partial<InfoObject>;
+  servers?: ServerObject[];
+  addServers?: ServerObject[];
+  tags?: TagObject[];
+  extendTags?: TagObject[];
+  replaceTags?: TagObject[];
+  removeTags?: string[];
+  security?: SecurityRequirementObject[];
+  addSecurity?: SecurityRequirementObject[];
+  addWebhooks?: Record<string, PathItem>;
+  removeWebhooks?: string[];
+  setExtensions?: Record<`x-${string}`, JsonValue | undefined>;
+
+  // paths
   addPaths?: Record<string, PathItem>;
   removePaths?: string[];
   overrides?: Record<string, PathOverride>;
+
+  // structured iterators (predicate-driven)
+  modifyOperations?: ModifyOperationsEntry[];
+  modifyParameters?: ModifyParametersEntry[];
+
+  // component buckets (schemas use allOf-extend; others shallow-merge)
   extendSchemas?: Record<string, SchemaObject>;
   replaceSchemas?: Record<string, SchemaObject>;
   removeSchemas?: string[];
-}
-
-interface PathOverride {
-  operations?: Partial<Record<HttpMethod, OperationOverride>>;
-  pathItem?: Partial<PathItem>;
+  // ...and the same trio for parameters / responses / requestBodies /
+  // headers / securitySchemes / links / callbacks / examples.
 }
 
 interface OperationOverride {
@@ -94,7 +135,18 @@ interface OperationOverride {
   removeParameters?: Array<{ name: string; in: ParameterLocation }>;
   requestBody?: RequestBodyObject;
   responses?: Record<string, ResponseObject>;
+  patchResponses?: Record<string, ResponseOverride>;
   removeResponses?: string[];
+  tags?: string[];
+  addTags?: string[];
+  removeTags?: string[];
+  security?: SecurityRequirementObject[];
+  addSecurity?: SecurityRequirementObject[];
+  removeSecurity?: SecurityRequirementObject[];
+  servers?: ServerObject[];
+  callbacks?: Record<string, CallbackObject | ReferenceObject>;
+  externalDocs?: ExternalDocumentationObject;
+  setExtensions?: Record<`x-${string}`, JsonValue | undefined>;
 }
 ```
 
@@ -165,6 +217,87 @@ starting fresh.
 Runnable demo:
 [`examples/overlay-petstore-endpoint.ts`](../examples/overlay-petstore-endpoint.ts).
 Adds a gateway-required `X-Tenant` header to `POST /pets`.
+
+## Recipes
+
+### Add a server entry
+
+```ts
+const overlay: SpecOverlay = {
+  addServers: [{ url: "https://eu.api.example.com", description: "EU region" }],
+};
+```
+
+`addServers` appends to the existing `servers` array. To replace the
+whole list (e.g. when the upstream-declared dev server doesn't apply
+in production), use `servers` instead.
+
+### Add an operation-level security requirement
+
+```ts
+const overlay: SpecOverlay = {
+  overrides: {
+    "/pets": {
+      operations: {
+        post: { addSecurity: [{ apiKey: [] }] },
+      },
+    },
+  },
+};
+```
+
+The new requirement appends to the operation's existing `security`
+array (OR semantics across requirements). To wipe out the existing
+list first, use `security: [...]` on the operation override; cannot
+be combined with the `add*` / `remove*` variants in the same
+override.
+
+### Modify every operation matching a tag
+
+```ts
+const overlay: SpecOverlay = {
+  modifyOperations: [
+    {
+      where: { tags: ["internal"] },
+      apply: {
+        addSecurity: [{ internalKey: [] }],
+        setExtensions: { "x-internal-only": true },
+      },
+    },
+  ],
+};
+```
+
+`modifyOperations` walks every operation under `paths` and
+`webhooks`, runs the predicate, and applies the override to matches.
+`where` fields combine with AND semantics: `where: { tags: ["x"],
+methods: ["get"] }` matches GET operations tagged `x`. Omit `where`
+to match every operation.
+
+### Extend a component schema
+
+```ts
+const overlay: SpecOverlay = {
+  extendSchemas: {
+    Pet: { required: ["id"] },
+  },
+};
+```
+
+`extendSchemas` wraps the upstream `Pet` schema as
+`allOf: [<upstream>, { required: ["id"] }]`. The original definition
+still applies; the override piles additional constraints on top.
+
+For non-schema component buckets (parameters, responses, headers,
+etc.), the parallel `extend<Bucket>` verb shallow-merges instead:
+
+```ts
+const overlay: SpecOverlay = {
+  extendParameters: {
+    TraceId: { description: "request trace id", required: true },
+  },
+};
+```
 
 ## Things to know
 

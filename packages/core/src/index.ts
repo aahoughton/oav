@@ -63,14 +63,18 @@ export {
 } from "./version.js";
 
 export type {
+  CallbackObject,
   ComponentsObject,
   DiscriminatorObject,
+  ExampleObject,
+  ExternalDocumentationObject,
   HeaderObject,
   HttpMethod,
   HttpRequest,
   HttpResponse,
   InfoObject,
   JsonValue,
+  LinkObject,
   MediaTypeObject,
   OpenAPIDocument,
   OperationObject,

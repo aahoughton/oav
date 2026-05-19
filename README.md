@@ -130,6 +130,55 @@ custom formats, custom keywords, cross-field constraints, error
 budgets, version differences, overlays, and spec-derived middleware
 config.
 
+### Overlay quickstart
+
+`applyOverlays` rewrites the document in memory before the validator
+is constructed. Typical shapes:
+
+```ts
+import { applyOverlays } from "@aahoughton/oav/spec";
+import type { SpecOverlay } from "@aahoughton/oav/spec";
+
+// Add a deployment-specific server. `addServers` appends; `servers`
+// replaces wholesale.
+const eu: SpecOverlay = {
+  addServers: [{ url: "https://eu.api.example.com" }],
+};
+
+// Require an API key on POST /pets without forking the base spec.
+const requireKey: SpecOverlay = {
+  overrides: {
+    "/pets": {
+      operations: { post: { addSecurity: [{ apiKey: [] }] } },
+    },
+  },
+};
+
+// Apply one rule to every operation matching a tag (walks paths and
+// webhooks).
+const lockInternals: SpecOverlay = {
+  modifyOperations: [
+    {
+      where: { tags: ["internal"] },
+      apply: { addSecurity: [{ internalKey: [] }] },
+    },
+  ],
+};
+
+// Tighten an upstream schema; the original definition still applies.
+const requirePetId: SpecOverlay = {
+  extendSchemas: { Pet: { required: ["id"] } },
+};
+
+const patched = applyOverlays(document, [eu, requireKey, lockInternals, requirePetId]);
+const validator = createValidator(patched);
+```
+
+The full verb surface (component-bucket fan-out, predicate iterators,
+operation-level metadata) is documented in
+[`docs/overlays.md`](./docs/overlays.md); cross-cutting integration
+shapes live in [`docs/integration.md`](./docs/integration.md).
+
 ## Where to go next
 
 | Task                                      | Read                                                                   |
