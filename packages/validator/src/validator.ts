@@ -26,6 +26,7 @@ import {
   type CustomKeywordValidator,
   type Dialect,
   type RefResolver,
+  type RegexCompiler,
   type StrictIssue,
 } from "@oav/schema";
 import { deserialize, matchMediaType, matchResponseKey } from "./deserialize.js";
@@ -424,6 +425,15 @@ export interface ValidatorOptions {
    * - `"strict"`: warn on partial features AND unknown keys.
    */
   strict?: "off" | "warn-partial" | "strict";
+  /**
+   * Custom compiler for schema `pattern` keywords and `format: "regex"`.
+   * Defaults to JavaScript's built-in `RegExp` (with u-mode and a
+   * non-u fallback). Override to plug in a library like `re2` when
+   * the spec is attacker-controlled and ReDoS is a concern. See
+   * {@link RegexCompiler} and the "Hardening against untrusted regex
+   * patterns" recipe in `docs/configuration.md`.
+   */
+  regexCompiler?: RegexCompiler;
 
   // --- 4. HTTP-validator-specific extras ---
 
@@ -650,6 +660,7 @@ export function createValidator(spec: OpenAPIDocument, options: ValidatorOptions
       maxErrors: options.maxErrors,
       keywords: options.keywords,
       strict: options.strict,
+      regexCompiler: options.regexCompiler,
     });
     compiledCache.set(schema, c);
     for (const issue of c.stats.strictIssues) strictIssues.push(issue);

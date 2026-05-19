@@ -1,0 +1,128 @@
+import { describe, expect, it } from "vitest";
+import {
+  compileSchema,
+  jsonSchemaDialect,
+  openapi31Dialect,
+  type CompiledRegex,
+  type RegexCompiler,
+} from "../src/index.js";
+
+describe("regexCompiler option", () => {
+  it("default: `pattern` validation behaves as before", () => {
+    const { validate } = compileSchema(
+      { type: "string", pattern: "^\\d+$" },
+      { dialect: jsonSchemaDialect },
+    );
+    expect(validate("123")).toEqual({ valid: true });
+    expect(validate("abc").valid).toBe(false);
+  });
+
+  it('default: `format: "regex"` is auto-registered (no formats option needed)', () => {
+    // The OpenAPI dialects activate format-assertion. Auto-registration
+    // means callers no longer need to thread builtInFormats just to get
+    // the regex format.
+    const { validate } = compileSchema(
+      { type: "string", format: "regex" },
+      { dialect: openapi31Dialect },
+    );
+    expect(validate("^abc$")).toEqual({ valid: true });
+    expect(validate("(unclosed").valid).toBe(false);
+  });
+
+  it("custom regexCompiler is invoked for the `pattern` keyword", () => {
+    const calls: string[] = [];
+    const compiler: RegexCompiler = (pattern) => {
+      calls.push(pattern);
+      // Reject everything, exercise the pattern keyword's failure path.
+      return { test: () => false };
+    };
+    const { validate } = compileSchema(
+      { type: "string", pattern: "^x$" },
+      { dialect: jsonSchemaDialect, regexCompiler: compiler },
+    );
+    const result = validate("x");
+    expect(result.valid).toBe(false);
+    expect(calls).toEqual(["^x$"]);
+  });
+
+  it('custom regexCompiler is invoked for `format: "regex"`', () => {
+    const calls: string[] = [];
+    const accepting: RegexCompiler = (pattern) => {
+      calls.push(pattern);
+      return { test: () => true };
+    };
+    const { validate } = compileSchema(
+      { type: "string", format: "regex" },
+      { dialect: openapi31Dialect, regexCompiler: accepting },
+    );
+    // The format dispatch compiles the value-as-pattern. A custom
+    // compiler that accepts everything makes every string a "valid"
+    // regex, so validation passes.
+    expect(validate("anything-goes")).toEqual({ valid: true });
+    expect(calls).toEqual(["anything-goes"]);
+  });
+
+  it("rejects from a custom regexCompiler surface as format-validation failures", () => {
+    const rejecting: RegexCompiler = (pattern) => {
+      if (pattern.includes("(a+)+")) throw new Error("redos suspect");
+      return new RegExp(pattern);
+    };
+    const { validate } = compileSchema(
+      { type: "string", format: "regex" },
+      { dialect: openapi31Dialect, regexCompiler: rejecting },
+    );
+    expect(validate("ok").valid).toBe(true);
+    expect(validate("(a+)+").valid).toBe(false);
+  });
+
+  it("compiler is called once per unique pattern (memoized)", () => {
+    let calls = 0;
+    const compiler: RegexCompiler = (pattern) => {
+      calls += 1;
+      return new RegExp(pattern, "u");
+    };
+    const { validate } = compileSchema(
+      {
+        type: "array",
+        items: { type: "string", pattern: "^id-" },
+      },
+      { dialect: jsonSchemaDialect, regexCompiler: compiler },
+    );
+    validate(["id-1", "id-2", "id-3"]);
+    validate(["id-4", "id-5"]);
+    expect(calls).toBe(1);
+  });
+
+  it("user-supplied `regex` format overrides the auto-registered one", () => {
+    let userCompilerCalls = 0;
+    const userRegex = (_value: string): boolean => {
+      userCompilerCalls += 1;
+      return false; // always fail
+    };
+    const { validate } = compileSchema(
+      { type: "string", format: "regex" },
+      {
+        dialect: openapi31Dialect,
+        formats: { regex: userRegex },
+      },
+    );
+    expect(validate("^x$").valid).toBe(false);
+    expect(userCompilerCalls).toBe(1);
+  });
+
+  it("CompiledRegex shape: returning a duck-typed object with .test() works", () => {
+    // Pin the contract: the runtime only reads .test(s). Anything that
+    // satisfies CompiledRegex is acceptable as a compiler return value.
+    const compiler: RegexCompiler = (pattern): CompiledRegex => ({
+      test(s) {
+        return s === pattern.replace(/^\^|\$$/g, "");
+      },
+    });
+    const { validate } = compileSchema(
+      { type: "string", pattern: "^hello$" },
+      { dialect: jsonSchemaDialect, regexCompiler: compiler },
+    );
+    expect(validate("hello").valid).toBe(true);
+    expect(validate("world").valid).toBe(false);
+  });
+});
