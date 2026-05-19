@@ -132,7 +132,7 @@
     "tsup": "8.5.1",
     "typescript": "5.9.3",
     "vitest": "4.1.5",
-    "yaml": "2.8.4"
+    "yaml": "2.9.0"
   },
   "engines": {
     "node": ">=22"
