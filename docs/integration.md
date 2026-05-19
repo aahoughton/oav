@@ -530,6 +530,45 @@ responses, etc.) shallow-merge instead.
 Overlays apply in order; later overlays win on conflict. The base
 document is deep-cloned, never mutated.
 
+### Consuming spec-format overlays
+
+OpenAPI's own [Overlay 1.0](https://spec.openapis.org/overlay/1.0.0)
+spec describes overlays as a list of JSONPath-targeted actions
+(`{ target, update? | remove? }`). When a third-party tool hands you
+an overlay in that format, `@aahoughton/oav/overlay-spec` translates
+it into a typed `SpecOverlay` so it flows through the same
+`applyOverlays` path:
+
+```ts
+import { applySpecOverlay } from "@aahoughton/oav/overlay-spec";
+
+const overlayDoc = {
+  overlay: "1.0.0",
+  info: { title: "tenant overlay", version: "1.0.0" },
+  actions: [
+    { target: "$.info", update: { description: "tenant-A view" } },
+    {
+      target: "$.paths['/pets'].get.parameters[?(@.name=='X-Tenant' && @.in=='header')]",
+      update: { required: true, schema: { type: "string" } },
+    },
+    { target: "$.tags[?(@.name=='internal')]", remove: true },
+  ],
+};
+
+const patched = applySpecOverlay(base, overlayDoc);
+```
+
+The translator does not ship a JSONPath engine. It recognises a
+closed set of `target` shapes (full list in the
+[`@oav/overlay-spec` README](../packages/overlay-spec/README.md))
+and throws `UnrecognisedTargetError` on anything outside the set,
+with the offending target string in the message. No partial
+application: a single malformed action aborts the translation.
+
+For overlays you author yourself, prefer the typed `SpecOverlay`
+surface in `@aahoughton/oav/spec`. The translator is the import path
+when you have to consume external spec-format input.
+
 ### Status-code mapping
 
 Default mapping:

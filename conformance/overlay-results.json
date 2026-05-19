@@ -1,0 +1,245 @@
+{
+  "cases": 32,
+  "envelopePass": 32,
+  "envelopeFail": 0,
+  "translatorOk": 1,
+  "translatorUnrecognised": 5,
+  "translatorError": 6,
+  "results": [
+    {
+      "file": "actions-array-modification-example-remove.yaml",
+      "expected": "pass",
+      "envelopeValid": true,
+      "envelopeOk": true,
+      "translation": "unrecognised-target",
+      "reason": "OpenAPI Overlay target \"$.paths.*.get.parameters\" is not recognised: only `.parameters[?(@.name=='X' && @.in=='Y')]` is recognised"
+    },
+    {
+      "file": "actions-array-modification-example-update.yaml",
+      "expected": "pass",
+      "envelopeValid": true,
+      "envelopeOk": true,
+      "translation": "unrecognised-target",
+      "reason": "OpenAPI Overlay target \"$.paths.*.get.parameters[?@.name == 'dummy']\" is not recognised: expected \"(\" at position 26, got \"@\""
+    },
+    {
+      "file": "actions-description.yaml",
+      "expected": "pass",
+      "envelopeValid": true,
+      "envelopeOk": true,
+      "translation": "translator-error",
+      "reason": "overlay action #0 (target \"$\"): must set either `update` or `remove: true`"
+    },
+    {
+      "file": "actions-extensions.yaml",
+      "expected": "pass",
+      "envelopeValid": true,
+      "envelopeOk": true,
+      "translation": "translator-error",
+      "reason": "overlay action #0 (target \"$\"): must set either `update` or `remove: true`"
+    },
+    {
+      "file": "actions-structured-overlay-example.yaml",
+      "expected": "pass",
+      "envelopeValid": true,
+      "envelopeOk": true,
+      "translation": "unrecognised-target",
+      "reason": "OpenAPI Overlay target \"$\" is not recognised: expected at least one segment after `$`"
+    },
+    {
+      "file": "actions-targeted-overlay-example.yaml",
+      "expected": "pass",
+      "envelopeValid": true,
+      "envelopeOk": true,
+      "translation": "ok"
+    },
+    {
+      "file": "actions-traits-example.yaml",
+      "expected": "pass",
+      "envelopeValid": true,
+      "envelopeOk": true,
+      "translation": "unrecognised-target",
+      "reason": "OpenAPI Overlay target \"$.paths.*.get[?@.x-oai-traits.paged]\" is not recognised: expected \"(\" at position 15, got \"@\""
+    },
+    {
+      "file": "actions-update-with-remove.yaml",
+      "expected": "pass",
+      "envelopeValid": true,
+      "envelopeOk": true,
+      "translation": "translator-error",
+      "reason": "overlay action #0 (target \"$.paths.*.get.parameters\"): cannot set both `update` and `remove: true`"
+    },
+    {
+      "file": "actions-wildcard-overlay-example.yaml",
+      "expected": "pass",
+      "envelopeValid": true,
+      "envelopeOk": true,
+      "translation": "unrecognised-target",
+      "reason": "OpenAPI Overlay target \"$.paths.*.get.parameters[?@.name=='filter' && @.in=='query']\" is not recognised: expected \"(\" at position 26, got \"@\""
+    },
+    {
+      "file": "info-extensions.yaml",
+      "expected": "pass",
+      "envelopeValid": true,
+      "envelopeOk": true,
+      "translation": "translator-error",
+      "reason": "overlay action #0 (target \"$\"): must set either `update` or `remove: true`"
+    },
+    {
+      "file": "minimal.yaml",
+      "expected": "pass",
+      "envelopeValid": true,
+      "envelopeOk": true,
+      "translation": "translator-error",
+      "reason": "overlay action #0 (target \"$\"): must set either `update` or `remove: true`"
+    },
+    {
+      "file": "root-extensions.yaml",
+      "expected": "pass",
+      "envelopeValid": true,
+      "envelopeOk": true,
+      "translation": "translator-error",
+      "reason": "overlay action #0 (target \"$\"): must set either `update` or `remove: true`"
+    },
+    {
+      "file": "action-remove-invalid-type.yaml",
+      "expected": "fail",
+      "envelopeValid": false,
+      "envelopeOk": true,
+      "translation": "n/a"
+    },
+    {
+      "file": "action-target-invalid-type.yaml",
+      "expected": "fail",
+      "envelopeValid": false,
+      "envelopeOk": true,
+      "translation": "n/a"
+    },
+    {
+      "file": "actions-invalid-description.yaml",
+      "expected": "fail",
+      "envelopeValid": false,
+      "envelopeOk": true,
+      "translation": "n/a"
+    },
+    {
+      "file": "actions-invalid-target.yaml",
+      "expected": "fail",
+      "envelopeValid": false,
+      "envelopeOk": true,
+      "translation": "n/a"
+    },
+    {
+      "file": "actions-invalid-type.yaml",
+      "expected": "fail",
+      "envelopeValid": false,
+      "envelopeOk": true,
+      "translation": "n/a"
+    },
+    {
+      "file": "actions-item-invalid-type.yaml",
+      "expected": "fail",
+      "envelopeValid": false,
+      "envelopeOk": true,
+      "translation": "n/a"
+    },
+    {
+      "file": "actions-minimal.yaml",
+      "expected": "fail",
+      "envelopeValid": false,
+      "envelopeOk": true,
+      "translation": "n/a"
+    },
+    {
+      "file": "actions-missing-target.yaml",
+      "expected": "fail",
+      "envelopeValid": false,
+      "envelopeOk": true,
+      "translation": "n/a"
+    },
+    {
+      "file": "actions-missing.yaml",
+      "expected": "fail",
+      "envelopeValid": false,
+      "envelopeOk": true,
+      "translation": "n/a"
+    },
+    {
+      "file": "actions-not-unique.yaml",
+      "expected": "fail",
+      "envelopeValid": false,
+      "envelopeOk": true,
+      "translation": "n/a"
+    },
+    {
+      "file": "extends-invalid-type.yaml",
+      "expected": "fail",
+      "envelopeValid": false,
+      "envelopeOk": true,
+      "translation": "n/a"
+    },
+    {
+      "file": "info-invalid-type.yaml",
+      "expected": "fail",
+      "envelopeValid": false,
+      "envelopeOk": true,
+      "translation": "n/a"
+    },
+    {
+      "file": "info-missing-title.yaml",
+      "expected": "fail",
+      "envelopeValid": false,
+      "envelopeOk": true,
+      "translation": "n/a"
+    },
+    {
+      "file": "info-missing-version.yaml",
+      "expected": "fail",
+      "envelopeValid": false,
+      "envelopeOk": true,
+      "translation": "n/a"
+    },
+    {
+      "file": "info-title-invalid-type.yaml",
+      "expected": "fail",
+      "envelopeValid": false,
+      "envelopeOk": true,
+      "translation": "n/a"
+    },
+    {
+      "file": "info-version-invalid-type.yaml",
+      "expected": "fail",
+      "envelopeValid": false,
+      "envelopeOk": true,
+      "translation": "n/a"
+    },
+    {
+      "file": "invalid-overlay-version.yaml",
+      "expected": "fail",
+      "envelopeValid": false,
+      "envelopeOk": true,
+      "translation": "n/a"
+    },
+    {
+      "file": "not-an-object.yaml",
+      "expected": "fail",
+      "envelopeValid": false,
+      "envelopeOk": true,
+      "translation": "n/a"
+    },
+    {
+      "file": "overlay-invalid-pattern.yaml",
+      "expected": "fail",
+      "envelopeValid": false,
+      "envelopeOk": true,
+      "translation": "n/a"
+    },
+    {
+      "file": "root-invalid-property.yaml",
+      "expected": "fail",
+      "envelopeValid": false,
+      "envelopeOk": true,
+      "translation": "n/a"
+    }
+  ]
+}

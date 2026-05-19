@@ -22,10 +22,10 @@ const validator = createValidator(document);
 | `oav-core` | Lean. Zero runtime dependencies. JSON specs only (or pre-parsed objects via the memory reader). Use on Cloudflare Workers, Vercel Edge, Lambda@Edge, or anywhere the YAML/CLI footprint isn't worth it. |
 
 `oav` re-exports every subpath of `oav-core` at matching paths
-(`oav/schema`, `oav/spec`, `oav/formats`, `oav/core`,
-`oav/schema/internals`, `oav/validator/internals`). Code written
-against one swaps to the other by changing the package name in
-imports; no surface changes.
+(`oav/schema`, `oav/spec`, `oav/overlay-spec`, `oav/formats`,
+`oav/core`, `oav/schema/internals`, `oav/validator/internals`).
+Code written against one swaps to the other by changing the package
+name in imports; no surface changes.
 
 ## What this package adds
 
@@ -53,6 +53,8 @@ is re-exported from `oav-core`. Documentation for those lives in:
   Schema compiler.
 - [`packages/spec/README.md`](../spec/README.md): multi-file
   loader, resolver, overlays.
+- [`packages/overlay-spec/README.md`](../overlay-spec/README.md):
+  OpenAPI Overlay 1.0 spec-format translator.
 - [`packages/formats/README.md`](../formats/README.md): built-in
   string format validators.
 

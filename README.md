@@ -57,9 +57,9 @@ npm install @aahoughton/oav-express5   # Express 5 adapter
 npm install @aahoughton/oav-fastify    # Fastify adapter
 ```
 
-`oav` re-exports `oav-core` at four subpath entrypoints (`/schema`,
-`/spec`, `/formats`, `/core`); on the lean package, substitute
-`oav-core` in imports that don't touch the YAML readers
+`oav` re-exports `oav-core` at five subpath entrypoints (`/schema`,
+`/spec`, `/overlay-spec`, `/formats`, `/core`); on the lean package,
+substitute `oav-core` in imports that don't touch the YAML readers
 (`createYamlFileReader`, `createSmartHttpReader`) or the CLI. See
 [`docs/modules.md`](./docs/modules.md) for what each subpath exports.
 

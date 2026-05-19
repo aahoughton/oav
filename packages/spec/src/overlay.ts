@@ -45,6 +45,8 @@ export interface PathOverride {
  * @public
  */
 export interface ResponseOverride {
+  /** Set or replace the response's `description`. */
+  description?: string;
   /**
    * Shallow-merge into the response's `headers` map, keyed by header
    * name. Existing entries with the same key are overwritten.
@@ -114,8 +116,10 @@ export interface OperationOverride {
   /**
    * Per-status response patches. Unlike {@link OperationOverride.responses}
    * which replaces a whole response by status code, `patchResponses`
-   * modifies the existing response (headers / content) in place. Throws
-   * if the target status code isn't present on the operation.
+   * modifies the existing response (description / headers / content) in
+   * place. When the target status isn't present on the operation, the
+   * patch is applied to an empty response and becomes the new entry
+   * (matches OpenAPI Overlay 1.0 merge-on-missing semantics).
    */
   patchResponses?: Record<string, ResponseOverride>;
   /** Remove response status codes. Silent no-op on missing entries. */
@@ -145,6 +149,14 @@ export interface OperationOverride {
   callbacks?: Record<string, CallbackObject | ReferenceObject>;
   /** Set the operation's `externalDocs`. Replaces any existing value. */
   externalDocs?: ExternalDocumentationObject;
+  /** Set or replace the operation's `operationId`. */
+  operationId?: string;
+  /** Set or replace the operation's `summary`. */
+  summary?: string;
+  /** Set or replace the operation's `description`. */
+  description?: string;
+  /** Set or replace the operation's `deprecated` flag. */
+  deprecated?: boolean;
   /**
    * Set or remove `x-*` extension fields on the operation. A `undefined`
    * value deletes the field; any other value sets / replaces it.
@@ -1014,6 +1026,10 @@ const OPERATION_OVERRIDE_ADDITIVE_KEYS = [
   "servers",
   "callbacks",
   "externalDocs",
+  "operationId",
+  "summary",
+  "description",
+  "deprecated",
   "setExtensions",
 ] as const;
 
@@ -1076,7 +1092,11 @@ function applyOperationOverride(op: OperationObject, override: OperationOverride
     for (const [status, patch] of Object.entries(override.patchResponses)) {
       const existing = responses[status];
       if (existing === undefined) {
-        throw new Error(`overlay patchResponses targets unknown response status ${status}`);
+        // Status not on the operation yet: treat the patch as the
+        // initial response. Matches OpenAPI Overlay 1.0 merge
+        // semantics, which create on missing rather than erroring.
+        responses[status] = applyResponseOverride({}, patch);
+        continue;
       }
       if ("$ref" in existing) {
         throw new Error(
@@ -1130,6 +1150,11 @@ function applyOperationOverride(op: OperationObject, override: OperationOverride
 
   if (override.externalDocs) next.externalDocs = override.externalDocs;
 
+  if (override.operationId !== undefined) next.operationId = override.operationId;
+  if (override.summary !== undefined) next.summary = override.summary;
+  if (override.description !== undefined) next.description = override.description;
+  if (override.deprecated !== undefined) next.deprecated = override.deprecated;
+
   if (override.setExtensions) {
     for (const [key, value] of Object.entries(override.setExtensions) as Array<
       [`x-${string}`, JsonValue | undefined]
@@ -1150,6 +1175,7 @@ function applyResponseOverride(
   override: ResponseOverride,
 ): ResponseObject {
   const next: ResponseObject = { ...response };
+  if (override.description !== undefined) next.description = override.description;
   if (override.headers) {
     next.headers = { ...response.headers, ...override.headers };
   }

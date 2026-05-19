@@ -734,20 +734,32 @@ describe("applyOverlays: operation-level expansion", () => {
     });
   });
 
-  it("patchResponses on a missing status code throws", () => {
-    expect(() =>
-      applyOverlays(basePlus(), [
-        {
-          overrides: {
-            "/pets": {
-              operations: {
-                get: { patchResponses: { "404": { headers: {} } } },
+  it("patchResponses on a missing status code creates the response from the patch", () => {
+    // Matches OpenAPI Overlay 1.0 merge semantics for new keys:
+    // missing target is created, not an error. A typed author who
+    // really wants to fail on missing status can do their own
+    // existence check before constructing the overlay.
+    const patched = applyOverlays(basePlus(), [
+      {
+        overrides: {
+          "/pets": {
+            operations: {
+              get: {
+                patchResponses: {
+                  "404": { description: "not found", headers: { Trace: {} } },
+                },
               },
             },
           },
         },
-      ]),
-    ).toThrow(/patchResponses targets unknown response status 404/);
+      },
+    ]);
+    const r404 = patched.paths?.["/pets"]?.get?.responses?.["404"];
+    if (r404 && "$ref" in r404) throw new Error("unexpected ref");
+    expect(r404?.description).toBe("not found");
+    expect(r404?.headers?.["Trace"]).toBeDefined();
+    // Existing responses on the operation are preserved.
+    expect(patched.paths?.["/pets"]?.get?.responses?.["200"]).toBeDefined();
   });
 });
 

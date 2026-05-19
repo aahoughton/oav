@@ -10,6 +10,7 @@ const PACKAGES = [
   "schema",
   "formats",
   "spec",
+  "overlay-spec",
   "router",
   "validator",
   "cli",

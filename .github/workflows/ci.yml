@@ -97,6 +97,12 @@ jobs:
       - name: OpenAPI conformance cases
         working-directory: conformance
         run: pnpm tsx run-openapi-cases.ts
+      - name: clone Overlay-Specification
+        working-directory: conformance
+        run: git clone --depth 1 https://github.com/OAI/Overlay-Specification.git
+      - name: OpenAPI Overlay 1.0 suite
+        working-directory: conformance
+        run: pnpm tsx run-overlay-suite.ts --check-baseline
 
   json-schema-suite:
     # Full upstream JSON Schema Test Suite. Runs nightly and on
