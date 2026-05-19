@@ -62,12 +62,24 @@ Both functions throw on the first malformed or unrecognised action; no partial a
 | `$.paths.*.<method>` (update)                                             | `overrides['*'].operations[<method>]`                        |
 | `$.paths['/x'].<method>.parameters[?(@.name=='X' && @.in=='Y')]` (update) | `upsertParameters`                                           |
 | `$.paths['/x'].<method>.parameters[?(@.name=='X' && @.in=='Y')]` (remove) | `removeParameters`                                           |
-| `$.paths['/x'].<method>.responses['200']` (update)                        | per-status `responses` merge                                 |
+| `$.paths['/x'].<method>.responses['200']` (update)                        | `patchResponses` (in-place merge: existing fields survive)   |
 | `$.paths['/x'].<method>.responses['200']` (remove)                        | `removeResponses`                                            |
 | `$.paths.*.*[?(@.tags contains 'X')]` (update)                            | `modifyOperations` with `where.tags`                         |
 | `$.paths['/x'].*[?(@.tags contains 'X')]` (update)                        | `modifyOperations` with `where.tags` and `where.pathPattern` |
 
-The `update` payload at each target is a partial OpenAPI object (the OAS shape, not oav's `SpecOverlay`). The translator maps recognised OAS fields onto the typed verbs: `tags: ["x"]` becomes `addTags: ["x"]`, `security: [...]` becomes `addSecurity: [...]`, `x-*` fields become `setExtensions`, callbacks merge by key, and so on. Fields that don't map (e.g. `parameters` directly on an operation update, where the typed surface wants `upsertParameters`) throw with a hint.
+The `update` payload at each target is a partial OpenAPI object (the OAS shape, not oav's `SpecOverlay`). The translator maps recognised OAS fields onto the typed verbs:
+
+- Scalar operation fields (`operationId`, `summary`, `description`, `deprecated`) flow through `OperationOverride`'s matching scalar fields.
+- `tags: ["x"]` becomes `addTags: ["x"]`.
+- `security: [...]` becomes `addSecurity: [...]`.
+- `responses: { "200": { ... } }` on an operation routes per-status through `patchResponses`, so existing `description` / `headers` / `content` on each status survive a partial update.
+- `callbacks` shallow-merge by key.
+- `x-*` extension fields become `setExtensions`.
+- HTTP method fields on a `$.paths['/x']` payload (e.g. `update: { get: { ... } }`) are split out and routed through `operations[<method>]` instead of `pathItem`, so the existing operation isn't clobbered by `Object.assign`.
+
+Fields that don't map (e.g. `parameters` directly on an operation update, where the typed surface wants `upsertParameters`) throw with a hint pointing at the leaf-path target.
+
+For array-valued targets (`$.servers`, `$.tags`, `$.security`), the OpenAPI Overlay 1.0 canonical form is `update: { /* one entry */ }` (a single object to append). An `update: [{...}, ...]` array form is also accepted as a batched-append shorthand.
 
 ## Error policy
 

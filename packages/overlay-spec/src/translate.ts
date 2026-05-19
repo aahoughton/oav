@@ -3,7 +3,6 @@ import type {
   JsonValue,
   ParameterLocation,
   ParameterObject,
-  ResponseObject,
   ServerObject,
   TagObject,
 } from "@oav/core";
@@ -11,6 +10,7 @@ import type {
   ModifyOperationsEntry,
   OperationOverride,
   PathOverride,
+  ResponseOverride,
   SpecOverlay,
 } from "@oav/spec";
 import {
@@ -132,7 +132,7 @@ function translateServers(
       overlay.servers = [];
       return;
     }
-    const items = asArray(target, action.value).map(
+    const items = asEntries(target, action.value).map(
       (s) => asObject(target, s) as unknown as ServerObject,
     );
     overlay.addServers = [...(overlay.addServers ?? []), ...items];
@@ -154,7 +154,7 @@ function translateTags(
       overlay.tags = [];
       return;
     }
-    const items = asArray(target, action.value).map(
+    const items = asEntries(target, action.value).map(
       (t) => asObject(target, t) as unknown as TagObject,
     );
     overlay.extendTags = [...(overlay.extendTags ?? []), ...items];
@@ -192,7 +192,7 @@ function translateSecurity(
     overlay.security = [];
     return;
   }
-  const items = asArray(target, action.value);
+  const items = asEntries(target, action.value);
   overlay.addSecurity = [
     ...(overlay.addSecurity ?? []),
     ...items.map((r) => asObject(target, r) as Record<string, string[]>),
@@ -379,11 +379,34 @@ function applyPathLevel(
     return;
   }
   const payload = asObject(target, action.value);
+  // Split the payload by what it targets: HTTP-method fields route to
+  // operation overrides (so existing fields on the operation are preserved
+  // by applyOperationOverride's per-field merge), everything else goes to
+  // pathItem (which uses Object.assign and is safe for scalars and the
+  // path-level `parameters` array).
+  const pathItemFields: Record<string, JsonValue | undefined> = {};
+  for (const [k, v] of Object.entries(payload)) {
+    if (HTTP_METHODS.has(k as HttpMethod)) {
+      if (typeof v !== "object" || v === null || Array.isArray(v)) {
+        throw new Error(
+          `overlay action for target ${JSON.stringify(target)} has non-object payload for HTTP method \`${k}\``,
+        );
+      }
+      const opOverride = mergeOperationOverride(
+        getOperationOverride(overlay, pathKey, k as HttpMethod),
+        v as Record<string, JsonValue | undefined>,
+      );
+      setOperationOverride(overlay, pathKey, k as HttpMethod, opOverride);
+    } else {
+      pathItemFields[k] = v;
+    }
+  }
+  if (Object.keys(pathItemFields).length === 0) return;
   const overrides = ensureOverrides(overlay);
   const existing = overrides[pathKey] ?? {};
   overrides[pathKey] = {
     ...existing,
-    pathItem: { ...existing.pathItem, ...payload },
+    pathItem: { ...existing.pathItem, ...pathItemFields },
   };
 }
 
@@ -403,7 +426,6 @@ function applyOperationLevel(
   const payload = asObject(target, action.value);
   const opOverride: OperationOverride = mergeOperationOverride(
     getOperationOverride(overlay, pathKey, method),
-    { replace: undefined, ...(payload as Partial<OperationOverride>) },
     payload,
   );
   setOperationOverride(overlay, pathKey, method, opOverride);
@@ -412,13 +434,13 @@ function applyOperationLevel(
 /**
  * Merge a spec-format payload into an existing OperationOverride. The
  * spec's update payload is a partial OperationObject (operationId,
- * tags, summary, etc.); we map structural fields into the typed
- * OperationOverride shape, falling back to the catch-all that turns
- * unknown fields into part of a fresh operation fragment.
+ * tags, summary, responses, ...); each recognised OAS field maps onto
+ * the typed verb that gives the spec's deep-merge semantics. Unknown
+ * fields (other than `x-*`) error so the action isn't silently
+ * dropped at apply time.
  */
 function mergeOperationOverride(
   base: OperationOverride,
-  _typed: Partial<OperationOverride>,
   payload: Record<string, JsonValue | undefined>,
 ): OperationOverride {
   const next: OperationOverride = { ...base };
@@ -445,28 +467,48 @@ function mergeOperationOverride(
         next.callbacks = { ...next.callbacks, ...(v as Record<string, never>) };
         break;
       }
+      case "responses": {
+        if (typeof v !== "object" || v === null || Array.isArray(v)) {
+          throw new Error(`overlay action payload field \`responses\` must be an object`);
+        }
+        // Per-status patches via patchResponses (in-place merge), so
+        // existing description/headers/content on each status survive
+        // a partial update.
+        const patches = next.patchResponses ?? {};
+        for (const [status, r] of Object.entries(v as Record<string, JsonValue | undefined>)) {
+          if (typeof r !== "object" || r === null || Array.isArray(r)) {
+            throw new Error(
+              `overlay action payload field \`responses["${status}"]\` must be an object`,
+            );
+          }
+          patches[status] = mergeResponseOverride(
+            patches[status] ?? {},
+            r as Record<string, JsonValue | undefined>,
+          );
+        }
+        next.patchResponses = patches;
+        break;
+      }
       case "servers":
       case "externalDocs":
-      case "requestBody":
+      case "requestBody": {
+        // Scalar / atomic fields with a 1:1 typed verb. Last write wins.
+        (next as Record<string, unknown>)[k] = v as JsonValue;
+        break;
+      }
       case "operationId":
       case "summary":
       case "description":
-      case "deprecated":
-      case "parameters":
-      case "responses": {
-        // Pass-through fields. Most cases just slot into the
-        // OperationObject-shaped fragment via a follow-up replace; we
-        // don't have a per-field "set this scalar" verb, so we route
-        // through `replace` by merging onto whatever was there. For
-        // structural fields like `parameters`/`responses` this is the
-        // wrong shape, so they're explicitly errors here.
-        if (k === "parameters" || k === "responses") {
-          throw new Error(
-            `overlay action targeting an operation cannot carry \`${k}\` directly; target the leaf path instead`,
-          );
-        }
+      case "deprecated": {
+        // OperationOverride scalar pass-through; applied verbatim by
+        // applyOperationOverride.
         (next as Record<string, unknown>)[k] = v as JsonValue;
         break;
+      }
+      case "parameters": {
+        throw new Error(
+          `overlay action targeting an operation cannot carry \`parameters\` directly; target the leaf path instead`,
+        );
       }
       default: {
         if (k.startsWith("x-")) {
@@ -478,6 +520,50 @@ function mergeOperationOverride(
         }
         throw new Error(
           `overlay action payload field \`${k}\` is not supported for operation targets`,
+        );
+      }
+    }
+  }
+  return next;
+}
+
+function mergeResponseOverride(
+  base: ResponseOverride,
+  payload: Record<string, JsonValue | undefined>,
+): ResponseOverride {
+  const next: ResponseOverride = { ...base };
+  for (const [k, v] of Object.entries(payload)) {
+    switch (k) {
+      case "description": {
+        if (typeof v !== "string") {
+          throw new Error(`overlay action payload field \`description\` must be a string`);
+        }
+        next.description = v;
+        break;
+      }
+      case "headers": {
+        if (typeof v !== "object" || v === null || Array.isArray(v)) {
+          throw new Error(`overlay action payload field \`headers\` must be an object`);
+        }
+        next.headers = {
+          ...next.headers,
+          ...(v as Record<string, never>),
+        };
+        break;
+      }
+      case "content": {
+        if (typeof v !== "object" || v === null || Array.isArray(v)) {
+          throw new Error(`overlay action payload field \`content\` must be an object`);
+        }
+        next.content = {
+          ...next.content,
+          ...(v as Record<string, never>),
+        };
+        break;
+      }
+      default: {
+        throw new Error(
+          `overlay action payload field \`responses[<status>].${k}\` is not supported`,
         );
       }
     }
@@ -564,12 +650,13 @@ function applyOperationResponses(
   if (action.kind === "remove") {
     opOverride.removeResponses = [...(opOverride.removeResponses ?? []), status];
   } else {
+    // patchResponses (in-place merge) so existing fields on the
+    // response object (description, headers, content) survive a
+    // partial update. Wholesale-replace-per-status would drop them.
     const payload = asObject(target, action.value);
-    const existingForStatus = opOverride.responses?.[status] as ResponseObject | undefined;
-    opOverride.responses = {
-      ...opOverride.responses,
-      [status]: { ...existingForStatus, ...payload } as ResponseObject,
-    };
+    const patches = opOverride.patchResponses ?? {};
+    patches[status] = mergeResponseOverride(patches[status] ?? {}, payload);
+    opOverride.patchResponses = patches;
   }
   setOperationOverride(overlay, pathKey, method, opOverride);
 }
@@ -607,11 +694,11 @@ function applyModifyOperations(
 }
 
 function payloadToOperationOverride(
-  target: string,
+  _target: string,
   payload: Record<string, JsonValue | undefined>,
 ): OperationOverride {
   // Reuse the operation-level merger against an empty base.
-  return mergeOperationOverride({}, payload as Partial<OperationOverride>, payload);
+  return mergeOperationOverride({}, payload);
 }
 
 // ----------------------------------------------------------- overlay helpers
@@ -662,13 +749,19 @@ function asObject(
   return value as Record<string, JsonValue | undefined>;
 }
 
-function asArray(target: string, value: JsonValue | undefined): JsonValue[] {
-  if (!Array.isArray(value)) {
-    throw new Error(
-      `overlay action for target ${JSON.stringify(target)} expects an array \`update\` payload`,
-    );
-  }
-  return value;
+/**
+ * Normalize an array-target's `update` payload into a list of entries
+ * to append. Per OpenAPI Overlay 1.0, when `target` selects an array
+ * the `update` value is a single entry; the spec uses
+ * `target: $.paths.*.get.parameters` with a single parameter object as
+ * `update`. We also accept an array of entries for callers that batch.
+ */
+function asEntries(target: string, value: JsonValue | undefined): JsonValue[] {
+  if (Array.isArray(value)) return value;
+  if (typeof value === "object" && value !== null) return [value];
+  throw new Error(
+    `overlay action for target ${JSON.stringify(target)} expects an object or array of objects as \`update\``,
+  );
 }
 
 function expectFieldEq(target: string, filter: FilterExpr, field: string): string {

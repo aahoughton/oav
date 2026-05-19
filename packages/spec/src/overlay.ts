@@ -45,6 +45,8 @@ export interface PathOverride {
  * @public
  */
 export interface ResponseOverride {
+  /** Set or replace the response's `description`. */
+  description?: string;
   /**
    * Shallow-merge into the response's `headers` map, keyed by header
    * name. Existing entries with the same key are overwritten.
@@ -145,6 +147,14 @@ export interface OperationOverride {
   callbacks?: Record<string, CallbackObject | ReferenceObject>;
   /** Set the operation's `externalDocs`. Replaces any existing value. */
   externalDocs?: ExternalDocumentationObject;
+  /** Set or replace the operation's `operationId`. */
+  operationId?: string;
+  /** Set or replace the operation's `summary`. */
+  summary?: string;
+  /** Set or replace the operation's `description`. */
+  description?: string;
+  /** Set or replace the operation's `deprecated` flag. */
+  deprecated?: boolean;
   /**
    * Set or remove `x-*` extension fields on the operation. A `undefined`
    * value deletes the field; any other value sets / replaces it.
@@ -1014,6 +1024,10 @@ const OPERATION_OVERRIDE_ADDITIVE_KEYS = [
   "servers",
   "callbacks",
   "externalDocs",
+  "operationId",
+  "summary",
+  "description",
+  "deprecated",
   "setExtensions",
 ] as const;
 
@@ -1130,6 +1144,11 @@ function applyOperationOverride(op: OperationObject, override: OperationOverride
 
   if (override.externalDocs) next.externalDocs = override.externalDocs;
 
+  if (override.operationId !== undefined) next.operationId = override.operationId;
+  if (override.summary !== undefined) next.summary = override.summary;
+  if (override.description !== undefined) next.description = override.description;
+  if (override.deprecated !== undefined) next.deprecated = override.deprecated;
+
   if (override.setExtensions) {
     for (const [key, value] of Object.entries(override.setExtensions) as Array<
       [`x-${string}`, JsonValue | undefined]
@@ -1150,6 +1169,7 @@ function applyResponseOverride(
   override: ResponseOverride,
 ): ResponseObject {
   const next: ResponseObject = { ...response };
+  if (override.description !== undefined) next.description = override.description;
   if (override.headers) {
     next.headers = { ...response.headers, ...override.headers };
   }

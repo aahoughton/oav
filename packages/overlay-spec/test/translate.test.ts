@@ -236,7 +236,7 @@ describe("translateOverlay: paths and operations", () => {
     ]);
   });
 
-  it("...responses['200'] update → operation responses merge", () => {
+  it("...responses['200'] update → patchResponses (in-place merge, preserves existing fields)", () => {
     const o = translateOverlay(
       doc([
         {
@@ -245,9 +245,12 @@ describe("translateOverlay: paths and operations", () => {
         },
       ]),
     );
-    expect(o.overrides?.["/pets"]?.operations?.["get"]?.responses?.["200"]).toEqual({
+    // patchResponses (not responses) so the applier merges into the
+    // existing response instead of replacing it wholesale.
+    expect(o.overrides?.["/pets"]?.operations?.["get"]?.patchResponses?.["200"]).toEqual({
       description: "okay",
     });
+    expect(o.overrides?.["/pets"]?.operations?.["get"]?.responses).toBeUndefined();
   });
 
   it("...responses['200'] remove → removeResponses", () => {
@@ -351,5 +354,138 @@ describe("applySpecOverlay", () => {
     expect(patched.paths?.["/pets"]).toBeUndefined();
     // Input untouched.
     expect(start.paths?.["/pets"]).toBeDefined();
+  });
+
+  // The bugs in these tests would only surface after applying, not in
+  // the translated SpecOverlay alone. Translator-only assertions can
+  // miss silent drops on the apply side.
+
+  it("operation scalar fields (operationId, summary, description, deprecated) survive apply", () => {
+    const patched = applySpecOverlay(
+      base(),
+      doc([
+        {
+          target: "$.paths['/pets'].get",
+          update: {
+            operationId: "listPets",
+            summary: "list pets",
+            description: "pet listing",
+            deprecated: true,
+          },
+        },
+      ]),
+    );
+    const op = patched.paths?.["/pets"]?.get;
+    expect(op?.operationId).toBe("listPets");
+    expect(op?.summary).toBe("list pets");
+    expect(op?.description).toBe("pet listing");
+    expect(op?.deprecated).toBe(true);
+    // Existing fields preserved.
+    expect(op?.responses?.["200"]).toBeDefined();
+  });
+
+  it("array targets accept a single-object `update` payload (OpenAPI Overlay 1.0 canonical form)", () => {
+    const patched = applySpecOverlay(
+      base(),
+      doc([{ target: "$.servers", update: { url: "https://b.example" } }]),
+    );
+    expect(patched.servers).toEqual([{ url: "https://a.example" }, { url: "https://b.example" }]);
+  });
+
+  it("array targets also accept an array `update` payload (permissive)", () => {
+    const patched = applySpecOverlay(
+      base(),
+      doc([
+        {
+          target: "$.servers",
+          update: [{ url: "https://b.example" }, { url: "https://c.example" }],
+        },
+      ]),
+    );
+    expect(patched.servers).toHaveLength(3);
+  });
+
+  it("operation update with nested method payload preserves the existing operation", () => {
+    // $.paths['/pets'] update: { get: { description: "..." } }
+    // must NOT clobber the existing get.parameters / get.responses.
+    const patched = applySpecOverlay(
+      base(),
+      doc([
+        {
+          target: "$.paths['/pets']",
+          update: { get: { description: "patched" } },
+        },
+      ]),
+    );
+    const op = patched.paths?.["/pets"]?.get;
+    expect(op?.description).toBe("patched");
+    expect(op?.parameters).toEqual([{ name: "limit", in: "query", schema: { type: "integer" } }]);
+    expect(op?.responses?.["200"]).toBeDefined();
+  });
+
+  it("response update preserves existing description/headers/content on the same status", () => {
+    const start: typeof base extends () => infer T ? T : never = {
+      ...base(),
+      paths: {
+        "/pets": {
+          get: {
+            tags: ["pets"],
+            responses: {
+              "200": {
+                description: "ok",
+                headers: { Existing: { schema: { type: "string" } } },
+                content: { "application/json": { schema: { type: "object" } } },
+              },
+            },
+          },
+        },
+      },
+    };
+    const patched = applySpecOverlay(
+      start,
+      doc([
+        {
+          target: "$.paths['/pets'].get.responses['200']",
+          update: { description: "merged" },
+        },
+      ]),
+    );
+    const r = patched.paths?.["/pets"]?.get?.responses?.["200"];
+    if (r && "$ref" in r) throw new Error("unexpected ref");
+    expect(r?.description).toBe("merged");
+    expect(r?.headers?.["Existing"]).toBeDefined();
+    expect(r?.content?.["application/json"]).toBeDefined();
+  });
+
+  it("operation update with `responses` field merges per-status (preserves existing fields)", () => {
+    const start: typeof base extends () => infer T ? T : never = {
+      ...base(),
+      paths: {
+        "/pets": {
+          get: {
+            tags: ["pets"],
+            responses: {
+              "200": {
+                description: "ok",
+                headers: { Existing: { schema: { type: "string" } } },
+              },
+            },
+          },
+        },
+      },
+    };
+    const patched = applySpecOverlay(
+      start,
+      doc([
+        {
+          target: "$.paths['/pets'].get",
+          update: { responses: { "200": { description: "merged" } } },
+        },
+      ]),
+    );
+    const r = patched.paths?.["/pets"]?.get?.responses?.["200"];
+    if (r && "$ref" in r) throw new Error("unexpected ref");
+    expect(r?.description).toBe("merged");
+    expect(r?.headers?.["Existing"]).toBeDefined();
   });
 });
