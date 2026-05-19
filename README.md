@@ -373,10 +373,10 @@ validation, response interception, upload helpers), see
   built-in `RegExp`, which has no execution timeout. If your OpenAPI
   spec is attacker-controlled (e.g. multi-tenant upload), a
   catastrophic pattern like `(a+)+$` is a ReDoS vector against any
-  string the validator checks. Vet spec sources before loading them.
-  A pluggable `regexCompiler` option for plugging in `re2` or a
-  complexity-checking engine is tracked in
-  [#146](https://github.com/aahoughton/oav/issues/146).
+  string the validator checks. Pass a `regexCompiler` to
+  `createValidator` to plug in `re2` or a complexity-checking engine;
+  see ["Hardening against untrusted regex patterns"
+  ](./docs/configuration.md#hardening-against-untrusted-regex-patterns).
 
 ## Contributing
 
