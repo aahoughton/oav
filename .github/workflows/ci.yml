@@ -171,6 +171,7 @@ jobs:
           import { createValidator } from "@aahoughton/oav-core";
           import { compileSchema, jsonSchemaDialect } from "@aahoughton/oav-core/schema";
           import { createFileReader } from "@aahoughton/oav-core/spec";
+          import { translateOverlay, applySpecOverlay } from "@aahoughton/oav-core/overlay-spec";
           const v = createValidator({
             openapi: "3.1.0",
             info: { title: "t", version: "1" },
@@ -196,6 +197,16 @@ jobs:
             threw = /Install @aahoughton\/oav/.test(String(e?.message ?? ""));
           }
           if (!threw) throw new Error("expected oav-core's createFileReader to reject .yaml with an install hint");
+          if (typeof translateOverlay !== "function") throw new Error("translateOverlay missing");
+          if (typeof applySpecOverlay !== "function") throw new Error("applySpecOverlay missing");
+          const overlay = translateOverlay({
+            overlay: "1.0.0",
+            info: { title: "t", version: "1" },
+            actions: [{ target: "$.info", update: { description: "patched" } }],
+          });
+          if (!overlay.info || overlay.info.description !== "patched") {
+            throw new Error("translateOverlay did not produce the expected info verb");
+          }
           console.log("oav-core smoke ok");
           EOF
           node smoke.mjs
@@ -214,6 +225,7 @@ jobs:
           import { createValidator, createYamlFileReader, parseYamlString } from "@aahoughton/oav";
           import { compileSchema, jsonSchemaDialect } from "@aahoughton/oav/schema";
           import { composeReaders, createFileReader } from "@aahoughton/oav/spec";
+          import { translateOverlay, applySpecOverlay } from "@aahoughton/oav/overlay-spec";
           const v = createValidator({
             openapi: "3.1.0",
             info: { title: "t", version: "1" },
@@ -238,6 +250,16 @@ jobs:
           const reader = composeReaders([createYamlFileReader(), createFileReader()]);
           if (!reader.canRead("spec.yaml") || !reader.canRead("spec.json")) {
             throw new Error("composed reader should claim both .yaml and .json");
+          }
+          if (typeof translateOverlay !== "function") throw new Error("translateOverlay missing");
+          if (typeof applySpecOverlay !== "function") throw new Error("applySpecOverlay missing");
+          const overlay = translateOverlay({
+            overlay: "1.0.0",
+            info: { title: "t", version: "1" },
+            actions: [{ target: "$.info", update: { description: "patched" } }],
+          });
+          if (!overlay.info || overlay.info.description !== "patched") {
+            throw new Error("translateOverlay did not produce the expected info verb");
           }
           console.log("oav smoke ok");
           EOF
