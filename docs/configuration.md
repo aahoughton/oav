@@ -113,9 +113,9 @@ Throws inside the compiler:
 - For `format: "regex"`, a throw is caught and translated into a
   `format` validation error against the value.
 
-The same compiler is shared between `pattern` and `format: "regex"`,
-so a pattern that passes one passes the other. `format: "regex"` is
-auto-registered by `@oav/schema` and no longer ships from
-`@oav/formats`'s `builtInFormats`; a user-supplied entry in `formats`
-still overrides it if you want a different policy for the format
-than for `pattern`.
+`pattern` and `format: "regex"` use the same compiler policy: one
+`regexCompiler` covers both, and there's no second hook to keep in
+sync. `format: "regex"` is auto-registered by `@oav/schema` and no
+longer ships from `@oav/formats`'s `builtInFormats`; a user-supplied
+entry in `formats` still overrides it if you want a different policy
+for the format than for `pattern`.

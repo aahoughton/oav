@@ -313,8 +313,10 @@ export function wrapErrors(
  * options bag existed.
  *
  * @returns A new deps object wired with the default runtime helpers
- *          and a built-in `regex` format that routes through
- *          {@link ValidatorDeps.compilePattern}.
+ *          and a built-in `regex` format that shares the
+ *          {@link RegexCompiler} hook with the `pattern` keyword but
+ *          bypasses the {@link ValidatorDeps.patterns} cache so
+ *          runtime values aren't retained.
  *
  * @public
  */
