@@ -319,37 +319,46 @@ export function createDeps(arg?: number | CreateDepsOptions): ValidatorDeps {
   const regexCompiler = options.regexCompiler;
   const patterns = new Map<string, CompiledRegex>();
 
+  // The actual compile path (with `u`-then-fallback or the
+  // user-supplied compiler). Used by:
+  //   - `compilePattern` (below), which memoizes against `patterns`.
+  //     Safe to cache: callers pass schema-authored pattern strings,
+  //     bounded by spec size.
+  //   - the `regex` format validator, which receives runtime data
+  //     values. Caching those would grow `patterns` without bound on
+  //     a long-lived validator that sees many unique inputs, so it
+  //     bypasses the cache.
+  const compileRegex = (pattern: string): CompiledRegex => {
+    if (regexCompiler !== undefined) return regexCompiler(pattern);
+    try {
+      return new RegExp(pattern, "u");
+    } catch (errU) {
+      try {
+        return new RegExp(pattern);
+      } catch {
+        // Surface the stricter (`u`-mode) error; it's more informative
+        // when both modes reject the pattern.
+        throw errU;
+      }
+    }
+  };
+
   const compilePattern = (pattern: string): CompiledRegex => {
     const cached = patterns.get(pattern);
     if (cached !== undefined) return cached;
-    let re: CompiledRegex;
-    if (regexCompiler !== undefined) {
-      re = regexCompiler(pattern);
-    } else {
-      try {
-        re = new RegExp(pattern, "u");
-      } catch (errU) {
-        try {
-          re = new RegExp(pattern);
-        } catch {
-          // Surface the stricter (`u`-mode) error; it's more informative
-          // when both modes reject the pattern.
-          throw errU;
-        }
-      }
-    }
+    const re = compileRegex(pattern);
     patterns.set(pattern, re);
     return re;
   };
 
-  // Auto-register the `regex` format so it routes through the same
-  // compiler as the `pattern` keyword. A user-supplied formats entry
-  // for `regex` overrides this (compileSchema's formats option runs
-  // after createDeps).
+  // Auto-register the `regex` format. It shares the compile path with
+  // the `pattern` keyword (and the `regexCompiler` hook), but skips
+  // the memoization to keep memory bounded: runtime values aren't
+  // bounded by spec size.
   const formats = new Map<string, (value: string) => boolean>();
   formats.set("regex", (value: string) => {
     try {
-      compilePattern(value);
+      compileRegex(value);
       return true;
     } catch {
       return false;

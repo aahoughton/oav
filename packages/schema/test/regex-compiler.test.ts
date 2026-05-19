@@ -94,6 +94,30 @@ describe("regexCompiler option", () => {
     expect(calls).toBe(1);
   });
 
+  it('format: "regex" does NOT memoize runtime values (bounded memory)', () => {
+    // The `pattern` keyword caches schema-authored strings (bounded
+    // by spec size). The `regex` format runs against user data; if
+    // that path used the same cache, a long-lived validator
+    // receiving many unique regex inputs would grow memory without
+    // bound. Pin the no-cache behavior: many unique inputs => many
+    // compiler calls; the cache stays empty.
+    let calls = 0;
+    const compiler: RegexCompiler = (pattern) => {
+      calls += 1;
+      return new RegExp(pattern, "u");
+    };
+    const { validate } = compileSchema(
+      { type: "string", format: "regex" },
+      { dialect: openapi31Dialect, regexCompiler: compiler },
+    );
+    const distinctValues = ["^a$", "^b$", "^c$", "^d$", "^e$"];
+    for (const v of distinctValues) validate(v);
+    expect(calls).toBe(distinctValues.length);
+    // Repeating the same value also re-invokes the compiler (no cache).
+    validate("^a$");
+    expect(calls).toBe(distinctValues.length + 1);
+  });
+
   it("user-supplied `regex` format overrides the auto-registered one", () => {
     let userCompilerCalls = 0;
     const userRegex = (_value: string): boolean => {
