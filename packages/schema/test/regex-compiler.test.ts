@@ -6,6 +6,7 @@ import {
   type CompiledRegex,
   type RegexCompiler,
 } from "../src/index.js";
+import { createDeps } from "../src/compiler/runtime.js";
 
 describe("regexCompiler option", () => {
   it("default: `pattern` validation behaves as before", () => {
@@ -108,6 +109,25 @@ describe("regexCompiler option", () => {
     );
     expect(validate("^x$").valid).toBe(false);
     expect(userCompilerCalls).toBe(1);
+  });
+
+  it("createDeps(maxErrors) legacy positional form still works", () => {
+    // AOT-emitted modules built before the options-bag landed call
+    // `createDeps()` and `createDeps(N)`. Pin both shapes to catch a
+    // future change that silently breaks the standalone emit path
+    // (no static guard exists outside of running an emitted module).
+    const defaultDeps = createDeps();
+    expect(defaultDeps.maxErrors).toBe(Number.POSITIVE_INFINITY);
+    expect(defaultDeps.errorsRemaining).toBe(Number.POSITIVE_INFINITY);
+    expect(defaultDeps.formats.has("regex")).toBe(true);
+
+    const cappedDeps = createDeps(5);
+    expect(cappedDeps.maxErrors).toBe(5);
+    expect(cappedDeps.errorsRemaining).toBe(5);
+
+    const optionsDeps = createDeps({ maxErrors: 7 });
+    expect(optionsDeps.maxErrors).toBe(7);
+    expect(optionsDeps.errorsRemaining).toBe(7);
   });
 
   it("CompiledRegex shape: returning a duck-typed object with .test() works", () => {

@@ -106,18 +106,33 @@ export function emitStandalone(schema: SchemaOrBoolean, options: EmitStandaloneO
 }
 
 /**
+ * Formats that the emitted module's `createDeps()` call auto-registers
+ * on top of the entries merged in from `builtInFormats`. Mirrors the
+ * runtime side of `@oav/schema`'s `createDeps`; if that list ever
+ * grows, this set has to grow too.
+ */
+const SCHEMA_AUTO_REGISTERED_FORMATS: ReadonlySet<string> = new Set(["regex"]);
+
+/**
  * Walk the schema looking for `format: "..."` values referenced on
- * object subschemas; return those not covered by the built-in set.
- * Using {@link walkSubschemas} keeps us out of `enum` / `const` /
- * `default` literal values, which might incidentally contain a
- * string under a `format` key without being a format assertion.
+ * object subschemas; return those not covered by the built-in set or
+ * the schema-auto-registered set. Using {@link walkSubschemas} keeps
+ * us out of `enum` / `const` / `default` literal values, which might
+ * incidentally contain a string under a `format` key without being a
+ * format assertion.
  */
 function collectUnknownFormats(schema: SchemaOrBoolean): string[] {
   const found = new Set<string>();
   walkSubschemas(schema, (node) => {
     if (typeof node !== "object" || node === null || Array.isArray(node)) return;
     const format = (node as SchemaObject).format;
-    if (typeof format === "string" && !(format in builtInFormats)) found.add(format);
+    if (
+      typeof format === "string" &&
+      !(format in builtInFormats) &&
+      !SCHEMA_AUTO_REGISTERED_FORMATS.has(format)
+    ) {
+      found.add(format);
+    }
   });
   return [...found].sort();
 }
