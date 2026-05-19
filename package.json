@@ -124,7 +124,7 @@
     "prepublishOnly": "pnpm test"
   },
   "devDependencies": {
-    "@types/node": "25.6.2",
+    "@types/node": "25.9.0",
     "commander": "14.0.3",
     "esbuild": "0.28.0",
     "oxfmt": "0.48.0",
