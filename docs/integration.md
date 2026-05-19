@@ -442,6 +442,94 @@ updating the document.
 
 ## Cross-cutting recipes
 
+### Patching a spec with overlays
+
+When you consume a spec you don't own (a vendor API, a gateway's
+published document, an upstream service), `applyOverlays` rewrites
+the document at load time so application code can validate against
+the shape you actually ship. See [docs/overlays.md](./overlays.md)
+for the full surface; the four shapes that come up most often:
+
+**Add a server.** When the deployed URL differs from what upstream
+declared, append to the `servers` list:
+
+```ts
+import { applyOverlays } from "@aahoughton/oav/spec";
+import type { SpecOverlay } from "@aahoughton/oav/spec";
+
+const eu: SpecOverlay = {
+  addServers: [{ url: "https://eu.api.example.com", description: "EU region" }],
+};
+const patched = applyOverlays(base, [eu]);
+```
+
+`servers` (without the `add` prefix) replaces wholesale; `addServers`
+appends. The two cannot coexist in one overlay.
+
+**Add an operation-level security requirement.** Tenants often
+require auth where the base spec doesn't:
+
+```ts
+const requireApiKey: SpecOverlay = {
+  overrides: {
+    "/pets": {
+      operations: {
+        post: { addSecurity: [{ apiKey: [] }] },
+      },
+    },
+  },
+};
+```
+
+`addSecurity` appends to the operation's existing requirement list
+(OR semantics between entries). Use `security: [...]` on the
+override to replace the list wholesale; replace cannot combine with
+`add` / `remove` in the same override.
+
+**Modify every operation matching a tag.** For "apply this to every
+internal endpoint" cases, the predicate iterator beats hand-rolling
+per-path overrides:
+
+```ts
+const lockInternals: SpecOverlay = {
+  modifyOperations: [
+    {
+      where: { tags: ["internal"] },
+      apply: {
+        addSecurity: [{ internalKey: [] }],
+        setExtensions: { "x-internal-only": true },
+      },
+    },
+  ],
+};
+```
+
+`modifyOperations` walks both `paths` and `webhooks`. `where` fields
+combine with AND semantics; omit `where` to apply to every operation.
+Webhook entries that are reference objects (`{ $ref: ... }`) are
+passed through unchanged; their path-item contents aren't inspectable
+pre-resolve.
+
+**Extend a component schema.** Tighten upstream constraints without
+forking the schema:
+
+```ts
+const requirePetId: SpecOverlay = {
+  extendSchemas: {
+    Pet: { required: ["id"] },
+  },
+};
+```
+
+`extendSchemas` wraps the upstream definition as
+`allOf: [<upstream>, { required: ["id"] }]`. The original applies;
+the override piles additional constraints on top. The parallel
+`extend<Bucket>` verbs for non-schema component buckets (parameters,
+responses, etc.) shallow-merge instead.
+
+Overlays apply in order; later overlays win on conflict. The base
+document is deep-cloned, never mutated.
+
 ### Status-code mapping
 
 Default mapping:

@@ -599,7 +599,7 @@ function applyOpModifyToPathItem(
   item: PathItem,
   entry: ModifyOperationsEntry,
 ): PathItem {
-  if (entry.where?.pathPattern && !entry.where.pathPattern.test(pathOrName)) {
+  if (entry.where?.pathPattern && !stablePatternTest(entry.where.pathPattern, pathOrName)) {
     return item;
   }
   const next: PathItem = { ...item };
@@ -670,8 +670,29 @@ function mergeParamIfMatch(
 ): ParameterObject | ReferenceObject {
   if (!("name" in param)) return param;
   if (entry.where?.in && param.in !== entry.where.in) return param;
-  if (entry.where?.nameMatches && !entry.where.nameMatches.test(param.name)) return param;
+  if (entry.where?.nameMatches && !stablePatternTest(entry.where.nameMatches, param.name)) {
+    return param;
+  }
   return { ...param, ...entry.apply };
+}
+
+/**
+ * `RegExp.test()` advances `lastIndex` on /…/g and /…/y inputs. Reusing
+ * the same pattern across multiple iterations of the modify* iterators
+ * would then skip matches. Reset `lastIndex` to 0 around the call so
+ * every test starts from the beginning, and restore the caller's
+ * original `lastIndex` afterwards so the regex object is left as the
+ * caller passed it. Sticky (`y`) semantics are preserved (a `y` pattern
+ * still anchors at the matching position 0).
+ */
+function stablePatternTest(pattern: RegExp, input: string): boolean {
+  const prev = pattern.lastIndex;
+  pattern.lastIndex = 0;
+  try {
+    return pattern.test(input);
+  } finally {
+    pattern.lastIndex = prev;
+  }
 }
 
 interface ComponentBucketVerbs<T> {

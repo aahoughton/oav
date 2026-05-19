@@ -464,6 +464,106 @@ describe("applyOverlays: component bucket fan-out", () => {
     ).toThrow(/replaceParameters and removeParameters both name TraceId/);
   });
 
+  // Per-bucket missing-target coverage: the bucket fan-out is shared,
+  // but each verb name is part of the public surface. Exercise every
+  // remove<Bucket> so a rename or arg-binding regression on any one of
+  // them surfaces.
+  it.each([
+    [
+      "removeComponentResponses",
+      () => ({ removeComponentResponses: ["nope"] }),
+      /removeComponentResponses targets unknown responses entry nope/,
+    ],
+    [
+      "removeRequestBodies",
+      () => ({ removeRequestBodies: ["nope"] }),
+      /removeRequestBodies targets unknown requestBodies entry nope/,
+    ],
+    [
+      "removeHeaders",
+      () => ({ removeHeaders: ["nope"] }),
+      /removeHeaders targets unknown headers entry nope/,
+    ],
+    [
+      "removeSecuritySchemes",
+      () => ({ removeSecuritySchemes: ["nope"] }),
+      /removeSecuritySchemes targets unknown securitySchemes entry nope/,
+    ],
+    [
+      "removeCallbacks",
+      () => ({ removeCallbacks: ["nope"] }),
+      /removeCallbacks targets unknown callbacks entry nope/,
+    ],
+    [
+      "removeExamples",
+      () => ({ removeExamples: ["nope"] }),
+      /removeExamples targets unknown examples entry nope/,
+    ],
+  ] as const)("%s throws on a missing entry", (_verb, overlayFn, expectedError) => {
+    expect(() => applyOverlays(baseWithComponents(), [overlayFn()])).toThrow(expectedError);
+  });
+
+  // Per-bucket self-conflict coverage: replace<Bucket> + remove<Bucket>
+  // naming the same key. One case per non-schema bucket exercises each
+  // verb's branch in assertNoSelfConflict.
+  it.each([
+    [
+      "responses",
+      () => ({
+        replaceComponentResponses: { Conflict: { description: "x" } },
+        removeComponentResponses: ["Conflict"],
+      }),
+      /replaceResponses and removeResponses both name Conflict/,
+    ],
+    [
+      "requestBodies",
+      () => ({
+        replaceRequestBodies: { Conflict: { content: {} } },
+        removeRequestBodies: ["Conflict"],
+      }),
+      /replaceRequestBodies and removeRequestBodies both name Conflict/,
+    ],
+    [
+      "headers",
+      () => ({
+        replaceHeaders: { Conflict: { schema: { type: "string" } } },
+        removeHeaders: ["Conflict"],
+      }),
+      /replaceHeaders and removeHeaders both name Conflict/,
+    ],
+    [
+      "securitySchemes",
+      () => ({
+        replaceSecuritySchemes: { Conflict: { type: "apiKey", name: "K", in: "header" } },
+        removeSecuritySchemes: ["Conflict"],
+      }),
+      /replaceSecuritySchemes and removeSecuritySchemes both name Conflict/,
+    ],
+    [
+      "callbacks",
+      () => ({
+        replaceCallbacks: { Conflict: {} },
+        removeCallbacks: ["Conflict"],
+      }),
+      /replaceCallbacks and removeCallbacks both name Conflict/,
+    ],
+    [
+      "examples",
+      () => ({
+        replaceExamples: { Conflict: { value: 1 } },
+        removeExamples: ["Conflict"],
+      }),
+      /replaceExamples and removeExamples both name Conflict/,
+    ],
+  ] as const)(
+    "%s bucket: replace + remove for same key throws",
+    (_bucket, overlayFn, expectedError) => {
+      expect(() => applyOverlays(baseWithComponents(), [overlayFn() as never])).toThrow(
+        expectedError,
+      );
+    },
+  );
+
   it("extend on non-schema bucket creates the entry when missing", () => {
     const patched = applyOverlays(baseWithComponents(), [
       { extendHeaders: { NewHeader: { schema: { type: "string" } } } },
@@ -737,6 +837,72 @@ describe("applyOverlays: predicate iterators", () => {
     const opParam = patched.paths?.["/pets"]?.get?.parameters?.[0];
     expect(opParam).toMatchObject({ name: "limit", in: "query" });
     expect(opParam).not.toHaveProperty("description");
+  });
+
+  it("modifyOperations with a /g regex still matches every path (no lastIndex skip)", () => {
+    const pattern = /^\/pets/g;
+    const patched = applyOverlays(multi(), [
+      {
+        modifyOperations: [
+          { where: { pathPattern: pattern }, apply: { addTags: ["g-flag"] } },
+          { where: { pathPattern: pattern }, apply: { addTags: ["g-flag-2"] } },
+        ],
+      },
+    ]);
+    // Without the lastIndex strip, the second entry's .test() on /^\/pets/g
+    // would start past the input and miss the match.
+    expect(patched.paths?.["/pets"]?.get?.tags).toEqual(
+      expect.arrayContaining(["g-flag", "g-flag-2"]),
+    );
+    expect(patched.paths?.["/pets"]?.post?.tags).toEqual(
+      expect.arrayContaining(["g-flag", "g-flag-2"]),
+    );
+    // Caller's regex isn't mutated.
+    expect(pattern.lastIndex).toBe(0);
+  });
+
+  it("modifyParameters with a /g regex matches every parameter (no lastIndex skip)", () => {
+    const pattern = /^x-/g;
+    const patched = applyOverlays(multi(), [
+      {
+        modifyParameters: [{ where: { nameMatches: pattern }, apply: { description: "first" } }],
+      },
+      {
+        modifyParameters: [{ where: { nameMatches: pattern }, apply: { required: true } }],
+      },
+    ]);
+    const pathItemParam = patched.paths?.["/pets"]?.parameters?.[0];
+    expect(pathItemParam).toMatchObject({
+      name: "x-trace",
+      description: "first",
+      required: true,
+    });
+    expect(pattern.lastIndex).toBe(0);
+  });
+
+  it("modifyOperations preserves sticky (y) semantics: /pets/y matches only at the start", () => {
+    // Sticky requires the match to begin at lastIndex. A path of /pets
+    // matches the literal "pets" at offset 1, not 0; /pets/y starting
+    // at lastIndex 0 should NOT match. A stripped-y clone would, which
+    // is the regression this test pins against.
+    const stickyMid = /pets/y;
+    const patchedMid = applyOverlays(multi(), [
+      {
+        modifyOperations: [{ where: { pathPattern: stickyMid }, apply: { addTags: ["sticky"] } }],
+      },
+    ]);
+    expect(patchedMid.paths?.["/pets"]?.get?.tags ?? []).not.toContain("sticky");
+
+    // A sticky pattern that DOES start at offset 0 still matches.
+    const stickyStart = /\/pets/y;
+    const patchedStart = applyOverlays(multi(), [
+      {
+        modifyOperations: [{ where: { pathPattern: stickyStart }, apply: { addTags: ["sticky"] } }],
+      },
+    ]);
+    expect(patchedStart.paths?.["/pets"]?.get?.tags).toContain("sticky");
+    // Caller-supplied lastIndex is preserved.
+    expect(stickyStart.lastIndex).toBe(0);
   });
 
   it("modifyParameters skips reference-object parameters silently", () => {
