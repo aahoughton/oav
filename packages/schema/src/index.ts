@@ -21,10 +21,12 @@
 // Compiler: turning schemas into validators.
 export {
   compileSchema,
+  type CompiledPredicate,
+  type CompiledRegex,
+  type CompiledSchema,
   type CompileOptions,
   type CompileStats,
-  type CompiledPredicate,
-  type CompiledSchema,
+  type RegexCompiler,
   type StrictIssue,
   type Validator,
   type ValidationResult,
