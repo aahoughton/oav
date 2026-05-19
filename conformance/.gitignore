@@ -1,9 +1,11 @@
 node_modules/
 JSON-Schema-Test-Suite/
-# json-schema-results.json is the committed baseline that
-# run-json-schema-suite.ts --check-baseline compares against in CI.
-# The --optional variant is still gitignored — we don't track that
-# baseline because the optional suite is a moving target we don't
-# claim conformance against.
+Overlay-Specification/
+# json-schema-results.json and overlay-results.json are committed
+# baselines that the respective runners compare against in CI with
+# --check-baseline. The --optional variant of the JSON Schema suite
+# is still gitignored — we don't track that baseline because the
+# optional suite is a moving target we don't claim conformance
+# against.
 json-schema-results-with-optional.json
 openapi-results.json

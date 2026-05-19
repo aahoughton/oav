@@ -8,7 +8,9 @@
     "suite": "tsx run-json-schema-suite.ts",
     "suite:optional": "tsx run-json-schema-suite.ts --optional",
     "openapi": "tsx run-openapi-cases.ts",
-    "setup": "git clone --depth 1 https://github.com/json-schema-org/JSON-Schema-Test-Suite.git"
+    "overlay": "tsx run-overlay-suite.ts",
+    "setup": "git clone --depth 1 https://github.com/json-schema-org/JSON-Schema-Test-Suite.git",
+    "setup:overlay": "git clone --depth 1 https://github.com/OAI/Overlay-Specification.git"
   },
   "devDependencies": {
     "tsx": "^4.22.3",

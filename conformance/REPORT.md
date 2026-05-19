@@ -1,10 +1,13 @@
 # Conformance report
 
-Generated against two upstream test corpora:
+Generated against three upstream / hand-curated test corpora:
 
 - **JSON Schema Test Suite** — the canonical draft-2020-12 cases at
   <https://github.com/json-schema-org/JSON-Schema-Test-Suite>,
   cloned into `conformance/JSON-Schema-Test-Suite/` by `pnpm setup`.
+- **OpenAPI Overlay 1.0 Test Suite** — the envelope-schema fixtures
+  at <https://github.com/OAI/Overlay-Specification>, cloned into
+  `conformance/Overlay-Specification/` by `pnpm setup:overlay`.
 - **OpenAPI cases** — hand-curated request/response scenarios under
   `conformance/openapi-cases/<group>/`, covering the petstore shape
   across 3.0, 3.1, and 3.2.
@@ -15,6 +18,7 @@ Generated against two upstream test corpora:
 | ----------------------------------- | ----- | ---- | -------- | ----- | ------ |
 | JSON Schema Test Suite (required)   | 1290  | 1271 | 15       | 4     | 98.5%  |
 | JSON Schema Test Suite (+ optional) | 1452  | 1429 | 19       | 4     | 98.4%  |
+| OpenAPI Overlay 1.0 (envelope)      | 32    | 32   | 0        | 0     | 100%   |
 | OpenAPI `petstore` via `oav` CLI    | 14    | 14   | 0        | 0     | 100%   |
 
 "Mismatch" = our verdict differs from upstream; "error" = our compiler
@@ -92,6 +96,38 @@ there would vacuously pass. Enabling format-assertion and running them
 is a separate exercise: each format brings its own tail of RFC edge
 cases that the suite tightens every few revisions.
 
+## OpenAPI Overlay 1.0
+
+The upstream Overlay test suite is purely
+envelope-schema-validation: every fixture under `tests/v1.0/pass/`
+must match the canonical overlay JSON Schema, every fixture under
+`tests/v1.0/fail/` must not. We compile that schema through
+`@oav/schema` and run it as our envelope check. Current state:
+**32/32 envelope parity** (12 pass + 20 fail).
+
+The runner also feeds every pass fixture through
+`@oav/overlay-spec`'s `translateOverlay()` and classifies the result
+as `ok` / `unrecognised-target` / `translator-error`. This is
+informational — upstream does not assert semantic translation — but
+it surfaces translator-coverage gaps next to the envelope numbers.
+
+Current translator classification on pass fixtures (12 total):
+
+| Bucket                | Count | Notes                                                                                                                                                            |
+| --------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ok`                  | 1     | `actions-targeted-overlay-example.yaml` (`$.info`, `$.paths['/...']`, `$.servers[*]`).                                                                           |
+| `unrecognised-target` | 5     | wildcards (`$.paths.*.get.parameters`), JSONPath filters / array indexing the closed-form recogniser doesn't accept.                                             |
+| `translator-error`    | 6     | "no-op" actions (target-only, no `update`/`remove`) and the `update + remove: true` ambiguity. Permitted by the envelope schema but our translator rejects them. |
+
+The translator-error bucket is a translator design choice (we'd
+rather reject ambiguous / no-op actions than silently no-op). The
+`unrecognised-target` bucket is the documented closed-form
+limitation of the JSONPath recogniser. Neither is a regression
+against an established baseline. CI compares envelope-pass and
+translator-ok counts against `overlay-results.json`; widening the
+recogniser or relaxing the translator both move the baseline up
+rather than introducing failures.
+
 ## Behavioral parity notes
 
 Where we agree with upstream on pass/fail, we don't try to match their
@@ -117,6 +153,7 @@ workspace install). Bootstrap it once, then run the harness:
 cd conformance
 pnpm install
 pnpm setup                      # clones JSON-Schema-Test-Suite (gitignored)
+pnpm setup:overlay              # clones Overlay-Specification   (gitignored)
 cd ..
 pnpm build                      # builds the CLI the OpenAPI runner shells out to
 
@@ -124,8 +161,12 @@ cd conformance
 pnpm suite                      # required suite
 pnpm suite:optional             # + optional (format-edge-cases etc.)
 pnpm suite -- --filter=ref      # just ref.json / refRemote.json
+pnpm overlay                    # OpenAPI Overlay 1.0 envelope + translator
 pnpm openapi                    # CLI-driven OpenAPI scenarios
 ```
 
-Detailed per-case output lands in `conformance/json-schema-results.json`
-and `conformance/openapi-results.json` (both gitignored).
+Detailed per-case output lands in `conformance/json-schema-results.json`,
+`conformance/overlay-results.json`, and `conformance/openapi-results.json`.
+`overlay-results.json` and `openapi-results.json` are committed
+baselines that CI compares against with `--check-baseline`; the
+`+optional` JSON Schema variant remains gitignored.
