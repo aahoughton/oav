@@ -63,10 +63,10 @@
     "@oav/core": "workspace:*",
     "@oav/validator": "workspace:*",
     "@types/express": "5.0.4",
-    "express": "5.2.1",
+    "express": "4.22.2",
     "tsup": "8.5.1",
     "typescript": "5.9.3",
-    "vitest": "4.1.5"
+    "vitest": "4.1.6"
   },
   "peerDependencies": {
     "express": "^5.0.0"
