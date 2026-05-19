@@ -10,6 +10,7 @@
     { "path": "../cli" },
     { "path": "../core" },
     { "path": "../formats" },
+    { "path": "../overlay-spec" },
     { "path": "../schema" },
     { "path": "../spec" },
     { "path": "../validator" }

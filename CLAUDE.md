@@ -183,6 +183,12 @@ in CI; they're tsx-run dev tooling, breakage shows up when you run them.
 - **`@oav/spec`**: `DocumentReader` abstraction (file/http/memory/composite)
   plus `resolveSpec()` which inlines external `$ref`s and leaves circular
   ones as internal refs. `applyOverlays()` handles the extension system.
+- **`@oav/overlay-spec`**: translator from OpenAPI Overlay 1.0
+  spec-format documents (`{overlay, info, actions:[{target, update?|remove?}]}`)
+  to `@oav/spec`'s typed `SpecOverlay`. Closed-form recogniser, not a
+  JSONPath engine; unrecognised target shapes throw with the
+  offending string. See `packages/overlay-spec/README.md` for the
+  recognised target table. Ships at the `oav/overlay-spec` subpath.
 - **`@oav/router`**: a sorted-list route matcher. Routes are sorted once
   at construction (more-literal segments first); `match` is a linear scan,
   O(routes × segments). Cheap for typical OpenAPI spec sizes.
@@ -222,6 +228,8 @@ cli           → validator → router
                          → schema → core
                          → core
               → spec → core
+              → core
+overlay-spec  → spec → core
               → core
 oav-express4  → validator → ... (same as cli's chain)
               → core

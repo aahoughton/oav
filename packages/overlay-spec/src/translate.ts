@@ -1,0 +1,683 @@
+import type {
+  HttpMethod,
+  JsonValue,
+  ParameterLocation,
+  ParameterObject,
+  ResponseObject,
+  ServerObject,
+  TagObject,
+} from "@oav/core";
+import type {
+  ModifyOperationsEntry,
+  OperationOverride,
+  PathOverride,
+  SpecOverlay,
+} from "@oav/spec";
+import {
+  type FilterExpr,
+  type PathToken,
+  UnrecognisedTargetError,
+  parseTarget,
+} from "./parse-target.js";
+
+/**
+ * Normalised view of one OpenAPI Overlay action: either an `update`
+ * payload or a `remove: true` directive (never both). The translator
+ * receives this and dispatches by target shape.
+ */
+export type NormalizedAction =
+  | { kind: "update"; value: JsonValue | undefined }
+  | { kind: "remove" };
+
+/**
+ * The HTTP methods that OpenAPI Overlay path targets are expected to
+ * use. Mirrors {@link @oav/core!HttpMethod} but kept local so the
+ * recogniser doesn't depend on a runtime constant.
+ */
+const HTTP_METHODS: ReadonlySet<HttpMethod> = new Set([
+  "get",
+  "put",
+  "post",
+  "delete",
+  "options",
+  "head",
+  "patch",
+  "trace",
+  "query",
+]);
+
+const COMPONENT_BUCKETS = [
+  "schemas",
+  "parameters",
+  "requestBodies",
+  "responses",
+  "headers",
+  "securitySchemes",
+  "links",
+  "callbacks",
+  "examples",
+] as const;
+type ComponentBucket = (typeof COMPONENT_BUCKETS)[number];
+
+/**
+ * Dispatch one action against the accumulating `SpecOverlay`. Mutates
+ * the overlay in place; the caller (`translateOverlay`) seeds an empty
+ * overlay and walks every action.
+ *
+ * @throws {@link UnrecognisedTargetError} when the target's JSONPath
+ *         shape doesn't map to a typed verb.
+ * @throws `Error` with the offending target in the message when the
+ *         action payload is malformed for the target's shape (e.g.
+ *         non-string in a string array, non-object where an object is
+ *         required).
+ */
+export function applyAction(target: string, action: NormalizedAction, overlay: SpecOverlay): void {
+  const tokens = parseTarget(target);
+  if (tokens.length === 0) {
+    throw new UnrecognisedTargetError(target, "expected at least one segment after `$`");
+  }
+  const head = tokens[0]!;
+  if (head.kind !== "name") {
+    throw new UnrecognisedTargetError(target, "expected a named root segment");
+  }
+  switch (head.name) {
+    case "info":
+      return translateInfo(target, tokens, action, overlay);
+    case "servers":
+      return translateServers(target, tokens, action, overlay);
+    case "tags":
+      return translateTags(target, tokens, action, overlay);
+    case "security":
+      return translateSecurity(target, tokens, action, overlay);
+    case "webhooks":
+      return translateWebhooks(target, tokens, action, overlay);
+    case "components":
+      return translateComponents(target, tokens, action, overlay);
+    case "paths":
+      return translatePaths(target, tokens, action, overlay);
+    default:
+      throw new UnrecognisedTargetError(target, `unknown root field \`${head.name}\``);
+  }
+}
+
+// ---------------------------------------------------------------- info
+
+function translateInfo(
+  target: string,
+  tokens: PathToken[],
+  action: NormalizedAction,
+  overlay: SpecOverlay,
+): void {
+  if (tokens.length !== 1) {
+    throw new UnrecognisedTargetError(target, "no path supported below `$.info`");
+  }
+  if (action.kind === "remove") {
+    throw new UnrecognisedTargetError(target, "`remove` on `$.info` has no typed-verb equivalent");
+  }
+  const payload = asObject(target, action.value);
+  overlay.info = { ...overlay.info, ...payload };
+}
+
+// ------------------------------------------------------------- servers
+
+function translateServers(
+  target: string,
+  tokens: PathToken[],
+  action: NormalizedAction,
+  overlay: SpecOverlay,
+): void {
+  if (tokens.length === 1) {
+    // `$.servers`: append to the servers list (update), or zero it out (remove).
+    if (action.kind === "remove") {
+      overlay.servers = [];
+      return;
+    }
+    const items = asArray(target, action.value).map(
+      (s) => asObject(target, s) as unknown as ServerObject,
+    );
+    overlay.addServers = [...(overlay.addServers ?? []), ...items];
+    return;
+  }
+  throw new UnrecognisedTargetError(target, "per-element `$.servers[*]` is not recognised");
+}
+
+// ---------------------------------------------------------------- tags
+
+function translateTags(
+  target: string,
+  tokens: PathToken[],
+  action: NormalizedAction,
+  overlay: SpecOverlay,
+): void {
+  if (tokens.length === 1) {
+    if (action.kind === "remove") {
+      overlay.tags = [];
+      return;
+    }
+    const items = asArray(target, action.value).map(
+      (t) => asObject(target, t) as unknown as TagObject,
+    );
+    overlay.extendTags = [...(overlay.extendTags ?? []), ...items];
+    return;
+  }
+  // `$.tags[?(@.name=='X')]`: filter to one tag by name.
+  if (tokens.length === 2 && tokens[1]?.kind === "filter") {
+    const tagName = expectFieldEq(target, tokens[1].expr, "name");
+    if (action.kind === "remove") {
+      overlay.removeTags = [...(overlay.removeTags ?? []), tagName];
+      return;
+    }
+    const patch = asObject(target, action.value);
+    overlay.extendTags = [...(overlay.extendTags ?? []), { ...patch, name: tagName } as TagObject];
+    return;
+  }
+  throw new UnrecognisedTargetError(
+    target,
+    "only `$.tags` or `$.tags[?(@.name=='X')]` is recognised",
+  );
+}
+
+// ------------------------------------------------------------ security
+
+function translateSecurity(
+  target: string,
+  tokens: PathToken[],
+  action: NormalizedAction,
+  overlay: SpecOverlay,
+): void {
+  if (tokens.length !== 1) {
+    throw new UnrecognisedTargetError(target, "only the bare `$.security` target is recognised");
+  }
+  if (action.kind === "remove") {
+    overlay.security = [];
+    return;
+  }
+  const items = asArray(target, action.value);
+  overlay.addSecurity = [
+    ...(overlay.addSecurity ?? []),
+    ...items.map((r) => asObject(target, r) as Record<string, string[]>),
+  ];
+}
+
+// ------------------------------------------------------------ webhooks
+
+function translateWebhooks(
+  target: string,
+  tokens: PathToken[],
+  action: NormalizedAction,
+  overlay: SpecOverlay,
+): void {
+  // `$.webhooks['name']`: add or remove by name.
+  if (tokens.length === 2 && tokens[1]?.kind === "key") {
+    const name = tokens[1].key;
+    if (action.kind === "remove") {
+      overlay.removeWebhooks = [...(overlay.removeWebhooks ?? []), name];
+      return;
+    }
+    const pathItem = asObject(target, action.value);
+    overlay.addWebhooks = { ...overlay.addWebhooks, [name]: pathItem };
+    return;
+  }
+  throw new UnrecognisedTargetError(
+    target,
+    "only `$.webhooks['name']` is recognised (whole-bucket targets are not)",
+  );
+}
+
+// ---------------------------------------------------------- components
+
+function translateComponents(
+  target: string,
+  tokens: PathToken[],
+  action: NormalizedAction,
+  overlay: SpecOverlay,
+): void {
+  // `$.components.<bucket>.<Name>` (or `['Name']`)
+  if (tokens.length !== 3) {
+    throw new UnrecognisedTargetError(target, "expected `$.components.<bucket>.<Name>`");
+  }
+  const bucketTok = tokens[1];
+  const nameTok = tokens[2];
+  if (bucketTok?.kind !== "name" || !isComponentBucket(bucketTok.name)) {
+    throw new UnrecognisedTargetError(
+      target,
+      `expected one of ${COMPONENT_BUCKETS.join(" / ")} as the bucket name`,
+    );
+  }
+  if (nameTok?.kind !== "name" && nameTok?.kind !== "key") {
+    throw new UnrecognisedTargetError(target, "expected a component entry name");
+  }
+  const bucket = bucketTok.name;
+  const name = nameTok.kind === "name" ? nameTok.name : nameTok.key;
+
+  if (action.kind === "remove") {
+    const field = REMOVE_VERB_BY_BUCKET[bucket];
+    const existing = (overlay[field] as string[] | undefined) ?? [];
+    (overlay as Record<string, unknown>)[field] = [...existing, name];
+    return;
+  }
+  const payload = asObject(target, action.value);
+  const field = EXTEND_VERB_BY_BUCKET[bucket];
+  const existing = (overlay[field] as Record<string, unknown> | undefined) ?? {};
+  (overlay as Record<string, unknown>)[field] = { ...existing, [name]: payload };
+}
+
+function isComponentBucket(name: string): name is ComponentBucket {
+  return (COMPONENT_BUCKETS as readonly string[]).includes(name);
+}
+
+const EXTEND_VERB_BY_BUCKET: Record<ComponentBucket, keyof SpecOverlay> = {
+  schemas: "extendSchemas",
+  parameters: "extendParameters",
+  requestBodies: "extendRequestBodies",
+  responses: "extendComponentResponses",
+  headers: "extendHeaders",
+  securitySchemes: "extendSecuritySchemes",
+  links: "extendLinks",
+  callbacks: "extendCallbacks",
+  examples: "extendExamples",
+};
+
+const REMOVE_VERB_BY_BUCKET: Record<ComponentBucket, keyof SpecOverlay> = {
+  schemas: "removeSchemas",
+  parameters: "removeComponentParameters",
+  requestBodies: "removeRequestBodies",
+  responses: "removeComponentResponses",
+  headers: "removeHeaders",
+  securitySchemes: "removeSecuritySchemes",
+  links: "removeLinks",
+  callbacks: "removeCallbacks",
+  examples: "removeExamples",
+};
+
+// --------------------------------------------------------------- paths
+
+function translatePaths(
+  target: string,
+  tokens: PathToken[],
+  action: NormalizedAction,
+  overlay: SpecOverlay,
+): void {
+  // tokens[0] is `paths`; the rest depends on shape.
+  // tokens[1] selects the path: `name` (dot form), `key` (bracket form), or `wildcard`.
+  if (tokens.length < 2) {
+    throw new UnrecognisedTargetError(target, "expected a path segment after `$.paths`");
+  }
+
+  const pathSel = tokens[1]!;
+  const pathKey = pathSelectorKey(target, pathSel);
+
+  if (tokens.length === 2) {
+    return applyPathLevel(target, pathKey, pathSel.kind === "wildcard", action, overlay);
+  }
+
+  // tokens[2] selects the method (or its `*`).
+  const methodSel = tokens[2]!;
+  const method = methodSelector(target, methodSel);
+
+  if (tokens.length === 3) {
+    return applyOperationLevel(target, pathKey, method, action, overlay);
+  }
+
+  // tokens[3] selects an operation child: parameters / responses / etc.
+  // Also: tokens[2] = `*` (any method) + tokens[3] = filter is the
+  // modifyOperations entry shape.
+  if (
+    tokens.length === 4 &&
+    method === "*" &&
+    methodSel.kind === "wildcard" &&
+    tokens[3]?.kind === "filter"
+  ) {
+    return applyModifyOperations(target, pathKey, pathSel, tokens[3].expr, action, overlay);
+  }
+
+  const childTok = tokens[3]!;
+  if (childTok.kind !== "name") {
+    throw new UnrecognisedTargetError(target, "expected `parameters` or `responses` here");
+  }
+  if (childTok.name === "parameters") {
+    return applyOperationParameters(target, pathKey, method, tokens.slice(4), action, overlay);
+  }
+  if (childTok.name === "responses") {
+    return applyOperationResponses(target, pathKey, method, tokens.slice(4), action, overlay);
+  }
+  throw new UnrecognisedTargetError(
+    target,
+    `unknown operation child \`${childTok.name}\` (expected \`parameters\` or \`responses\`)`,
+  );
+}
+
+function pathSelectorKey(target: string, tok: PathToken): string {
+  if (tok.kind === "name") return tok.name;
+  if (tok.kind === "key") return tok.key;
+  if (tok.kind === "wildcard") return "*";
+  throw new UnrecognisedTargetError(target, "unexpected path selector");
+}
+
+function methodSelector(target: string, tok: PathToken): HttpMethod | "*" {
+  if (tok.kind === "wildcard") return "*";
+  if (tok.kind === "name" && HTTP_METHODS.has(tok.name as HttpMethod))
+    return tok.name as HttpMethod;
+  if (tok.kind === "name") {
+    throw new UnrecognisedTargetError(target, `unknown HTTP method \`${tok.name}\``);
+  }
+  throw new UnrecognisedTargetError(target, "expected an HTTP method name");
+}
+
+function applyPathLevel(
+  target: string,
+  pathKey: string,
+  isWildcard: boolean,
+  action: NormalizedAction,
+  overlay: SpecOverlay,
+): void {
+  if (action.kind === "remove") {
+    if (isWildcard) {
+      throw new UnrecognisedTargetError(target, "`remove` on `$.paths.*` is not supported");
+    }
+    overlay.removePaths = [...(overlay.removePaths ?? []), pathKey];
+    return;
+  }
+  const payload = asObject(target, action.value);
+  const overrides = ensureOverrides(overlay);
+  const existing = overrides[pathKey] ?? {};
+  overrides[pathKey] = {
+    ...existing,
+    pathItem: { ...existing.pathItem, ...payload },
+  };
+}
+
+function applyOperationLevel(
+  target: string,
+  pathKey: string,
+  method: HttpMethod | "*",
+  action: NormalizedAction,
+  overlay: SpecOverlay,
+): void {
+  if (action.kind === "remove") {
+    throw new UnrecognisedTargetError(
+      target,
+      "`remove` on an operation has no typed-verb equivalent; remove the parent path instead",
+    );
+  }
+  const payload = asObject(target, action.value);
+  const opOverride: OperationOverride = mergeOperationOverride(
+    getOperationOverride(overlay, pathKey, method),
+    { replace: undefined, ...(payload as Partial<OperationOverride>) },
+    payload,
+  );
+  setOperationOverride(overlay, pathKey, method, opOverride);
+}
+
+/**
+ * Merge a spec-format payload into an existing OperationOverride. The
+ * spec's update payload is a partial OperationObject (operationId,
+ * tags, summary, etc.); we map structural fields into the typed
+ * OperationOverride shape, falling back to the catch-all that turns
+ * unknown fields into part of a fresh operation fragment.
+ */
+function mergeOperationOverride(
+  base: OperationOverride,
+  _typed: Partial<OperationOverride>,
+  payload: Record<string, JsonValue | undefined>,
+): OperationOverride {
+  const next: OperationOverride = { ...base };
+  for (const [k, v] of Object.entries(payload)) {
+    switch (k) {
+      case "tags": {
+        if (!Array.isArray(v)) {
+          throw new Error(`overlay action payload field \`tags\` must be an array`);
+        }
+        next.addTags = [...(next.addTags ?? []), ...(v as string[])];
+        break;
+      }
+      case "security": {
+        if (!Array.isArray(v)) {
+          throw new Error(`overlay action payload field \`security\` must be an array`);
+        }
+        next.addSecurity = [...(next.addSecurity ?? []), ...(v as Record<string, string[]>[])];
+        break;
+      }
+      case "callbacks": {
+        if (typeof v !== "object" || v === null || Array.isArray(v)) {
+          throw new Error(`overlay action payload field \`callbacks\` must be an object`);
+        }
+        next.callbacks = { ...next.callbacks, ...(v as Record<string, never>) };
+        break;
+      }
+      case "servers":
+      case "externalDocs":
+      case "requestBody":
+      case "operationId":
+      case "summary":
+      case "description":
+      case "deprecated":
+      case "parameters":
+      case "responses": {
+        // Pass-through fields. Most cases just slot into the
+        // OperationObject-shaped fragment via a follow-up replace; we
+        // don't have a per-field "set this scalar" verb, so we route
+        // through `replace` by merging onto whatever was there. For
+        // structural fields like `parameters`/`responses` this is the
+        // wrong shape, so they're explicitly errors here.
+        if (k === "parameters" || k === "responses") {
+          throw new Error(
+            `overlay action targeting an operation cannot carry \`${k}\` directly; target the leaf path instead`,
+          );
+        }
+        (next as Record<string, unknown>)[k] = v as JsonValue;
+        break;
+      }
+      default: {
+        if (k.startsWith("x-")) {
+          next.setExtensions = {
+            ...next.setExtensions,
+            [k]: v as JsonValue,
+          };
+          break;
+        }
+        throw new Error(
+          `overlay action payload field \`${k}\` is not supported for operation targets`,
+        );
+      }
+    }
+  }
+  return next;
+}
+
+function applyOperationParameters(
+  target: string,
+  pathKey: string,
+  method: HttpMethod | "*",
+  rest: PathToken[],
+  action: NormalizedAction,
+  overlay: SpecOverlay,
+): void {
+  // Recognised forms:
+  //   .parameters[?(@.name=='X' && @.in=='Y')]
+  if (rest.length !== 1 || rest[0]?.kind !== "filter") {
+    throw new UnrecognisedTargetError(
+      target,
+      "only `.parameters[?(@.name=='X' && @.in=='Y')]` is recognised",
+    );
+  }
+  const filter = rest[0].expr;
+  if (filter.kind !== "field-eq-and") {
+    throw new UnrecognisedTargetError(
+      target,
+      "parameter filter must be `@.name=='X' && @.in=='Y'`",
+    );
+  }
+  const fields = { [filter.a.field]: filter.a.value, [filter.b.field]: filter.b.value };
+  const name = fields["name"];
+  const inField = fields["in"];
+  if (name === undefined || inField === undefined) {
+    throw new UnrecognisedTargetError(target, "parameter filter must name `@.name` and `@.in`");
+  }
+
+  const opOverride = getOperationOverride(overlay, pathKey, method);
+  if (action.kind === "remove") {
+    opOverride.removeParameters = [
+      ...(opOverride.removeParameters ?? []),
+      { name, in: inField as ParameterLocation },
+    ];
+  } else {
+    const payload = asObject(target, action.value);
+    const param: ParameterObject = {
+      name,
+      in: inField as ParameterLocation,
+      ...(payload as Omit<ParameterObject, "name" | "in">),
+    };
+    opOverride.upsertParameters = [...(opOverride.upsertParameters ?? []), param];
+  }
+  setOperationOverride(overlay, pathKey, method, opOverride);
+}
+
+function applyOperationResponses(
+  target: string,
+  pathKey: string,
+  method: HttpMethod | "*",
+  rest: PathToken[],
+  action: NormalizedAction,
+  overlay: SpecOverlay,
+): void {
+  // Recognised: `.responses['200']` or `.responses['200']` via dot too.
+  if (rest.length !== 1) {
+    throw new UnrecognisedTargetError(
+      target,
+      "only single-status response targets are recognised (no `*`, no deeper paths)",
+    );
+  }
+  const sel = rest[0]!;
+  if (sel.kind === "wildcard") {
+    throw new UnrecognisedTargetError(
+      target,
+      "`.responses.*` is not recognised (use one per status)",
+    );
+  }
+  if (sel.kind !== "key" && sel.kind !== "name") {
+    throw new UnrecognisedTargetError(target, "expected a status code after `.responses`");
+  }
+  const status = sel.kind === "key" ? sel.key : sel.name;
+
+  const opOverride = getOperationOverride(overlay, pathKey, method);
+  if (action.kind === "remove") {
+    opOverride.removeResponses = [...(opOverride.removeResponses ?? []), status];
+  } else {
+    const payload = asObject(target, action.value);
+    const existingForStatus = opOverride.responses?.[status] as ResponseObject | undefined;
+    opOverride.responses = {
+      ...opOverride.responses,
+      [status]: { ...existingForStatus, ...payload } as ResponseObject,
+    };
+  }
+  setOperationOverride(overlay, pathKey, method, opOverride);
+}
+
+function applyModifyOperations(
+  target: string,
+  pathKey: string,
+  pathSel: PathToken,
+  filter: FilterExpr,
+  action: NormalizedAction,
+  overlay: SpecOverlay,
+): void {
+  if (action.kind === "remove") {
+    throw new UnrecognisedTargetError(
+      target,
+      "`remove` on `$.paths.*.*[?(...)]` has no typed-verb equivalent",
+    );
+  }
+  if (filter.kind !== "field-contains" || filter.field !== "tags") {
+    throw new UnrecognisedTargetError(
+      target,
+      "only `[?(@.tags contains 'X')]` is recognised at the all-operations level",
+    );
+  }
+  const payload = asObject(target, action.value);
+  const entry: ModifyOperationsEntry = {
+    where: { tags: [filter.value] },
+    apply: payloadToOperationOverride(target, payload),
+  };
+  // Path filter: if the user supplied a literal path key, narrow further.
+  if (pathSel.kind === "key" || pathSel.kind === "name") {
+    entry.where = { ...entry.where, pathPattern: new RegExp(`^${escapeRegex(pathKey)}$`) };
+  }
+  overlay.modifyOperations = [...(overlay.modifyOperations ?? []), entry];
+}
+
+function payloadToOperationOverride(
+  target: string,
+  payload: Record<string, JsonValue | undefined>,
+): OperationOverride {
+  // Reuse the operation-level merger against an empty base.
+  return mergeOperationOverride({}, payload as Partial<OperationOverride>, payload);
+}
+
+// ----------------------------------------------------------- overlay helpers
+
+function ensureOverrides(overlay: SpecOverlay): Record<string, PathOverride> {
+  overlay.overrides ??= {};
+  return overlay.overrides;
+}
+
+function getOperationOverride(
+  overlay: SpecOverlay,
+  pathKey: string,
+  method: HttpMethod | "*",
+): OperationOverride {
+  const overrides = ensureOverrides(overlay);
+  overrides[pathKey] ??= {};
+  const pathOverride = overrides[pathKey];
+  pathOverride.operations ??= {};
+  const ops = pathOverride.operations as Record<string, OperationOverride>;
+  ops[method] ??= {};
+  return ops[method];
+}
+
+function setOperationOverride(
+  overlay: SpecOverlay,
+  pathKey: string,
+  method: HttpMethod | "*",
+  op: OperationOverride,
+): void {
+  const overrides = ensureOverrides(overlay);
+  overrides[pathKey] ??= {};
+  const pathOverride = overrides[pathKey];
+  pathOverride.operations ??= {};
+  (pathOverride.operations as Record<string, OperationOverride>)[method] = op;
+}
+
+// --------------------------------------------------------- payload helpers
+
+function asObject(
+  target: string,
+  value: JsonValue | undefined,
+): Record<string, JsonValue | undefined> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(
+      `overlay action for target ${JSON.stringify(target)} expects an object \`update\` payload`,
+    );
+  }
+  return value as Record<string, JsonValue | undefined>;
+}
+
+function asArray(target: string, value: JsonValue | undefined): JsonValue[] {
+  if (!Array.isArray(value)) {
+    throw new Error(
+      `overlay action for target ${JSON.stringify(target)} expects an array \`update\` payload`,
+    );
+  }
+  return value;
+}
+
+function expectFieldEq(target: string, filter: FilterExpr, field: string): string {
+  if (filter.kind !== "field-eq" || filter.field !== field) {
+    throw new UnrecognisedTargetError(target, `expected filter \`@.${field}=='...'\``);
+  }
+  return filter.value;
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}

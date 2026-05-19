@@ -92,6 +92,9 @@ importers:
       '@oav/formats':
         specifier: workspace:*
         version: link:../formats
+      '@oav/overlay-spec':
+        specifier: workspace:*
+        version: link:../overlay-spec
       '@oav/schema':
         specifier: workspace:*
         version: link:../schema
@@ -191,6 +194,15 @@ importers:
       vitest:
         specifier: 4.1.6
         version: 4.1.6(@types/node@25.9.0)(vite@8.0.8(@types/node@25.9.0)(esbuild@0.28.0)(yaml@2.9.0))
+
+  packages/overlay-spec:
+    dependencies:
+      '@oav/core':
+        specifier: workspace:*
+        version: link:../core
+      '@oav/spec':
+        specifier: workspace:*
+        version: link:../spec
 
   packages/router:
     dependencies:

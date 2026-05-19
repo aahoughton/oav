@@ -13,8 +13,13 @@ export {
 } from "./resolver.js";
 export {
   applyOverlays,
+  type ModifyOperationsEntry,
+  type ModifyParametersEntry,
   type OperationOverride,
+  type OperationWhere,
+  type ParameterWhere,
   type PathOverride,
+  type ResponseOverride,
   type SpecOverlay,
 } from "./overlay.js";
 export { loadSpec, type LoadSpecOptions } from "./load.js";
