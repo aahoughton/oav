@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.2.0](https://github.com/aahoughton/oav/compare/oav-v2.1.0...oav-v2.2.0) (2026-05-19)
+
+
+### Features
+
+* **overlay-spec:** translator for OpenAPI Overlay 1.0 spec format ([#290](https://github.com/aahoughton/oav/issues/290)) ([e8ae711](https://github.com/aahoughton/oav/commit/e8ae71100586922f55040db59537866d3e2d8938))
+
 ## [2.1.0](https://github.com/aahoughton/oav/compare/oav-v2.0.0...oav-v2.1.0) (2026-05-04)
 
 
