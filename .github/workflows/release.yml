@@ -15,13 +15,27 @@ name: release
 on:
   push:
     branches: [main]
-  # Manual trigger: re-fires the publish job for the most recent
-  # release tag without needing release-please to mint a new one.
-  # Use this to recover from a transient publish failure (network,
-  # registry hiccup, trusted-publisher misconfiguration on a single
-  # package). `pnpm -r publish` is idempotent — it skips already-
-  # published versions and only attempts the missing ones.
+  # Manual trigger: re-fires the publish job for a specific release
+  # tag. Use this to recover from a transient publish failure
+  # (network, registry hiccup, trusted-publisher misconfiguration
+  # on a single package). The publish loop checks the registry per
+  # package and skips already-published versions, so retries are
+  # safe even if some packages succeeded on the first attempt.
+  #
+  # The `tag` input is required and the publish job checks it out
+  # explicitly: dispatch defaults to the workflow's branch HEAD, so
+  # without a pinned ref a retry could publish newer code than the
+  # release tag carries.
   workflow_dispatch:
+    inputs:
+      tag:
+        # release-please creates one tag per package per release
+        # (component prefix from release-please-config.json, linked
+        # versions, so all 5 point at the same commit). Any of them
+        # is fine to pass here; oav-core is the conventional choice.
+        description: "Release tag to (re)publish, e.g. oav-core-v2.1.1"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -32,7 +46,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       release_created: ${{ steps.rp.outputs.release_created }}
-      tag_name: ${{ steps.rp.outputs.tag_name }}
     steps:
       - id: rp
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
@@ -56,43 +69,93 @@ jobs:
       contents: read
       id-token: write
     steps:
+      # Validate the dispatch tag input before we use it as a ref.
+      # The expected shape is <component>-v<MAJOR>.<MINOR>.<PATCH>
+      # (release-please-config.json sets `include-component-in-tag:
+      # true`). Reject anything else so a dispatcher can't pass
+      # `main` or a SHA and end up publishing whatever happens to
+      # be at that ref.
+      - name: Validate release tag
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          if [[ ! "$TAG" =~ ^(oav-core|oav|oav-express4|oav-express5|oav-fastify)-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid tag '$TAG'. Expected <component>-v<MAJOR>.<MINOR>.<PATCH>, e.g. oav-core-v2.1.1"
+            exit 1
+          fi
+      # Check out the exact release commit. On the auto path
+      # (release-please created a release on this push),
+      # github.sha already points at the merged release-PR commit
+      # that release-please tagged. On workflow_dispatch, resolve
+      # the input through `refs/tags/<name>` so a branch with the
+      # same name as a release tag can't shadow the lookup; the
+      # checkout action fails if the tag doesn't exist.
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.sha }}
       - uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
         with:
           version: 10.33.0
+      # Node 24 (not 22 as the rest of CI uses): bundles npm 11.6+,
+      # which has the trusted-publisher OIDC exchange. Node 22 only
+      # ships npm 10.9, no OIDC support.
+      #
+      # No dependency cache: npm trusted-publishing guidance is to
+      # avoid caches in release builds to keep the supply-chain
+      # surface minimal. `--frozen-lockfile` already pins versions;
+      # the install time is acceptable for a once-per-release job.
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
-          node-version: 22
-          cache: pnpm
-          registry-url: https://registry.npmjs.org
+          node-version: 24
+          # No registry-url: setup-node would write an .npmrc that
+          # pins auth to a NODE_AUTH_TOKEN env var, blocking npm's
+          # native OIDC trusted-publisher flow. npm CLI picks the
+          # registry up from its built-in default.
       - run: pnpm install --frozen-lockfile
-      # No explicit `pnpm build`: each package's prepack rebuilds on
-      # `pnpm -r publish` below. (Vitest aliases the workspace src
-      # directly, so `pnpm test` doesn't need a prebuilt dist either.)
+      # Tests gate the publish (the per-package prepublishOnly gates
+      # are bypassed by `npm publish <tarball>`, so run the suite here
+      # explicitly).
       - run: pnpm test
-      # Publish every non-private workspace package: @aahoughton/oav-core
-      # (root), @aahoughton/oav (packages/oav), and the framework
-      # adapters @aahoughton/oav-express4, oav-express5, oav-fastify.
-      # The @oav/* internal workspace packages are private and skipped.
+      # Build tarballs with pnpm: it rewrites `workspace:*` deps to
+      # real versions in the packed manifest (npm pack does not, hence
+      # the per-package prepack guard that rejects npm pack). Each
+      # package's prepack also rebuilds dist as a side effect.
+      - name: Pack
+        run: |
+          mkdir -p pkgs
+          for pkg in . packages/oav packages/oav-express4 packages/oav-express5 packages/oav-fastify; do
+            (cd "$pkg" && pnpm pack --pack-destination "$GITHUB_WORKSPACE/pkgs")
+          done
+      # Publish via npm CLI, which performs the OIDC token exchange
+      # with npm's trusted-publisher endpoint using the `id-token:
+      # write` permission. No long-lived NPM_TOKEN secret involved.
+      # Each package must be configured as a trusted publisher on
+      # npmjs.com pointing at this repo + workflow.
       #
-      # Auth: long-lived NPM_TOKEN secret. We attempted OIDC trusted
-      # publishing in #220/#221; both failed because pnpm publish does
-      # not yet implement the OIDC token exchange (it shells out to
-      # npm CLI for publish, but the auth path doesn't trigger
-      # npm 11.5+'s trusted-publisher flow consistently — see
-      # https://github.com/pnpm/pnpm/issues/9812 and the 2026-01-14
-      # comment on that issue showing it still fails on Node 24 + npm
-      # 11.6 via pnpm). Revisit when pnpm ships native trusted-publisher
-      # support, or when we move publish off `pnpm publish`.
+      # Trusted publishing automatically attaches Sigstore-signed
+      # provenance to the published tarball, so `--provenance` is
+      # not passed explicitly.
       #
-      # --no-git-checks: the release-please commit is on main but CI
-      # checks it out in detached-HEAD mode, which pnpm otherwise refuses.
-      # --access public: required the first time a scoped package publishes;
-      # harmless afterwards.
-      # --provenance: attaches a signed build attestation so npmjs shows
-      # a "verified" badge on the published tarball (uses the
-      # `id-token: write` permission for Sigstore signing — independent
-      # of npm publish auth).
-      - run: pnpm -r publish --access public --provenance --no-git-checks
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # The pre-publish `npm view` check makes the loop idempotent:
+      # a workflow_dispatch retry after a partial publish skips
+      # packages already on the registry instead of erroring. Exit
+      # 0 from `npm view <pkg>@<version>` means the version exists;
+      # exit 1 (E404) means it doesn't, so we publish.
+      #
+      # --access public: required the first time a scoped package
+      # publishes; harmless afterwards.
+      - name: Publish
+        run: |
+          set -euo pipefail
+          for tarball in pkgs/*.tgz; do
+            manifest=$(tar -xOf "$tarball" package/package.json)
+            name=$(printf '%s' "$manifest" | jq -r .name)
+            version=$(printf '%s' "$manifest" | jq -r .version)
+            if npm view "${name}@${version}" version > /dev/null 2>&1; then
+              echo "skip: ${name}@${version} already published"
+              continue
+            fi
+            echo "publish: ${name}@${version}"
+            npm publish --access public "$tarball"
+          done
