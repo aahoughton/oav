@@ -147,12 +147,31 @@ reaching for `pnpm pack` directly.
   harness. `cd conformance && pnpm install` to bootstrap.
 - `performance/`: compile / validate benchmarks against other JSON
   Schema validators. `cd performance && pnpm install` to bootstrap.
+- `framework-tests/`: real-server integration tests for the
+  `oav-express4` / `oav-express5` / `oav-fastify` adapters. Owns the
+  framework runtime devDeps so they stay out of the main lockfile and
+  the main dependabot directory's scan (#295). Run with
+  `cd framework-tests && pnpm install && pnpm test` (and `pnpm typecheck`,
+  which is wired into CI). Express 4 and Express 5 coexist via npm
+  aliasing (`express-4`, `express-5`); see the directory's README.
+  Adapter-package unit tests (`extract.test.ts`, `middleware.test.ts`,
+  `render.test.ts`, fastify's `hook.test.ts`) still live in their
+  packages and run on `pnpm test` from the root.
 
-Both have their own `package.json` + `pnpm-workspace.yaml` (with empty
-`packages:` list so pnpm treats them as isolated roots). Their
+All three have their own `package.json` + `pnpm-workspace.yaml` (with
+empty `packages:` list so pnpm treats them as isolated roots). Their
 external dev-dependencies (benchmark runners, competing validators,
-`tsx`) are NOT in the main workspace install. Neither is type-checked
-in CI; they're tsx-run dev tooling, breakage shows up when you run them.
+framework runtimes, `tsx`) are NOT in the main workspace install.
+`conformance/` and `performance/` are not type-checked in CI;
+`framework-tests/` is.
+
+The root `.npmrc` sets `auto-install-peers=false` so the adapter
+packages' peer-dep declarations (`express`, `fastify`) do not
+silently pull the framework runtimes into the main workspace
+lockfile. `fastify` is the one exception still installed in the main
+workspace: `oav-fastify/src/*.ts` imports `import type { FastifyRequest } from "fastify"`
+and there is no `@types/fastify` on DefinitelyTyped, so the package
+itself has to be present for tsc to resolve the type.
 
 ## Architecture, package by package
 

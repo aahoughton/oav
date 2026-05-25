@@ -1,12 +1,10 @@
 import { type OpenAPIDocument } from "@oav/core";
+import { httpRequestFromExpress, renderProblemDetails, validateRequests } from "@oav/oav-express4";
 import { createValidator } from "@oav/validator";
-import express, { type Express, type Request } from "express";
+import express, { type Express, type Request } from "express-4";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { httpRequestFromExpress } from "../src/extract.js";
-import { renderProblemDetails } from "../src/render.js";
-import { validateRequests } from "../src/middleware.js";
 
 /**
  * Real-server integration tests. Spin up Express 4 on a random port,
@@ -15,6 +13,11 @@ import { validateRequests } from "../src/middleware.js";
  * Same `it()` names as the sibling oav-express5 / oav-fastify
  * integration suites; adapter implementations differ, scenarios
  * stay identical.
+ *
+ * `express-4` is an npm alias for express@4 (see this directory's
+ * package.json). End users `import express from "express"`; the alias
+ * exists only so both express majors can be installed side-by-side
+ * in one isolated sub-package.
  */
 
 function petSpec(): OpenAPIDocument {
