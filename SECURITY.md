@@ -25,3 +25,32 @@ published via GitHub Security Advisories once a fix is available.
 
 Security fixes are issued for the latest minor release of the current
 major version line. Older minor versions do not receive backports.
+
+## Scope of published packages
+
+The published packages (`@aahoughton/oav`, `@aahoughton/oav-core`,
+`@aahoughton/oav-express4`, `@aahoughton/oav-express5`,
+`@aahoughton/oav-fastify`) declare framework runtimes (`express`,
+`fastify`) as peer dependencies. Nothing from those frameworks ships
+inside any of the tarballs, and `@aahoughton/oav-core` has no runtime
+dependencies at all.
+
+Three sub-roots in this repo own their own lockfiles for test and
+benchmark dependencies, isolated from the main workspace:
+
+- `framework-tests/`: real-server integration tests for the
+  `oav-express4`, `oav-express5`, and `oav-fastify` adapters.
+- `performance/`: benchmarks against other JSON Schema / OpenAPI
+  validators.
+- `conformance/`: upstream JSON Schema and OpenAPI Overlay test-suite
+  harnesses.
+
+Dependabot scans each of those lockfiles. CVEs reported against a
+package that only appears under one of those directories affect that
+sub-root's test or benchmark harness; they do not reach the runtime
+tree that consumers of the npm packages receive. If you are a
+downstream consumer who has seen a CVE under one of these directories
+on the security tab and is unsure whether your install is affected,
+the answer is no: the affected package is not present in any
+published tarball, and your transitive resolution does not pick it
+up via these packages.
