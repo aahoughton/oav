@@ -609,6 +609,63 @@ For richer response envelopes, `toProblemDetails` produces
 field. `collectIssues` is the raw flat leaf list if you want to roll
 your own response shape.
 
+### Redacting field values from problem-details responses
+
+`toProblemDetails` echoes input values and schema metadata into the
+response by design. The default `detail` is a one-line summary of the
+first failing leaf, which interpolates the offending value for codes
+such as `enum`, `format`, and `pattern`. Each `issues[*].params`
+carries the machine-readable detail per code (`pattern.actual`,
+`additionalProperties.unexpected`, `required.missing`,
+`enum.allowed`, `pattern.pattern`, and so on; see `BuiltInErrorParams`
+for the full set). That is the right default for trusted clients and
+developer-facing APIs: machine-readable detail is what the envelope
+exists for.
+
+It is also a fingerprinting / data-exposure surface for endpoints
+that take request bodies containing PII (emails, account numbers,
+free text) or that validate against a spec whose internals (mapping
+keys, allowed enums) shouldn't be enumerable by an unauthenticated
+client. Two override points are exposed: pass `detail` to
+`toProblemDetails` for a structural summary, and post-process
+`issues[*].params` before sending.
+
+```ts
+import { httpStatusFor, toProblemDetails, type ValidationError } from "@aahoughton/oav";
+
+function safeProblemDetails(err: ValidationError, instance: string) {
+  const pd = toProblemDetails(err, { instance });
+  return {
+    ...pd,
+    // Structural summary; nothing about the offending value reaches detail.
+    detail: `${pd.issues.length} validation error(s)`,
+    // Clear per-leaf params; clients still get code, path, pointer, message.
+    issues: pd.issues.map((issue) => ({ ...issue, params: {} })),
+  };
+}
+
+app.use(
+  validateRequests(validator, {
+    onError: (err, ctx) => {
+      ctx.res
+        .status(httpStatusFor(err))
+        .type("application/problem+json")
+        .json(safeProblemDetails(err, ctx.req.originalUrl));
+    },
+  }),
+);
+```
+
+The trade-off: clients lose machine-readable detail in exchange for
+not leaking field values or schema internals. Each issue still
+carries `code` and `pointer`, which describe what failed and where;
+the value the client sent and the value the schema expected stay on
+the server. Narrower policies (clear `params` only on
+specific codes; clear `params` only on request paths under
+`/body/...`; keep `enum.allowed` but drop `enum.actual`) compose
+straightforwardly from the same hook; the broad form above is the
+starting point.
+
 ### Preserving an existing client error envelope
 
 Migrating an existing service may mean a documented client

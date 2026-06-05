@@ -22,7 +22,14 @@ export interface ValidationIssue {
   pointer: string;
   /** Human-readable description. */
   message: string;
-  /** Machine-readable details; shape per-code documented in {@link BuiltInErrorParams}. */
+  /**
+   * Machine-readable details for this issue; shape per-code
+   * documented in {@link BuiltInErrorParams}. Most code-specific
+   * shapes include request-derived fields (e.g. `pattern.actual`,
+   * `additionalProperties.unexpected`) or schema-derived metadata
+   * (e.g. `enum.allowed`, `maximum.maximum`). See the security note
+   * on {@link toProblemDetails} when serving untrusted clients.
+   */
   params: Record<string, unknown>;
 }
 
@@ -69,9 +76,13 @@ export interface ProblemDetailsOptions {
    * Override the human-readable `detail`. Defaults to
    * {@link formatSummary}(error): a single line describing the first
    * failing leaf (e.g. `"body.users[0].email must match format \"email\""`).
-   * Pass an explicit string for a structural summary like
-   * `` `${issues.length} validation error(s)` `` if you'd rather
-   * not surface a leaf in `detail`.
+   * The default summary interpolates the offending value for codes
+   * such as `enum`, `format`, and `pattern`; APIs serving untrusted
+   * clients should pass an explicit structural summary
+   * (e.g. `` `${issues.length} validation error(s)` ``) so leaf data
+   * does not appear in `detail`. See the security note on
+   * {@link toProblemDetails} for the corresponding `issues[*].params`
+   * concern.
    */
   detail?: string;
 }
@@ -101,6 +112,23 @@ export function collectIssues(error: ValidationError): ValidationIssue[] {
  * Convert a {@link ValidationError} tree to an RFC 9457 "Problem
  * Details for HTTP APIs" response body. Render as
  * `application/problem+json` in your HTTP layer.
+ *
+ * **Data exposure.** By design, the rendered response echoes input
+ * values and schema metadata. `detail` defaults to a one-line
+ * summary of the first failing leaf, which interpolates the
+ * offending value for codes such as `enum`, `format`, and `pattern`.
+ * Each `issues[*].params` carries the leaf's machine-readable
+ * detail (see {@link BuiltInErrorParams}), including request-derived
+ * fields (`pattern.actual`, `additionalProperties.unexpected`,
+ * `required.missing`) and schema-derived metadata (`enum.allowed`,
+ * `pattern.pattern`, `maximum.maximum`). This is the right default
+ * for trusted clients and developer-facing APIs. APIs serving
+ * untrusted clients, or APIs validating request bodies that contain
+ * PII, should override `detail` with a structural summary (e.g.
+ * `` `${pd.issues.length} validation error(s)` ``) and may want to
+ * clear `issues[*].params` before sending. See the "Redacting field
+ * values from problem-details responses" recipe in
+ * `docs/integration.md`.
  *
  * @example
  * ```ts
