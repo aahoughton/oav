@@ -20,7 +20,8 @@
         "packages/oav/src/cli.ts",
         "examples/**",
         "performance/**",
-        "conformance/**"
+        "conformance/**",
+        "scripts/**"
       ],
       "rules": {
         "no-console": "off"
