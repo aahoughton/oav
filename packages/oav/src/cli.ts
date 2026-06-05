@@ -1,29 +1,25 @@
 #!/usr/bin/env node
 export {};
 
-// `commander` and `esbuild` are regular dependencies of
-// `oav`, so a normal install puts them in node_modules.
-// If they're missing, the install is corrupted; catch the dynamic
-// import up front and print a clearer message than the default
-// ERR_MODULE_NOT_FOUND trace.
-for (const { name, purpose } of [
-  { name: "commander", purpose: "argv parsing" },
-  { name: "esbuild", purpose: "AOT compile-schema / compile-spec bundling" },
-] as const) {
-  try {
-    await import(name);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ERR_MODULE_NOT_FOUND") {
-      process.stderr.write(
-        `error: the oav CLI can't resolve '${name}' (${purpose}). ` +
-          "It's declared as a dependency of @aahoughton/oav; reinstall the package to repair the node_modules tree:\n" +
-          "    npm install --force @aahoughton/oav\n" +
-          "    pnpm install --force\n",
-      );
-      process.exit(2);
-    }
-    throw err;
+// `commander` is a regular dependency of `oav`, so a normal install
+// puts it in node_modules. If it's missing, the install is corrupted;
+// catch the dynamic import up front and print a clearer message than
+// the default ERR_MODULE_NOT_FOUND trace. `esbuild` is an optional
+// peer dependency (only `compile-schema` / `compile-spec` use it);
+// its absence is reported lazily by those commands.
+try {
+  await import("commander");
+} catch (err) {
+  if ((err as NodeJS.ErrnoException).code === "ERR_MODULE_NOT_FOUND") {
+    process.stderr.write(
+      "error: the oav CLI can't resolve 'commander' (argv parsing). " +
+        "It's declared as a dependency of @aahoughton/oav; reinstall the package to repair the node_modules tree:\n" +
+        "    npm install --force @aahoughton/oav\n" +
+        "    pnpm install --force\n",
+    );
+    process.exit(2);
   }
+  throw err;
 }
 
 const { buildProgram, defaultCommandIo } = await import("@oav/cli");

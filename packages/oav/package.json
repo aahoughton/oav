@@ -136,7 +136,6 @@
   "dependencies": {
     "@aahoughton/oav-core": "workspace:*",
     "commander": "^15.0.0",
-    "esbuild": "^0.28.0",
     "yaml": "^2.6.0"
   },
   "devDependencies": {
@@ -150,6 +149,14 @@
     "tsup": "8.5.1",
     "typescript": "5.9.3",
     "vitest": "4.1.8"
+  },
+  "peerDependencies": {
+    "esbuild": "^0.28.0"
+  },
+  "peerDependenciesMeta": {
+    "esbuild": {
+      "optional": true
+    }
   },
   "engines": {
     "node": ">=22"
