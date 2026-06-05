@@ -1,0 +1,24 @@
+{
+  "name": "@oav-dev/framework-tests",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Isolated integration tests for the framework adapters (oav-express4, oav-express5, oav-fastify). Owns the runtime framework devDeps so they stay out of the main workspace lockfile (and out of the main dependabot directory's scan).",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/express-4": "npm:@types/express@4.17.21",
+    "@types/express-5": "npm:@types/express@5.0.4",
+    "@types/node": "25.9.1",
+    "express-4": "npm:express@4.22.2",
+    "express-5": "npm:express@5.2.1",
+    "fastify": "5.8.5",
+    "typescript": "5.9.3",
+    "vitest": "4.1.7"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

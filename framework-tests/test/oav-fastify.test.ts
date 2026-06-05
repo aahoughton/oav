@@ -1,10 +1,8 @@
 import { type OpenAPIDocument } from "@oav/core";
+import { httpRequestFromFastify, renderProblemDetails, validateRequests } from "@oav/oav-fastify";
 import { createValidator } from "@oav/validator";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { httpRequestFromFastify } from "../src/extract.js";
-import { renderProblemDetails } from "../src/render.js";
-import { validateRequests } from "../src/middleware.js";
 
 /**
  * Real-server integration tests against Fastify. Uses
@@ -256,7 +254,7 @@ describe("oav-fastify integration: Fastify specifics", () => {
         },
       }),
     );
-    app.setErrorHandler((err, _request, reply) => {
+    app.setErrorHandler((err: Error, _request, reply) => {
       captured.push(err);
       reply.code(500).send({ error: err.message });
     });

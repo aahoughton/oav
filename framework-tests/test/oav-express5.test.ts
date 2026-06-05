@@ -1,19 +1,22 @@
 import { type OpenAPIDocument } from "@oav/core";
+import { httpRequestFromExpress, renderProblemDetails, validateRequests } from "@oav/oav-express5";
 import { createValidator } from "@oav/validator";
-import express, { type Express, type Request } from "express";
+import express, { type Express, type Request } from "express-5";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { httpRequestFromExpress } from "../src/extract.js";
-import { renderProblemDetails } from "../src/render.js";
-import { validateRequests } from "../src/middleware.js";
 
 /**
  * Real-server integration tests against Express 5. Same scenario
- * names as oav-express4's integration.test.ts (cross-adapter test
+ * names as oav-express4's integration suite (cross-adapter test
  * parity is part of the contract); the implementations differ only
  * where Express 5's promise-native middleware diverges from
  * Express 4's sync model.
+ *
+ * `express-5` is an npm alias for express@5 (see this directory's
+ * package.json). End users `import express from "express"`; the alias
+ * exists only so both express majors can be installed side-by-side
+ * in one isolated sub-package.
  */
 
 function petSpec(): OpenAPIDocument {

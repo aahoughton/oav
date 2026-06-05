@@ -15,19 +15,17 @@ updates:
       # auto-PRs; bump it deliberately when the time is right.
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
-      # Each oav-express{4,5} adapter pins to its corresponding express
-      # major on purpose: that's the whole point of having two packages.
-      # Dependabot has a workspace-wide version-unification step that
-      # picks one target version for any given dep name and rewrites
-      # every package.json that names it; with express 4.x in one
-      # adapter and 5.x in the other, every bump round downgrades one
-      # adapter (#276, #283). The major-version ignore below doesn't
-      # catch this because dependabot files the cross-major rewrite as
-      # a patch. Excluding express from groups also doesn't help: the
-      # per-dep PR still unifies. Until dependabot supports per-package
-      # version scoping, ignore express family entirely and bump it by
+      # The express runtime no longer appears in the main workspace
+      # lockfile (it lives in framework-tests/), but @types/express
+      # still does, in two sibling packages pinned to different
+      # majors (oav-express4 -> 4.x, oav-express5 -> 5.x). Dependabot
+      # has a workspace-wide version-unification step that picks one
+      # target version for any given dep name and rewrites every
+      # package.json that names it; that step would rewrite both
+      # @types/express pins to the same major and silently break one
+      # adapter (#276, #283). Until dependabot supports per-package
+      # version scoping, ignore @types/express here and bump it by
       # hand when an in-major patch lands upstream.
-      - dependency-name: "express"
       - dependency-name: "@types/express"
     groups:
       types:
@@ -45,11 +43,7 @@ updates:
           - minor
           - patch
         exclude-patterns:
-          # See note above. The major-version ignore on `express` doesn't
-          # fire when grouping presents the change as a patch (oav-express5
-          # silently gets rewritten from 5.x to a 4.x patch), so keep both
-          # out of the group entirely.
-          - "express"
+          # See note above.
           - "@types/express"
 
   - package-ecosystem: npm
@@ -93,6 +87,44 @@ updates:
         update-types:
           - minor
           - patch
+
+  - package-ecosystem: npm
+    directory: "/framework-tests"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+      prefix-development: chore
+      include: scope
+    ignore:
+      # TypeScript majors cross every file in the tree at once and
+      # routinely land breaking type-narrowing changes. Opt out of
+      # auto-PRs; bump it deliberately when the time is right.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      # express-4 / express-5 are npm aliases for express@4 / express@5
+      # respectively (this directory installs both majors side-by-side
+      # so a single test run exercises both adapters). Dependabot does
+      # not treat the two aliases as the same dependency, so they are
+      # safe from the workspace-wide version-unification that motivates
+      # the @types/express ignore in the root directory above. We still
+      # bump these by hand alongside their @types/* siblings to keep
+      # each major's pair consistent.
+      - dependency-name: "express-4"
+      - dependency-name: "express-5"
+      - dependency-name: "@types/express-4"
+      - dependency-name: "@types/express-5"
+    groups:
+      dev-minor-and-patch:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+        exclude-patterns:
+          - "express-4"
+          - "express-5"
+          - "@types/express-4"
+          - "@types/express-5"
 
   - package-ecosystem: github-actions
     directory: "/"
