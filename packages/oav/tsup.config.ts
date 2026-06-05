@@ -68,7 +68,7 @@ function rewriteOavCore(): Plugin {
   };
 }
 
-const external = ["yaml", "commander"];
+const external = ["yaml", "commander", "esbuild"];
 
 export default defineConfig([
   {

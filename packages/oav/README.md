@@ -18,7 +18,7 @@ const validator = createValidator(document);
 
 | Package    | When to use                                                                                                                                                                                             |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `oav`      | Includes YAML readers and the `oav` CLI binary. Pulls in `yaml`, `commander`, and `esbuild` (CLI-only).                                                                                                 |
+| `oav`      | Includes YAML readers and the `oav` CLI binary. Pulls in `yaml` and `commander`. `esbuild` is an optional peer dep; install it alongside `oav` if you use `oav compile-schema` / `oav compile-spec`.    |
 | `oav-core` | Lean. Zero runtime dependencies. JSON specs only (or pre-parsed objects via the memory reader). Use on Cloudflare Workers, Vercel Edge, Lambda@Edge, or anywhere the YAML/CLI footprint isn't worth it. |
 
 `oav` re-exports every subpath of `oav-core` at matching paths
