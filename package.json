@@ -130,7 +130,8 @@
     "lint": "oxlint && oxfmt --check .",
     "fmt": "oxfmt --write .",
     "typecheck": "tsc -b && tsc -p examples",
-    "prepack": "pnpm build",
+    "prepack": "pnpm build && node ./scripts/pack-devdeps.mjs strip",
+    "postpack": "node ./scripts/pack-devdeps.mjs restore",
     "prepublishOnly": "pnpm test"
   },
   "devDependencies": {

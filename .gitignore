@@ -12,6 +12,7 @@ performance/results/
 *.log
 oav-*.tgz
 aahoughton-oav-*.tgz
+package.json.bak
 MIGRATION-NOTES.md
 .claude/
 mise.toml
