@@ -76,9 +76,6 @@ importers:
       commander:
         specifier: ^15.0.0
         version: 15.0.0
-      esbuild:
-        specifier: ^0.28.0
-        version: 0.28.0
       yaml:
         specifier: ^2.6.0
         version: 2.9.0
