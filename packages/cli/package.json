@@ -19,7 +19,7 @@
     "@oav/schema": "workspace:*",
     "@oav/spec": "workspace:*",
     "@oav/validator": "workspace:*",
-    "commander": "14.0.3"
+    "commander": "15.0.0"
   },
   "engines": {
     "node": ">=20"
