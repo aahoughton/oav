@@ -1,7 +1,7 @@
 lockfileVersion: '9.0'
 
 settings:
-  autoInstallPeers: true
+  autoInstallPeers: false
   excludeLinksFromLockfile: false
 
 importers:
@@ -10,10 +10,10 @@ importers:
     devDependencies:
       '@apidevtools/json-schema-ref-parser':
         specifier: ^15.3.5
-        version: 15.3.5(@types/json-schema@7.0.15)
+        version: 15.3.5
       '@hyperjump/json-schema':
         specifier: ^1.17.6
-        version: 1.17.6(@hyperjump/browser@1.3.1)
+        version: 1.17.6
       ajv:
         specifier: ^8.20.0
         version: 8.20.0
@@ -21,8 +21,8 @@ importers:
         specifier: ^6.0.2
         version: 6.0.2
       tsx:
-        specifier: ^4.22.3
-        version: 4.22.3
+        specifier: ^4.22.4
+        version: 4.22.4
       typescript:
         specifier: ^5.7.3
         version: 5.9.3
@@ -191,10 +191,6 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@hyperjump/browser@1.3.1':
-    resolution: {integrity: sha512-Le5XZUjnVqVjkgLYv6yyWgALat/0HpB1XaCPuCZ+GCFki9NvXloSZITIJ0H+wRW7mb9At1SxvohKBbNQbrr/cw==}
-    engines: {node: '>=18.0.0'}
-
   '@hyperjump/json-pointer@1.1.2':
     resolution: {integrity: sha512-zPNgu1zdhtjQHFNLGzvEsLDsLOEvhRj6u6ktIQmlz7YPESv5uF8SnAe3Dq0oL6gZ6OGWSLq2n7pphRNF6Hpg6w==}
 
@@ -211,12 +207,6 @@ packages:
 
   '@hyperjump/uri@1.3.3':
     resolution: {integrity: sha512-rUqeUdL2aW7lzvSnCL6yUetXYzqxhsBEw9Z7Y1bEhgiRzcfO3kjY0UdD6c4H/bzxe0fXIjYuocjWQzinio8JTQ==}
-
-  '@hyperjump/uri@1.3.4':
-    resolution: {integrity: sha512-aUVWwu2GtC/cU4DwdTM+b+5jjboM6wft6vNg1+7pUTk/nNRNaBYcYhaEnCir9eRLBbkcGPkiEO7XRUlcDkxj4Q==}
-
-  '@types/json-schema@7.0.15':
-    resolution: {integrity: sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==}
 
   ajv@8.20.0:
     resolution: {integrity: sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA==}
@@ -273,8 +263,8 @@ packages:
     resolution: {integrity: sha512-FlHoQpcFvCzeXK5kVPvV7IVgW/hs/B36QWTz876iSdeJguBDfdTSRQmYmaHX+fQNt4hp+gEFB2XXw+8hT4/y8A==}
     engines: {node: '>=20.0.0'}
 
-  tsx@4.22.3:
-    resolution: {integrity: sha512-mdoNxBC/cSQObGGVQ5Bpn5i+yv7j68gk3Nfm3wFjcJg3Z0Mix9jzAFfP12prmm5eVGmDKtp0yyArrs0Q+8gZHg==}
+  tsx@4.22.4:
+    resolution: {integrity: sha512-X8EX+XV4QR5xCsrgxaED954zTDfY8KqlDtskKEL0cHhyS/P8b4IFOvGDQpsC9Q1XnLq915wEfwwY/zzskCtmhg==}
     engines: {node: '>=18.0.0'}
     hasBin: true
 
@@ -289,9 +279,8 @@ packages:
 
 snapshots:
 
-  '@apidevtools/json-schema-ref-parser@15.3.5(@types/json-schema@7.0.15)':
+  '@apidevtools/json-schema-ref-parser@15.3.5':
     dependencies:
-      '@types/json-schema': 7.0.15
       js-yaml: 4.1.1
 
   '@esbuild/aix-ppc64@0.28.0':
@@ -372,13 +361,6 @@ snapshots:
   '@esbuild/win32-x64@0.28.0':
     optional: true
 
-  '@hyperjump/browser@1.3.1':
-    dependencies:
-      '@hyperjump/json-pointer': 1.1.2
-      '@hyperjump/uri': 1.3.4
-      content-type: 1.0.5
-      just-curry-it: 5.3.0
-
   '@hyperjump/json-pointer@1.1.2': {}
 
   '@hyperjump/json-schema-formats@1.0.1':
@@ -386,9 +368,8 @@ snapshots:
       '@hyperjump/uri': 1.3.3
       idn-hostname: 15.1.8
 
-  '@hyperjump/json-schema@1.17.6(@hyperjump/browser@1.3.1)':
+  '@hyperjump/json-schema@1.17.6':
     dependencies:
-      '@hyperjump/browser': 1.3.1
       '@hyperjump/json-pointer': 1.1.2
       '@hyperjump/json-schema-formats': 1.0.1
       '@hyperjump/pact': 1.4.0
@@ -401,10 +382,6 @@ snapshots:
   '@hyperjump/pact@1.4.0': {}
 
   '@hyperjump/uri@1.3.3': {}
-
-  '@hyperjump/uri@1.3.4': {}
-
-  '@types/json-schema@7.0.15': {}
 
   ajv@8.20.0:
     dependencies:
@@ -473,7 +450,7 @@ snapshots:
 
   tinybench@6.0.2: {}
 
-  tsx@4.22.3:
+  tsx@4.22.4:
     dependencies:
       esbuild: 0.28.0
     optionalDependencies:
