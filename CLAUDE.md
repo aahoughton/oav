@@ -173,6 +173,16 @@ workspace: `oav-fastify/src/*.ts` imports `import type { FastifyRequest } from "
 and there is no `@types/fastify` on DefinitelyTyped, so the package
 itself has to be present for tsc to resolve the type.
 
+Each sub-root (`conformance/`, `framework-tests/`, `performance/`,
+`performance/mem-bench/`) ships its own `.npmrc` pinning
+`auto-install-peers=true`. pnpm in CI treats a sub-root's
+`pnpm-workspace.yaml` as the project boundary and does not walk past
+it to find the root `.npmrc`; dependabot's lockfile refresh does walk
+up. Without a sub-root `.npmrc`, the two readers disagree, dependabot
+writes lockfiles with `autoInstallPeers: false`, and the CI install
+fails with `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`. The sub-root files
+make the value explicit so both paths agree on `true`.
+
 ## Architecture, package by package
 
 - **`@oav/core`**: the shared error-tree model plus the helpers every
