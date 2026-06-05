@@ -157,5 +157,10 @@ jobs:
               continue
             fi
             echo "publish: ${name}@${version}"
-            npm publish --access public "$tarball"
+            # `./` prefix: without it npm 11 parses a relative path
+            # containing `/` as a github user/repo spec (e.g.
+            # `pkgs/aahoughton-oav-X.tgz` -> github user `pkgs`, repo
+            # `aahoughton-oav-X.tgz`) and tries to git-clone it,
+            # failing with code 128 before any OIDC token exchange.
+            npm publish --access public "./$tarball"
           done
