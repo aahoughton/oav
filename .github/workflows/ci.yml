@@ -93,6 +93,14 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+      # Root install brings @types/express and fastify into
+      # packages/oav-{express4,express5,fastify}/node_modules so tsc can
+      # resolve the adapters' `import type { Request } from "express"` /
+      # `from "fastify"` declarations when typechecking transitively from
+      # framework-tests. The runtime express install lives only in
+      # framework-tests/ (auto-install-peers=false in the root .npmrc
+      # prevents the peer-dep declarations from pulling it back in).
+      - run: pnpm install --frozen-lockfile
       - name: install framework-tests deps
         working-directory: framework-tests
         run: pnpm install --frozen-lockfile
