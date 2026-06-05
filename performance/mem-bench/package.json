@@ -4,7 +4,7 @@
   "private": true,
   "description": "Isolated HTTP-server fixtures for the steady-state memory benchmark. Both servers validate the same OpenAPI spec against identical traffic; the memory probe endpoint (/__memory) lets the runner compare RSS/heap across runs.",
   "type": "module",
-  "dependencies": {
+  "devDependencies": {
     "@aahoughton/oav": "file:../../packages/oav",
     "@aahoughton/oav-core": "file:../..",
     "express": "^4.21.2",
