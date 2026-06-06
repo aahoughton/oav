@@ -75,6 +75,16 @@ describe("router", () => {
     expect(m?.pathParams).toEqual({ id: "foo/bar" });
   });
 
+  it("does not throw on malformed percent-encoding", () => {
+    // decodeURIComponent throws URIError on a bad escape; the request
+    // path is attacker-controlled, so matching must stay total. The
+    // malformed token falls back to its raw form and captures cleanly.
+    expect(() => r.match("get", "/pets/%E0%A4%A")).not.toThrow();
+    const m = r.match("get", "/pets/%zz");
+    expect(m?.operation.operationId).toBe("getPet");
+    expect(m?.pathParams).toEqual({ id: "%zz" });
+  });
+
   it("ignores trailing slashes", () => {
     expect(r.match("get", "/pets/")?.operation.operationId).toBe("listPets");
   });

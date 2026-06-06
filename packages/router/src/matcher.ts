@@ -1,6 +1,24 @@
 import type { HttpMethod, OperationObject, PathItem } from "@oav/core";
 
 /**
+ * Decode a single path token, tolerating malformed percent-encoding.
+ *
+ * `decodeURIComponent` throws `URIError` on bad escapes (`%`, `%zz`),
+ * and a request path is attacker-controlled, so an unguarded decode
+ * turns a malformed URL into a thrown exception that escapes
+ * `validateRequest`. Falling back to the raw token keeps matching
+ * total: a malformed token simply fails to equal any literal segment
+ * (yielding the normal 404) instead of crashing.
+ */
+function decodePathToken(token: string): string {
+  try {
+    return decodeURIComponent(token);
+  } catch {
+    return token;
+  }
+}
+
+/**
  * Segments of a parsed OpenAPI path template. Three kinds:
  *
  * - `literal`: a fixed substring (`pets`).
@@ -279,7 +297,7 @@ export function createRouter(paths: Record<string, PathItem>): Router {
       const normMethod = method.toLowerCase() as HttpMethod;
       const stripped = path.split("?")[0] ?? path;
       const trimmed = stripped.replace(/^\/+/, "").replace(/\/+$/, "");
-      const tokens = trimmed === "" ? [] : trimmed.split("/").map((s) => decodeURIComponent(s));
+      const tokens = trimmed === "" ? [] : trimmed.split("/").map(decodePathToken);
 
       // If we scan every matching path without finding the method, we
       // still want to report a 405 (not 404) and carry the union of
