@@ -119,3 +119,84 @@ sync. `format: "regex"` is auto-registered by `@oav/schema` and no
 longer ships from `@oav/formats`'s `builtInFormats`; a user-supplied
 entry in `formats` still overrides it if you want a different policy
 for the format than for `pattern`.
+
+## Guarding against deeply nested payloads
+
+Recursive schemas (a `$ref` that points back at an ancestor, common
+for tree and comment structures) compile to validation functions that
+call themselves once per level of nested data. Validation depth tracks
+the payload's nesting depth, and the JavaScript call stack has no
+built-in limit you can rely on. A small but deeply nested payload (an
+array nested a few thousand levels, only a few KB on the wire) can
+exhaust the stack and throw `RangeError: Maximum call stack size
+exceeded`.
+
+`oav` does not impose a depth limit of its own: the safe ceiling
+depends on the runtime's stack size and on how much stack each
+validation frame consumes, both of which the caller controls better
+than the library can. The framework adapters catch the `RangeError`
+and turn it into a 500, so a single request fails rather than the
+process crashing. A cheap-to-send payload that reliably produces 500s
+is still a denial-of-service vector.
+
+The mitigation is a depth cap at the parse boundary, before the parsed
+body reaches the validator. A byte-size limit alone is not enough: a
+payload nested thousands of levels deep is tiny, so `express.json({
+limit })` (or its equivalent) bounds width, not depth. Walk the parsed
+value iteratively (a recursive walker would overflow on the same input
+you are trying to reject) and reject anything past a sane ceiling.
+Legitimate request bodies rarely nest beyond ten or fifteen levels; a
+cap of 32 to 64 is generous for real traffic and well clear of the
+danger zone. Set it low and raise it only if a legitimate payload
+trips it.
+
+```ts
+// Returns true if `value` nests deeper than `limit`. Iterative on
+// purpose: a recursive walker would overflow on the input it rejects.
+function tooDeep(value: unknown, limit: number): boolean {
+  const stack: Array<[unknown, number]> = [[value, 1]];
+  while (stack.length) {
+    const [node, depth] = stack.pop()!;
+    if (node === null || typeof node !== "object") continue;
+    if (depth > limit) return true;
+    if (Array.isArray(node)) {
+      for (const el of node) stack.push([el, depth + 1]);
+    } else {
+      for (const k of Object.keys(node)) {
+        stack.push([(node as Record<string, unknown>)[k], depth + 1]);
+      }
+    }
+  }
+  return false;
+}
+
+app.use(express.json({ limit: "256kb" }));
+app.use((req, res, next) => {
+  if (req.body && tooDeep(req.body, 64)) {
+    return res.status(400).json({ error: "request body nesting too deep" });
+  }
+  next();
+});
+// the validateRequests middleware comes after this guard
+```
+
+Fastify is the same shape in an `onRequest` or `preValidation` hook
+that inspects `request.body`.
+
+For standalone callers (the Fetch adapter, a handler that calls
+`validateRequest` directly), wrap the call so a stack overflow becomes
+a controlled error instead of an unhandled rejection:
+
+```ts
+try {
+  result = validator.validateRequest(req);
+} catch (err) {
+  if (err instanceof RangeError) {
+    return new Response("payload too complex", { status: 400 });
+  }
+  throw err;
+}
+```
+
+The depth guard is the primary control; the byte-size limit and the
+`try/catch` are backstops.

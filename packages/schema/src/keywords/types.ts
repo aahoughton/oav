@@ -367,9 +367,25 @@ export interface KeywordDefinition {
    * `keywords` array order instead.
    */
   before?: string;
-  /** Marks whether this keyword tracks evaluated properties/items. */
+  /**
+   * Declares that this keyword contributes to evaluated-properties /
+   * evaluated-items tracking, the bookkeeping `unevaluatedProperties`
+   * and `unevaluatedItems` consume. Set the relevant sub-flag for any
+   * keyword that "evaluates" object members or array positions
+   * (`properties`, `patternProperties`, `items`, `contains`, …). A
+   * missed flag silently breaks `unevaluated*` siblings, which will
+   * then see members as unevaluated and reject valid data.
+   */
   evaluates?: { properties?: boolean; items?: boolean };
-  /** When `true`, indicates the keyword takes subschemas (applicator). */
+  /**
+   * When `true`, this keyword descends into subschemas (`items`,
+   * `properties`, `allOf`, `not`, …). The flag drives the subschema
+   * inliner to take the function-call path for multi-keyword schemas
+   * containing this keyword. Setting it wrong is a silent
+   * mis-optimization: a missed flag costs correctness (an inlined
+   * applicator can skip the per-function evaluated-keys state) and
+   * speed (V8 can't monomorphize a huge inlined body).
+   */
   applicator?: boolean;
   /**
    * When `true`, declares this keyword to be pure annotation/metadata:
