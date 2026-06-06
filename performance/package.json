@@ -8,7 +8,8 @@
     "bench": "tsx run.ts",
     "bench:long": "tsx run.ts --time=1500",
     "bench:mem": "tsx mem.ts",
-    "bench:large": "tsx large-payload.ts"
+    "bench:large": "tsx large-payload.ts",
+    "bench:anatomy": "node --expose-gc --import tsx error-tree-anatomy.ts"
   },
   "devDependencies": {
     "@apidevtools/json-schema-ref-parser": "^15.3.5",
