@@ -111,6 +111,15 @@ export interface BuiltInErrorParams {
   /** Draft-07 `dependencies` array form: same as dependentRequired. */
   dependencies: { trigger: string; missing: string };
 
+  // --- Compiler safety limits ---
+  /**
+   * The data nested deeper through a recursive schema than the
+   * configured `maxDepth` allowed. `limit` is that configured cap.
+   * Emitted at the recursion boundary instead of letting a deep
+   * payload exhaust the call stack; semantically a client error (400).
+   */
+  depth: { limit: number };
+
   // --- HTTP-level wrappers (emitted by @oav/validator) ---
   /** No path template matched `path`: semantically HTTP 404. */
   route: { method: string; path: string };
@@ -216,6 +225,8 @@ export const BUILT_IN_ERROR_CODES = [
   "discriminator",
   "dependentRequired",
   "dependencies",
+  // --- Compiler safety limits ---
+  "depth",
   // --- HTTP-level wrappers (emitted by @oav/validator) ---
   "route",
   "method",

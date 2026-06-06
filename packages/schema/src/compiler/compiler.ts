@@ -425,6 +425,30 @@ export interface CompileOptions {
    */
   maxErrors?: number;
   /**
+   * Cap on recursion depth through `$ref` cycles per `validate()` call.
+   * Defaults to uncapped.
+   *
+   * Recursive schemas (a `$ref` that points back at an ancestor, common
+   * for tree / comment structures) validate by recursing on the native
+   * JS call stack. A small but deeply nested payload can exhaust the
+   * stack and throw `RangeError`. Set this to bound the recursion: when
+   * the configured depth is exceeded, validation emits a `depth` error
+   * leaf (mapped to HTTP 400) at the boundary instead of descending
+   * further, so a deep payload fails as invalid rather than crashing.
+   *
+   * The counter increments only at recursive (cycle-closing) `$ref`
+   * boundaries, so it measures how deep the recursive structure nests
+   * and is independent of how the schema was decomposed. Non-recursive
+   * schemas are never instrumented and pay nothing. Legitimate payloads
+   * rarely recurse beyond ten or fifteen levels; a cap of 32 to 64 is
+   * generous for real traffic.
+   *
+   * When unset, codegen is identical to the un-instrumented path (zero
+   * overhead). Must be a positive integer (>= 1); `compileSchema` throws
+   * otherwise.
+   */
+  maxDepth?: number;
+  /**
    * Compile-time schema linting. All modes collect to
    * {@link CompileStats.strictIssues} rather than throwing.
    *
@@ -506,6 +530,21 @@ export interface CompileState {
    * plain `errors.push` with no runtime overhead.
    */
   readonly gated: boolean;
+  /**
+   * `true` when a finite `maxDepth` was configured. Codegen uses this to
+   * emit the recursion-depth guard at recursive `$ref` boundaries; when
+   * unset, refs compile to a plain call with no runtime overhead.
+   */
+  readonly depthGated: boolean;
+  /**
+   * Schemas whose function body is currently being generated (the
+   * compile stack). A `$ref` whose target is in this set is a back-edge:
+   * it closes a recursion cycle, so it carries the depth guard. Forward
+   * refs (target already compiled, or not yet started) are not in the
+   * set and compile to a plain call. Added in {@link compileValidator}
+   * before walking a schema's keywords and removed once they're done.
+   */
+  readonly compiling: Set<SchemaOrBoolean>;
   /**
    * `true` when predicate mode was requested. Compiled subfunctions
    * return `boolean` (no error tree); leaf-emitting keywords emit
@@ -643,6 +682,20 @@ export function compileSchema(
         "Use `predicate: true` if you want a yes/no validator with no error tree.",
     );
   }
+  const maxDepth = options.maxDepth ?? Number.POSITIVE_INFINITY;
+  if (
+    options.maxDepth !== undefined &&
+    Number.isFinite(maxDepth) &&
+    (!Number.isInteger(maxDepth) || maxDepth < 1)
+  ) {
+    // Same contract as `maxErrors`: a cap of 0 or a non-integer would
+    // misconfigure the guard silently. `Infinity` (omitting) is the
+    // uncapped default and is accepted explicitly.
+    throw new Error(
+      `compileSchema: \`maxDepth\` must be a positive integer (got ${String(options.maxDepth)}). ` +
+        "Omit the option for uncapped recursion depth.",
+    );
+  }
   const predicate = options.predicate === true;
   if (predicate && Number.isFinite(maxErrors)) {
     // Predicate mode short-circuits at the first failure by design;
@@ -653,7 +706,7 @@ export function compileSchema(
         "Predicate mode short-circuits on the first failure, so there is nothing to count.",
     );
   }
-  const deps = createDeps({ maxErrors, regexCompiler: options.regexCompiler });
+  const deps = createDeps({ maxErrors, maxDepth, regexCompiler: options.regexCompiler });
   if (options.formats) {
     for (const name of Object.keys(options.formats)) {
       const fn = options.formats[name];
@@ -702,6 +755,8 @@ export function compileSchema(
     graph,
     nextFn: 0,
     gated: Number.isFinite(maxErrors),
+    depthGated: Number.isFinite(maxDepth),
+    compiling: new Set(),
     predicate,
     refSuppressesSiblings: options.dialect.rules.refSuppressesSiblings,
     unevaluatedTracking,
@@ -769,14 +824,26 @@ function compileValidator(schema: SchemaOrBoolean, state: CompileState): string 
   // placeholder name we just reserved, so we fall through and emit a
   // real wrapper function.
   if (isPureRefSchema(schema, state)) {
-    const targetName = resolvePureRefTarget(schema as SchemaObject, state);
-    if (targetName !== null && targetName !== name) {
-      state.compiledFor.set(schema, targetName);
-      return targetName;
+    const target = resolvePureRefSchema(schema as SchemaObject, state);
+    // A recursive (back-edge) pure-ref under depth-gating must keep its
+    // wrapper: eliding it would route the recursive call through the
+    // caller (properties / items / composition), bypassing the `$ref`
+    // keyword where the depth guard is emitted. Forward refs still elide.
+    if (target !== null && !(state.depthGated && state.compiling.has(target))) {
+      const targetName = compileValidator(target, state);
+      if (targetName !== name) {
+        state.compiledFor.set(schema, targetName);
+        return targetName;
+      }
     }
   }
 
+  // Mark this schema as on the compile stack while its body (and every
+  // subschema reachable from it) is generated, so a `$ref` back to it
+  // resolves as a recursion back-edge and gets the depth guard.
+  state.compiling.add(schema);
   const body = buildFunctionBody(schema, state);
+  state.compiling.delete(schema);
   // Predicate mode drops the `path` parameter: error expressions
   // (which are the only consumer of `path`) are never emitted.
   // Callers of these functions (composition keywords, ref, etc.)
@@ -822,17 +889,17 @@ function isPureRefSchema(schema: SchemaOrBoolean, state: CompileState): boolean 
 }
 
 /**
- * Resolve a pure-`$ref` schema's target to a function name.
- * Mirrors the resolution logic in {@link compileSchemaKeywords}'s
- * `resolveRefToFunction` but reachable from {@link compileValidator}
- * before the schema's keywords are walked.
+ * Resolve a pure-`$ref` schema's target schema (not its function name),
+ * so {@link compileValidator} can both decide whether the ref is a
+ * recursion back-edge (target on the compile stack) and, when eliding,
+ * compile it. Mirrors the resolution in {@link compileSchemaKeywords}'s
+ * `resolveRefToFunction` but reachable before the keywords are walked.
  */
-function resolvePureRefTarget(schema: SchemaObject, state: CompileState): string | null {
+function resolvePureRefSchema(schema: SchemaObject, state: CompileState): SchemaOrBoolean | null {
   const ref = (schema as Record<string, unknown>).$ref;
   if (typeof ref !== "string") return null;
   const currentBaseUri = state.graph.schemaBaseUri.get(schema) ?? state.graph.baseUri;
-  const target = state.refResolver.resolve(ref, currentBaseUri);
-  return compileValidator(target, state);
+  return state.refResolver.resolve(ref, currentBaseUri);
 }
 
 /**
@@ -968,6 +1035,12 @@ function compileSchemaKeywords(
     const target = state.refResolver.resolve(ref, currentBaseUri);
     return compileValidator(target, state);
   };
+  // A ref is recursive (a back-edge) when its target is still on the
+  // compile stack: resolving it here only walks the ref graph, it does
+  // not trigger compilation, so the result is independent of whether
+  // `resolveRefToFunction` has run for this ref yet.
+  const isRecursiveRef = (ref: string): boolean =>
+    state.compiling.has(state.refResolver.resolve(ref, currentBaseUri));
 
   const runOrder = orderKeywordsForSchema(schema, state);
   // OAS 3.0: when `$ref` is present, every sibling keyword is ignored.
@@ -991,9 +1064,11 @@ function compileSchemaKeywords(
       errors: NAMES.ERRORS,
       compileSubschema: subCompiler,
       resolveRef: resolveRefToFunction,
+      isRecursiveRef,
       evaluatedPropertiesVar,
       evaluatedItemsVar,
       gated: state.gated,
+      depthGated: state.depthGated,
       predicate: state.predicate,
       byKeyword: state.byKeyword,
       hoistConstant: (expr: string, prefix = "C"): string => {
@@ -1035,6 +1110,9 @@ function assembleSource(state: CompileState, rootName: string): string {
     // reset. Keeping the top-level `validate` arity at 1 means the
     // V8 JIT only ever sees the monomorphic call site.
     parts.push(`function validate(${NAMES.DATA}) {`);
+    // Reset the per-call recursion counter so consecutive validate()
+    // calls are independent.
+    if (state.depthGated) parts.push(`  ${NAMES.DEPS}.depth = 0;`);
     parts.push(`  return ${rootName}(${NAMES.DATA});`);
     parts.push(`}`);
   } else {
@@ -1045,6 +1123,9 @@ function assembleSource(state: CompileState, rootName: string): string {
       parts.push(`  ${NAMES.DEPS}.errorsRemaining = ${NAMES.DEPS}.maxErrors;`);
       parts.push(`  ${NAMES.DEPS}.truncated = false;`);
     }
+    // Reset the per-call recursion counter (independent of the error
+    // budget; maxDepth and maxErrors gate separately).
+    if (state.depthGated) parts.push(`  ${NAMES.DEPS}.depth = 0;`);
     parts.push(
       `  const err = ${rootName}(${NAMES.DATA}, startPath !== undefined ? [...startPath] : []);`,
     );

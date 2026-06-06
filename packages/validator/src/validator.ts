@@ -414,6 +414,24 @@ export interface ValidatorOptions {
    */
   maxErrors?: number;
   /**
+   * Cap on recursion depth through `$ref` cycles per
+   * `validateRequest` / `validateResponse` call. Defaults to uncapped.
+   *
+   * Recursive schemas (a `$ref` back to an ancestor, common for tree /
+   * comment shapes) validate by recursing on the JS call stack, so a
+   * small but deeply nested payload can exhaust it and throw. Set this
+   * to bound the recursion: past the cap, validation emits a `depth`
+   * error (HTTP 400) at the boundary instead of descending, so a deep
+   * payload fails as a client error rather than crashing the process.
+   *
+   * Legitimate payloads rarely recurse beyond ten or fifteen levels; a
+   * cap of 32 to 64 is generous. Non-recursive schemas are never
+   * instrumented and pay nothing; unset, codegen is identical to the
+   * un-instrumented path. Must be a positive integer (>= 1);
+   * `createValidator` throws otherwise.
+   */
+  maxDepth?: number;
+  /**
    * Compile-time schema linting applied to every schema the validator
    * compiles (request parameters / body; response headers; response
    * bodies lazily). Issues surface via
@@ -574,6 +592,16 @@ export function createValidator(spec: OpenAPIDocument, options: ValidatorOptions
         "Use `maxErrors: 1` for fast-fail, or omit the option for uncapped error collection.",
     );
   }
+  if (
+    options.maxDepth !== undefined &&
+    Number.isFinite(options.maxDepth) &&
+    (!Number.isInteger(options.maxDepth) || options.maxDepth < 1)
+  ) {
+    throw new Error(
+      `createValidator: \`maxDepth\` must be a positive integer (got ${String(options.maxDepth)}). ` +
+        "Omit the option for uncapped recursion depth.",
+    );
+  }
   const paths = spec.paths ?? {};
   const router: Router = createRouter(paths);
   const formats = { ...builtInFormats, ...options.formats };
@@ -658,6 +686,7 @@ export function createValidator(spec: OpenAPIDocument, options: ValidatorOptions
       formats,
       refResolver: resolver,
       maxErrors: options.maxErrors,
+      maxDepth: options.maxDepth,
       keywords: options.keywords,
       strict: options.strict,
       regexCompiler: options.regexCompiler,

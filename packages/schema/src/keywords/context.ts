@@ -31,6 +31,12 @@ export interface KeywordContextInputs {
   pathSegments?: readonly string[];
   compileSubschema: (schema: SchemaOrBoolean) => string;
   resolveRef: (ref: string) => string;
+  /**
+   * Whether a `$ref` is a recursion back-edge (its target is still on
+   * the compile stack). Defaults to always-`false` when omitted. Used by
+   * the `$ref` keyword to decide whether to emit the `maxDepth` guard.
+   */
+  isRecursiveRef?: (ref: string) => boolean;
   evaluatedPropertiesVar?: string | null;
   evaluatedItemsVar?: string | null;
   /**
@@ -39,6 +45,12 @@ export interface KeywordContextInputs {
    * `errors.push(x)` / unchecked loops; zero runtime overhead.
    */
   gated?: boolean;
+  /**
+   * When `true`, a finite `maxDepth` was configured and the `$ref`
+   * keyword should emit the recursion-depth guard at back-edges. When
+   * `false` (the default), refs compile to a plain call.
+   */
+  depthGated?: boolean;
   /**
    * When `true`, predicate mode is active: the generated function
    * returns `boolean`, not `ValidationError | null`. Every
@@ -177,7 +189,9 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
   const evaluatedPropertiesVar = inputs.evaluatedPropertiesVar ?? null;
   const evaluatedItemsVar = inputs.evaluatedItemsVar ?? null;
   const gated = inputs.gated ?? false;
+  const depthGated = inputs.depthGated ?? false;
   const predicate = inputs.predicate ?? false;
+  const isRecursiveRef = inputs.isRecursiveRef ?? ((): boolean => false);
   const pathSegments = inputs.pathSegments ?? EMPTY_PATH_SEGMENTS;
   const effectivePathExpr =
     pathSegments.length === 0
@@ -562,9 +576,11 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     compileSubschema: inputs.compileSubschema,
     compileAndCallSubschema,
     resolveRef: inputs.resolveRef,
+    isRecursiveRef,
     evaluatedPropertiesVar,
     evaluatedItemsVar,
     gated,
+    depthGated,
     predicate,
     errorStatement,
     emitError,
