@@ -44,7 +44,7 @@ The quick start is the minimal wiring. Before exposing the validator to untruste
 ```ts
 const validator = createValidator(spec, {
   maxDepth: 64, // recursion cap: a body nesting past 64 levels fails as 400
-  maxErrors: 20, // stop after 20 errors instead of walking a huge invalid body
+  maxErrors: 10, // stop after 10 errors instead of walking a huge invalid body
 });
 ```
 
