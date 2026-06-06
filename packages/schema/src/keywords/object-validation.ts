@@ -86,23 +86,22 @@ export const requiredKeyword: KeywordDefinition = {
       });
       return;
     }
-    const missingVar = ctx.gen.scope.name("missing");
+    // Single pass: emit one leaf per missing key directly from the
+    // membership scan. The errors come out in `required`-array order
+    // (the scan order), which is the same order the previous
+    // collect-into-`missing`-then-replay form produced, and the budget
+    // break lands after the same key, so the error tree and truncation
+    // flag are unchanged. The intermediate `missing` array is just gone.
     ctx.gen.if(isObjectGuard(ctx.data), (g) => {
-      g.const(missingVar, "[]");
       g.forOf("_req", requiredVar, (gi) => {
-        gi.if(`!Object.prototype.hasOwnProperty.call(${ctx.data}, _req)`, (gii) => {
-          gii.line(`${missingVar}.push(_req);`);
-        });
-      });
-      g.if(`${missingVar}.length > 0`, (gi) => {
-        gi.forOf("_m", missingVar, () => {
+        gi.if(`!Object.prototype.hasOwnProperty.call(${ctx.data}, _req)`, () => {
           ctx.emitError(
             "leaf",
             ctx.leafErrorExpr(
               quoteString("required"),
-              `\`must have required property "\${_m}"\``,
-              `{ missing: _m }`,
-              ["_m"],
+              `\`must have required property "\${_req}"\``,
+              `{ missing: _req }`,
+              ["_req"],
             ),
           );
           ctx.emitBudgetBreak();
