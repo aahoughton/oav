@@ -93,6 +93,22 @@ export interface ValidatorDeps {
    * top of each top-level `validate()` call.
    */
   truncated: boolean;
+  /**
+   * The configured maximum recursion depth, or `Number.POSITIVE_INFINITY`
+   * when uncapped. Baked in at compile time; not mutated after
+   * construction. Compared against {@link ValidatorDeps.depth} at each
+   * recursive `$ref` boundary.
+   */
+  maxDepth: number;
+  /**
+   * Runtime recursion-depth counter, reset to `0` at the top of each
+   * top-level `validate()` call. Incremented before descending through a
+   * recursive (`$ref` back-edge) call and decremented after it returns,
+   * so it tracks the current nesting depth rather than a cumulative
+   * count. Only emitted when a finite {@link ValidatorDeps.maxDepth} was
+   * configured.
+   */
+  depth: number;
 }
 
 /**
@@ -158,6 +174,8 @@ export type RegexCompiler = (pattern: string) => CompiledRegex;
 export interface CreateDepsOptions {
   /** Cap on leaf errors collected per `validate()` call. */
   maxErrors?: number;
+  /** Cap on recursion depth through `$ref` cycles per `validate()` call. */
+  maxDepth?: number;
   /** Custom compiler for `pattern` keywords and `format: "regex"`. */
   regexCompiler?: RegexCompiler;
 }
@@ -409,6 +427,7 @@ export function createDeps(options?: CreateDepsOptions): ValidatorDeps;
 export function createDeps(arg?: number | CreateDepsOptions): ValidatorDeps {
   const options: CreateDepsOptions = typeof arg === "number" ? { maxErrors: arg } : (arg ?? {});
   const maxErrors = options.maxErrors ?? Number.POSITIVE_INFINITY;
+  const maxDepth = options.maxDepth ?? Number.POSITIVE_INFINITY;
   const regexCompiler = options.regexCompiler;
   const patterns = new Map<string, CompiledRegex>();
 
@@ -477,5 +496,7 @@ export function createDeps(arg?: number | CreateDepsOptions): ValidatorDeps {
     maxErrors,
     errorsRemaining: maxErrors,
     truncated: false,
+    maxDepth,
+    depth: 0,
   };
 }

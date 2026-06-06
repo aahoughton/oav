@@ -131,15 +131,35 @@ array nested a few thousand levels, only a few KB on the wire) can
 exhaust the stack and throw `RangeError: Maximum call stack size
 exceeded`.
 
-`oav` does not impose a depth limit of its own: the safe ceiling
-depends on the runtime's stack size and on how much stack each
-validation frame consumes, both of which the caller controls better
-than the library can. The framework adapters catch the `RangeError`
-and turn it into a 500, so a single request fails rather than the
-process crashing. A cheap-to-send payload that reliably produces 500s
-is still a denial-of-service vector.
+The first line of defense is the `maxDepth` option, on both
+`createValidator` (`ValidatorOptions`) and `compileSchema`
+(`CompileOptions`). It bounds recursion inside the validator: once the
+data nests deeper than the cap through a recursive `$ref`, validation
+stops descending and emits a `depth` error (mapped to HTTP 400) instead
+of growing the stack. The counter tracks only recursive (`$ref`
+back-edge) calls, so it measures how deep the recursive structure
+nests, independent of how the schema was decomposed; non-recursive
+schemas are never instrumented, and an unset `maxDepth` compiles to the
+same code as before (zero overhead). Legitimate payloads rarely recurse
+beyond ten or fifteen levels, so a cap of 32 to 64 is generous.
 
-The mitigation is a depth cap at the parse boundary, before the parsed
+```ts
+const validator = createValidator(spec, { maxDepth: 64 });
+// A request body that recurses past 64 levels now fails as a 400
+// `depth` error rather than throwing RangeError.
+```
+
+`maxDepth` covers the validator's own recursion. For untrusted callers
+who also want to reject deep payloads before they reach any parsing or
+business logic, a depth cap at the parse boundary is a complementary
+backstop (it bounds nesting the validator never sees, e.g. fields the
+schema doesn't traverse). Without `maxDepth`, the framework adapters
+catch the `RangeError` and turn it into a 500, so the process survives;
+a cheap-to-send payload that reliably produces 500s is still a
+denial-of-service vector, which is what `maxDepth` and the
+parse-boundary guard close.
+
+The parse-boundary guard is a depth cap before the parsed
 body reaches the validator. A byte-size limit alone is not enough: a
 payload nested thousands of levels deep is tiny, so `express.json({
 limit })` (or its equivalent) bounds width, not depth. Walk the parsed
@@ -198,5 +218,5 @@ try {
 }
 ```
 
-The depth guard is the primary control; the byte-size limit and the
-`try/catch` are backstops.
+`maxDepth` is the primary control; the parse-boundary guard, the
+byte-size limit, and the `try/catch` are backstops.

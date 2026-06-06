@@ -126,6 +126,14 @@ export interface KeywordCompileContext {
    * name. Used by `$ref` and `$dynamicRef` keywords.
    */
   resolveRef(ref: string): string;
+  /**
+   * `true` when `ref` is a recursion back-edge: its target schema is
+   * still on the compile stack, so the emitted call closes a cycle.
+   * The `$ref` / `$dynamicRef` keywords consult this to decide whether
+   * to wrap the call in the {@link KeywordCompileContext.depthGated}
+   * recursion-depth guard. Forward refs return `false`.
+   */
+  isRecursiveRef(ref: string): boolean;
   /** JS expression for the Set tracking evaluated properties, or `null`. */
   readonly evaluatedPropertiesVar: string | null;
   /** JS expression for the Set tracking evaluated items, or `null`. */
@@ -137,6 +145,13 @@ export interface KeywordCompileContext {
    * {@link KeywordCompileContext.emitBudgetBreak} which inspect it.
    */
   readonly gated: boolean;
+  /**
+   * `true` when a finite `maxDepth` cap was configured. The `$ref` /
+   * `$dynamicRef` keywords read this together with
+   * {@link KeywordCompileContext.isRecursiveRef} to emit the
+   * recursion-depth guard; other keywords don't need it.
+   */
+  readonly depthGated: boolean;
   /**
    * `true` when predicate mode is active: the compiled validator
    * returns `boolean` and constructs no error tree. Most keywords

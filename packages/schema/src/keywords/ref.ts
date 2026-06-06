@@ -1,5 +1,55 @@
+import { NAMES, quoteString } from "../codegen/index.js";
 import type { KeywordCompileContext, KeywordDefinition } from "./types.js";
 import { CORE_VOCAB } from "./vocabulary-uris.js";
+
+/**
+ * Emit a recursive (`$ref` back-edge) call wrapped in the `maxDepth`
+ * guard. `deps.depth` is incremented in the condition and decremented on
+ * both branches, so it tracks the current nesting depth and unwinds with
+ * the native stack. When the cap is exceeded the call is skipped (the
+ * stack stops growing) and a `depth` leaf error stands in for the
+ * subtree that wasn't validated.
+ */
+function compileGuardedRefCall(
+  ctx: KeywordCompileContext,
+  fn: string,
+  passProps: string,
+  passItems: string,
+): void {
+  const deps = NAMES.DEPS;
+  const cond = `++${deps}.depth > ${deps}.maxDepth`;
+  if (ctx.predicate) {
+    ctx.gen.if(
+      cond,
+      (g) => {
+        g.line(`${deps}.depth -= 1;`);
+        g.line("return false;");
+      },
+      (g) => {
+        const okVar = g.scope.name("refOk");
+        g.const(okVar, `${fn}(${ctx.data}, ${passProps}, ${passItems})`);
+        g.line(`${deps}.depth -= 1;`);
+        g.line(`if (!${okVar}) return false;`);
+      },
+    );
+    return;
+  }
+  const msgExpr = "`data nesting exceeds the configured maxDepth (${" + deps + ".maxDepth})`";
+  const depthErr = ctx.leafErrorExpr(quoteString("depth"), msgExpr, `{ limit: ${deps}.maxDepth }`);
+  ctx.gen.if(
+    cond,
+    (g) => {
+      g.line(`${deps}.depth -= 1;`);
+      ctx.emitError("leaf", depthErr);
+    },
+    (g) => {
+      const errVar = g.scope.name("refErr");
+      g.const(errVar, `${fn}(${ctx.data}, ${ctx.path}, ${passProps}, ${passItems})`);
+      g.line(`${deps}.depth -= 1;`);
+      g.if(`${errVar} !== null`, () => ctx.emitError("lift", errVar));
+    },
+  );
+}
 
 function compileRefCall(ctx: KeywordCompileContext, ref: string): void {
   const fn = ctx.resolveRef(ref);
@@ -8,6 +58,13 @@ function compileRefCall(ctx: KeywordCompileContext, ref: string): void {
   // evaluated-key sets straight through.
   const passProps = ctx.evaluatedPropertiesVar ?? "undefined";
   const passItems = ctx.evaluatedItemsVar ?? "undefined";
+  // Only recursive (cycle-closing) refs can grow the call stack without
+  // bound, so the guard goes there and nowhere else; forward refs and
+  // the uncapped default compile to a plain call.
+  if (ctx.depthGated && ctx.isRecursiveRef(ref)) {
+    compileGuardedRefCall(ctx, fn, passProps, passItems);
+    return;
+  }
   if (ctx.predicate) {
     ctx.gen.line(`if (!${fn}(${ctx.data}, ${passProps}, ${passItems})) return false;`);
     return;

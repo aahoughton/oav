@@ -296,13 +296,18 @@ per request.
   See `CompileState.unevaluatedTracking` and `schemaUsesUnevaluated`
   in `packages/schema/src/compiler/compiler.ts`.
 - Recursive schemas validate by recursing on the native JS call stack
-  (a self-`$ref` emits a recursive call; `deepEqual` for
-  `uniqueItems` / `const` / `enum` descends data structurally), with
-  no depth guard. A payload nested a few thousand levels deep throws
-  `RangeError: Maximum call stack size exceeded` (empirically ~5k on a
-  default Node stack). The framework adapters catch it as a 500;
-  untrusted callers should cap nesting depth at the parse boundary
-  (see docs/configuration.md "Guarding against deeply nested
-  payloads"). A codegen-level `maxDepth` counter is filed as `polish`;
-  it would put us ahead of the common approach (push the limit to the
-  boundary) but is not required for parity.
+  (a self-`$ref` emits a recursive call). Unbounded, a payload nested
+  a few thousand levels deep throws `RangeError` from stack exhaustion
+  (empirically ~5k frames on a default Node stack). The
+  `maxDepth` option (`CompileOptions` / `ValidatorOptions`) bounds it:
+  the compiler instruments only recursive (`$ref` back-edge) calls with
+  a `deps.depth` counter and emits a `depth` error leaf (HTTP 400) when
+  the cap is exceeded, so a deep payload fails as a client error
+  instead of crashing. Unset, codegen is byte-identical to the
+  un-instrumented path (zero overhead); see `compileGuardedRefCall` in
+  `packages/schema/src/keywords/ref.ts` and the `compiling` /
+  `depthGated` fields on `CompileState`. `deepEqual` (for
+  `uniqueItems` / `const` / `enum`) descends iteratively, so it can't
+  overflow independently of `$ref` recursion. Untrusted callers can
+  still cap nesting at the parse boundary for defense in depth (see
+  docs/configuration.md "Guarding against deeply nested payloads").
