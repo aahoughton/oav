@@ -963,6 +963,10 @@ function compileSchemaKeywords(
   const runOrder = orderKeywordsForSchema(schema, state);
   // OAS 3.0: when `$ref` is present, every sibling keyword is ignored.
   const refOnly = state.refSuppressesSiblings && "$ref" in schema;
+  // Shared per-function-body locals (e.g. the object-shape guard). One
+  // map per function so keywords on this schema reuse a single emitted
+  // `const`; see KeywordCompileContext.scopeLocal.
+  const scopeLocals = new Map<string, string>();
   const seen = new Set<string>();
   for (const kw of runOrder) {
     if (seen.has(kw.keyword)) continue;
@@ -989,6 +993,7 @@ function compileSchemaKeywords(
         state.hoistedConsts.push(`const ${name} = ${expr};`);
         return name;
       },
+      scopeLocals,
     });
     kw.compile(ctx);
     seen.add(kw.keyword);
