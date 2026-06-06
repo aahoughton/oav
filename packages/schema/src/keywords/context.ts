@@ -68,6 +68,15 @@ export interface KeywordContextInputs {
    * {@link KeywordCompileContext.hoistConstant}.
    */
   hoistConstant?: (expr: string, prefix?: string) => string;
+  /**
+   * Per-function-body memo backing
+   * {@link KeywordCompileContext.scopeLocal}. The compiler creates one
+   * map per validator function and threads the same instance into every
+   * keyword context for that function, so keywords sharing a key reuse a
+   * single emitted `const`. Omitted in inline contexts, where each
+   * keyword emits its own local (no cross-keyword sharing needed).
+   */
+  scopeLocals?: Map<string, string>;
 }
 
 /**
@@ -190,6 +199,21 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
       inputs.gen.const(name, expr);
       return name;
     });
+
+  // Per-function-body shared local: emit `const <name> = <expr>;` once
+  // per key, hand back the same identifier on repeat calls. When no
+  // shared memo is threaded in (inline contexts, tests), fall back to a
+  // fresh local each call: still computed once at the emission point,
+  // just not shared across keywords.
+  const scopeLocal = (key: string, expr: string, prefix = "L"): string => {
+    const sink = inputs.scopeLocals;
+    const cached = sink?.get(key);
+    if (cached !== undefined) return cached;
+    const name = inputs.gen.scope.name(prefix);
+    inputs.gen.const(name, expr);
+    sink?.set(key, name);
+    return name;
+  };
 
   const errorStatement = (kind: ErrorKind, errExpr: string): string => {
     if (predicate) {
@@ -550,6 +574,7 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     branchErrorExpr,
     validateSubschema,
     hoistConstant,
+    scopeLocal,
   };
 }
 

@@ -6,6 +6,18 @@ function isObjectGuard(dataExpr: string): string {
   return `typeof ${dataExpr} === "object" && ${dataExpr} !== null && !Array.isArray(${dataExpr})`;
 }
 
+/**
+ * The object-shape guard, computed once per validator-function scope and
+ * shared across every object keyword on the same schema (`type`,
+ * `required`, `properties`, `additionalProperties`, ...). Without this
+ * each keyword re-emits the guard inline, repeating the `Array.isArray`
+ * call per keyword on every object that reaches them. See
+ * {@link KeywordCompileContext.scopeLocal}.
+ */
+function objectGuardVar(ctx: KeywordCompileContext): string {
+  return ctx.scopeLocal(`isObject:${ctx.data}`, isObjectGuard(ctx.data), "obj");
+}
+
 function keyCountExpr(dataExpr: string): string {
   return `Object.keys(${dataExpr}).length`;
 }
@@ -21,7 +33,7 @@ export const maxPropertiesKeyword: KeywordDefinition = {
   compile(ctx: KeywordCompileContext): void {
     const limit = nonNegativeIntegerLiteral(ctx.schema, "maxProperties");
     const count = ctx.gen.scope.name("count");
-    ctx.gen.if(isObjectGuard(ctx.data), (g) => {
+    ctx.gen.if(objectGuardVar(ctx), (g) => {
       g.const(count, keyCountExpr(ctx.data));
       g.if(`${count} > ${limit}`, () => {
         ctx.emitError(
@@ -48,7 +60,7 @@ export const minPropertiesKeyword: KeywordDefinition = {
   compile(ctx: KeywordCompileContext): void {
     const limit = nonNegativeIntegerLiteral(ctx.schema, "minProperties");
     const count = ctx.gen.scope.name("count");
-    ctx.gen.if(isObjectGuard(ctx.data), (g) => {
+    ctx.gen.if(objectGuardVar(ctx), (g) => {
       g.const(count, keyCountExpr(ctx.data));
       g.if(`${count} < ${limit}`, () => {
         ctx.emitError(
@@ -79,7 +91,7 @@ export const requiredKeyword: KeywordDefinition = {
     if (required.length === 0) return;
     const requiredVar = ctx.hoistConstant(JSON.stringify(required), "required");
     if (ctx.predicate) {
-      ctx.gen.if(isObjectGuard(ctx.data), (g) => {
+      ctx.gen.if(objectGuardVar(ctx), (g) => {
         g.forOf("_req", requiredVar, (gi) => {
           gi.line(`if (!Object.prototype.hasOwnProperty.call(${ctx.data}, _req)) return false;`);
         });
@@ -92,7 +104,7 @@ export const requiredKeyword: KeywordDefinition = {
     // collect-into-`missing`-then-replay form produced, and the budget
     // break lands after the same key, so the error tree and truncation
     // flag are unchanged. The intermediate `missing` array is just gone.
-    ctx.gen.if(isObjectGuard(ctx.data), (g) => {
+    ctx.gen.if(objectGuardVar(ctx), (g) => {
       g.forOf("_req", requiredVar, (gi) => {
         gi.if(`!Object.prototype.hasOwnProperty.call(${ctx.data}, _req)`, () => {
           ctx.emitError(
