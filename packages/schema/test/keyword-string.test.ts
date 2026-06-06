@@ -40,6 +40,51 @@ describe("string keywords", () => {
     expect(elapsed).toBeLessThan(2000);
   });
 
+  it("maxLength decides each .length band correctly (skip-pass / walk / skip-fail)", () => {
+    const v = compile({ maxLength: 3 });
+    // length <= limit: cannot exceed (skip-pass band).
+    expect(v.validate("ab").valid).toBe(true);
+    expect(v.validate("abc").valid).toBe(true);
+    // limit < length <= 2*limit: walk band. ASCII overshoots; surrogate
+    // pairs (length 4-6, 2-3 code points) can still pass.
+    expect(v.validate("abcd").valid).toBe(false);
+    expect(v.validate("🦀🦀🦀").valid).toBe(true); // length 6, 3 code points
+    // length > 2*limit: must exceed (skip-fail band).
+    expect(v.validate("aaaaaaa").valid).toBe(false);
+  });
+
+  it("minLength decides each .length band correctly (skip-fail / walk / skip-pass)", () => {
+    const v = compile({ minLength: 3 });
+    // length < limit: must be below (skip-fail band).
+    expect(v.validate("ab").valid).toBe(false);
+    // limit <= length < 2*limit-1: walk band.
+    expect(v.validate("ab🦀").valid).toBe(true); // length 4, 3 code points
+    expect(v.validate("🦀🦀").valid).toBe(false); // length 4, 2 code points
+    // length >= 2*limit-1: cannot be below (skip-pass band).
+    expect(v.validate("🦀🦀🦀").valid).toBe(true); // length 6, 3 code points
+  });
+
+  it("reports the exact code-point count in `actual` even when the bound short-circuits on .length", () => {
+    // maxLength failure decided by the skip-fail band (length > 2*limit)
+    // must still surface the true code-point count, not s.length.
+    const max = compile({ maxLength: 2 });
+    const res = max.validate("🦀🦀🦀"); // length 6, 3 code points
+    expect(res.valid).toBe(false);
+    expect(res.error?.code).toBe("maxLength");
+    expect(res.error?.params).toMatchObject({ maxLength: 2, actual: 3 });
+
+    const min = compile({ minLength: 5 });
+    const res2 = min.validate("ab"); // length 2 < 5, skip-fail band
+    expect(res2.valid).toBe(false);
+    expect(res2.error?.params).toMatchObject({ minLength: 5, actual: 2 });
+  });
+
+  it("maxLength: 0 admits only the empty string", () => {
+    const v = compile({ maxLength: 0 });
+    expect(v.validate("").valid).toBe(true);
+    expect(v.validate("a").valid).toBe(false);
+  });
+
   it("pattern matches against an ECMA-262 regex (unicode)", () => {
     const v = compile({ pattern: "^[a-z]+$" });
     expect(v.validate("abc").valid).toBe(true);

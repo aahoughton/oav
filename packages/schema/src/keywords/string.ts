@@ -13,14 +13,18 @@ export const maxLengthKeyword: KeywordDefinition = {
   vocabulary: CORE_VALIDATION_VOCAB,
   compile(ctx: KeywordCompileContext): void {
     const limit = nonNegativeIntegerLiteral(ctx.schema, "maxLength");
-    const lenExpr = codePointLengthExpr(ctx.data);
-    ctx.gen.if(`typeof ${ctx.data} === "string" && ${lenExpr} > ${limit}`, () => {
+    // Condition short-circuits on `.length`; valid strings inside the
+    // bound never walk. The `actual` in the error params keeps the
+    // exact code-point count (cold path, only built when the error fires).
+    const condExpr = `${NAMES.DEPS}.exceedsMaxCodePoints(${ctx.data}, ${limit})`;
+    const actualExpr = codePointLengthExpr(ctx.data);
+    ctx.gen.if(`typeof ${ctx.data} === "string" && ${condExpr}`, () => {
       ctx.emitError(
         "leaf",
         ctx.leafErrorExpr(
           quoteString("maxLength"),
           `\`must have at most ${limit} characters\``,
-          `{ maxLength: ${limit}, actual: ${lenExpr} }`,
+          `{ maxLength: ${limit}, actual: ${actualExpr} }`,
         ),
       );
     });
@@ -38,14 +42,17 @@ export const minLengthKeyword: KeywordDefinition = {
   vocabulary: CORE_VALIDATION_VOCAB,
   compile(ctx: KeywordCompileContext): void {
     const limit = nonNegativeIntegerLiteral(ctx.schema, "minLength");
-    const lenExpr = codePointLengthExpr(ctx.data);
-    ctx.gen.if(`typeof ${ctx.data} === "string" && ${lenExpr} < ${limit}`, () => {
+    // Condition short-circuits on `.length`; the `actual` in the error
+    // params keeps the exact code-point count (cold path).
+    const condExpr = `${NAMES.DEPS}.belowMinCodePoints(${ctx.data}, ${limit})`;
+    const actualExpr = codePointLengthExpr(ctx.data);
+    ctx.gen.if(`typeof ${ctx.data} === "string" && ${condExpr}`, () => {
       ctx.emitError(
         "leaf",
         ctx.leafErrorExpr(
           quoteString("minLength"),
           `\`must have at least ${limit} characters\``,
-          `{ minLength: ${limit}, actual: ${lenExpr} }`,
+          `{ minLength: ${limit}, actual: ${actualExpr} }`,
         ),
       );
     });

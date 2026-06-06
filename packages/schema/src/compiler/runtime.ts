@@ -45,6 +45,20 @@ export interface ValidatorDeps {
    */
   countCodePoints: (s: string) => number;
   /**
+   * Length-bounded `maxLength` check. Returns `true` iff `s` has more
+   * than `limit` code points, short-circuiting on `s.length` so valid
+   * strings inside their bound skip the O(n) code-point walk and the
+   * worst case walks at most `limit + 1` code points. See
+   * {@link exceedsMaxCodePoints}.
+   */
+  exceedsMaxCodePoints: (s: string, limit: number) => boolean;
+  /**
+   * Length-bounded `minLength` check. Returns `true` iff `s` has fewer
+   * than `limit` code points, short-circuiting on `s.length`. See
+   * {@link belowMinCodePoints}.
+   */
+  belowMinCodePoints: (s: string, limit: number) => boolean;
+  /**
    * Find the first duplicate in an array. Returns `{ a, b }` where
    * `arr[a]` and `arr[b]` are structurally equal (JSON deep equality)
    * and `a < b`, or `null` when every item is unique. Backs `uniqueItems`.
@@ -249,6 +263,69 @@ export function countCodePoints(s: string): number {
   return n;
 }
 
+/**
+ * True iff `s` has strictly more than `limit` Unicode code points,
+ * deciding from `s.length` (UTF-16 code units) without walking the
+ * string whenever possible. Backs `maxLength`.
+ *
+ * A string of U code units holds between `ceil(U/2)` and `U` code
+ * points (each code point is one or two units). So:
+ *   - `U <= limit`     => count <= limit, cannot exceed. No walk.
+ *   - `U > 2 * limit`  => count >= ceil(U/2) > limit, must exceed. No walk.
+ *   - otherwise walk, stopping as soon as the count passes `limit`.
+ *
+ * The common case (ASCII / BMP strings inside their bound) is decided
+ * by the first check, so valid data never pays the O(n) scan, and even
+ * the worst case walks at most `limit + 1` code points.
+ *
+ * @param s - The string to measure.
+ * @param limit - The `maxLength` bound (a non-negative integer).
+ * @returns `true` when `s` exceeds the bound.
+ *
+ * @public
+ */
+export function exceedsMaxCodePoints(s: string, limit: number): boolean {
+  const u = s.length;
+  if (u <= limit) return false;
+  if (u > 2 * limit) return true;
+  let n = 0;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- iterator drives the counter
+  for (const _ of s) {
+    n += 1;
+    if (n > limit) return true;
+  }
+  return false;
+}
+
+/**
+ * True iff `s` has strictly fewer than `limit` Unicode code points,
+ * deciding from `s.length` (UTF-16 code units) without walking the
+ * string whenever possible. Backs `minLength`.
+ *
+ * With `count` in `[ceil(U/2), U]` for `U = s.length`:
+ *   - `U < limit`         => count <= U < limit, must be below. No walk.
+ *   - `U >= 2 * limit - 1` => count >= ceil(U/2) >= limit, cannot be below. No walk.
+ *   - otherwise walk, stopping as soon as the count reaches `limit`.
+ *
+ * @param s - The string to measure.
+ * @param limit - The `minLength` bound (a non-negative integer).
+ * @returns `true` when `s` is shorter than the bound.
+ *
+ * @public
+ */
+export function belowMinCodePoints(s: string, limit: number): boolean {
+  const u = s.length;
+  if (u < limit) return true;
+  if (u >= 2 * limit - 1) return false;
+  let n = 0;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- iterator drives the counter
+  for (const _ of s) {
+    n += 1;
+    if (n >= limit) return false;
+  }
+  return true;
+}
+
 export function deepEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (typeof a !== typeof b) return false;
@@ -381,6 +458,8 @@ export function createDeps(arg?: number | CreateDepsOptions): ValidatorDeps {
     typeOf,
     deepEqual,
     countCodePoints,
+    exceedsMaxCodePoints,
+    belowMinCodePoints,
     findDuplicate,
     wrapErrors,
     patterns,
