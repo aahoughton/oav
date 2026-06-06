@@ -7,7 +7,8 @@
   "scripts": {
     "bench": "tsx run.ts",
     "bench:long": "tsx run.ts --time=1500",
-    "bench:mem": "tsx mem.ts"
+    "bench:mem": "tsx mem.ts",
+    "bench:large": "tsx large-payload.ts"
   },
   "devDependencies": {
     "@apidevtools/json-schema-ref-parser": "^15.3.5",
