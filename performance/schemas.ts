@@ -186,6 +186,32 @@ const arrayHeavy: PerfSchema = {
   invalidInputs: [makeInvalidArray(100)],
 };
 
+// 7. Large strings with length bounds — exercises minLength / maxLength
+// code-point counting. Real API payloads carry big text fields
+// (descriptions, content, base64 blobs) under generous maxLength caps.
+// The valid body sits well under its cap, so a length-bounded check can
+// decide the outcome from `.length` without walking; the invalid body
+// overshoots its cap by >2x, the other short-circuitable case.
+const longString: PerfSchema = {
+  name: "long-string",
+  description: "object with large minLength/maxLength-bounded string fields",
+  schema: {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    type: "object",
+    required: ["body"],
+    properties: {
+      title: { type: "string", minLength: 1, maxLength: 200 },
+      body: { type: "string", minLength: 1, maxLength: 1_000_000 },
+    },
+  },
+  validInputs: [{ title: "Hello", body: makeAscii(100_000) }],
+  invalidInputs: [{ title: "", body: makeAscii(2_500_000) }],
+};
+
+function makeAscii(n: number): string {
+  return "a".repeat(n);
+}
+
 function makeValidArray(n: number): Array<Record<string, unknown>> {
   const out = [];
   for (let i = 0; i < n; i += 1) {
@@ -207,4 +233,5 @@ export const perfSchemas: PerfSchema[] = [
   composition,
   arrayHeavy,
   uniquePrimitives,
+  longString,
 ];
