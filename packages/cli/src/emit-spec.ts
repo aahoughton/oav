@@ -25,7 +25,6 @@ import {
   oas30Dialect,
   openapi31Dialect,
   resolve,
-  type CompiledSchema,
   type Dialect,
   type RefResolver,
 } from "@oav/schema";
@@ -99,17 +98,20 @@ export function emitSpec(document: OpenAPIDocument, options: EmitSpecOptions = {
   };
 
   // Collect every compiled schema, de-duplicated by identity. Each
-  // unique CompiledSchema gets one emitted IIFE; positions reference
-  // it by generated name.
+  // unique source schema gets one emitted IIFE; positions reference
+  // it by generated name. The dedup key is the source `SchemaOrBoolean`
+  // object: `compileSchema` returns a fresh `CompiledSchema` per call,
+  // so keying on its result would never hit and would recompile +
+  // re-emit the same schema once per reference.
   const compiled: Array<{ name: string; source: string }> = [];
-  const schemaNames = new Map<CompiledSchema, string>();
+  const schemaNames = new Map<SchemaOrBoolean, string>();
   const named = (schema: SchemaOrBoolean): string => {
-    const c = compileSchema(schema, { dialect, refResolver, formats: builtInFormats });
-    const existing = schemaNames.get(c);
+    const existing = schemaNames.get(schema);
     if (existing !== undefined) return existing;
+    const c = compileSchema(schema, { dialect, refResolver, formats: builtInFormats });
     const name = `S${compiled.length}`;
     compiled.push({ name, source: c.source });
-    schemaNames.set(c, name);
+    schemaNames.set(schema, name);
     return name;
   };
 

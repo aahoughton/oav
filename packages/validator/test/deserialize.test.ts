@@ -44,6 +44,19 @@ describe("deserialize", () => {
     expect(out).toEqual(["a", "b", "c"]);
   });
 
+  it("splits space-delimited arrays on the decoded space", () => {
+    // Query values reach deserialize already URL-decoded, so a
+    // spaceDelimited array arrives space-separated, not "%20"-separated.
+    const out = deserialize("a b c", {
+      name: "ids",
+      in: "query",
+      style: "spaceDelimited",
+      explode: false,
+      schema: { type: "array" },
+    });
+    expect(out).toEqual(["a", "b", "c"]);
+  });
+
   it("treats empty string arrays as an empty array", () => {
     const out = deserialize("", {
       name: "ids",
