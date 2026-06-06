@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.3.0](https://github.com/aahoughton/oav/compare/oav-v2.2.1...oav-v2.3.0) (2026-06-06)
+
+
+### Features
+
+* **oav:** make esbuild an optional peer dependency ([#313](https://github.com/aahoughton/oav/issues/313)) ([daad9dd](https://github.com/aahoughton/oav/commit/daad9dd8b5848f6df5e5f1917b613c78208527f0))
+
 ## [2.2.1](https://github.com/aahoughton/oav/compare/oav-v2.2.0...oav-v2.2.1) (2026-06-05)
 
 
