@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.3.0](https://github.com/aahoughton/oav/compare/oav-express5-v2.2.1...oav-express5-v2.3.0) (2026-06-06)
+
+
+### Chore
+
+* **oav-express5:** Synchronize oav versions
+
 ## [2.2.1](https://github.com/aahoughton/oav/compare/oav-express5-v2.2.0...oav-express5-v2.2.1) (2026-06-05)
 
 
