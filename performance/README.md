@@ -30,8 +30,9 @@ Two modes, one script:
 
 - **Default (synthetic).** Iterates the schemas in `./schemas.ts` — a
   curated shape distribution (trivial scalar, flat object, recursive
-  `$ref`, `oneOf`+`allOf` composition, large array of small objects).
-  Measures both `compile` and `validate`; validate has separate valid
+  `$ref`, `oneOf`+`allOf` composition, large array of small objects,
+  `uniqueItems` array, and an object with large length-bounded
+  strings). Measures both `compile` and `validate`; validate has separate valid
   / invalid tasks so neither library wins by short-circuiting. Uses
   [tinybench](https://github.com/tinylibs/tinybench) for
   warmup-plus-iterations statistics.
@@ -46,7 +47,8 @@ Two modes, one script:
   no apples-to-apples way to measure it here. Use the
   synthetic mode if you need validate throughput numbers.
 
-Output lands on stdout and as JSON at `./results.json`.
+Output lands on stdout and as JSON under `./results/<iso-timestamp>.json`
+(see [Results file](#results-file)).
 
 ### `bench-real-world.mjs` — oav end-to-end on one spec
 
@@ -108,13 +110,13 @@ retention.
 ### Synthetic mode
 
 ```
-=== petstore — flat object with bounds and formats ===
+=== petstore — object with required + scalar properties; realistic small API payload ===
 compile:
-  ajv compile                  402 ops/s       2.49ms / op
-  hyperjump compile           5.8K ops/s     172.36µs / op
-  oav compile                26.7K ops/s      37.60µs / op
+  ajv compile                  356 ops/s       2.85ms / op
+  hyperjump compile           5.9K ops/s     189.94µs / op
+  oav compile                17.1K ops/s      67.49µs / op
 validate:
-  ajv validate (valid)              25.0M ops/s      39.95ns / op
+  ajv validate (valid)              23.7M ops/s      42.95ns / op
   ...
 ```
 
@@ -229,11 +231,24 @@ ajv for parity with oav's always-collect-everything default.
   construction. oav wins across the board in the current numbers,
   by one to two orders of magnitude against ajv.
 - **Steady-state validate on the same payload shape.** Call
-  `compile` once at boot, validate many times. ajv is the fastest
-  here; oav is roughly 1.4× on trivial shapes, ~3× on object and
-  composition shapes, ~3× on large-array shapes. `maxErrors: 1`
-  closes the ajv gap on invalid payloads (apples-to-apples with
-  ajv's default fail-fast behavior).
+  `compile` once at boot, validate many times. ajv and oav trade the
+  lead by shape:
+  - **At or near ajv parity** on scalar, flat-object, and recursive
+    `$ref` shapes (within ~10–35% on the bench spec).
+  - **Behind ajv** on the applicator-heavy shapes: ~2–3× on large
+    arrays, ~3–4× on `oneOf`/`allOf` composition (the largest
+    remaining gap; see the structural note below). Predicate mode
+    closes most of the composition gap.
+  - **Ahead of ajv** on two shapes: `uniqueItems` arrays (oav's
+    primitive fast path vs ajv's pairwise scan), and length-bounded
+    strings. On the latter, `minLength` / `maxLength` decide from the
+    string's `.length` before walking code points, so a large valid
+    body costs O(1) where ajv walks the whole string (oav is
+    ~thousands× faster on that shape's valid path).
+
+  `maxErrors: 1` closes the gap on invalid payloads (apples-to-apples
+  with ajv's default fail-fast behavior).
+
 - **Predicate mode (`predicate: true`).** When consumers only need a
   yes/no answer — routing, gating, hot-path filtering — `oav-predicate`
   brings oav onto parity with ajv's default (fail-fast) mode on invalid
