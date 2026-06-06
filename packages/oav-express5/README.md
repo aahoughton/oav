@@ -29,7 +29,7 @@ import express from "express";
 import { createValidator } from "@aahoughton/oav-core";
 import { validateRequests } from "@aahoughton/oav-express5";
 
-const validator = createValidator(spec);
+const validator = createValidator(spec); // see "Hardening for untrusted input" below
 
 const app = express();
 app.use(express.json()); // ← MUST run before validateRequests
@@ -53,6 +53,22 @@ Invalid requests receive a `400 application/problem+json` response (status from 
 >   }),
 > );
 > ```
+
+## Hardening for untrusted input
+
+The quick start is the minimal wiring. Before exposing the validator to untrusted callers, cap two things so a small, cheap payload can't burn CPU or exhaust the stack. Both are `createValidator` options, and both default to uncapped, so the quick start above sets neither.
+
+```ts
+const validator = createValidator(spec, {
+  maxDepth: 64, // recursion cap: a body nesting past 64 levels fails as 400
+  maxErrors: 10, // stop after 10 errors instead of walking a huge invalid body
+});
+```
+
+- **`maxDepth`** bounds recursion through self-referential (`$ref`) schemas. Without it, a few KB of deeply nested JSON can exhaust the call stack and surface as a 500. Past the cap, validation emits a `depth` error (mapped to 400) instead of descending. Legitimate payloads rarely recurse beyond ten or fifteen levels, so 32 to 64 is generous.
+- **`maxErrors`** caps how many errors one request can produce, in compute and in response size: a large array whose every element fails the same way otherwise yields one error per element. Results carry `truncated: true` when the cap was hit. Leave it unset in development if you want every error at once.
+
+A byte-size limit (`express.json({ limit })`) and a parse-boundary depth cap, applied before the request reaches the validator, are backstops for nesting the validator never traverses (fields the schema doesn't descend into); see [Guarding against deeply nested payloads](https://github.com/aahoughton/oav/blob/main/docs/configuration.md#guarding-against-deeply-nested-payloads).
 
 ## API
 
