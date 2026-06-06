@@ -221,9 +221,10 @@ cold-start, AOT module emit.
 
 Both libraries are sub-microsecond per check on typical OpenAPI
 bodies. On complex `oneOf`/`allOf` or large arrays, Ajv leads by
-2–4× (say 100 ns to 400 ns per call, or 1.7 µs to 4 µs). oav's
+2–4× (say 100 ns to 400 ns per call, or 1.7 µs to 4 µs); oav leads
+on `uniqueItems` arrays and length-bounded strings. oav's
 `predicate` mode (`compileSchema(..., { predicate: true })`) closes
-most of that gap for yes/no use cases.
+most of Ajv's lead on the complex shapes for yes/no use cases.
 
 For typical HTTP workloads (1k–10k req/sec × ~1 validation per
 request), the difference is invisible at any of those numbers. For
