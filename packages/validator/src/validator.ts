@@ -802,7 +802,7 @@ export function createValidator(spec: OpenAPIDocument, options: ValidatorOptions
     }
 
     if (options.strictQueryParameters && req.query) {
-      const known = new Set(cache.parameters.filter((p) => p.in === "query").map((p) => p.name));
+      const known = cache.knownQueryParameters;
       for (const key of Object.keys(req.query)) {
         if (!known.has(key)) {
           children.push(
@@ -848,7 +848,7 @@ export function createValidator(spec: OpenAPIDocument, options: ValidatorOptions
     const cache = cacheFor(match);
     const children: ValidationError[] = [];
 
-    const statusKey = matchResponseKey(res.status, Object.fromEntries(cache.responses));
+    const statusKey = matchResponseKey(res.status, cache.responses);
     if (statusKey === undefined) {
       children.push(
         createLeafError("status", [], `no response defined for status ${res.status}`, {

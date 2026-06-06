@@ -25,6 +25,12 @@ export interface OperationCache {
   headerParamValidators: Map<string, CompiledSchema>;
   cookieParamValidators: Map<string, CompiledSchema>;
   parameters: ParameterObject[];
+  /**
+   * Names of every declared `in: "query"` parameter, precomputed for
+   * the `strictQueryParameters` unknown-key check so the hot path
+   * doesn't rebuild this Set per request.
+   */
+  knownQueryParameters: Set<string>;
   requestBody: RequestBodyObject | undefined;
   bodyValidators: Map<string, CompiledSchema>;
   responses: Map<string, ResponseCompiled>;
@@ -117,6 +123,10 @@ export function buildOperationCache(
     byKey.set(`${resolved.in}\0${resolved.name}`, resolved);
   }
   const parameters: ParameterObject[] = [...byKey.values()];
+  const knownQueryParameters = new Set<string>();
+  for (const p of parameters) {
+    if (p.in === "query") knownQueryParameters.add(p.name);
+  }
 
   const pathParamValidators = new Map<string, CompiledSchema>();
   const queryParamValidators = new Map<string, CompiledSchema>();
@@ -177,6 +187,7 @@ export function buildOperationCache(
 
   return {
     parameters,
+    knownQueryParameters,
     pathParamValidators,
     queryParamValidators,
     headerParamValidators,

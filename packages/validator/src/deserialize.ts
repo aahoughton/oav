@@ -72,7 +72,10 @@ function defaultStyle(location: string): ParameterStyle {
 function arraySeparator(style: ParameterStyle, explode: boolean): string {
   if (explode) return ","; // caller should have used Array.isArray fallthrough
   if (style === "pipeDelimited") return "|";
-  if (style === "spaceDelimited") return "%20";
+  // Query values reach here already URL-decoded (adapters read from
+  // URLSearchParams / framework `req.query`), so a spaceDelimited
+  // array arrives as space-separated text, not "%20"-separated.
+  if (style === "spaceDelimited") return " ";
   return ",";
 }
 
@@ -185,19 +188,23 @@ function parseMediaType(
  * OpenAPI precedence: exact status > `NXX` class > `default`.
  *
  * @param status - The response status.
- * @param responses - The operation's responses map.
+ * @param responses - The operation's responses, as either a keyed
+ *   object or a `Map` (the validator holds responses in a `Map`, so
+ *   accepting it directly avoids an `Object.fromEntries` per call).
  * @returns The matched response key, or `undefined`.
  *
  * @public
  */
 export function matchResponseKey(
   status: number,
-  responses: Record<string, unknown>,
+  responses: Record<string, unknown> | Map<string, unknown>,
 ): string | undefined {
+  const has =
+    responses instanceof Map ? (k: string) => responses.has(k) : (k: string) => k in responses;
   const exact = String(status);
-  if (exact in responses) return exact;
+  if (has(exact)) return exact;
   const klass = `${Math.floor(status / 100)}XX`;
-  if (klass in responses) return klass;
-  if ("default" in responses) return "default";
+  if (has(klass)) return klass;
+  if (has("default")) return "default";
   return undefined;
 }
