@@ -8,6 +8,16 @@ function isObjectGuard(dataExpr: string): string {
 }
 
 /**
+ * Shared object-shape guard for this scope. Same cache key as the
+ * object-validation keywords, so `properties` and `required` on one
+ * schema reference a single emitted `const`. See
+ * {@link KeywordCompileContext.scopeLocal}.
+ */
+function objectGuardVar(ctx: KeywordCompileContext): string {
+  return ctx.scopeLocal(`isObject:${ctx.data}`, isObjectGuard(ctx.data), "obj");
+}
+
+/**
  * The `properties` keyword. For each named property present in the data,
  * validate its value against the corresponding subschema.
  *
@@ -19,7 +29,7 @@ export const propertiesKeyword: KeywordDefinition = {
   applicator: true,
   compile(ctx: KeywordCompileContext): void {
     const props = ctx.schema as Record<string, SchemaOrBoolean>;
-    ctx.gen.if(isObjectGuard(ctx.data), (g) => {
+    ctx.gen.if(objectGuardVar(ctx), (g) => {
       for (const name of Object.keys(props)) {
         const subSchema = props[name];
         if (subSchema === undefined) continue;
@@ -59,7 +69,7 @@ export const patternPropertiesKeyword: KeywordDefinition = {
         return { regex: regexVar, sub: subSchema };
       },
     );
-    ctx.gen.if(isObjectGuard(ctx.data), (g) => {
+    ctx.gen.if(objectGuardVar(ctx), (g) => {
       const keyVar = g.scope.name("key");
       g.forIn(keyVar, ctx.data, (gi) => {
         for (const { regex, sub } of subs) {
@@ -97,7 +107,7 @@ export const additionalPropertiesKeyword: KeywordDefinition = {
       ctx.hoistConstant(`${NAMES.DEPS}.compilePattern(${quoteString(p)})`, "re"),
     );
     const known = ctx.hoistConstant(`new Set(${knownSet})`, "known");
-    ctx.gen.if(isObjectGuard(ctx.data), (g) => {
+    ctx.gen.if(objectGuardVar(ctx), (g) => {
       const key = g.scope.name("key");
       g.forIn(key, ctx.data, (gi) => {
         gi.if(`${known}.has(${key})`, (gii) => gii.line("continue;"));
@@ -146,7 +156,7 @@ export const propertyNamesKeyword: KeywordDefinition = {
   applicator: true,
   compile(ctx: KeywordCompileContext): void {
     const subSchema = ctx.schema as SchemaOrBoolean;
-    ctx.gen.if(isObjectGuard(ctx.data), (g) => {
+    ctx.gen.if(objectGuardVar(ctx), (g) => {
       const key = g.scope.name("key");
       g.forIn(key, ctx.data, () => {
         ctx.validateSubschema(subSchema, key, { segment: key });

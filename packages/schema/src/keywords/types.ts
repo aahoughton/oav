@@ -293,6 +293,37 @@ export interface KeywordCompileContext {
    * debugging of generated source. Defaults to `"C"`.
    */
   hoistConstant(expr: string, prefix?: string): string;
+  /**
+   * Compute a runtime value once per validator-function scope and share
+   * it across keywords. Emits `const <name> = <expr>;` into the current
+   * function body the first time a given `key` is seen, and returns the
+   * same identifier for every later call with that `key` within the same
+   * function. Use for values derived from the runtime `data` that more
+   * than one keyword on the same schema needs: the object-shape guard
+   * (`typeof data === "object" && …`) is the canonical case, shared by
+   * `required` / `properties` / `additionalProperties` / etc.
+   *
+   * The sibling of {@link KeywordCompileContext.hoistConstant}: that one
+   * lifts a compile-time-derived constant to module scope (runs once at
+   * factory init); this one caches a per-call value inside the validator
+   * body (runs once per `validate()`). Reach for `hoistConstant` when the
+   * value depends only on the schema, `scopeLocal` when it depends on the
+   * data.
+   *
+   * Call this at the keyword's top-level entry (before opening loops or
+   * `if` blocks), so the emitted `const` dominates every sibling
+   * keyword's code. The `expr` must be evaluable at that point (i.e.
+   * rooted in the function's `data` parameter) and side-effect-free; it
+   * is computed unconditionally, so a guard that would throw on the wrong
+   * input type is not a valid `expr`.
+   *
+   * @param key - Stable cache key. Keywords that want to share a value
+   *   must pass the same key (e.g. `` `isObject:${ctx.data}` ``).
+   * @param expr - The JS expression to bind. Must match for a given key.
+   * @param prefix - Identifier prefix for readable generated source.
+   *   Defaults to `"L"`.
+   */
+  scopeLocal(key: string, expr: string, prefix?: string): string;
 }
 
 /**
