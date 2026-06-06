@@ -192,23 +192,6 @@ export function typeOf(value: unknown): string {
 }
 
 /**
- * Structural equality for JSON values: honors array ordering, object key
- * sets (not ordering), and NaN-as-not-equal. Used by `enum`, `const`, and
- * `uniqueItems`.
- *
- * @param a - First value.
- * @param b - Second value.
- * @returns `true` when both values are structurally equal.
- *
- * @example
- * ```ts
- * deepEqual({ a: 1, b: 2 }, { b: 2, a: 1 }); // true
- * deepEqual([1, 2], [2, 1]);                 // false
- * ```
- *
- * @public
- */
-/**
  * Find the first pair of structurally-equal elements in `arr`. Backs
  * the `uniqueItems` keyword: primitives hit a `Map` fast path (O(N)),
  * while objects/arrays fall back to pairwise `deepEqual` against the
@@ -326,31 +309,55 @@ export function belowMinCodePoints(s: string, limit: number): boolean {
   return true;
 }
 
+/**
+ * Structural equality for JSON values: honors array ordering, object key
+ * sets (not ordering), and NaN-as-not-equal. Used by `enum`, `const`, and
+ * `uniqueItems`.
+ *
+ * Iterative, over an explicit work stack of pairs left to compare, so a
+ * deeply nested payload cannot overflow the native call stack. A recursive
+ * walk would throw `RangeError: Maximum call stack size exceeded` on the
+ * same small-but-deep input the validator is meant to reject.
+ *
+ * @param a - First value.
+ * @param b - Second value.
+ * @returns `true` when both values are structurally equal.
+ *
+ * @example
+ * ```ts
+ * deepEqual({ a: 1, b: 2 }, { b: 2, a: 1 }); // true
+ * deepEqual([1, 2], [2, 1]);                 // false
+ * ```
+ *
+ * @public
+ */
 export function deepEqual(a: unknown, b: unknown): boolean {
-  if (a === b) return true;
-  if (typeof a !== typeof b) return false;
-  if (a === null || b === null) return false;
-  if (Array.isArray(a)) {
-    if (!Array.isArray(b) || a.length !== b.length) return false;
-    for (let i = 0; i < a.length; i += 1) {
-      if (!deepEqual(a[i], b[i])) return false;
+  const stack: Array<[unknown, unknown]> = [[a, b]];
+  while (stack.length > 0) {
+    const [x, y] = stack.pop()!;
+    if (x === y) continue;
+    if (typeof x !== typeof y) return false;
+    if (x === null || y === null) return false;
+    if (Array.isArray(x)) {
+      if (!Array.isArray(y) || x.length !== y.length) return false;
+      for (let i = 0; i < x.length; i += 1) stack.push([x[i], y[i]]);
+      continue;
     }
-    return true;
-  }
-  if (typeof a === "object") {
-    if (typeof b !== "object" || Array.isArray(b)) return false;
-    const aObj = a as Record<string, unknown>;
-    const bObj = b as Record<string, unknown>;
-    const aKeys = Object.keys(aObj);
-    const bKeys = Object.keys(bObj);
-    if (aKeys.length !== bKeys.length) return false;
-    for (const key of aKeys) {
-      if (!Object.prototype.hasOwnProperty.call(bObj, key)) return false;
-      if (!deepEqual(aObj[key], bObj[key])) return false;
+    if (typeof x === "object") {
+      if (typeof y !== "object" || Array.isArray(y)) return false;
+      const xObj = x as Record<string, unknown>;
+      const yObj = y as Record<string, unknown>;
+      const xKeys = Object.keys(xObj);
+      if (xKeys.length !== Object.keys(yObj).length) return false;
+      for (const key of xKeys) {
+        if (!Object.prototype.hasOwnProperty.call(yObj, key)) return false;
+        stack.push([xObj[key], yObj[key]]);
+      }
+      continue;
     }
-    return true;
+    return false;
   }
-  return false;
+  return true;
 }
 
 /**
