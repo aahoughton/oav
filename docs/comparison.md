@@ -41,14 +41,14 @@ the shape of the trade-off is sketched below.
 
 Ajv and oav trade differently depending on the workload:
 
-| Workload                                               | Winner                                                             | Notes                                                            |
-| ------------------------------------------------------ | ------------------------------------------------------------------ | ---------------------------------------------------------------- |
-| Validate, simple schemas (tiny / tree)                 | tied                                                               | Within ~10% either way; predicate mode slightly ahead of ajv     |
-| Validate, complex shapes (oneOf / allOf, large arrays) | ajv 2–5× faster                                                    | ajv's codegen excels on deep applicators                         |
-| Validate, `uniqueItems` arrays / length-bounded strings | **oav faster**                                                    | oav ~1.5–3× on `uniqueItems`; larger margin on length-bounded strings |
-| Validate, predicate mode                               | ≈ ajv                                                              | `compileSchema(..., { predicate: true })` closes most of the gap |
-| Compile, synthetic (per shape)                         | **oav 30–180× faster**                                             | The largest gap in either direction                              |
-| Compile, real-world OpenAPI spec                       | **oav 8× on Stripe** (886 schemas); **5.5× on Adyen** (44 schemas) | Matches the synthetic trend at spec scale                        |
+| Workload                                                | Winner                                                             | Notes                                                                 |
+| ------------------------------------------------------- | ------------------------------------------------------------------ | --------------------------------------------------------------------- |
+| Validate, simple schemas (tiny / tree)                  | tied                                                               | Within ~10% either way; predicate mode slightly ahead of ajv          |
+| Validate, complex shapes (oneOf / allOf, large arrays)  | ajv 2–5× faster                                                    | ajv's codegen excels on deep applicators                              |
+| Validate, `uniqueItems` arrays / length-bounded strings | **oav faster**                                                     | oav ~1.5–3× on `uniqueItems`; larger margin on length-bounded strings |
+| Validate, predicate mode                                | ≈ ajv                                                              | `compileSchema(..., { predicate: true })` closes most of the gap      |
+| Compile, synthetic (per shape)                          | **oav 30–180× faster**                                             | The largest gap in either direction                                   |
+| Compile, real-world OpenAPI spec                        | **oav 8× on Stripe** (886 schemas); **5.5× on Adyen** (44 schemas) | Matches the synthetic trend at spec scale                             |
 
 The takeaway: ajv wins steady-state validate throughput on a spec you
 compile once and reuse; oav wins anywhere validator construction is

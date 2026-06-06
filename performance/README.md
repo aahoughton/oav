@@ -248,6 +248,7 @@ ajv for parity with oav's always-collect-everything default.
 
   `maxErrors: 1` closes the gap on invalid payloads (apples-to-apples
   with ajv's default fail-fast behavior).
+
 - **Predicate mode (`predicate: true`).** When consumers only need a
   yes/no answer — routing, gating, hot-path filtering — `oav-predicate`
   brings oav onto parity with ajv's default (fail-fast) mode on invalid
