@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.4.0](https://github.com/aahoughton/oav/compare/oav-express4-v2.3.0...oav-express4-v2.4.0) (2026-06-06)
+
+
+### Documentation
+
+* **adapters:** add Hardening section to adapter READMEs ([#334](https://github.com/aahoughton/oav/issues/334)) ([73bdcb2](https://github.com/aahoughton/oav/commit/73bdcb28180f9ae64ccd8e5ea9f44b2efa673497))
+
 ## [2.3.0](https://github.com/aahoughton/oav/compare/oav-express4-v2.2.1...oav-express4-v2.3.0) (2026-06-06)
 
 
