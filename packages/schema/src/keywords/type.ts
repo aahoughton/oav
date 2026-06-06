@@ -22,7 +22,7 @@ export const typeKeyword: KeywordDefinition = {
         "leaf",
         ctx.leafErrorExpr(
           quoteString("type"),
-          `"must be " + ${JSON.stringify(formatTypeList(expected))}`,
+          JSON.stringify(`must be ${formatTypeList(expected)}`),
           `{ expected: ${expectedLit}, actual: ${actualExpr} }`,
         ),
       );

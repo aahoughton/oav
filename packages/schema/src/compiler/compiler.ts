@@ -781,9 +781,18 @@ function compileValidator(schema: SchemaOrBoolean, state: CompileState): string 
   // (which are the only consumer of `path`) are never emitted.
   // Callers of these functions (composition keywords, ref, etc.)
   // therefore omit the path argument in predicate mode as well.
+  //
+  // The `outEvalProps` / `outEvalItems` out-parameters only exist to
+  // merge a branch's evaluated keys back to the caller, which only
+  // happens when the compile unit uses `unevaluated*`. When tracking is
+  // globally off (the common OpenAPI case), nothing reads them and no
+  // call site passes them, so drop them from every signature.
+  const evalParams = state.unevaluatedTracking
+    ? `, ${NAMES.OUT_EVAL_PROPS}, ${NAMES.OUT_EVAL_ITEMS}`
+    : "";
   const params = state.predicate
-    ? `${NAMES.DATA}, ${NAMES.OUT_EVAL_PROPS}, ${NAMES.OUT_EVAL_ITEMS}`
-    : `${NAMES.DATA}, ${NAMES.PATH}, ${NAMES.OUT_EVAL_PROPS}, ${NAMES.OUT_EVAL_ITEMS}`;
+    ? `${NAMES.DATA}${evalParams}`
+    : `${NAMES.DATA}, ${NAMES.PATH}${evalParams}`;
   state.functionBodies.push(`function ${name}(${params}) {\n${body}\n}`);
   return name;
 }
