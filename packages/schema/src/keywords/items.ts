@@ -17,8 +17,13 @@ export const prefixItemsKeyword: KeywordDefinition = {
     const schemas = ctx.schema as SchemaOrBoolean[];
     if (schemas.length === 0) return;
     ctx.gen.if(`Array.isArray(${ctx.data})`, (g) => {
+      // Hoist `data.length` once: the per-position validateSubschema
+      // calls are opaque to V8, which would otherwise reload the length
+      // on every tuple-position comparison.
+      const len = g.scope.name("len");
+      g.const(len, `${ctx.data}.length`);
       schemas.forEach((sub, i) => {
-        g.if(`${ctx.data}.length > ${i}`, (gi) => {
+        g.if(`${len} > ${i}`, (gi) => {
           ctx.validateSubschema(sub, `${ctx.data}[${i}]`, { segment: String(i) });
           if (ctx.evaluatedItemsVar !== null) {
             gi.line(`${ctx.evaluatedItemsVar}.add(${i});`);
@@ -46,7 +51,12 @@ export const itemsKeyword: KeywordDefinition = {
     const start = prefixLen;
     ctx.gen.if(`Array.isArray(${ctx.data})`, (g) => {
       const i = g.scope.name("i");
-      g.line(`for (let ${i} = ${start}; ${i} < ${ctx.data}.length; ${i} += 1) {`);
+      // Hoist the length: the per-item validateSubschema call is opaque
+      // to V8, so `data.length` in the loop condition would reload each
+      // iteration. Item validation never resizes the array.
+      const len = g.scope.name("len");
+      g.const(len, `${ctx.data}.length`);
+      g.line(`for (let ${i} = ${start}; ${i} < ${len}; ${i} += 1) {`);
       g.indent();
       if (subSchema === true) {
         if (ctx.evaluatedItemsVar !== null) {
@@ -101,12 +111,16 @@ export const containsKeyword: KeywordDefinition = {
       const count = g.scope.name("count");
       g.let(count, "0");
       const i = g.scope.name("i");
+      // Hoist the length once for whichever loop runs below; the
+      // sub-validator call in the body is opaque to V8.
+      const len = g.scope.name("len");
+      g.const(len, `${ctx.data}.length`);
       if (ctx.predicate) {
         // Predicate mode: count passing items via the sub-validator's
         // boolean return; no path, no error array. The match list
         // exists only to populate `evaluatedItems` for any sibling
         // `unevaluatedItems`.
-        g.forRange(i, `${ctx.data}.length`, (gi) => {
+        g.forRange(i, len, (gi) => {
           gi.if(`${fn}(${ctx.data}[${i}])`, (gii) => {
             gii.line(`${count} += 1;`);
             if (ctx.evaluatedItemsVar !== null) {
@@ -120,7 +134,7 @@ export const containsKeyword: KeywordDefinition = {
       }
       const matchedIdx = g.scope.name("matched");
       g.const(matchedIdx, "[]");
-      g.forRange(i, `${ctx.data}.length`, (gi) => {
+      g.forRange(i, len, (gi) => {
         const errVar = gi.scope.name("e");
         // Function-call subschema: push/pop around the call so the
         // callee sees the extended path via the shared array (avoids
