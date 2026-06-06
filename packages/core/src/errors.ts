@@ -328,7 +328,7 @@ export function createError(params: CreateErrorParams): ValidationError {
     code: params.code,
     path: [...params.path],
     message: params.message,
-    params: params.params ?? {},
+    params: params.params ?? EMPTY_PARAMS,
     children: params.children ?? [],
   };
 }
@@ -356,7 +356,7 @@ export function createLeafError(
   code: string,
   path: PathSegment[],
   message: string,
-  params: Record<string, unknown> = {},
+  params: Record<string, unknown> = EMPTY_PARAMS,
   extraSegment?: PathSegment,
   extraSegment2?: PathSegment,
 ): ValidationError {
@@ -392,6 +392,15 @@ export function createLeafError(
 // freeze is a runtime safety net against accidental mutation.
 const EMPTY_CHILDREN = Object.freeze([]) as unknown as ValidationError[];
 
+// Shared frozen empty params for the common no-details case (branch
+// wrappers like the "schema" node, leaves whose `code` carries no
+// params). Mirrors EMPTY_CHILDREN: one value instead of a fresh `{}`
+// per error. Safe because `params` is read-only by contract (consumers
+// narrow and read it; nothing in the validator mutates it after
+// construction) and the freeze is the runtime safety net. Call sites
+// that do carry details pass their own object and never see this.
+const EMPTY_PARAMS = Object.freeze({}) as Record<string, unknown>;
+
 /**
  * Construct a branch error that wraps a list of child errors (e.g. the
  * per-branch failures of an `oneOf` keyword).
@@ -421,7 +430,7 @@ export function createBranchError(
   path: PathSegment[],
   message: string,
   children: ValidationError[],
-  params: Record<string, unknown> = {},
+  params: Record<string, unknown> = EMPTY_PARAMS,
   extraSegment?: PathSegment,
   extraSegment2?: PathSegment,
 ): ValidationError {
