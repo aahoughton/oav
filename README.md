@@ -378,6 +378,14 @@ validation, response interception, upload helpers), see
   `createValidator` to plug in `re2` or a complexity-checking engine;
   see ["Hardening against untrusted regex patterns"
   ](./docs/configuration.md#hardening-against-untrusted-regex-patterns).
+- Recursive schemas validate by recursing on the JavaScript call
+  stack, with no depth limit. A deeply nested payload (a few thousand
+  levels, only a few KB on the wire) can exhaust the stack and throw
+  `RangeError: Maximum call stack size exceeded`. The framework
+  adapters surface this as a 500 rather than a crash, but for
+  untrusted input cap nesting depth at the parse boundary; see
+  ["Guarding against deeply nested payloads"
+  ](./docs/configuration.md#guarding-against-deeply-nested-payloads).
 
 ## Contributing
 

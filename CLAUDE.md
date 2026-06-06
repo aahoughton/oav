@@ -488,3 +488,14 @@ having an unknown field, which 2020-12 allows in every dialect.
   Sets and the merge loop that threads them up to the caller.
   See `CompileState.unevaluatedTracking` and `schemaUsesUnevaluated`
   in `packages/schema/src/compiler/compiler.ts`.
+- Recursive schemas validate by recursing on the native JS call stack
+  (a self-`$ref` emits a recursive call; `deepEqual` for
+  `uniqueItems` / `const` / `enum` descends data structurally), with
+  no depth guard. A payload nested a few thousand levels deep throws
+  `RangeError: Maximum call stack size exceeded` (empirically ~5k on a
+  default Node stack). The framework adapters catch it as a 500;
+  untrusted callers should cap nesting depth at the parse boundary
+  (see docs/configuration.md "Guarding against deeply nested
+  payloads"). A codegen-level `maxDepth` counter is filed as `polish`;
+  it would put us ahead of the common approach (push the limit to the
+  boundary) but is not required for parity.
