@@ -18,6 +18,18 @@ function objectGuardVar(ctx: KeywordCompileContext): string {
 }
 
 /**
+ * Whether it pays to bind a property's value to a local before
+ * validating it. Object subschemas read the value (often several
+ * times, and across opaque helper calls V8 can't see through, which
+ * would otherwise force re-reads of `data[key]`); booleans and the
+ * empty schema never touch it, so binding there would just add a dead
+ * property read per key.
+ */
+function bindsValue(sub: SchemaOrBoolean): boolean {
+  return typeof sub === "object" && sub !== null && Object.keys(sub).length > 0;
+}
+
+/**
  * The `properties` keyword. For each named property present in the data,
  * validate its value against the corresponding subschema.
  *
@@ -35,7 +47,13 @@ export const propertiesKeyword: KeywordDefinition = {
         if (subSchema === undefined) continue;
         const keyLit = quoteString(name);
         g.if(`Object.prototype.hasOwnProperty.call(${ctx.data}, ${keyLit})`, (gi) => {
-          ctx.validateSubschema(subSchema, `${ctx.data}[${keyLit}]`, { segment: keyLit });
+          let dataExpr = `${ctx.data}[${keyLit}]`;
+          if (bindsValue(subSchema)) {
+            const valueVar = gi.scope.name("v");
+            gi.const(valueVar, dataExpr);
+            dataExpr = valueVar;
+          }
+          ctx.validateSubschema(subSchema, dataExpr, { segment: keyLit });
           if (ctx.evaluatedPropertiesVar !== null) {
             gi.line(`${ctx.evaluatedPropertiesVar}.add(${keyLit});`);
           }
@@ -133,7 +151,13 @@ export const additionalPropertiesKeyword: KeywordDefinition = {
           ctx.emitBudgetBreak();
           return;
         }
-        ctx.validateSubschema(subSchema, `${ctx.data}[${key}]`, { segment: key });
+        let dataExpr = `${ctx.data}[${key}]`;
+        if (bindsValue(subSchema)) {
+          const valueVar = gi.scope.name("v");
+          gi.const(valueVar, dataExpr);
+          dataExpr = valueVar;
+        }
+        ctx.validateSubschema(subSchema, dataExpr, { segment: key });
         if (ctx.evaluatedPropertiesVar !== null) {
           gi.line(`${ctx.evaluatedPropertiesVar}.add(${key});`);
         }
