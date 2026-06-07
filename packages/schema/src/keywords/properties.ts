@@ -1,5 +1,6 @@
 import { NAMES, quoteString } from "../codegen/index.js";
 import type { SchemaOrBoolean } from "@oav/core";
+import { propertyPresent } from "./object-validation.js";
 import type { KeywordCompileContext, KeywordDefinition } from "./types.js";
 import { APPLICATOR_VOCAB } from "./vocabulary-uris.js";
 
@@ -46,7 +47,7 @@ export const propertiesKeyword: KeywordDefinition = {
         const subSchema = props[name];
         if (subSchema === undefined) continue;
         const keyLit = quoteString(name);
-        g.if(`Object.prototype.hasOwnProperty.call(${ctx.data}, ${keyLit})`, (gi) => {
+        g.if(propertyPresent(ctx.data, keyLit, name), (gi) => {
           let dataExpr = `${ctx.data}[${keyLit}]`;
           if (bindsValue(subSchema)) {
             const valueVar = gi.scope.name("v");
