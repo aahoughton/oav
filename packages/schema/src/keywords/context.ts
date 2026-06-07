@@ -2,6 +2,7 @@ import type { SchemaObject, SchemaOrBoolean } from "@oav/core";
 import { NAMES, pathJoinExpr, rawExpr, type CodeGen } from "../codegen/index.js";
 import type {
   CompileAndCallOptions,
+  CompileMode,
   ErrorKind,
   KeywordCompileContext,
   KeywordDefinition,
@@ -29,7 +30,7 @@ export interface KeywordContextInputs {
    * {@link KeywordCompileContext.pathSegments}. Defaults to empty.
    */
   pathSegments?: readonly string[];
-  compileSubschema: (schema: SchemaOrBoolean) => string;
+  compileSubschema: (schema: SchemaOrBoolean, mode?: CompileMode) => string;
   resolveRef: (ref: string) => string;
   /**
    * Whether a `$ref` is a recursion back-edge (its target is still on
@@ -67,6 +68,13 @@ export interface KeywordContextInputs {
    * with {@link KeywordContextInputs.predicate}.
    */
   flat?: boolean;
+  /**
+   * Whether the compile unit uses `unevaluated*` (functions thread
+   * evaluated-key out-params). Defaults to `false`. Gates the
+   * predicate-decision optimization in composition keywords. See
+   * {@link KeywordCompileContext.unevaluatedTracking}.
+   */
+  unevaluatedTracking?: boolean;
   /**
    * The compiler's full keyword registry. Used by
    * {@link KeywordCompileContext.validateSubschema} to inline a
@@ -201,6 +209,7 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
   const depthGated = inputs.depthGated ?? false;
   const predicate = inputs.predicate ?? false;
   const flat = inputs.flat ?? false;
+  const unevaluatedTracking = inputs.unevaluatedTracking ?? false;
   const isRecursiveRef = inputs.isRecursiveRef ?? ((): boolean => false);
   const pathSegments = inputs.pathSegments ?? EMPTY_PATH_SEGMENTS;
   const effectivePathExpr =
@@ -608,6 +617,7 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     depthGated,
     predicate,
     flat,
+    unevaluatedTracking,
     errorStatement,
     emitError,
     appendErrorsStatement,

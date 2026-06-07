@@ -4,6 +4,52 @@ import type { KeywordCompileContext, KeywordDefinition } from "./types.js";
 import { APPLICATOR_VOCAB } from "./vocabulary-uris.js";
 
 /**
+ * Two-phase composition error materialization (#338). Called inside the
+ * failure guard of `anyOf` / `oneOf`, after a predicate-only decision
+ * phase has already determined the composition fails. Re-runs every
+ * branch in the enclosing error mode and collects the failing ones,
+ * then emits the same node (tree) or flat leaves + marker (flat) the
+ * eager path would have produced. Branches that pass return
+ * `null`/empty and contribute nothing, so re-running all of them
+ * reproduces the eager output exactly (the matching branches never had
+ * errors). Runs only on the failure path, so the re-validation cost is
+ * off the valid hot path.
+ *
+ * Gated by the caller on this scope tracking no evaluated keys, so
+ * branches take `(data, path)` with no eval out-params.
+ */
+function emitCompositionErrors(
+  ctx: KeywordCompileContext,
+  schemas: SchemaOrBoolean[],
+  codeExpr: string,
+  messageExpr: string,
+  paramsExpr: string,
+): void {
+  if (ctx.flat) {
+    const buf = ctx.gen.scope.name("compBuf");
+    ctx.gen.let(buf, "null");
+    schemas.forEach((sub) => {
+      const fn = ctx.compileSubschema(sub);
+      const e = ctx.gen.scope.name("e");
+      ctx.gen.const(e, `${fn}(${ctx.data}, ${ctx.path})`);
+      ctx.gen.if(`${e} !== null`, () => ctx.gen.line(ctx.appendErrorsStatement(buf, e)));
+    });
+    ctx.gen.line(ctx.appendErrorsStatement(ctx.errors, buf));
+    ctx.emitError("leaf", ctx.leafErrorExpr(codeExpr, messageExpr, paramsExpr));
+    return;
+  }
+  const errsVar = ctx.gen.scope.name("compErrs");
+  ctx.gen.const(errsVar, "[]");
+  schemas.forEach((sub) => {
+    const fn = ctx.compileSubschema(sub);
+    const e = ctx.gen.scope.name("e");
+    ctx.gen.const(e, `${fn}(${ctx.data}, ${ctx.path})`);
+    ctx.gen.if(`${e} !== null`, () => ctx.gen.line(`${errsVar}.push(${e});`));
+  });
+  ctx.emitError("lift", ctx.branchErrorExpr(codeExpr, messageExpr, errsVar, paramsExpr));
+}
+
+/**
  * The `allOf` keyword. Every subschema must validate. Children of the
  * produced error are the failing conjuncts.
  *
@@ -94,11 +140,34 @@ export const anyOfKeyword: KeywordDefinition = {
     const outProps = ctx.evaluatedPropertiesVar;
     const outItems = ctx.evaluatedItemsVar;
     const n = schemas.length;
+    if (!ctx.predicate && outProps === null && outItems === null) {
+      // Two-phase (#338): decide with predicate-compiled branches, which
+      // allocate no errors, short-circuiting on the first match. Only if
+      // none match do we re-run the branches in error mode to build the
+      // errors. The valid path (some branch matches) builds no throwaway
+      // error tree for the non-matching branches.
+      const decision = schemas
+        .map((sub) => `${ctx.compileSubschema(sub, "predicate")}(${ctx.data})`)
+        .join(" || ");
+      const matched = ctx.gen.scope.name("matched");
+      ctx.gen.const(matched, decision);
+      ctx.gen.if(`!${matched}`, () => {
+        emitCompositionErrors(
+          ctx,
+          schemas,
+          quoteString("anyOf"),
+          `\`must match at least one of ${n} schemas\``,
+          `{ total: ${n} }`,
+        );
+      });
+      return;
+    }
     if (ctx.flat) {
-      // Flat mode: buffer each failing branch's leaves; if some branch
-      // matched, discard the buffer (anyOf succeeds). Otherwise flush
-      // the collected branch leaves flat and append a single childless
-      // `anyOf` marker so the composition failure is not anonymous.
+      // Flat mode (eval tracking on): buffer each failing branch's
+      // leaves; if some branch matched, discard the buffer (anyOf
+      // succeeds). Otherwise flush the collected branch leaves flat and
+      // append a single childless `anyOf` marker so the failure is not
+      // anonymous.
       const matched = ctx.gen.scope.name("matched");
       ctx.gen.let(matched, "false");
       const buf = ctx.gen.scope.name("anyOfBuf");
@@ -191,13 +260,37 @@ export const oneOfKeyword: KeywordDefinition = {
     const outProps = ctx.evaluatedPropertiesVar;
     const outItems = ctx.evaluatedItemsVar;
     const n = schemas.length;
+    if (!ctx.predicate && outProps === null && outItems === null) {
+      // Two-phase (#338): count matches with predicate-compiled branches
+      // (no error allocation; all must run since oneOf needs the exact
+      // count). Only on a non-unique match do we re-run the branches in
+      // error mode. Re-running all reproduces the eager output: matching
+      // branches return null and contribute nothing, so the collected
+      // set is exactly the failing branches, same as today (preserving
+      // output on both the 0-match and >1-match paths).
+      const decision = schemas
+        .map((sub) => `(${ctx.compileSubschema(sub, "predicate")}(${ctx.data}) ? 1 : 0)`)
+        .join(" + ");
+      const matchCount = ctx.gen.scope.name("oneOfMatched");
+      ctx.gen.const(matchCount, decision);
+      ctx.gen.if(`${matchCount} !== 1`, () => {
+        emitCompositionErrors(
+          ctx,
+          schemas,
+          quoteString("oneOf"),
+          `\`must match exactly one of ${n} schemas (matched \${${matchCount}})\``,
+          `{ total: ${n}, matchCount: ${matchCount} }`,
+        );
+      });
+      return;
+    }
     if (ctx.flat) {
-      // Flat mode: count matches and buffer each failing branch's
-      // leaves. oneOf fails unless exactly one branch matched; on
-      // failure, flush the collected failing-branch leaves flat and
-      // append a single childless `oneOf` marker (carrying the observed
-      // match count). The buffer may be null when more than one branch
-      // matched and none failed; `appendErrors` is null-safe.
+      // Flat mode (eval tracking on): count matches and buffer each
+      // failing branch's leaves. oneOf fails unless exactly one branch
+      // matched; on failure, flush the collected failing-branch leaves
+      // flat and append a single childless `oneOf` marker (carrying the
+      // observed match count). The buffer may be null when more than one
+      // branch matched and none failed; `appendErrors` is null-safe.
       const matched = ctx.gen.scope.name("oneOfMatched");
       ctx.gen.let(matched, "0");
       const buf = ctx.gen.scope.name("oneOfBuf");
@@ -333,15 +426,17 @@ export const notKeyword: KeywordDefinition = {
   applicator: true,
   compile(ctx: KeywordCompileContext): void {
     const sub = ctx.schema as SchemaOrBoolean;
-    const fn = ctx.compileSubschema(sub);
+    // `not` consumes only the sub's pass/fail and never surfaces its
+    // errors or annotations, so compile it as a predicate regardless of
+    // this function's mode. The valid path (sub fails -> `not` passes)
+    // then builds no throwaway error tree. `predFn(data)` is `true` iff
+    // the sub matches, which is exactly when `not` must report.
+    const predFn = ctx.compileSubschema(sub, "predicate");
     if (ctx.predicate) {
-      // If the sub validates, `not` fails; short-circuit.
-      ctx.gen.line(`if (${fn}(${ctx.data})) return false;`);
+      ctx.gen.line(`if (${predFn}(${ctx.data})) return false;`);
       return;
     }
-    const errVar = ctx.gen.scope.name("notErr");
-    ctx.gen.const(errVar, `${fn}(${ctx.data}, ${ctx.path})`);
-    ctx.gen.if(`${errVar} === null`, () => {
+    ctx.gen.if(`${predFn}(${ctx.data})`, () => {
       ctx.emitError(
         "leaf",
         ctx.leafErrorExpr(quoteString("not"), `"must NOT match the schema"`, `{}`),
@@ -366,9 +461,40 @@ export const ifThenElseKeyword: KeywordDefinition = {
     const ifSchema = ctx.schema as SchemaOrBoolean;
     const thenSchema = ctx.parentSchema.then;
     const elseSchema = ctx.parentSchema.else;
-    const ifFn = ctx.compileSubschema(ifSchema);
     const outProps = ctx.evaluatedPropertiesVar;
     const outItems = ctx.evaluatedItemsVar;
+
+    // Two-phase: when this scope tracks no evaluated keys, the `if`
+    // condition's only consumed output is its pass/fail (its annotations
+    // would only matter for `unevaluated*`), so compile it as a predicate
+    // and skip building, then discarding, its error tree on the common
+    // else-taken path. `then` / `else` stay in error mode -- their errors
+    // are reported.
+    if (!ctx.predicate && outProps === null && outItems === null) {
+      const ifPred = ctx.compileSubschema(ifSchema, "predicate");
+      ctx.gen.if(
+        `${ifPred}(${ctx.data})`,
+        (g) => {
+          if (thenSchema !== undefined) {
+            const tFn = ctx.compileSubschema(thenSchema);
+            const tErr = g.scope.name("thenErr");
+            g.const(tErr, `${tFn}(${ctx.data}, ${ctx.path})`);
+            g.if(`${tErr} !== null`, () => ctx.emitError("lift", tErr));
+          }
+        },
+        (g) => {
+          if (elseSchema !== undefined) {
+            const eFn = ctx.compileSubschema(elseSchema);
+            const eErr = g.scope.name("elseErr");
+            g.const(eErr, `${eFn}(${ctx.data}, ${ctx.path})`);
+            g.if(`${eErr} !== null`, () => ctx.emitError("lift", eErr));
+          }
+        },
+      );
+      return;
+    }
+
+    const ifFn = ctx.compileSubschema(ifSchema);
     const ifProps = ctx.gen.scope.name("ifProps");
     const ifItems = ctx.gen.scope.name("ifItems");
     ctx.gen.const(ifProps, outProps !== null ? "new Set()" : "undefined");
