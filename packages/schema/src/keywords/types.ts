@@ -167,6 +167,20 @@ export interface KeywordCompileContext {
    */
   readonly predicate: boolean;
   /**
+   * `true` when flat-collection mode is active: the compiled validator
+   * returns a flat `ValidationError[]` of leaves (no branch wrappers).
+   * Like {@link KeywordCompileContext.predicate}, most keywords don't
+   * read this: `emitError`/`errorStatement` append a sub-validator's
+   * list automatically on a `"lift"`, and the inline-wrap step is
+   * suppressed. The branch-*wrapping* composition keywords (`allOf`,
+   * `anyOf`, `oneOf`) must branch on it: instead of collecting child
+   * nodes and wrapping them, they append each failing branch's leaves
+   * flat and emit a single childless marker leaf for the composition
+   * keyword itself. Mutually exclusive with
+   * {@link KeywordCompileContext.predicate}.
+   */
+  readonly flat: boolean;
+  /**
    * Emit an error-push statement directly into the current code
    * generator. Pick the right `kind` based on where the error
    * expression came from:
@@ -191,6 +205,16 @@ export interface KeywordCompileContext {
    * larger `gen.line(...)` call.
    */
   errorStatement(kind: ErrorKind, errExpr: string): string;
+  /**
+   * Flat-mode helper: a statement that appends the flat
+   * `ValidationError[]` produced by `srcExpr` onto the accumulator
+   * variable `destVar` (via `deps.appendErrors`, null-safe on both
+   * sides). Used by the branch-wrapping composition keywords to buffer
+   * per-branch leaves (`anyOf` / `oneOf`) before deciding whether to
+   * commit or discard them. Only meaningful when
+   * {@link KeywordCompileContext.flat} is `true`.
+   */
+  appendErrorsStatement(destVar: string, srcExpr: string): string;
   /**
    * Build a budget-guarded `break;` statement for use at the bottom of
    * hot loops (array items / property keys / applicator branches).

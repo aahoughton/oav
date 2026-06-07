@@ -59,6 +59,15 @@ export interface KeywordContextInputs {
    */
   predicate?: boolean;
   /**
+   * When `true`, flat-collection mode is active: each generated function
+   * returns a flat `ValidationError[]` of leaves (no branch wrappers)
+   * instead of a single tree node. Lift sites append the callee's list
+   * onto the accumulator (`deps.appendErrors`) rather than pushing one
+   * node, and the inline-wrap step is suppressed. Mutually exclusive
+   * with {@link KeywordContextInputs.predicate}.
+   */
+  flat?: boolean;
+  /**
    * The compiler's full keyword registry. Used by
    * {@link KeywordCompileContext.validateSubschema} to inline a
    * subschema's single keyword directly instead of compiling it to a
@@ -191,6 +200,7 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
   const gated = inputs.gated ?? false;
   const depthGated = inputs.depthGated ?? false;
   const predicate = inputs.predicate ?? false;
+  const flat = inputs.flat ?? false;
   const isRecursiveRef = inputs.isRecursiveRef ?? ((): boolean => false);
   const pathSegments = inputs.pathSegments ?? EMPTY_PATH_SEGMENTS;
   const effectivePathExpr =
@@ -241,10 +251,19 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     }
     if (kind === "leaf") return emitPushStatement(inputs.errors, errExpr, gated);
     // kind === "lift": already-counted sub-validator result being
-    // propagated, or a branch wrapper around already-counted children.
-    // Never interacts with the budget.
+    // propagated. Never interacts with the budget. In flat mode the
+    // callee returns a `ValidationError[]` (its leaves), so the lift
+    // appends that list onto the accumulator; in tree mode it returns a
+    // single node, pushed as one child.
+    if (flat) return appendErrorsStatement(inputs.errors, errExpr);
     return `(${inputs.errors} ??= []).push(${errExpr});`;
   };
+  // Append a flat `ValidationError[]` expression onto an accumulator
+  // variable via the runtime helper. Used for flat-mode lifts and for
+  // the per-branch buffers in `anyOf` / `oneOf`. The helper is null-safe
+  // on both arguments, so `destVar` may start as `null`.
+  const appendErrorsStatement = (destVar: string, srcExpr: string): string =>
+    `${destVar} = ${NAMES.DEPS}.appendErrors(${destVar}, ${srcExpr});`;
   const emitError = (kind: ErrorKind, errExpr: string): void => {
     inputs.gen.line(errorStatement(kind, errExpr));
   };
@@ -372,6 +391,7 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
         evaluatedItemsVar: null,
         gated,
         predicate,
+        flat,
         byKeyword: inputs.byKeyword,
         inlineDepth: inlineDepth + 1,
         hoistConstant: inputs.hoistConstant,
@@ -395,7 +415,11 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     // named function's `wrapErrors` output. Predicate mode skips the
     // snapshot/wrap entirely; inlined keywords return `false` on
     // failure so there's nothing to wrap.
-    const startVar = predicate ? null : inputs.gen.scope.name("_start");
+    // Flat mode never wraps: inlined keywords push their leaves straight
+    // onto the accumulator, so there is nothing to snapshot or collapse.
+    // Predicate mode short-circuits on failure, so likewise nothing to
+    // wrap. Skipping the snapshot here also skips the wrap block below.
+    const startVar = predicate || flat ? null : inputs.gen.scope.name("_start");
     // errors may be null (lazy allocation). Treat null as length-0 for
     // the snapshot; the wrap check below also guards against null.
     if (startVar !== null)
@@ -434,6 +458,7 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
         evaluatedItemsVar: null,
         gated,
         predicate,
+        flat,
         byKeyword: inputs.byKeyword,
         inlineDepth: inlineDepth + 1,
         hoistConstant: inputs.hoistConstant,
@@ -582,8 +607,10 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
     gated,
     depthGated,
     predicate,
+    flat,
     errorStatement,
     emitError,
+    appendErrorsStatement,
     budgetBreakStatement,
     emitBudgetBreak,
     leafErrorExpr,
