@@ -1,5 +1,6 @@
 import { quoteString } from "../codegen/index.js";
 import type { SchemaOrBoolean } from "@oav/core";
+import { propertyAbsent, propertyPresent } from "./object-validation.js";
 import type { KeywordCompileContext, KeywordDefinition } from "./types.js";
 import { APPLICATOR_VOCAB } from "./vocabulary-uris.js";
 
@@ -575,7 +576,7 @@ export const dependentSchemasKeyword: KeywordDefinition = {
           if (sub === undefined) continue;
           const fn = ctx.compileSubschema(sub);
           const keyLit = quoteString(name);
-          g.if(`Object.prototype.hasOwnProperty.call(${ctx.data}, ${keyLit})`, (gi) => {
+          g.if(propertyPresent(ctx.data, keyLit, name), (gi) => {
             if (ctx.predicate) {
               gi.line(`if (!${fn}(${ctx.data}, ${passProps}, ${passItems})) return false;`);
               return;
@@ -614,10 +615,10 @@ export const dependenciesKeyword: KeywordDefinition = {
           const triggerLit = quoteString(trigger);
           if (Array.isArray(entry)) {
             // Array form → required-property semantics.
-            g.if(`Object.prototype.hasOwnProperty.call(${ctx.data}, ${triggerLit})`, (gi) => {
+            g.if(propertyPresent(ctx.data, triggerLit, trigger), (gi) => {
               for (const prop of entry) {
                 const propLit = quoteString(prop);
-                gi.if(`!Object.prototype.hasOwnProperty.call(${ctx.data}, ${propLit})`, () => {
+                gi.if(propertyAbsent(ctx.data, propLit, prop), () => {
                   ctx.emitError(
                     "leaf",
                     ctx.leafErrorExpr(
@@ -633,7 +634,7 @@ export const dependenciesKeyword: KeywordDefinition = {
           } else {
             // Schema form → dependent-schema semantics.
             const fn = ctx.compileSubschema(entry);
-            g.if(`Object.prototype.hasOwnProperty.call(${ctx.data}, ${triggerLit})`, (gi) => {
+            g.if(propertyPresent(ctx.data, triggerLit, trigger), (gi) => {
               if (ctx.predicate) {
                 gi.line(`if (!${fn}(${ctx.data})) return false;`);
                 return;
@@ -667,10 +668,10 @@ export const dependentRequiredKeyword: KeywordDefinition = {
           const required = deps[trigger];
           if (required === undefined) continue;
           const triggerLit = quoteString(trigger);
-          g.if(`Object.prototype.hasOwnProperty.call(${ctx.data}, ${triggerLit})`, (gi) => {
+          g.if(propertyPresent(ctx.data, triggerLit, trigger), (gi) => {
             for (const prop of required) {
               const propLit = quoteString(prop);
-              gi.if(`!Object.prototype.hasOwnProperty.call(${ctx.data}, ${propLit})`, () => {
+              gi.if(propertyAbsent(ctx.data, propLit, prop), () => {
                 ctx.emitError(
                   "leaf",
                   ctx.leafErrorExpr(

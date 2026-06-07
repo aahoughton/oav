@@ -7,6 +7,58 @@ function isObjectGuard(dataExpr: string): string {
 }
 
 /**
+ * Property names that live on `Object.prototype` (plus `__proto__`). For
+ * these, `data[key] !== undefined` is `true` even when the object does
+ * not own the key (it's inherited), so a presence check on one of these
+ * names MUST use `hasOwnProperty`. Every other name is safe to check with
+ * the cheaper `!== undefined`. From `Object.getOwnPropertyNames(Object.prototype)`.
+ */
+const INHERITED_PROPERTY_NAMES = new Set([
+  "constructor",
+  "hasOwnProperty",
+  "isPrototypeOf",
+  "propertyIsEnumerable",
+  "toLocaleString",
+  "toString",
+  "valueOf",
+  "__proto__",
+  "__defineGetter__",
+  "__defineSetter__",
+  "__lookupGetter__",
+  "__lookupSetter__",
+]);
+
+/**
+ * JS expression: property `keyExpr` is present on `dataExpr`.
+ *
+ * When the literal name is known and safe, uses `!== undefined` rather
+ * than `Object.prototype.hasOwnProperty.call`: the JSON data model has no
+ * `undefined`, so for parsed wire data the two are equivalent, and for
+ * in-memory objects an `undefined`-valued property is dropped by
+ * `JSON.stringify` anyway (so "absent" matches the wire). This is ajv's
+ * default and is markedly cheaper than a `hasOwnProperty` call on every
+ * check. Falls back to `hasOwnProperty` when the name is omitted (a
+ * runtime key) or is an inherited `Object.prototype` name, where
+ * `!== undefined` would wrongly report an inherited member as present.
+ * The single source of truth for presence so a future
+ * `ownProperties`-style strict option has one place to switch.
+ */
+export function propertyPresent(dataExpr: string, keyExpr: string, keyName?: string): string {
+  if (keyName === undefined || INHERITED_PROPERTY_NAMES.has(keyName)) {
+    return `Object.prototype.hasOwnProperty.call(${dataExpr}, ${keyExpr})`;
+  }
+  return `${dataExpr}[${keyExpr}] !== undefined`;
+}
+
+/** Negation of {@link propertyPresent}: property `keyExpr` is absent. */
+export function propertyAbsent(dataExpr: string, keyExpr: string, keyName?: string): string {
+  if (keyName === undefined || INHERITED_PROPERTY_NAMES.has(keyName)) {
+    return `!Object.prototype.hasOwnProperty.call(${dataExpr}, ${keyExpr})`;
+  }
+  return `${dataExpr}[${keyExpr}] === undefined`;
+}
+
+/**
  * The object-shape guard, computed once per validator-function scope and
  * shared across every object keyword on the same schema (`type`,
  * `required`, `properties`, `additionalProperties`, ...). Without this
@@ -90,23 +142,30 @@ export const requiredKeyword: KeywordDefinition = {
     const required = ctx.schema as string[];
     if (required.length === 0) return;
     const requiredVar = ctx.hoistConstant(JSON.stringify(required), "required");
+    // The loop variable is dynamic, but the set of names is fixed at
+    // compile time: if none of them is an inherited `Object.prototype`
+    // name, every iteration is safe to check with the cheap
+    // `data[_req] === undefined`; otherwise fall back to `hasOwnProperty`
+    // for the whole loop. Keeps `required` consistent with `properties`
+    // (an `undefined`-valued safe property is "absent" in both).
+    const absent = required.every((k) => !INHERITED_PROPERTY_NAMES.has(k))
+      ? `${ctx.data}[_req] === undefined`
+      : `!Object.prototype.hasOwnProperty.call(${ctx.data}, _req)`;
     if (ctx.predicate) {
       ctx.gen.if(objectGuardVar(ctx), (g) => {
         g.forOf("_req", requiredVar, (gi) => {
-          gi.line(`if (!Object.prototype.hasOwnProperty.call(${ctx.data}, _req)) return false;`);
+          gi.line(`if (${absent}) return false;`);
         });
       });
       return;
     }
     // Single pass: emit one leaf per missing key directly from the
-    // membership scan. The errors come out in `required`-array order
-    // (the scan order), which is the same order the previous
-    // collect-into-`missing`-then-replay form produced, and the budget
-    // break lands after the same key, so the error tree and truncation
-    // flag are unchanged. The intermediate `missing` array is just gone.
+    // membership scan. The loop is kept so `emitBudgetBreak` can `break`
+    // out of it on budget exhaustion; error order and the truncation
+    // flag are unchanged.
     ctx.gen.if(objectGuardVar(ctx), (g) => {
       g.forOf("_req", requiredVar, (gi) => {
-        gi.if(`!Object.prototype.hasOwnProperty.call(${ctx.data}, _req)`, () => {
+        gi.if(absent, () => {
           ctx.emitError(
             "leaf",
             ctx.leafErrorExpr(
