@@ -226,6 +226,29 @@ export interface ValidationResult {
 }
 
 /**
+ * Result of a flat-mode (`flat: true`) `validate()` call. Where the
+ * default mode returns a single nested {@link ValidationError} tree
+ * under `error`, flat mode returns a de-nested list of leaf errors under
+ * `errors`: every failing leaf keyword (`type`, `required`, `minimum`, …)
+ * as its own record, plus a childless marker leaf for each failed
+ * composition keyword (`anyOf` / `oneOf`). No `"schema"` branch
+ * wrappers. Each record is a {@link ValidationError} with an empty
+ * `children`, so the `@oav/core` renderers still consume it.
+ *
+ * @public
+ */
+export interface FlatValidationResult {
+  valid: boolean;
+  /** The flat list of leaf errors. Present (and non-empty) iff `!valid`. */
+  errors?: ValidationError[];
+  /**
+   * `true` when at least one error was dropped because the configured
+   * `maxErrors` cap was hit. Only ever set on `{ valid: false }` results.
+   */
+  truncated?: boolean;
+}
+
+/**
  * Compile-time statistics about the generated validator. Exposed so
  * tests can assert on compiler behavior (e.g. "did subschema inlining
  * fire?") without grepping the generated source.
@@ -342,6 +365,23 @@ export type CompiledSchema = {
  */
 export type CompiledPredicate = {
   validate: (data: unknown) => boolean;
+  /** The generated source. Exposed for debugging/snapshot testing only. */
+  source: string;
+  /** Compile-time stats about the generated validator. */
+  stats: CompileStats;
+};
+
+/**
+ * The shape returned by {@link compileSchema} when `flat: true` is set.
+ * Same `validate(data, startPath?)` signature as {@link CompiledSchema},
+ * but returns a {@link FlatValidationResult} (a flat leaf list) instead
+ * of a nested error tree. See {@link FlatValidationResult} for the
+ * trade-off and {@link CompileOptions.flat}.
+ *
+ * @public
+ */
+export type CompiledFlatSchema = {
+  validate: (data: unknown, startPath?: readonly PathSegment[]) => FlatValidationResult;
   /** The generated source. Exposed for debugging/snapshot testing only. */
   source: string;
   /** Compile-time stats about the generated validator. */
@@ -483,6 +523,29 @@ export interface CompileOptions {
    */
   predicate?: boolean;
   /**
+   * When `true`, compile a flat-collection validator. The returned
+   * {@link CompiledFlatSchema}'s `validate(data, startPath?)` returns a
+   * {@link FlatValidationResult}: a de-nested `ValidationError[]` of
+   * leaf errors (every failing leaf keyword as its own record, plus a
+   * childless marker leaf per failed `anyOf` / `oneOf`), with no
+   * `"schema"` branch wrappers. This produces ajv-class memory on large
+   * invalid payloads, where the default nested tree retains far more
+   * (branch nodes plus per-leaf path arrays). The records are still
+   * {@link ValidationError}s (empty `children`), so the `@oav/core`
+   * renderers keep working.
+   *
+   * Reach for it when you want *every* error on a very large invalid
+   * body cheaply. For merely bounding memory, {@link CompileOptions.maxErrors}
+   * already caps the tree; flat mode is for the "all errors, cheaply"
+   * case.
+   *
+   * Composes with `maxErrors` (the flat list is capped and
+   * {@link FlatValidationResult.truncated} is set). Mutually exclusive
+   * with {@link CompileOptions.predicate} (a predicate has no errors to
+   * flatten); the compiler throws when both are supplied.
+   */
+  flat?: boolean;
+  /**
    * Custom compiler for schema `pattern` keywords and the `format:
    * "regex"` assertion. Defaults to `new RegExp(pattern, "u")` with a
    * non-`u` fallback. Override to plug in a library like `re2`, wrap
@@ -552,6 +615,14 @@ export interface CompileState {
    * {@link CompileOptions.predicate}.
    */
   readonly predicate: boolean;
+  /**
+   * `true` when flat-collection mode was requested. Compiled subfunctions
+   * return a flat `ValidationError[]` of leaves (or `null`) instead of a
+   * single (possibly branch-wrapped) node; lift sites append rather than
+   * push, and the inline-wrap and composition-wrap steps are replaced by
+   * flat appends plus marker leaves. See {@link CompileOptions.flat}.
+   */
+  readonly flat: boolean;
   /**
    * OpenAPI 3.0 semantics. When `true`, schemas containing `$ref`
    * dispatch only `$ref` and ignore every other keyword.
@@ -633,16 +704,20 @@ export function compileSchema(
 ): CompiledPredicate;
 export function compileSchema(
   schema: SchemaOrBoolean,
-  options: CompileOptions & { predicate?: false | undefined },
+  options: CompileOptions & { flat: true; predicate?: false | undefined },
+): CompiledFlatSchema;
+export function compileSchema(
+  schema: SchemaOrBoolean,
+  options: CompileOptions & { predicate?: false | undefined; flat?: false | undefined },
 ): CompiledSchema;
 export function compileSchema(
   schema: SchemaOrBoolean,
   options: CompileOptions,
-): CompiledSchema | CompiledPredicate;
+): CompiledSchema | CompiledPredicate | CompiledFlatSchema;
 export function compileSchema(
   schema: SchemaOrBoolean,
   options: CompileOptions,
-): CompiledSchema | CompiledPredicate {
+): CompiledSchema | CompiledPredicate | CompiledFlatSchema {
   const byKeyword = new Map<string, KeywordDefinition>();
   const ordered: KeywordDefinition[] = [];
   for (const vocab of options.dialect.vocabularies) {
@@ -706,6 +781,15 @@ export function compileSchema(
         "Predicate mode short-circuits on the first failure, so there is nothing to count.",
     );
   }
+  const flat = options.flat === true;
+  if (flat && predicate) {
+    // A predicate returns a boolean and collects no errors, so there is
+    // nothing to flatten. Fail loudly rather than silently ignoring one.
+    throw new Error(
+      "compileSchema: `flat: true` is mutually exclusive with `predicate: true`. " +
+        "A predicate collects no errors, so there is nothing to return as a flat list.",
+    );
+  }
   const deps = createDeps({ maxErrors, maxDepth, regexCompiler: options.regexCompiler });
   if (options.formats) {
     for (const name of Object.keys(options.formats)) {
@@ -758,6 +842,7 @@ export function compileSchema(
     depthGated: Number.isFinite(maxDepth),
     compiling: new Set(),
     predicate,
+    flat,
     refSuppressesSiblings: options.dialect.rules.refSuppressesSiblings,
     unevaluatedTracking,
     unevaluatedEmitted: false,
@@ -789,6 +874,13 @@ export function compileSchema(
     const { validate } = factory(deps);
     return { validate, source: wholeSource, stats };
   }
+  if (flat) {
+    const factory = new Function(NAMES.DEPS, wholeSource) as (
+      deps: ValidatorDeps,
+    ) => CompiledFlatSchemaFactory;
+    const { validate } = factory(deps);
+    return { validate, source: wholeSource, stats };
+  }
   const factory = new Function(NAMES.DEPS, wholeSource) as (
     deps: ValidatorDeps,
   ) => CompiledSchemaFactory;
@@ -802,6 +894,10 @@ interface CompiledSchemaFactory {
 
 interface CompiledPredicateFactory {
   validate: (data: unknown) => boolean;
+}
+
+interface CompiledFlatSchemaFactory {
+  validate: (data: unknown, startPath?: readonly PathSegment[]) => FlatValidationResult;
 }
 
 function compileValidator(schema: SchemaOrBoolean, state: CompileState): string {
@@ -1012,6 +1108,10 @@ function buildFunctionBody(schema: SchemaOrBoolean, state: CompileState): string
 
   if (state.predicate) {
     gen.line("return true;");
+  } else if (state.flat) {
+    // Flat mode: `errors` already holds this schema's leaves (or null);
+    // return it directly, no wrapping. Callers append the list.
+    gen.line(`return ${NAMES.ERRORS};`);
   } else {
     // Happy path: errors stayed null → return null directly and skip
     // the wrapErrors function call entirely.
@@ -1070,6 +1170,7 @@ function compileSchemaKeywords(
       gated: state.gated,
       depthGated: state.depthGated,
       predicate: state.predicate,
+      flat: state.flat,
       byKeyword: state.byKeyword,
       hoistConstant: (expr: string, prefix = "C"): string => {
         const name = `${prefix}_${state.nextHoistId}`;
@@ -1114,6 +1215,26 @@ function assembleSource(state: CompileState, rootName: string): string {
     // calls are independent.
     if (state.depthGated) parts.push(`  ${NAMES.DEPS}.depth = 0;`);
     parts.push(`  return ${rootName}(${NAMES.DATA});`);
+    parts.push(`}`);
+  } else if (state.flat) {
+    // Flat mode: the root returns a flat `ValidationError[]` (or null);
+    // the result carries it under `errors` rather than a tree `error`.
+    parts.push(`function validate(${NAMES.DATA}, startPath) {`);
+    if (state.gated) {
+      parts.push(`  ${NAMES.DEPS}.errorsRemaining = ${NAMES.DEPS}.maxErrors;`);
+      parts.push(`  ${NAMES.DEPS}.truncated = false;`);
+    }
+    if (state.depthGated) parts.push(`  ${NAMES.DEPS}.depth = 0;`);
+    parts.push(
+      `  const errs = ${rootName}(${NAMES.DATA}, startPath !== undefined ? [...startPath] : []);`,
+    );
+    parts.push(`  if (errs === null) return { valid: true };`);
+    if (state.gated) {
+      parts.push(
+        `  if (${NAMES.DEPS}.truncated) return { valid: false, errors: errs, truncated: true };`,
+      );
+    }
+    parts.push(`  return { valid: false, errors: errs };`);
     parts.push(`}`);
   } else {
     parts.push(`function validate(${NAMES.DATA}, startPath) {`);

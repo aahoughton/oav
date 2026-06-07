@@ -18,6 +18,28 @@ export const allOfKeyword: KeywordDefinition = {
     if (schemas.length === 0) return;
     const outProps = ctx.evaluatedPropertiesVar;
     const outItems = ctx.evaluatedItemsVar;
+    if (ctx.flat) {
+      // Flat mode: every conjunct must pass, so each failing branch's
+      // leaves surface directly with no wrapper and no marker (matching
+      // ajv, which exposes the failing subschema's errors as-is).
+      schemas.forEach((sub) => {
+        ctx.compileAndCallSubschema(sub, {
+          data: ctx.data,
+          onPass: (g, bProps, bItems) => {
+            if (outProps !== null && bProps !== null) {
+              g.line(`for (const k of ${bProps}) ${outProps}.add(k);`);
+            }
+            if (outItems !== null && bItems !== null) {
+              g.line(`for (const k of ${bItems}) ${outItems}.add(k);`);
+            }
+          },
+          onFail: (g, errVar) => {
+            if (errVar !== null) g.line(ctx.errorStatement("lift", errVar));
+          },
+        });
+      });
+      return;
+    }
     // Tree mode collects per-branch errors; predicate short-circuits
     // on first failure so there's nothing to collect.
     const errsVar = ctx.predicate ? null : ctx.gen.scope.name("allOfErrs");
@@ -71,6 +93,46 @@ export const anyOfKeyword: KeywordDefinition = {
     if (schemas.length === 0) return;
     const outProps = ctx.evaluatedPropertiesVar;
     const outItems = ctx.evaluatedItemsVar;
+    const n = schemas.length;
+    if (ctx.flat) {
+      // Flat mode: buffer each failing branch's leaves; if some branch
+      // matched, discard the buffer (anyOf succeeds). Otherwise flush
+      // the collected branch leaves flat and append a single childless
+      // `anyOf` marker so the composition failure is not anonymous.
+      const matched = ctx.gen.scope.name("matched");
+      ctx.gen.let(matched, "false");
+      const buf = ctx.gen.scope.name("anyOfBuf");
+      ctx.gen.let(buf, "null");
+      schemas.forEach((sub) => {
+        ctx.compileAndCallSubschema(sub, {
+          data: ctx.data,
+          onPass: (g, bProps, bItems) => {
+            g.line(`${matched} = true;`);
+            if (outProps !== null && bProps !== null) {
+              g.line(`for (const k of ${bProps}) ${outProps}.add(k);`);
+            }
+            if (outItems !== null && bItems !== null) {
+              g.line(`for (const k of ${bItems}) ${outItems}.add(k);`);
+            }
+          },
+          onFail: (g, errVar) => {
+            if (errVar !== null) g.line(ctx.appendErrorsStatement(buf, errVar));
+          },
+        });
+      });
+      ctx.gen.if(`!${matched}`, () => {
+        ctx.gen.line(ctx.appendErrorsStatement(ctx.errors, buf));
+        ctx.emitError(
+          "leaf",
+          ctx.leafErrorExpr(
+            quoteString("anyOf"),
+            `\`must match at least one of ${n} schemas\``,
+            `{ total: ${n} }`,
+          ),
+        );
+      });
+      return;
+    }
     const matched = ctx.gen.scope.name("matched");
     ctx.gen.let(matched, "false");
     // Tree mode collects per-branch errors for the final anyOf node;
@@ -95,7 +157,6 @@ export const anyOfKeyword: KeywordDefinition = {
         },
       });
     });
-    const n = schemas.length;
     if (ctx.predicate) {
       ctx.gen.line(`if (!${matched}) return false;`);
       return;
@@ -129,6 +190,48 @@ export const oneOfKeyword: KeywordDefinition = {
     if (schemas.length === 0) return;
     const outProps = ctx.evaluatedPropertiesVar;
     const outItems = ctx.evaluatedItemsVar;
+    const n = schemas.length;
+    if (ctx.flat) {
+      // Flat mode: count matches and buffer each failing branch's
+      // leaves. oneOf fails unless exactly one branch matched; on
+      // failure, flush the collected failing-branch leaves flat and
+      // append a single childless `oneOf` marker (carrying the observed
+      // match count). The buffer may be null when more than one branch
+      // matched and none failed; `appendErrors` is null-safe.
+      const matched = ctx.gen.scope.name("oneOfMatched");
+      ctx.gen.let(matched, "0");
+      const buf = ctx.gen.scope.name("oneOfBuf");
+      ctx.gen.let(buf, "null");
+      schemas.forEach((sub) => {
+        ctx.compileAndCallSubschema(sub, {
+          data: ctx.data,
+          onPass: (g, bProps, bItems) => {
+            g.line(`${matched} += 1;`);
+            if (outProps !== null && bProps !== null) {
+              g.line(`for (const k of ${bProps}) ${outProps}.add(k);`);
+            }
+            if (outItems !== null && bItems !== null) {
+              g.line(`for (const k of ${bItems}) ${outItems}.add(k);`);
+            }
+          },
+          onFail: (g, errVar) => {
+            if (errVar !== null) g.line(ctx.appendErrorsStatement(buf, errVar));
+          },
+        });
+      });
+      ctx.gen.if(`${matched} !== 1`, () => {
+        ctx.gen.line(ctx.appendErrorsStatement(ctx.errors, buf));
+        ctx.emitError(
+          "leaf",
+          ctx.leafErrorExpr(
+            quoteString("oneOf"),
+            `\`must match exactly one of ${n} schemas (matched \${${matched}})\``,
+            `{ total: ${n}, matchCount: ${matched} }`,
+          ),
+        );
+      });
+      return;
+    }
     if (ctx.predicate) {
       // Predicate mode: count branch matches; bail with `return false`
       // on the second match (>1 disallowed) or if fewer than 1
@@ -205,7 +308,6 @@ export const oneOfKeyword: KeywordDefinition = {
         (g) => g.line(`${errsVar}.push(${errVar});`),
       );
     });
-    const n = schemas.length;
     ctx.gen.if(`${matchCount} !== 1`, () => {
       ctx.emitError(
         "lift",

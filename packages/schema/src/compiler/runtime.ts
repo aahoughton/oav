@@ -18,6 +18,20 @@ export interface ValidatorDeps {
     path: readonly (string | number)[],
     errs: ValidationError[],
   ) => ValidationError | null;
+  /**
+   * Flat-mode error merge. Appends every error in `src` onto `dest` and
+   * returns `dest`; when `dest` is `null` it adopts `src` directly (no
+   * copy) and when `src` is `null` it returns `dest` unchanged. The
+   * leaves in `src` were already counted against the budget where they
+   * were created, so this never touches `errorsRemaining` (it is the
+   * flat-mode analogue of a tree-mode "lift"). Loop-based rather than
+   * `dest.push(...src)` so a million-element `src` cannot overflow the
+   * call stack. See {@link appendErrors}.
+   */
+  appendErrors: (
+    dest: ValidationError[] | null,
+    src: ValidationError[] | null,
+  ) => ValidationError[] | null;
   patterns: Map<string, CompiledRegex>;
   /**
    * Compile a user-supplied regex. By default tries the `u` (Unicode)
@@ -407,6 +421,35 @@ export function wrapErrors(
 }
 
 /**
+ * Flat-mode error merge: append every error in `src` onto `dest` and
+ * return the combined list. The runtime backing for every flat-mode
+ * lift site (see {@link ValidatorDeps.appendErrors}).
+ *
+ * Adopts `src` directly when `dest` is `null` (the common first-lift
+ * case allocates nothing); returns `dest` unchanged when `src` is
+ * `null`. Iterates rather than spreading (`dest.push(...src)` overflows
+ * the call stack for large `src`).
+ *
+ * @example
+ * ```ts
+ * appendErrors(null, [a]);     // [a]   (adopts src)
+ * appendErrors([a], null);     // [a]   (dest unchanged)
+ * appendErrors([a], [b, c]);   // [a, b, c]
+ * ```
+ *
+ * @public
+ */
+export function appendErrors(
+  dest: ValidationError[] | null,
+  src: ValidationError[] | null,
+): ValidationError[] | null {
+  if (src === null) return dest;
+  if (dest === null) return src;
+  for (const e of src) dest.push(e);
+  return dest;
+}
+
+/**
  * Build a {@link ValidatorDeps} bundle with fresh mutable caches.
  *
  * Accepts either a positional `maxErrors` (legacy) or an options
@@ -488,6 +531,7 @@ export function createDeps(arg?: number | CreateDepsOptions): ValidatorDeps {
     belowMinCodePoints,
     findDuplicate,
     wrapErrors,
+    appendErrors,
     patterns,
     compilePattern,
     formats,
