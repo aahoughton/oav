@@ -1073,7 +1073,11 @@ function needsItemTracking(schema: SchemaObject, state: CompileState): boolean {
   );
 }
 
-function buildFunctionBody(schema: SchemaOrBoolean, state: CompileState, mode: CompileMode): string {
+function buildFunctionBody(
+  schema: SchemaOrBoolean,
+  state: CompileState,
+  mode: CompileMode,
+): string {
   const predicate = mode === "predicate";
   const flat = mode === "flat";
   const gen = new CodeGen();
