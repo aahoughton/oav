@@ -25,6 +25,24 @@ export interface CompileRuntime {
 export type ErrorKind = "leaf" | "lift";
 
 /**
+ * The output shape a compiled (sub)validator produces:
+ *
+ * - `"tree"`: returns a nested `ValidationError | null` (the default).
+ * - `"flat"`: returns a de-nested `ValidationError[] | null`.
+ * - `"predicate"`: returns a `boolean` and builds no errors.
+ *
+ * Usually a subschema compiles in its enclosing function's mode. The
+ * composition keywords request `"predicate"` explicitly for branches
+ * whose result is consumed only as a yes/no (the decision phase of
+ * `anyOf` / `oneOf`, the `not` assertion, the `if` condition), so the
+ * valid path never builds an error tree it then discards. See
+ * {@link KeywordCompileContext.compileSubschema}.
+ *
+ * @public
+ */
+export type CompileMode = "tree" | "flat" | "predicate";
+
+/**
  * Options for {@link KeywordCompileContext.validateSubschema}.
  *
  * @public
@@ -99,8 +117,15 @@ export interface KeywordCompileContext {
    * keywords are better served by
    * {@link KeywordCompileContext.compileAndCallSubschema}, which also
    * hides the predicate-vs-tree call-signature split.
+   *
+   * `mode` overrides the output shape of the compiled function. It
+   * defaults to the enclosing function's mode. Pass `"predicate"` to
+   * compile a branch whose result is consumed only as a boolean (its
+   * function takes `(data)` and returns `boolean`); pass the enclosing
+   * mode (or omit) for a branch whose errors are reported. See
+   * {@link CompileMode}.
    */
-  compileSubschema(schema: SchemaOrBoolean): string;
+  compileSubschema(schema: SchemaOrBoolean, mode?: CompileMode): string;
   /**
    * Compile a subschema and emit a call + pass/fail branch, abstracting
    * over the two call conventions:
@@ -180,6 +205,17 @@ export interface KeywordCompileContext {
    * {@link KeywordCompileContext.predicate}.
    */
   readonly flat: boolean;
+  /**
+   * `true` when the compile unit uses `unevaluatedProperties` /
+   * `unevaluatedItems` anywhere, so functions thread evaluated-key
+   * out-params. Composition keywords read this to gate the two-phase
+   * (predicate-decision) optimization: predicate sub-validators don't
+   * produce evaluated keys, so when tracking is on, branches whose
+   * annotations must merge (`anyOf` / `oneOf` matches, the `if`
+   * condition) keep the eager error-mode path instead. (`not` never
+   * contributes evaluated keys, so it ignores this.)
+   */
+  readonly unevaluatedTracking: boolean;
   /**
    * Emit an error-push statement directly into the current code
    * generator. Pick the right `kind` based on where the error

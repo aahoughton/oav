@@ -1,6 +1,6 @@
 import type { PathSegment, SchemaObject, SchemaOrBoolean, ValidationError } from "@oav/core";
 import { CodeGen, NAMES } from "../codegen/index.js";
-import type { Dialect, KeywordDefinition } from "../keywords/types.js";
+import type { CompileMode, Dialect, KeywordDefinition } from "../keywords/types.js";
 import { createKeywordContext, emitPushStatement } from "../keywords/context.js";
 import { createCustomKeywordDefinition, type CustomKeywordValidator } from "../keywords/custom.js";
 import {
@@ -573,7 +573,13 @@ export interface CompileState {
   readonly gen: CodeGen;
   readonly byKeyword: Map<string, KeywordDefinition>;
   readonly ordered: KeywordDefinition[];
-  readonly compiledFor: Map<SchemaOrBoolean, string>;
+  /**
+   * Compiled function name per (mode, schema). Keyed by mode first so a
+   * subschema can have both an error-mode and a predicate-mode function
+   * (the two-phase composition optimization compiles branches in both).
+   * Use {@link cacheFor} to get the inner map for a mode.
+   */
+  readonly compiledFor: Map<CompileMode, Map<SchemaOrBoolean, string>>;
   readonly functionBodies: string[];
   /**
    * `const <name> = <expr>;` lines emitted at module scope above every
@@ -586,7 +592,7 @@ export interface CompileState {
   readonly deps: ValidatorDeps;
   readonly refResolver: RefResolver;
   readonly graph: ResolvedGraph;
-  readonly compileValidator: (schema: SchemaOrBoolean) => string;
+  readonly compileValidator: (schema: SchemaOrBoolean, mode: CompileMode) => string;
   /**
    * `true` when a finite `maxErrors` was configured. Codegen uses this
    * to emit the extra budget checks; when errors are uncapped we emit
@@ -846,12 +852,15 @@ export function compileSchema(
     refSuppressesSiblings: options.dialect.rules.refSuppressesSiblings,
     unevaluatedTracking,
     unevaluatedEmitted: false,
-    compileValidator(sub) {
-      return compileValidator(sub, state);
+    compileValidator(sub, mode) {
+      return compileValidator(sub, state, mode);
     },
   };
 
-  const rootName = compileValidator(schema, state);
+  // Top-level output shape. Subschemas default to this; the composition
+  // keywords request `"predicate"` per-branch on top of it.
+  const topMode: CompileMode = predicate ? "predicate" : flat ? "flat" : "tree";
+  const rootName = compileValidator(schema, state, topMode);
 
   const wholeSource = assembleSource(state, rootName);
   const strictMode = options.strict ?? DEFAULT_STRICT_MODE;
@@ -900,15 +909,26 @@ interface CompiledFlatSchemaFactory {
   validate: (data: unknown, startPath?: readonly PathSegment[]) => FlatValidationResult;
 }
 
-function compileValidator(schema: SchemaOrBoolean, state: CompileState): string {
-  const cached = state.compiledFor.get(schema);
+/** Per-mode slice of {@link CompileState.compiledFor}, created on demand. */
+function cacheFor(state: CompileState, mode: CompileMode): Map<SchemaOrBoolean, string> {
+  let m = state.compiledFor.get(mode);
+  if (m === undefined) {
+    m = new Map();
+    state.compiledFor.set(mode, m);
+  }
+  return m;
+}
+
+function compileValidator(schema: SchemaOrBoolean, state: CompileState, mode: CompileMode): string {
+  const cache = cacheFor(state, mode);
+  const cached = cache.get(schema);
   if (cached !== undefined) return cached;
 
   // Reserve a name up front so cyclic `$ref`s that point back to this
   // schema hit the cache below and emit a normal recursive call.
   const name = `validate_${state.nextFn}`;
   state.nextFn += 1;
-  state.compiledFor.set(schema, name);
+  cache.set(schema, name);
 
   // Pure-`$ref` elision: a schema whose only non-annotation keyword is
   // `$ref` compiles to a pass-through wrapper today (allocates a
@@ -926,9 +946,9 @@ function compileValidator(schema: SchemaOrBoolean, state: CompileState): string 
     // caller (properties / items / composition), bypassing the `$ref`
     // keyword where the depth guard is emitted. Forward refs still elide.
     if (target !== null && !(state.depthGated && state.compiling.has(target))) {
-      const targetName = compileValidator(target, state);
+      const targetName = compileValidator(target, state, mode);
       if (targetName !== name) {
-        state.compiledFor.set(schema, targetName);
+        cache.set(schema, targetName);
         return targetName;
       }
     }
@@ -938,7 +958,7 @@ function compileValidator(schema: SchemaOrBoolean, state: CompileState): string 
   // subschema reachable from it) is generated, so a `$ref` back to it
   // resolves as a recursion back-edge and gets the depth guard.
   state.compiling.add(schema);
-  const body = buildFunctionBody(schema, state);
+  const body = buildFunctionBody(schema, state, mode);
   state.compiling.delete(schema);
   // Predicate mode drops the `path` parameter: error expressions
   // (which are the only consumer of `path`) are never emitted.
@@ -953,9 +973,10 @@ function compileValidator(schema: SchemaOrBoolean, state: CompileState): string 
   const evalParams = state.unevaluatedTracking
     ? `, ${NAMES.OUT_EVAL_PROPS}, ${NAMES.OUT_EVAL_ITEMS}`
     : "";
-  const params = state.predicate
-    ? `${NAMES.DATA}${evalParams}`
-    : `${NAMES.DATA}, ${NAMES.PATH}${evalParams}`;
+  const params =
+    mode === "predicate"
+      ? `${NAMES.DATA}${evalParams}`
+      : `${NAMES.DATA}, ${NAMES.PATH}${evalParams}`;
   state.functionBodies.push(`function ${name}(${params}) {\n${body}\n}`);
   return name;
 }
@@ -1052,10 +1073,12 @@ function needsItemTracking(schema: SchemaObject, state: CompileState): boolean {
   );
 }
 
-function buildFunctionBody(schema: SchemaOrBoolean, state: CompileState): string {
+function buildFunctionBody(schema: SchemaOrBoolean, state: CompileState, mode: CompileMode): string {
+  const predicate = mode === "predicate";
+  const flat = mode === "flat";
   const gen = new CodeGen();
   gen.indent();
-  if (!state.predicate) {
+  if (!predicate) {
     // Start null; lazily allocate on first push. Valid inputs never
     // touch this; the function returns null directly without
     // allocating anything.
@@ -1065,7 +1088,7 @@ function buildFunctionBody(schema: SchemaOrBoolean, state: CompileState): string
   if (schema === true) {
     // no-op; always valid
   } else if (schema === false) {
-    if (state.predicate) {
+    if (predicate) {
       gen.line("return false;");
     } else {
       const falseErr = `${NAMES.DEPS}.createLeafError("false", ${NAMES.PATH}, "schema is false, nothing is valid")`;
@@ -1086,7 +1109,7 @@ function buildFunctionBody(schema: SchemaOrBoolean, state: CompileState): string
       gen.const(evaluatedItemsVar, "new Set()");
       state.unevaluatedEmitted = true;
     }
-    compileSchemaKeywords(schema, gen, state, evaluatedPropertiesVar, evaluatedItemsVar);
+    compileSchemaKeywords(schema, gen, state, evaluatedPropertiesVar, evaluatedItemsVar, mode);
     // Merge evaluated-key sets into the caller's out-parameters when the
     // caller is tracking. Runs regardless of errors; a keyword that
     // evaluated a key evaluated it, even if other keywords flagged the
@@ -1106,9 +1129,9 @@ function buildFunctionBody(schema: SchemaOrBoolean, state: CompileState): string
     }
   }
 
-  if (state.predicate) {
+  if (predicate) {
     gen.line("return true;");
-  } else if (state.flat) {
+  } else if (flat) {
     // Flat mode: `errors` already holds this schema's leaves (or null);
     // return it directly, no wrapping. Callers append the list.
     gen.line(`return ${NAMES.ERRORS};`);
@@ -1128,12 +1151,16 @@ function compileSchemaKeywords(
   state: CompileState,
   evaluatedPropertiesVar: string | null,
   evaluatedItemsVar: string | null,
+  mode: CompileMode,
 ): void {
-  const subCompiler = (subSchema: SchemaOrBoolean): string => compileValidator(subSchema, state);
+  // Subschemas default to this function's mode; composition keywords
+  // pass `"predicate"` for branches whose result is only a boolean.
+  const subCompiler = (subSchema: SchemaOrBoolean, subMode: CompileMode = mode): string =>
+    compileValidator(subSchema, state, subMode);
   const currentBaseUri = state.graph.schemaBaseUri.get(schema) ?? state.graph.baseUri;
   const resolveRefToFunction = (ref: string): string => {
     const target = state.refResolver.resolve(ref, currentBaseUri);
-    return compileValidator(target, state);
+    return compileValidator(target, state, mode);
   };
   // A ref is recursive (a back-edge) when its target is still on the
   // compile stack: resolving it here only walks the ref graph, it does
@@ -1169,8 +1196,9 @@ function compileSchemaKeywords(
       evaluatedItemsVar,
       gated: state.gated,
       depthGated: state.depthGated,
-      predicate: state.predicate,
-      flat: state.flat,
+      predicate: mode === "predicate",
+      flat: mode === "flat",
+      unevaluatedTracking: state.unevaluatedTracking,
       byKeyword: state.byKeyword,
       hoistConstant: (expr: string, prefix = "C"): string => {
         const name = `${prefix}_${state.nextHoistId}`;
