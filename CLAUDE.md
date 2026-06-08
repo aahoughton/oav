@@ -127,7 +127,8 @@ pnpm install
 pnpm build                        # tsup: single multi-entry bundle (ESM + CJS + .d.ts)
 pnpm test                         # vitest for everything
 pnpm vitest run packages/schema   # run a single package's tests (path filter)
-pnpm lint                         # oxlint + oxfmt --check
+pnpm lint                         # oxlint + oxfmt --check + check:deps
+pnpm check:deps                   # assert the @oav/* dependency graph (see below)
 pnpm fmt                          # oxfmt --write .
 pnpm typecheck                    # tsc -b (composite project references)
 ```
@@ -244,6 +245,16 @@ oav-express4  → validator → ... (same as cli's chain)
 oav-express5  → same chain, peer: express ^5
 oav-fastify   → same chain, peer: fastify ^5
 ```
+
+Asserted by `scripts/check-deps.mjs` (wired into `pnpm lint`): the
+runtime `@oav/*` graph (from each package's `dependencies`) stays
+acyclic, and declarations match imports both ways (no `@oav/*` declared
+but unimported, none imported but undeclared). "Declared" unions
+`dependencies` + `devDependencies`, since the internal `@oav/*` packages
+carry their deps at runtime while the published `@aahoughton/*` bundles
+carry the same `@oav/*` as build-only devDeps. Adding a real edge means
+updating both the graph above and the relevant `package.json`; a phantom
+or undeclared edge fails the build.
 
 ## Extending the compiler
 
