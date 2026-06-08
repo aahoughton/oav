@@ -1,7 +1,15 @@
-import { dirname, isAbsolute, posix, resolve as resolvePath } from "node:path";
 import { resolveJsonPointer, type OpenAPIDocument } from "@oav/core";
 import type { DocumentReader } from "./reader.js";
 import { lintResolvedSpec, type SpecHygieneIssue } from "./lint.js";
+import {
+  baseDirOf,
+  cycleKey,
+  makeStitchRef,
+  mergeStitchedExternals,
+  type Mutable,
+  resolveRelative,
+  rewriteInternalRefTarget,
+} from "./resolver-shared.js";
 
 // Re-export the canonical implementation so @oav/spec consumers who
 // imported `resolveJsonPointer` keep working.
@@ -45,13 +53,16 @@ export interface ResolvedSpec {
   specHygieneIssues: readonly SpecHygieneIssue[];
 }
 
-type Mutable = Record<string, unknown>;
-
 /**
  * Load an OpenAPI 3.1 document and inline all external `$ref`s, producing a
  * single self-contained document. Circular references are materialized under
  * `$defs.__ext__/<encoded-uri>` so the compiler can resolve them via the
  * identity-keyed schema cache; non-circular external refs are fully inlined.
+ *
+ * The synchronous mirror is `resolveSpecSync` (reachable via
+ * `oav/spec/internals`); both share the pure URI / ref-rewriting helpers
+ * in `./resolver-shared.ts` and are pinned to identical behavior by the
+ * parity suite. Keep any change to the walk here mirrored there.
  *
  * @param options - Reader + entry URI.
  * @returns Resolved document + the list of files loaded.
@@ -66,7 +77,7 @@ type Mutable = Record<string, unknown>;
  */
 export async function resolveSpec(options: ResolveSpecOptions): Promise<ResolvedSpec> {
   const { reader } = options;
-  const baseDir = options.baseUri ?? dirname(options.entry);
+  const baseDir = options.baseUri ?? baseDirOf(options.entry);
   const sources = new Set<string>([options.entry]);
   const docs = new Map<string, unknown>();
 
@@ -95,21 +106,19 @@ export async function resolveSpec(options: ResolveSpecOptions): Promise<Resolved
     if (typeof ref === "string" && !ref.startsWith("#")) {
       const [refPath, fragment = ""] = ref.split("#") as [string, string | undefined];
       const targetUri = resolveRelative(currentBase, refPath);
-      const stitchRef = {
-        $ref: `#/$defs/__ext__/${encodeUri(targetUri)}${fragment ? `/${encodeFragment(fragment)}` : ""}`,
-      };
+      const stitchRef = makeStitchRef(targetUri, fragment);
       if (stitchingUri !== null && stitchingUri === targetUri) {
         // Self-ref inside the subtree we're currently stitching; keep as
         // internal ref (the stitched copy serves as the target).
         return stitchRef;
       }
-      if (visiting.has(targetUri + "#" + fragment)) {
+      if (visiting.has(cycleKey(targetUri, fragment))) {
         // Cycle: short-circuit and queue the target for stitching so the
         // internal ref has something to resolve against.
         stitchQueue.add(targetUri);
         return stitchRef;
       }
-      visiting.add(targetUri + "#" + fragment);
+      visiting.add(cycleKey(targetUri, fragment));
       sources.add(targetUri);
       let targetDoc = docs.get(targetUri);
       if (targetDoc === undefined) {
@@ -122,8 +131,8 @@ export async function resolveSpec(options: ResolveSpecOptions): Promise<Resolved
       // subtree are actually refs into this external file and will be
       // rewritten to point at its stitched location (see the internal-
       // ref branch below).
-      const inlined = await walk(resolved, dirname(targetUri), stitchingUri, targetUri);
-      visiting.delete(targetUri + "#" + fragment);
+      const inlined = await walk(resolved, baseDirOf(targetUri), stitchingUri, targetUri);
+      visiting.delete(cycleKey(targetUri, fragment));
       // preserve sibling properties (OpenAPI 3.1 allows $ref + siblings for some objects)
       const siblings: Mutable = {};
       for (const key of Object.keys(obj)) {
@@ -141,12 +150,7 @@ export async function resolveSpec(options: ResolveSpecOptions): Promise<Resolved
     // `#/components/schemas/Thing` inside an inlined subtree would
     // resolve against the *root* document, orphaning the ref.
     if (typeof ref === "string" && ref.startsWith("#") && externalSourceUri !== null) {
-      const fragment = ref.slice(1);
-      const encoded = encodeUri(externalSourceUri);
-      const rewritten =
-        fragment === "" || fragment === "/"
-          ? `#/$defs/__ext__/${encoded}`
-          : `#/$defs/__ext__/${encoded}${fragment.startsWith("/") ? fragment : `/${fragment}`}`;
+      const rewritten = rewriteInternalRefTarget(externalSourceUri, ref.slice(1));
       stitchQueue.add(externalSourceUri);
       const siblings: Mutable = { $ref: rewritten };
       for (const key of Object.keys(obj)) {
@@ -184,37 +188,14 @@ export async function resolveSpec(options: ResolveSpecOptions): Promise<Resolved
       // location, not at the root document.
       const savedVisiting = new Set(visiting);
       visiting.clear();
-      const inlined = await walk(targetDoc, dirname(uri), uri, uri);
+      const inlined = await walk(targetDoc, baseDirOf(uri), uri, uri);
       visiting.clear();
       for (const v of savedVisiting) visiting.add(v);
       stitched[uri] = inlined;
     }
-    const rootObj = resolved as unknown as Mutable;
-    const prevDefs = (rootObj.$defs ?? {}) as Mutable;
-    const prevExt = (prevDefs.__ext__ ?? {}) as Mutable;
-    rootObj.$defs = { ...prevDefs, __ext__: { ...prevExt, ...stitched } };
+    mergeStitchedExternals(resolved, stitched);
   }
 
   const specHygieneIssues = options.lint ? lintResolvedSpec(resolved) : [];
   return { document: resolved, sources: [...sources], specHygieneIssues };
-}
-
-function resolveRelative(base: string, rel: string): string {
-  if (/^(https?|file):/i.test(rel)) return rel;
-  if (/^(https?|file):/i.test(base)) {
-    return new URL(rel, base.endsWith("/") ? base : base + "/").toString();
-  }
-  if (isAbsolute(rel)) return resolvePath(rel);
-  if (isAbsolute(base)) return resolvePath(base, rel);
-  // Relative (test-friendly): use posix.join so memory keys stay keyed relatively.
-  const joined = posix.join(base === "" || base === "." ? "" : base, rel);
-  return joined.replace(/^\.\//, "");
-}
-
-function encodeUri(uri: string): string {
-  return uri.replace(/~/g, "~0").replace(/\//g, "~1");
-}
-
-function encodeFragment(fragment: string): string {
-  return fragment.replace(/^\//, "");
 }
