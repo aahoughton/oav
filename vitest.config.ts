@@ -6,7 +6,7 @@ export default defineConfig({
     alias: workspaceAliases(__dirname),
   },
   test: {
-    include: ["packages/*/test/**/*.test.ts", "packages/*/src/**/*.test.ts"],
+    include: ["packages/*/test/**/*.test.ts", "packages/*/src/**/*.test.ts", "test/**/*.test.ts"],
     environment: "node",
     globals: false,
     passWithNoTests: true,
