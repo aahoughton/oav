@@ -10,6 +10,7 @@ import { workspaceAliases } from "./workspace-aliases.js";
  *   src/schema.ts              →  "oav-core/schema"
  *   src/schema-internals.ts    →  "oav-core/schema/internals"
  *   src/spec.ts                →  "oav-core/spec"
+ *   src/spec-internals.ts      →  "oav-core/spec/internals"
  *   src/overlay-spec.ts        →  "oav-core/overlay-spec"
  *   src/formats.ts             →  "oav-core/formats"
  *   src/core.ts                →  "oav-core/core"
@@ -31,6 +32,7 @@ export default defineConfig({
     schema: "src/schema.ts",
     "schema-internals": "src/schema-internals.ts",
     spec: "src/spec.ts",
+    "spec-internals": "src/spec-internals.ts",
     "overlay-spec": "src/overlay-spec.ts",
     formats: "src/formats.ts",
     core: "src/core.ts",

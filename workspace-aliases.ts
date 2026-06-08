@@ -26,6 +26,7 @@ export function workspaceAliases(rootDir: string): Record<string, string> {
   // before the base `@oav/<pkg>` alias.
   const subpathEntries: Array<[string, string]> = [
     ["@oav/schema/internals", resolve(rootDir, "packages", "schema", "src", "internals.ts")],
+    ["@oav/spec/internals", resolve(rootDir, "packages", "spec", "src", "internals.ts")],
     ["@oav/validator/internals", resolve(rootDir, "packages", "validator", "src", "internals.ts")],
   ];
   const packageEntries = PACKAGES.map(

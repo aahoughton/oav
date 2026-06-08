@@ -13,6 +13,7 @@
       "@oav/schema/internals": ["./packages/schema/src/internals.ts"],
       "@oav/formats": ["./packages/formats/src/index.ts"],
       "@oav/spec": ["./packages/spec/src/index.ts"],
+      "@oav/spec/internals": ["./packages/spec/src/internals.ts"],
       "@oav/overlay-spec": ["./packages/overlay-spec/src/index.ts"],
       "@oav/router": ["./packages/router/src/index.ts"],
       "@oav/validator": ["./packages/validator/src/index.ts"],
