@@ -181,6 +181,28 @@ app.use((req, res, next) => {
 See [body-parser caveats](#body-parser-caveats) and other
 cross-cutting recipes below.
 
+**Building the validator at boot.** If your Express 4 setup is
+synchronous (say a middleware factory that returns the handler array
+directly), awaiting `loadSpec` means making the whole bootstrap async
+and threading a Promise through just to build one validator.
+`loadSpecSync` resolves the spec (cross-file `$ref`s included) without
+one, so the validator is ready inline:
+
+```ts
+import { createValidator, loadSpecSync } from "@aahoughton/oav";
+import { validateRequests } from "@aahoughton/oav-express4";
+
+const { document } = loadSpecSync({ entry: "openapi.yaml" });
+app.use(express.json());
+app.use(validateRequests(createValidator(document)));
+```
+
+Blocking filesystem reads, so it's for boot, not per-request; it throws
+on an unreadable spec, so wrap it in `try/catch` if a missing spec
+should disable validation instead of aborting startup. See the
+[synchronous loading](https://github.com/aahoughton/oav/blob/main/packages/spec/README.md#synchronous-loading)
+docs.
+
 ### Express 5
 
 The [`oav-express5`](https://www.npmjs.com/package/@aahoughton/oav-express5)
