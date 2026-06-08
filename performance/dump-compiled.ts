@@ -34,30 +34,41 @@ for (const s of perfSchemas) {
     dialect: jsonSchemaDialect,
     formats: builtInFormats,
   });
-  writeFileSync(join(OUT, `${s.name}.oav.js`), "// oav (full error tree)\n" + oav.source + "\n");
+  writeFileSync(
+    join(OUT, `${s.name}.oav-flat.js`),
+    "// oav (flat, maxErrors: 1)\n" + oav.source + "\n",
+  );
+
+  const oavAll = compileSchema(s.schema, {
+    dialect: jsonSchemaDialect,
+    formats: builtInFormats,
+    maxErrors: Number.POSITIVE_INFINITY,
+  });
+  writeFileSync(
+    join(OUT, `${s.name}.oav-all.js`),
+    "// oav (flat, all errors)\n" + oavAll.source + "\n",
+  );
+
+  const oavTree = compileSchema(s.schema, {
+    dialect: jsonSchemaDialect,
+    formats: builtInFormats,
+    output: "tree",
+  });
+  writeFileSync(join(OUT, `${s.name}.oav-tree.js`), "// oav (tree)\n" + oavTree.source + "\n");
 
   const oavPred = compileSchema(s.schema, {
     dialect: jsonSchemaDialect,
     formats: builtInFormats,
-    predicate: true,
+    output: "predicate",
   });
   writeFileSync(
     join(OUT, `${s.name}.oav-predicate.js`),
     "// oav (predicate mode)\n" + oavPred.source + "\n",
   );
 
-  const oavFast = compileSchema(s.schema, {
-    dialect: jsonSchemaDialect,
-    formats: builtInFormats,
-    maxErrors: 1,
-  });
-  writeFileSync(
-    join(OUT, `${s.name}.oav-fast.js`),
-    "// oav (maxErrors: 1)\n" + oavFast.source + "\n",
-  );
-
   console.log(
     `${s.name}: ajv ${ajvFn.toString().length} B, ajv-fast ${ajvFastFn.toString().length} B, ` +
-      `oav ${oav.source.length} B, oav-pred ${oavPred.source.length} B, oav-fast ${oavFast.source.length} B`,
+      `oav-flat ${oav.source.length} B, oav-all ${oavAll.source.length} B, ` +
+      `oav-tree ${oavTree.source.length} B, oav-pred ${oavPred.source.length} B`,
   );
 }
