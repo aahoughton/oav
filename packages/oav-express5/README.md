@@ -2,11 +2,11 @@
 
 Express 5 adapter for [`oav-core`](https://www.npmjs.com/package/@aahoughton/oav-core): a promise-native middleware factory plus standalone helpers (`httpRequestFromExpress`, `renderProblemDetails`) for callers composing their own middleware.
 
-Same shape as the [`oav-express4`](../oav-express4/README.md) sibling; only the framework-typed argument and the async semantics differ. Express 5's promise-native middleware means thrown errors and rejected promises propagate to the host's error middleware automatically, with no `try/catch` wrapper.
+Same shape as the [`oav-express4`](https://github.com/aahoughton/oav/blob/main/packages/oav-express4/README.md) sibling; only the framework-typed argument and the async semantics differ. Express 5's promise-native middleware means thrown errors and rejected promises propagate to the host's error middleware automatically, with no `try/catch` wrapper.
 
-Sibling packages: [`oav-express4`](../oav-express4/README.md), [`oav-fastify`](../oav-fastify/README.md). Identical option shapes and defaults; `validateRequests` and `renderProblemDetails` share names across the family, while the `httpRequestFrom*` extractor and `*Context` type carry framework-native names.
+Sibling packages: [`oav-express4`](https://github.com/aahoughton/oav/blob/main/packages/oav-express4/README.md), [`oav-fastify`](https://github.com/aahoughton/oav/blob/main/packages/oav-fastify/README.md). Identical option shapes and defaults; `validateRequests` and `renderProblemDetails` share names across the family, while the `httpRequestFrom*` extractor and `*Context` type carry framework-native names.
 
-> **Migrating from `express-openapi-validator`?** See [docs/migration-from-eov.md](../../docs/migration-from-eov.md) for behavior differences (path-label `/params/` → `/path/`, `errorCode` namespacing, status mapping) and a worked porting walkthrough.
+> **Migrating from `express-openapi-validator`?** See [docs/migration-from-eov.md](https://github.com/aahoughton/oav/blob/main/docs/migration-from-eov.md) for behavior differences (path-label `/params/` → `/path/`, `errorCode` namespacing, status mapping) and a worked porting walkthrough.
 
 ## Install
 
@@ -225,5 +225,5 @@ A migrating consumer's `import { validateRequests } from "@aahoughton/oav-expres
 
 - [`oav-core`](https://www.npmjs.com/package/@aahoughton/oav-core): `createValidator`, `ValidatorOptions`, `formatSummary`, `collectIssues`, `httpStatusFor`, `toProblemDetails`.
 - [`oav`](https://www.npmjs.com/package/@aahoughton/oav): oav-core plus YAML readers and the `oav` CLI.
-- The repo-root [`docs/integration.md`](../../docs/integration.md): broader recipes (security, file uploads, response validation, status mapping, type coercion, ignoring paths).
-- The repo-root [`docs/migration-from-eov.md`](../../docs/migration-from-eov.md): porting from `express-openapi-validator`.
+- The repo-root [`docs/integration.md`](https://github.com/aahoughton/oav/blob/main/docs/integration.md): broader recipes (security, file uploads, response validation, status mapping, type coercion, ignoring paths).
+- The repo-root [`docs/migration-from-eov.md`](https://github.com/aahoughton/oav/blob/main/docs/migration-from-eov.md): porting from `express-openapi-validator`.
