@@ -255,6 +255,11 @@ export type ValidationResult =
  * fields; a failing result always carries both `error` (the tree root)
  * and `truncated`.
  *
+ * Migrating from v2: this nested shape was the v2 default and was named
+ * `ValidationResult`. v3 makes flat the default, so the name
+ * `ValidationResult` now refers to the flat shape and the tree moved
+ * here. (`FlatValidationResult` aliases the new flat default, not this.)
+ *
  * @public
  */
 export type TreeValidationResult =
