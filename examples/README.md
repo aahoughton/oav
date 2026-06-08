@@ -10,7 +10,7 @@ uses, so the example code translates 1:1 into production use.
 From the repo root, after `pnpm install`:
 
 ```bash
-pnpm tsx examples/<example>.ts
+pnpm dlx tsx examples/<example>.ts
 ```
 
 The examples import from `packages/*/src` directly so they work without
