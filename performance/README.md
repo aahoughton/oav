@@ -222,54 +222,53 @@ format warnings don't flood stdout.
 once, outside the timed loop. The hot path is literally
 `validator(sample)` — no closures, no cursor math, no per-iteration
 setup. One representative sample each for the valid and invalid
-paths so neither side wins by short-circuiting. `allErrors: true` on
-ajv for parity with oav's always-collect-everything default.
+paths so neither side wins by short-circuiting.
+
+The bench runs five validators so each comparison is apples-to-apples:
+`oav` is the zero-config default (flat, `maxErrors: 1`) and pairs with
+`ajv-fast` (`allErrors: false`); `oav-all` collects every error and
+pairs with `ajv` (`allErrors: true`); `oav-predicate` is the boolean
+fast path.
 
 ## Interpreting the results
 
 - **Compile-hot workloads.** Per-request or per-tenant validator
-  construction. oav wins across the board in the current numbers,
+  construction. oav is faster across the board in the current numbers,
   by one to two orders of magnitude against ajv.
 - **Steady-state validate on the same payload shape.** Call
-  `compile` once at boot, validate many times. ajv and oav trade the
-  lead by shape:
-  - **At or near ajv parity** on scalar, flat-object, and recursive
-    `$ref` shapes (within ~10–35% on the bench spec).
-  - **Behind ajv** on the applicator-heavy shapes: ~2–3× on large
-    arrays, ~3–4× on `oneOf`/`allOf` composition (the largest
-    remaining gap; see the structural note below). Predicate mode
-    closes most of the composition gap.
-  - **Ahead of ajv** on two shapes: `uniqueItems` arrays (oav's
-    primitive fast path vs ajv's pairwise scan), and length-bounded
-    strings. On the latter, `minLength` / `maxLength` decide from the
-    string's `.length` before walking code points, so a large valid
-    body costs O(1) where ajv walks the whole string (oav is
-    ~thousands× faster on that shape's valid path).
+  `compile` once at boot, validate many times. Comparing matched
+  defaults (`oav` vs `ajv-fast`, both fail-fast):
+  - **Within ~25%** on scalar, flat-object, recursive `$ref`, and
+    large-array shapes. ajv is a little ahead on the rejection path.
+  - **Behind ajv** on `oneOf` / `allOf` rejection (~2.5×, larger when
+    collecting all errors): oav materialises the composition error
+    where ajv stops at the first failure. `output: "predicate"` reaches
+    parity (see the structural note below).
+  - **Ahead of ajv** on `uniqueItems` arrays (~1.6–3×; oav's primitive
+    fast path vs ajv's pairwise scan). `minLength` / `maxLength` also
+    decide from the string's `.length` before walking code points, so a
+    large valid body costs O(1).
 
-  `maxErrors: 1` closes the gap on invalid payloads (apples-to-apples
-  with ajv's default fail-fast behavior).
-
-- **Predicate mode (`predicate: true`).** When consumers only need a
+- **Predicate mode (`output: "predicate"`).** When consumers only need a
   yes/no answer — routing, gating, hot-path filtering — `oav-predicate`
-  brings oav onto parity with ajv's default (fail-fast) mode on invalid
-  paths and typically edges it out on valid paths. The compiler drops
-  error-tree construction entirely: no leaf-allocation, no path
-  snapshot, no params object, no message string, no wrapper. Every
-  failure short-circuits to `return false;`. The mode cannot be
-  combined with `maxErrors` (the two options are semantically
-  incompatible; the compiler throws).
+  brings oav to parity with ajv's fail-fast mode on invalid paths and
+  typically edges it out on valid paths. The compiler drops error-tree
+  construction entirely: no leaf-allocation, no path snapshot, no params
+  object, no message string, no wrapper. Every failure short-circuits to
+  `return false;`. The mode cannot be combined with a finite `maxErrors`
+  (the two are semantically incompatible; the compiler throws).
 - **Hyperjump**'s validate throughput sits roughly two orders of
   magnitude below ajv / oav. It's the 2020-12 reference
   implementation, not a speed target.
 - **`@oav/schema`**'s remaining validate overhead vs ajv comes from
   two structural choices: schemas that contain applicators
-  (`properties` / `items` / `allOf` / ...) compile to a function
-  call rather than inlining into the enclosing body (V8 monomorphizes
-  hot-loop calls better than massive inline bodies); and oav collects
-  complete error trees by default, while ajv defaults to
-  `allErrors: false`. Set `maxErrors: 1` on oav for apples-to-apples
-  fast-fail semantics, or `predicate: true` to shed the error
-  infrastructure entirely.
+  (`properties` / `items` / `allOf` / ...) compile to a function call
+  rather than inlining into the enclosing body (V8 monomorphizes
+  hot-loop calls better than massive inline bodies); and on the
+  rejection path oav still builds a structured leaf for the failing
+  keyword. oav's default already matches ajv's fail-fast (flat,
+  `maxErrors: 1`); `output: "predicate"` sheds the error infrastructure
+  entirely for the cases that only need a yes/no answer.
 
 ## Results file
 
