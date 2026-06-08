@@ -2,9 +2,9 @@
 
 Fastify adapter for [`oav-core`](https://www.npmjs.com/package/@aahoughton/oav-core): a `preValidation` hook factory plus standalone helpers (`httpRequestFromFastify`, `renderProblemDetails`) for callers composing their own hooks.
 
-Same shape as the Express siblings ([`oav-express4`](../oav-express4/README.md), [`oav-express5`](../oav-express5/README.md)); only the framework-typed argument and Fastify's hook-vs-middleware distinction differ. Fastify is async-native, so thrown errors and rejected promises propagate to Fastify's error handler automatically, with no `try/catch` wrapper.
+Same shape as the Express siblings ([`oav-express4`](https://github.com/aahoughton/oav/blob/main/packages/oav-express4/README.md), [`oav-express5`](https://github.com/aahoughton/oav/blob/main/packages/oav-express5/README.md)); only the framework-typed argument and Fastify's hook-vs-middleware distinction differ. Fastify is async-native, so thrown errors and rejected promises propagate to Fastify's error handler automatically, with no `try/catch` wrapper.
 
-Sibling packages: [`oav-express4`](../oav-express4/README.md), [`oav-express5`](../oav-express5/README.md). Identical option shapes and defaults; `validateRequests` and `renderProblemDetails` share names across the family, while the `httpRequestFrom*` extractor and `*Context` type carry framework-native names.
+Sibling packages: [`oav-express4`](https://github.com/aahoughton/oav/blob/main/packages/oav-express4/README.md), [`oav-express5`](https://github.com/aahoughton/oav/blob/main/packages/oav-express5/README.md). Identical option shapes and defaults; `validateRequests` and `renderProblemDetails` share names across the family, while the `httpRequestFrom*` extractor and `*Context` type carry framework-native names.
 
 ## Install
 

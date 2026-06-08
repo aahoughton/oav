@@ -10,7 +10,7 @@ validator for JavaScript and TypeScript services. Two primary drivers:
   application-side patches. `applyOverlays` rewrites the document
   at load time. Custom keywords, formats, and dialects plug into
   the compiler the same way, so per-tenant validation rules don't
-  require forking. See [docs/overlays.md](./docs/overlays.md).
+  require forking. See [docs/overlays.md](https://github.com/aahoughton/oav/blob/main/docs/overlays.md).
 - **Validators that fit in microservice runners.** `oav compile-spec
 openapi.yaml` emits a single zero-dependency ES module exposing
   the full validator surface. Targets Cloudflare Workers, Vercel
@@ -28,7 +28,7 @@ If you only need generic JSON Schema validation across many drafts,
 start with Ajv. If you want a one-line Express middleware with file
 upload and auth handler conveniences built in, start with
 `express-openapi-validator`. See
-[docs/comparison.md](./docs/comparison.md) for the feature map.
+[docs/comparison.md](https://github.com/aahoughton/oav/blob/main/docs/comparison.md) for the feature map.
 
 ## Install
 
@@ -61,7 +61,7 @@ npm install @aahoughton/oav-fastify    # Fastify adapter
 `/spec`, `/overlay-spec`, `/formats`, `/core`); on the lean package,
 substitute `oav-core` in imports that don't touch the YAML readers
 (`createYamlFileReader`, `createSmartHttpReader`) or the CLI. See
-[`docs/modules.md`](./docs/modules.md) for what each subpath exports.
+[`docs/modules.md`](https://github.com/aahoughton/oav/blob/main/docs/modules.md) for what each subpath exports.
 
 ## Quick start
 
@@ -89,7 +89,7 @@ app.post("/pets", (req, res) => res.json({ ok: true }));
 Invalid requests receive an `application/problem+json` response.
 Valid requests continue to your route handlers. Express 4 uses the
 same shape with `oav-express4`; Fastify uses `oav-fastify` as a
-`preValidation` hook. See [docs/integration.md](./docs/integration.md).
+`preValidation` hook. See [docs/integration.md](https://github.com/aahoughton/oav/blob/main/docs/integration.md).
 
 ### Framework-agnostic
 
@@ -129,7 +129,7 @@ carries a stable `code` (e.g. `"type"`, `"required"`, `"content-type"`,
 "name"]`), a human-readable `message`, and a machine-readable `params`
 object whose shape per code is documented in `BuiltInErrorParams`.
 
-Runnable end-to-end demos in [`examples/`](./examples/README.md):
+Runnable end-to-end demos in [`examples/`](https://github.com/aahoughton/oav/blob/main/examples/README.md):
 custom formats, custom keywords, cross-field constraints, error
 budgets, version differences, overlays, and spec-derived middleware
 config.
@@ -180,19 +180,19 @@ const validator = createValidator(patched);
 
 The full verb surface (component-bucket fan-out, predicate iterators,
 operation-level metadata) is documented in
-[`docs/overlays.md`](./docs/overlays.md); cross-cutting integration
-shapes live in [`docs/integration.md`](./docs/integration.md).
+[`docs/overlays.md`](https://github.com/aahoughton/oav/blob/main/docs/overlays.md); cross-cutting integration
+shapes live in [`docs/integration.md`](https://github.com/aahoughton/oav/blob/main/docs/integration.md).
 
 ## Where to go next
 
-| Task                                      | Read                                                                   |
-| ----------------------------------------- | ---------------------------------------------------------------------- |
-| Wire into Express, Fastify, Next.js, Hono | [docs/integration.md](./docs/integration.md)                           |
-| Patch a spec you do not own               | [docs/overlays.md](./docs/overlays.md)                                 |
-| Emit standalone validators                | [packages/cli/README.md](./packages/cli/README.md#compile-spec-output) |
-| Compare against Ajv and other tools       | [docs/comparison.md](./docs/comparison.md)                             |
-| Migrate from express-openapi-validator    | [docs/migration-from-eov.md](./docs/migration-from-eov.md)             |
-| Use custom formats, keywords, or limits   | [docs/configuration.md](./docs/configuration.md)                       |
+| Task                                      | Read                                                                                                             |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Wire into Express, Fastify, Next.js, Hono | [docs/integration.md](https://github.com/aahoughton/oav/blob/main/docs/integration.md)                           |
+| Patch a spec you do not own               | [docs/overlays.md](https://github.com/aahoughton/oav/blob/main/docs/overlays.md)                                 |
+| Emit standalone validators                | [packages/cli/README.md](https://github.com/aahoughton/oav/blob/main/packages/cli/README.md#compile-spec-output) |
+| Compare against Ajv and other tools       | [docs/comparison.md](https://github.com/aahoughton/oav/blob/main/docs/comparison.md)                             |
+| Migrate from express-openapi-validator    | [docs/migration-from-eov.md](https://github.com/aahoughton/oav/blob/main/docs/migration-from-eov.md)             |
+| Use custom formats, keywords, or limits   | [docs/configuration.md](https://github.com/aahoughton/oav/blob/main/docs/configuration.md)                       |
 
 ## How it compares
 
@@ -201,11 +201,11 @@ Ajv for JSON Schema, `express-openapi-validator` for Express,
 `openapi-backend` for operationId routing plus validation, and smaller
 request/response validators for custom stacks. oav is aimed at
 HTTP-aware validation with structured errors, overlays, and standalone
-OpenAPI validator output. See [docs/comparison.md](./docs/comparison.md)
-for the feature map, and [docs/migration-from-eov.md](./docs/migration-from-eov.md)
+OpenAPI validator output. See [docs/comparison.md](https://github.com/aahoughton/oav/blob/main/docs/comparison.md)
+for the feature map, and [docs/migration-from-eov.md](https://github.com/aahoughton/oav/blob/main/docs/migration-from-eov.md)
 if you are migrating from `express-openapi-validator`.
 
-Numbers below are from the [`performance/`](./performance/README.md)
+Numbers below are from the [`performance/`](https://github.com/aahoughton/oav/blob/main/performance/README.md)
 benchmark on AWS c7i.large (Intel Sapphire Rapids, Node 22). Your
 hardware will vary.
 
@@ -236,18 +236,18 @@ For typical HTTP workloads (1k–10k req/sec × ~1 validation per
 request), the difference is invisible. For validation-heavy code
 (millions of validations per second), measure your own shapes.
 
-Full per-shape breakdown: [`docs/comparison.md`](./docs/comparison.md). Raw
+Full per-shape breakdown: [`docs/comparison.md`](https://github.com/aahoughton/oav/blob/main/docs/comparison.md). Raw
 benchmark data and methodology:
-[`performance/README.md`](./performance/README.md).
+[`performance/README.md`](https://github.com/aahoughton/oav/blob/main/performance/README.md).
 
 ## Conformance
 
-The [`conformance/`](./conformance/README.md) sub-package drives the
+The [`conformance/`](https://github.com/aahoughton/oav/blob/main/conformance/README.md) sub-package drives the
 compiler and CLI against the upstream JSON Schema 2020-12 Test Suite,
 a set of OpenAPI 3.0 / 3.1 / 3.2 petstore scenarios, and a handful of
 real-world specs (Stripe, GitHub, DigitalOcean, Twilio, Asana, Box,
 Adyen) that have to load and compile without error. See
-[`conformance/REPORT.md`](./conformance/REPORT.md) for pass / fail
+[`conformance/REPORT.md`](https://github.com/aahoughton/oav/blob/main/conformance/REPORT.md) for pass / fail
 counts by category.
 
 Categories oav does not aim to cover:
@@ -261,7 +261,7 @@ Categories oav does not aim to cover:
 
 OpenAPI specs hand-authored or generated for typical APIs rarely
 touch any of these. If they matter for your use case, the
-[report](./conformance/REPORT.md) lays out which tests fail and why.
+[report](https://github.com/aahoughton/oav/blob/main/conformance/REPORT.md) lays out which tests fail and why.
 
 ## CLI
 
@@ -278,7 +278,7 @@ Flags: `--format text|json|flat`, `--depth n`, `--overlay file`
 (repeatable), `-o file`, `--quiet`, `--dialect` (compile-schema /
 compile-spec), `--requests-only` (compile-spec), `--only METHOD PATH`
 (compile-spec, repeatable). See
-[packages/cli/README.md](./packages/cli/README.md) for the full
+[packages/cli/README.md](https://github.com/aahoughton/oav/blob/main/packages/cli/README.md) for the full
 surface, the `.http` file format, and both compile commands' output
 contracts.
 
@@ -313,7 +313,7 @@ npx swagger2openapi swagger.json -o openapi.json
 `createValidator(spec, options)` accepts options for dialect override,
 custom formats and keywords, error budget, strict-mode lint, security
 shape-checking, ignored paths, and version-mismatch policy. See
-[`docs/configuration.md`](./docs/configuration.md) for the option
+[`docs/configuration.md`](https://github.com/aahoughton/oav/blob/main/docs/configuration.md) for the option
 table, custom-keyword recipe, and bounded-error-collection details.
 The canonical contract is the `ValidatorOptions` TSDoc.
 
@@ -351,15 +351,15 @@ the flat `errors` list or a tree `error`, so this wiring is the same
 whichever `output` the validator uses.
 
 Companion adapter packages cover common request-validation wiring:
-[`oav-express4`](./packages/oav-express4/README.md),
-[`oav-express5`](./packages/oav-express5/README.md), and
-[`oav-fastify`](./packages/oav-fastify/README.md). They share export
+[`oav-express4`](https://github.com/aahoughton/oav/blob/main/packages/oav-express4/README.md),
+[`oav-express5`](https://github.com/aahoughton/oav/blob/main/packages/oav-express5/README.md), and
+[`oav-fastify`](https://github.com/aahoughton/oav/blob/main/packages/oav-fastify/README.md). They share export
 names and option shapes; only the framework type differs.
 
 For Next.js, Hono, Bun, Deno, and custom frameworks, use the
 framework-agnostic `validateRequest` / `validateResponse` calls or the
 Fetch helpers (`validateFetchRequest`, `validateFetchResponse`). See
-[docs/integration.md](./docs/integration.md) for body parsing,
+[docs/integration.md](https://github.com/aahoughton/oav/blob/main/docs/integration.md) for body parsing,
 response validation, uploads, security, ignored paths, and custom error
 envelopes.
 
@@ -376,7 +376,7 @@ on request) rather than framework-specific error classes.
 Runtime behavior corners. For feature-scope tradeoffs against Ajv and
 OpenAPI middleware packages (draft versions, `$data`, async
 validation, response interception, upload helpers), see
-[docs/comparison.md](./docs/comparison.md).
+[docs/comparison.md](https://github.com/aahoughton/oav/blob/main/docs/comparison.md).
 
 - `$dynamicRef` behaves like `$ref` with anchor lookup; no runtime dynamic-scope traversal.
 - `style: deepObject` query parameters support only single-level nesting (`obj[key]=value`); OpenAPI 3.0–3.2 don't define nested semantics.
@@ -387,7 +387,7 @@ validation, response interception, upload helpers), see
   string the validator checks. Pass a `regexCompiler` to
   `createValidator` to plug in `re2` or a complexity-checking engine;
   see ["Hardening against untrusted regex patterns"
-  ](./docs/configuration.md#hardening-against-untrusted-regex-patterns).
+  ](https://github.com/aahoughton/oav/blob/main/docs/configuration.md#hardening-against-untrusted-regex-patterns).
 - Recursive schemas validate by recursing on the JavaScript call
   stack. Unbounded, a deeply nested payload (a few thousand levels,
   only a few KB on the wire) can exhaust the stack and throw
@@ -396,15 +396,15 @@ validation, response interception, upload helpers), see
   the validator: a payload past the cap fails as a `depth` error (HTTP 400) instead of crashing. For untrusted input set `maxDepth`, and
   optionally cap nesting at the parse boundary as a backstop; see
   ["Guarding against deeply nested payloads"
-  ](./docs/configuration.md#guarding-against-deeply-nested-payloads).
+  ](https://github.com/aahoughton/oav/blob/main/docs/configuration.md#guarding-against-deeply-nested-payloads).
 
 ## Contributing
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for branch / PR / release flow.
+See [CONTRIBUTING.md](https://github.com/aahoughton/oav/blob/main/CONTRIBUTING.md) for branch / PR / release flow.
 Development workflow (lint / typecheck / test / build) and the
 conformance and performance sub-packages are described there and in
-[CLAUDE.md](./CLAUDE.md).
+[CLAUDE.md](https://github.com/aahoughton/oav/blob/main/CLAUDE.md).
 
 ## License
 
-MIT. See [LICENSE](./LICENSE).
+MIT. See [LICENSE](https://github.com/aahoughton/oav/blob/main/LICENSE).

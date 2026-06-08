@@ -4,9 +4,9 @@ Express 4 adapter for [`oav-core`](https://www.npmjs.com/package/@aahoughton/oav
 
 Thin: this package re-exports nothing from oav-core. You install both. The adapter declares oav-core as a regular dependency, so a single `npm install @aahoughton/oav-express4` pulls oav-core along; or install [`oav`](https://www.npmjs.com/package/@aahoughton/oav) instead if you want YAML readers and the CLI.
 
-Sibling packages: [`oav-express5`](../oav-express5/README.md), [`oav-fastify`](../oav-fastify/README.md). Identical option shapes and defaults; `validateRequests` and `renderProblemDetails` share names across the family, while the `httpRequestFrom*` extractor and `*Context` type carry framework-native names.
+Sibling packages: [`oav-express5`](https://github.com/aahoughton/oav/blob/main/packages/oav-express5/README.md), [`oav-fastify`](https://github.com/aahoughton/oav/blob/main/packages/oav-fastify/README.md). Identical option shapes and defaults; `validateRequests` and `renderProblemDetails` share names across the family, while the `httpRequestFrom*` extractor and `*Context` type carry framework-native names.
 
-> **Migrating from `express-openapi-validator`?** See [docs/migration-from-eov.md](../../docs/migration-from-eov.md) for behavior differences (path-label `/params/` → `/path/`, `errorCode` namespacing, status mapping) and a worked porting walkthrough.
+> **Migrating from `express-openapi-validator`?** See [docs/migration-from-eov.md](https://github.com/aahoughton/oav/blob/main/docs/migration-from-eov.md) for behavior differences (path-label `/params/` → `/path/`, `errorCode` namespacing, status mapping) and a worked porting walkthrough.
 
 ## Install
 
@@ -293,5 +293,5 @@ For per-route inline multer (validator called from inside the route handler) and
 
 - [`oav-core`](https://www.npmjs.com/package/@aahoughton/oav-core): `createValidator`, `ValidatorOptions`, `formatSummary`, `collectIssues`, `httpStatusFor`, `toProblemDetails`.
 - [`oav`](https://www.npmjs.com/package/@aahoughton/oav): oav-core plus YAML readers and the `oav` CLI.
-- The repo-root [`docs/integration.md`](../../docs/integration.md): broader recipes (security, file uploads, response validation, status mapping, type coercion, ignoring paths).
-- The repo-root [`docs/migration-from-eov.md`](../../docs/migration-from-eov.md): porting from `express-openapi-validator`.
+- The repo-root [`docs/integration.md`](https://github.com/aahoughton/oav/blob/main/docs/integration.md): broader recipes (security, file uploads, response validation, status mapping, type coercion, ignoring paths).
+- The repo-root [`docs/migration-from-eov.md`](https://github.com/aahoughton/oav/blob/main/docs/migration-from-eov.md): porting from `express-openapi-validator`.

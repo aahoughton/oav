@@ -41,7 +41,7 @@ surface changes.
   `loadSpec`. Its default reader covers `.yaml` / `.yml` and `.json`
   on disk, so a single call resolves a YAML spec and its cross-file
   `$ref`s. JSON-only callers can use `oav-core`'s `loadSpecSync` from
-  `oav/spec`; see [the loader docs](../spec/README.md#synchronous-loading)
+  `oav/spec`; see [the loader docs](https://github.com/aahoughton/oav/blob/main/packages/spec/README.md#synchronous-loading)
   for the blocking caveat and the load-or-skip pattern.
 
   ```ts
@@ -53,43 +53,43 @@ surface changes.
 
 - **The `oav` CLI binary**: `oav resolve`, `oav validate`,
   `oav compile-schema`, `oav compile-spec`. See
-  [`packages/cli/README.md`](../cli/README.md) for commands and
+  [`packages/cli/README.md`](https://github.com/aahoughton/oav/blob/main/packages/cli/README.md) for commands and
   flags.
 
 Everything else (`createValidator`, `compileSchema`, error helpers,
 formatters, `formatSummary`, `toProblemDetails`, HTTP-status helpers, …)
 is re-exported from `oav-core`. Documentation for those lives in:
 
-- [`packages/core/README.md`](../core/README.md): error tree,
+- [`packages/core/README.md`](https://github.com/aahoughton/oav/blob/main/packages/core/README.md): error tree,
   formatters, HTTP helpers.
-- [`packages/validator/README.md`](../validator/README.md): the
+- [`packages/validator/README.md`](https://github.com/aahoughton/oav/blob/main/packages/validator/README.md): the
   HTTP validator.
-- [`packages/schema/README.md`](../schema/README.md): the JSON
+- [`packages/schema/README.md`](https://github.com/aahoughton/oav/blob/main/packages/schema/README.md): the JSON
   Schema compiler.
-- [`packages/spec/README.md`](../spec/README.md): multi-file
+- [`packages/spec/README.md`](https://github.com/aahoughton/oav/blob/main/packages/spec/README.md): multi-file
   loader, resolver, overlays.
-- [`packages/overlay-spec/README.md`](../overlay-spec/README.md):
+- [`packages/overlay-spec/README.md`](https://github.com/aahoughton/oav/blob/main/packages/overlay-spec/README.md):
   OpenAPI Overlay 1.0 spec-format translator.
-- [`packages/formats/README.md`](../formats/README.md): built-in
+- [`packages/formats/README.md`](https://github.com/aahoughton/oav/blob/main/packages/formats/README.md): built-in
   string format validators.
 
 ## Framework integration
 
 `oav` is a validator, not a middleware package. Companion adapter
 packages cover the framework wiring:
-[`oav-express4`](../oav-express4/README.md),
-[`oav-express5`](../oav-express5/README.md),
-[`oav-fastify`](../oav-fastify/README.md). See
-[`docs/integration.md`](../../docs/integration.md) for adapter recipes plus
+[`oav-express4`](https://github.com/aahoughton/oav/blob/main/packages/oav-express4/README.md),
+[`oav-express5`](https://github.com/aahoughton/oav/blob/main/packages/oav-express5/README.md),
+[`oav-fastify`](https://github.com/aahoughton/oav/blob/main/packages/oav-fastify/README.md). See
+[`docs/integration.md`](https://github.com/aahoughton/oav/blob/main/docs/integration.md) for adapter recipes plus
 manual integration patterns for Next.js, Hono, Bun, and Deno via
 the Web Standards adapter.
 
 ## See also
 
-- [Top-level `README.md`](../../README.md): full rationale, install
+- [Top-level `README.md`](https://github.com/aahoughton/oav/blob/main/README.md): full rationale, install
   matrix, comparison.
-- [`docs/integration.md`](../../docs/integration.md): adapter recipes,
+- [`docs/integration.md`](https://github.com/aahoughton/oav/blob/main/docs/integration.md): adapter recipes,
   security wiring, response validation, file uploads, migration.
-- [`docs/overlays.md`](../../docs/overlays.md): extending an externally-owned
+- [`docs/overlays.md`](https://github.com/aahoughton/oav/blob/main/docs/overlays.md): extending an externally-owned
   base spec at load time.
-- [`docs/comparison.md`](../../docs/comparison.md): feature comparison vs Ajv.
+- [`docs/comparison.md`](https://github.com/aahoughton/oav/blob/main/docs/comparison.md): feature comparison vs Ajv.
