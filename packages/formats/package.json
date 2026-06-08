@@ -12,9 +12,6 @@
       "import": "./src/index.ts"
     }
   },
-  "dependencies": {
-    "@oav/core": "workspace:*"
-  },
   "engines": {
     "node": ">=20"
   }

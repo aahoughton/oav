@@ -44,9 +44,6 @@ importers:
       '@oav/formats':
         specifier: workspace:*
         version: link:../formats
-      '@oav/router':
-        specifier: workspace:*
-        version: link:../router
       '@oav/schema':
         specifier: workspace:*
         version: link:../schema
@@ -62,11 +59,7 @@ importers:
 
   packages/core: {}
 
-  packages/formats:
-    dependencies:
-      '@oav/core':
-        specifier: workspace:*
-        version: link:../core
+  packages/formats: {}
 
   packages/oav:
     dependencies:
