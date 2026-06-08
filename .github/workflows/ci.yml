@@ -217,9 +217,8 @@ jobs:
               },
             },
           });
-          if (v.validateRequest({ method: "POST", path: "/x", contentType: "application/json", body: {} }) === null) {
-            throw new Error("expected invalid");
-          }
+          const reqResult = v.validateRequest({ method: "POST", path: "/x", contentType: "application/json", body: {} });
+          if (reqResult.valid) throw new Error("expected invalid (missing required 'a')");
           const { validate } = compileSchema({ type: "integer" }, { dialect: jsonSchemaDialect });
           if (!validate(42).valid) throw new Error("expected valid");
           // oav-core's JSON-only reader should refuse .yaml paths with an install-hint error.
@@ -271,9 +270,8 @@ jobs:
               },
             },
           });
-          if (v.validateRequest({ method: "POST", path: "/x", contentType: "application/json", body: {} }) === null) {
-            throw new Error("expected invalid");
-          }
+          const reqResult = v.validateRequest({ method: "POST", path: "/x", contentType: "application/json", body: {} });
+          if (reqResult.valid) throw new Error("expected invalid (missing required 'a')");
           const { validate } = compileSchema({ type: "integer" }, { dialect: jsonSchemaDialect });
           if (!validate(42).valid) throw new Error("expected valid");
           const parsed = parseYamlString("openapi: 3.1.0\ninfo: { title: t, version: '1' }\npaths: {}");
@@ -308,6 +306,7 @@ jobs:
           npm init -y > /dev/null
           npm install express@4 "$CORE_TGZ" "$E4_TGZ"
           cat > smoke.mjs <<'EOF'
+          import { createValidator } from "@aahoughton/oav-core";
           import {
             httpRequestFromExpress,
             renderProblemDetails,
@@ -316,6 +315,19 @@ jobs:
           if (typeof validateRequests !== "function") throw new Error("validateRequests missing");
           if (typeof httpRequestFromExpress !== "function") throw new Error("httpRequestFromExpress missing");
           if (typeof renderProblemDetails !== "function") throw new Error("renderProblemDetails missing");
+          // Exercise the cross-package boundary: build a validator from the
+          // published core and hand it to the published adapter. This forces
+          // the adapter's rewritten `@aahoughton/oav-core/core` imports to
+          // load and proves a published-core validator is consumable. A leaked
+          // `@oav/*` import would fail resolution here.
+          const handler = validateRequests(
+            createValidator({
+              openapi: "3.1.0",
+              info: { title: "t", version: "1" },
+              paths: { "/x": { post: { responses: { "200": { description: "ok" } } } } },
+            }),
+          );
+          if (typeof handler !== "function") throw new Error("validateRequests did not return a handler");
           console.log("oav-express4 smoke ok");
           EOF
           node smoke.mjs
@@ -328,6 +340,7 @@ jobs:
           npm init -y > /dev/null
           npm install express@5 "$CORE_TGZ" "$E5_TGZ"
           cat > smoke.mjs <<'EOF'
+          import { createValidator } from "@aahoughton/oav-core";
           import {
             httpRequestFromExpress,
             renderProblemDetails,
@@ -336,6 +349,19 @@ jobs:
           if (typeof validateRequests !== "function") throw new Error("validateRequests missing");
           if (typeof httpRequestFromExpress !== "function") throw new Error("httpRequestFromExpress missing");
           if (typeof renderProblemDetails !== "function") throw new Error("renderProblemDetails missing");
+          // Exercise the cross-package boundary: build a validator from the
+          // published core and hand it to the published adapter. This forces
+          // the adapter's rewritten `@aahoughton/oav-core/core` imports to
+          // load and proves a published-core validator is consumable. A leaked
+          // `@oav/*` import would fail resolution here.
+          const handler = validateRequests(
+            createValidator({
+              openapi: "3.1.0",
+              info: { title: "t", version: "1" },
+              paths: { "/x": { post: { responses: { "200": { description: "ok" } } } } },
+            }),
+          );
+          if (typeof handler !== "function") throw new Error("validateRequests did not return a handler");
           console.log("oav-express5 smoke ok");
           EOF
           node smoke.mjs
@@ -348,6 +374,7 @@ jobs:
           npm init -y > /dev/null
           npm install fastify@5 "$CORE_TGZ" "$F_TGZ"
           cat > smoke.mjs <<'EOF'
+          import { createValidator } from "@aahoughton/oav-core";
           import {
             httpRequestFromFastify,
             renderProblemDetails,
@@ -356,6 +383,19 @@ jobs:
           if (typeof validateRequests !== "function") throw new Error("validateRequests missing");
           if (typeof httpRequestFromFastify !== "function") throw new Error("httpRequestFromFastify missing");
           if (typeof renderProblemDetails !== "function") throw new Error("renderProblemDetails missing");
+          // Exercise the cross-package boundary: build a validator from the
+          // published core and hand it to the published adapter. This forces
+          // the adapter's rewritten `@aahoughton/oav-core/core` imports to
+          // load and proves a published-core validator is consumable. A leaked
+          // `@oav/*` import would fail resolution here.
+          const hook = validateRequests(
+            createValidator({
+              openapi: "3.1.0",
+              info: { title: "t", version: "1" },
+              paths: { "/x": { post: { responses: { "200": { description: "ok" } } } } },
+            }),
+          );
+          if (typeof hook !== "function") throw new Error("validateRequests did not return a hook");
           console.log("oav-fastify smoke ok");
           EOF
           node smoke.mjs
