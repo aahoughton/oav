@@ -40,8 +40,8 @@ return-shape contract (boolean, error object, or array of errors).
 
 ## Error budget
 
-The validator stops at the first error by default (`maxErrors: 1`),
-matching Ajv's zero-config behaviour. The cap is a per-call total
+The validator stops at the first error by default (`maxErrors: 1`).
+The cap is a per-call total
 across every location (body, query, headers).
 
 ```ts

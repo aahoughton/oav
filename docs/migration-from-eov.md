@@ -76,16 +76,16 @@ makes sense for your API.
 
 ### Request validation
 
-| eov option                          | oav equivalent                                                                                                                |
-| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `validateRequests: true`            | `validator.validateRequest(...)` in your middleware, or `validateRequests(validator)` from `oav-express4`.                    |
-| `validateRequests.allErrors`        | `maxErrors: Number.POSITIVE_INFINITY`. oav defaults to `maxErrors: 1` (fast-fail, like Ajv); raise it to collect more leaves. |
-| `validateRequests.coerceTypes`      | Query scalars coerced by default; body coercion not supported (see recipe).                                                   |
-| `validateRequests.removeAdditional` | Not supported. `additionalProperties: false` rejects; there is no silent-drop mode.                                           |
-| `validateRequests.discriminator`    | Native, always on for OpenAPI specs.                                                                                          |
-| `serDes`                            | Not supported. Pre- or post-transform the payload in your handler if you need `Date` / `ObjectId` / etc.                      |
-| `ignorePaths` (regex/fn)            | `createValidator(spec, { ignorePaths: (p) => ... })`: predicate that short-circuits before routing.                           |
-| `ignoreUndocumented`                | `createValidator(spec, { ignoreUndocumented: true })`: reports paths the router doesn't match as valid (`{ valid: true }`).   |
+| eov option                          | oav equivalent                                                                                                              |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `validateRequests: true`            | `validator.validateRequest(...)` in your middleware, or `validateRequests(validator)` from `oav-express4`.                  |
+| `validateRequests.allErrors`        | `maxErrors: Number.POSITIVE_INFINITY`. oav defaults to `maxErrors: 1` (fast-fail); raise it to collect more leaves.         |
+| `validateRequests.coerceTypes`      | Query scalars coerced by default; body coercion not supported (see recipe).                                                 |
+| `validateRequests.removeAdditional` | Not supported. `additionalProperties: false` rejects; there is no silent-drop mode.                                         |
+| `validateRequests.discriminator`    | Native, always on for OpenAPI specs.                                                                                        |
+| `serDes`                            | Not supported. Pre- or post-transform the payload in your handler if you need `Date` / `ObjectId` / etc.                    |
+| `ignorePaths` (regex/fn)            | `createValidator(spec, { ignorePaths: (p) => ... })`: predicate that short-circuits before routing.                         |
+| `ignoreUndocumented`                | `createValidator(spec, { ignoreUndocumented: true })`: reports paths the router doesn't match as valid (`{ valid: true }`). |
 
 ### Response validation
 
