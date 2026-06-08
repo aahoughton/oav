@@ -125,7 +125,12 @@ function collectLeafCodes(err: ValidationError): string[] {
 
 describe("compile-spec: equivalence vs createValidator", () => {
   it("matches runtime output on the petstore matrix", async () => {
-    const runtime = createValidator(petstore);
+    // The emitted (AOT) module mirrors the validator's tree output, so
+    // compare against a tree-mode, uncapped runtime validator.
+    const runtime = createValidator(petstore, {
+      output: "tree",
+      maxErrors: Number.POSITIVE_INFINITY,
+    });
     const aot = await buildAot(petstore);
 
     const cases: Array<{ name: string; req: unknown }> = [
@@ -187,7 +192,8 @@ describe("compile-spec: equivalence vs createValidator", () => {
     ];
 
     for (const c of cases) {
-      const a = runtime.validateRequest(c.req as never);
+      const ra = runtime.validateRequest(c.req as never);
+      const a = ra.valid ? null : ra.error;
       const b = aot.validateRequest(c.req);
       if (!equivalent(a, b)) {
         console.error(

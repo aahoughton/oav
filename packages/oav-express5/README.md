@@ -76,10 +76,10 @@ A byte-size limit (`express.json({ limit })`) and a parse-boundary depth cap, ap
 
 Returns an Express 5 promise-returning `RequestHandler`.
 
-| option          | type                                  | default                  |
-| --------------- | ------------------------------------- | ------------------------ |
-| `toHttpRequest` | `(req: Request) => HttpRequest`       | `httpRequestFromExpress` |
-| `onError`       | `(err, ctx) => void \| Promise<void>` | `renderProblemDetails`   |
+| option          | type                                                        | default                  |
+| --------------- | ----------------------------------------------------------- | ------------------------ |
+| `toHttpRequest` | `(req: Request) => HttpRequest`                             | `httpRequestFromExpress` |
+| `onError`       | `(errors: ValidationError[], ctx) => void \| Promise<void>` | `renderProblemDetails`   |
 
 `onError` may be async; the middleware awaits it. Express 5 awaits the returned promise, so thrown extractor errors and rejected `onError` promises propagate to the host's error middleware automatically, no `try/catch` needed. The middleware does **not** call `next()` after `onError` returns; your callback owns the response (write to `ctx.res`, or call `ctx.next(err)` to delegate).
 
@@ -95,17 +95,21 @@ Header keys lowercased, path stripped of query string, cookies read from `req.co
 
 Use this when you want to compose your own middleware (e.g. validate inside an existing custom wrapper) without re-implementing the extraction.
 
-### `renderProblemDetails(err, ctx)`
+### `renderProblemDetails(errors, ctx)`
 
-The default `onError`. RFC 9457 `application/problem+json` body (via `toProblemDetails`), status from `httpStatusFor`, `Allow` header from `allowHeaderFor` on 405.
+The default `onError`. Takes the flat list of failing leaves and writes
+an RFC 9457 `application/problem+json` body (via `toProblemDetails`),
+status from `httpStatusFor`, `Allow` header from `allowHeaderFor` on 405.
+`onError` receives the same leaf list whatever `output` the validator
+uses (a tree validator's result is flattened first).
 
 Exported standalone so a custom `onError` can call it as the fallback path:
 
 ```ts
 validateRequests(validator, {
-  onError: (err, ctx) => {
-    if (err.code === "security") return ctx.res.status(401).end();
-    renderProblemDetails(err, ctx);
+  onError: (errors, ctx) => {
+    if (errors.some((e) => e.code === "security")) return ctx.res.status(401).end();
+    renderProblemDetails(errors, ctx);
   },
 });
 ```
@@ -139,10 +143,10 @@ app.use(validateRequests(validator));
 ```ts
 app.use(
   validateRequests(validator, {
-    onError: (err, ctx) => {
-      ctx.res.status(httpStatusFor(err)).json({
-        message: formatSummary(err),
-        errors: collectIssues(err),
+    onError: (errors, ctx) => {
+      ctx.res.status(httpStatusFor(errors)).json({
+        message: `${errors.length} validation error(s)`,
+        errors: collectIssues(errors),
       });
     },
   }),
@@ -154,7 +158,7 @@ app.use(
 ```ts
 app.use(
   validateRequests(validator, {
-    onError: (err, ctx) => ctx.next(new ValidationFailure(err)),
+    onError: (errors, ctx) => ctx.next(new ValidationFailure(errors)),
   }),
 );
 
@@ -174,9 +178,9 @@ Validation failures don't reach your registered Express error middleware by defa
 ```ts
 app.use(
   validateRequests(validator, {
-    onError: (err, ctx) => {
-      log.warn("validation failed", { path: ctx.req.path, code: err.code });
-      renderProblemDetails(err, ctx);
+    onError: (errors, ctx) => {
+      log.warn("validation failed", { path: ctx.req.path, codes: errors.map((e) => e.code) });
+      renderProblemDetails(errors, ctx);
     },
   }),
 );
@@ -189,9 +193,9 @@ Use this whenever your existing error pipeline (Sentry, structured logger, reque
 ```ts
 app.use(
   validateRequests(validator, {
-    onError: async (err, ctx) => {
-      await sentry.captureException(err);
-      renderProblemDetails(err, ctx);
+    onError: async (errors, ctx) => {
+      await sentry.captureException(errors);
+      renderProblemDetails(errors, ctx);
     },
   }),
 );

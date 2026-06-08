@@ -3,11 +3,10 @@ import type { ExpressContext } from "./types.js";
 
 /**
  * The default `onError` for {@link validateRequests}. Renders the
- * validation tree as an RFC 9457 `application/problem+json` response:
+ * failing leaves as an RFC 9457 `application/problem+json` response:
  * status from {@link httpStatusFor}, `Allow` header from
  * {@link allowHeaderFor} on a 405, body from {@link toProblemDetails}
- * (whose `detail` is the first failing leaf via
- * {@link formatSummary}).
+ * (whose `detail` is the first failing leaf).
  *
  * Exported standalone for two cases:
  *
@@ -20,11 +19,11 @@ import type { ExpressContext } from "./types.js";
  *
  * @public
  */
-export function renderProblemDetails(err: ValidationError, ctx: ExpressContext): void {
-  const allow = allowHeaderFor(err);
+export function renderProblemDetails(errors: ValidationError[], ctx: ExpressContext): void {
+  const allow = allowHeaderFor(errors);
   if (allow !== undefined) ctx.res.setHeader("Allow", allow);
   ctx.res
-    .status(httpStatusFor(err))
+    .status(httpStatusFor(errors))
     .type("application/problem+json")
-    .json(toProblemDetails(err, { instance: ctx.req.originalUrl }));
+    .json(toProblemDetails(errors, { instance: ctx.req.originalUrl }));
 }

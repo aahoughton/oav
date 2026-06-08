@@ -29,7 +29,7 @@ const ok = v.validateRequest({
   contentType: "application/json",
   body: { phone: "+14155550123" },
 });
-console.log("+14155550123 →", ok === null ? "ok" : "FAIL");
+console.log("+14155550123 →", ok.valid ? "ok" : "FAIL");
 
 const bad = v.validateRequest({
   method: "POST",
@@ -37,6 +37,6 @@ const bad = v.validateRequest({
   contentType: "application/json",
   body: { phone: "415-555-0123" }, // not E.164
 });
-if (bad !== null) {
-  console.log("\n415-555-0123:\n" + formatText(bad));
+if (!bad.valid) {
+  console.log("\n415-555-0123:\n" + formatText(bad.errors));
 }

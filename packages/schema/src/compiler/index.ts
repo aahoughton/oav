@@ -5,8 +5,10 @@ export {
   type CompiledFlatSchema,
   type CompiledPredicate,
   type CompiledSchema,
+  type CompiledTreeSchema,
   type FlatValidationResult,
   type StrictIssue,
+  type TreeValidationResult,
   type ValidationResult,
 } from "./compiler.js";
 export {

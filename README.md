@@ -103,7 +103,7 @@ const { document } = await loadSpec({
 });
 const validator = createValidator(document);
 
-const err = validator.validateRequest({
+const result = validator.validateRequest({
   method: "POST",
   path: "/pets",
   contentType: "application/json",
@@ -111,19 +111,23 @@ const err = validator.validateRequest({
   body: { name: "Fido" },
 });
 
-if (err !== null) console.error(formatText(err));
+if (!result.valid) console.error(formatText(result.errors));
 ```
 
 For a multi-file spec or a spec hosted over HTTP, compose readers:
 `composeReaders([createYamlFileReader(), createSmartHttpReader(), createFileReader()])`
 handles local YAML, remote JSON / YAML, and local JSON transparently.
 
-`validateRequest` / `validateResponse` return `null` on success or a
-`ValidationError` tree on failure. Every error carries a stable `code`
-(e.g. `"type"`, `"required"`, `"content-type"`, `"oneOf"`), a `path`
-rooted at the HTTP frame (e.g. `["body", "pets", 3, "name"]`), a
-human-readable `message`, and a machine-readable `params` object whose
-shape per code is documented in `BuiltInErrorParams`.
+`validateRequest` / `validateResponse` return `{ valid: true }` on
+success, or `{ valid: false, errors, truncated }` on failure. The
+zero-config default is a flat `errors` list that stops at the first
+problem (`maxErrors: 1`), matching Ajv's defaults; raise `maxErrors` to
+collect more, or pass `output: "tree"` for a nested error tree under
+`error` (or `output: "predicate"` for a bare boolean). Every error
+carries a stable `code` (e.g. `"type"`, `"required"`, `"content-type"`,
+`"oneOf"`), a `path` rooted at the HTTP frame (e.g. `["body", "pets", 3,
+"name"]`), a human-readable `message`, and a machine-readable `params`
+object whose shape per code is documented in `BuiltInErrorParams`.
 
 Runnable end-to-end demos in [`examples/`](./examples/README.md):
 custom formats, custom keywords, cross-field constraints, error
@@ -223,7 +227,7 @@ Both libraries are sub-microsecond per check on typical OpenAPI
 bodies. On complex `oneOf`/`allOf` or large arrays, Ajv leads by
 2–4× (say 100 ns to 400 ns per call, or 1.7 µs to 4 µs); oav leads
 on `uniqueItems` arrays and length-bounded strings. oav's
-`predicate` mode (`compileSchema(..., { predicate: true })`) closes
+`predicate` mode (`compileSchema(..., { output: "predicate" })`) closes
 most of Ajv's lead on the complex shapes for yes/no use cases.
 
 For typical HTTP workloads (1k–10k req/sec × ~1 validation per
@@ -322,7 +326,7 @@ inline Express 5 adapter is about this long:
 import { allowHeaderFor, httpStatusFor, toProblemDetails } from "@aahoughton/oav";
 
 app.use(async (req, res, next) => {
-  const err = validator.validateRequest({
+  const result = validator.validateRequest({
     method: req.method,
     path: req.path,
     query: req.query as Record<string, string | string[]>,
@@ -330,15 +334,19 @@ app.use(async (req, res, next) => {
     contentType: req.get("content-type") ?? undefined,
     body: req.body,
   });
-  if (err === null) return next();
-  const allow = allowHeaderFor(err);
+  if (result.valid) return next();
+  const allow = allowHeaderFor(result.errors);
   if (allow !== undefined) res.setHeader("Allow", allow);
   res
-    .status(httpStatusFor(err))
+    .status(httpStatusFor(result.errors))
     .type("application/problem+json")
-    .json(toProblemDetails(err, { instance: req.originalUrl }));
+    .json(toProblemDetails(result.errors, { instance: req.originalUrl }));
 });
 ```
+
+`httpStatusFor`, `allowHeaderFor`, and `toProblemDetails` accept either
+the flat `errors` list or a tree `error`, so this wiring is the same
+whichever `output` the validator uses.
 
 Companion adapter packages cover common request-validation wiring:
 [`oav-express4`](./packages/oav-express4/README.md),
@@ -358,8 +366,8 @@ The adapters cover request validation; response validation, auth
 dispatch, upload parsing, and custom error envelopes stay explicit in
 your application. In return, the validator does not mutate `req` or
 `res`, OpenAPI 3.0 behavior is built into the dialect, and failures
-come back as structured error trees rather than framework-specific
-error classes.
+come back as structured errors (a flat list by default, a nested tree
+on request) rather than framework-specific error classes.
 
 ## Known limitations
 

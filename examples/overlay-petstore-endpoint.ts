@@ -54,7 +54,7 @@ const missing = v.validateRequest({
   body: { name: "Fido" },
 });
 console.log("POST /pets without X-Tenant:");
-if (missing !== null) console.log(formatText(missing));
+if (!missing.valid) console.log(formatText(missing.errors));
 
 // With the header: clean.
 const ok = v.validateRequest({
@@ -64,4 +64,4 @@ const ok = v.validateRequest({
   headers: { "x-tenant": "acme" },
   body: { name: "Fido" },
 });
-console.log("\nPOST /pets with X-Tenant →", ok === null ? "ok" : "FAIL");
+console.log("\nPOST /pets with X-Tenant →", ok.valid ? "ok" : "FAIL");

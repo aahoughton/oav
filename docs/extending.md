@@ -60,7 +60,7 @@ branches) so they stop once the cap is exhausted.
 
 ### Predicate mode
 
-`compileSchema(schema, { predicate: true })` compiles a `{ validate:
+`compileSchema(schema, { output: "predicate" })` compiles a `{ validate:
 (data) => boolean }` validator that builds no error tree: leaves don't
 allocate, paths aren't snapshotted, messages aren't formatted, and
 every failure short-circuits to `return false;`. Generated

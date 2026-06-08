@@ -42,7 +42,7 @@ const v = createValidator(merged);
 // Without the header — should fail.
 const missing = v.validateRequest({ method: "GET", path: "/pets" });
 console.log("without X-Request-Id:");
-if (missing !== null) console.log(formatText(missing));
+if (!missing.valid) console.log(formatText(missing.errors));
 
 // With the header — clean.
 const ok = v.validateRequest({
@@ -50,4 +50,4 @@ const ok = v.validateRequest({
   path: "/pets",
   headers: { "x-request-id": "abc-123" },
 });
-console.log("\nwith X-Request-Id →", ok === null ? "ok" : "FAIL");
+console.log("\nwith X-Request-Id →", ok.valid ? "ok" : "FAIL");

@@ -262,17 +262,35 @@ contract". Two gotchas the docs can't enforce, worth keeping in view:
   JS source, so the compiler can't check the `code`/`params` contract;
   drift between the emitted shape and that type is a silent bug.
 
-## Error budget and predicate mode
+## Output modes and the error budget
 
-User-facing `maxErrors` and predicate mode are documented in
-[docs/configuration.md](./docs/configuration.md) and
-[docs/extending.md](./docs/extending.md). Codegen is specialized so
-unset `maxErrors` emits source identical to the un-budgeted path (zero
-overhead). The one gotcha for keyword authors: the `kind` on
-`ctx.emitError` (`"leaf"` counts against the budget, `"lift"` is an
-already-counted child being propagated and never touches the counter).
-Pick wrong and the budget silently miscounts. TypeScript forces the
-choice; the correctness of it is on the author.
+The zero-config default is `output: "flat"` + `maxErrors: 1` (Ajv
+parity). `output` (`"flat" | "tree" | "predicate"`) selects the result
+shape; the deprecated `flat` / `predicate` booleans are aliases that
+throw on conflict. `maxErrors` defaults to `1` and is orthogonal to
+`output`. User-facing docs are in
+[docs/configuration.md](./docs/configuration.md),
+[docs/extending.md](./docs/extending.md), and the v3
+[migration guide](./docs/migration-v3.md).
+
+Codegen is specialized so `maxErrors: Infinity` emits source identical
+to the un-budgeted path (zero overhead). The one gotcha for keyword
+authors: the `kind` on `ctx.emitError` (`"leaf"` counts against the
+budget, `"lift"` is an already-counted child being propagated and never
+touches the counter). Pick wrong and the budget silently miscounts.
+TypeScript forces the choice; the correctness of it is on the author.
+
+A finite `maxErrors` must never change a valid/invalid verdict (it only
+caps how many errors are _reported_). The budget short-circuit is unsafe
+under evaluated-key tracking: a cap can exhaust mid-evaluation and
+either starve a real error or truncate a sub-validator's evaluated-key
+set, flipping an `unevaluated*` verdict. So `CompileState.gated` is
+`finite maxErrors && !unevaluatedTracking`: schemas that use
+`unevaluatedProperties` / `unevaluatedItems` collect every error (the
+cap is not enforced). `unevaluated*` never appears in OpenAPI, so the
+HTTP fast path is unaffected. Relatedly, `contains` tests membership
+with a predicate sub-validator (never charging the budget for its
+discarded per-item errors).
 
 ## Version support
 

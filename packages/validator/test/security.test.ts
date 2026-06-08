@@ -1,6 +1,6 @@
 import type { ErrorParamsFor, OpenAPIDocument, ValidationError } from "@oav/core";
 import { describe, expect, it } from "vitest";
-import { createValidator } from "../src/validator.js";
+import { createValidator } from "./fixtures.js";
 
 /**
  * Shape-only security validation coverage: bearer / basic / apiKey.
@@ -39,7 +39,7 @@ function firstLeaf(err: ValidationError | null): ValidationError | null {
 
 describe("security validation: bearer (http / bearer)", () => {
   const spec = specWith({ bearerAuth: { type: "http", scheme: "bearer" } }, [{ bearerAuth: [] }]);
-  const v = createValidator(spec, { validateSecurity: true });
+  const v = createValidator(spec, { validateSecurity: "shape" });
 
   it("accepts Authorization: Bearer <token>", () => {
     expect(
@@ -91,7 +91,7 @@ describe("security validation: bearer (http / bearer)", () => {
 
 describe("security validation: basic (http / basic)", () => {
   const spec = specWith({ basicAuth: { type: "http", scheme: "basic" } }, [{ basicAuth: [] }]);
-  const v = createValidator(spec, { validateSecurity: true });
+  const v = createValidator(spec, { validateSecurity: "shape" });
 
   it("accepts a well-formed Basic credential", () => {
     const creds = Buffer.from("user:pass").toString("base64");
@@ -134,7 +134,7 @@ describe("security validation: apiKey", () => {
     const spec = specWith({ apiKeyAuth: { type: "apiKey", in: "header", name: "X-API-Key" } }, [
       { apiKeyAuth: [] },
     ]);
-    const v = createValidator(spec, { validateSecurity: true });
+    const v = createValidator(spec, { validateSecurity: "shape" });
     expect(v.validateRequest({ method: "GET", path: "/ping" })?.code).toBe("request");
     expect(
       v.validateRequest({ method: "GET", path: "/ping", headers: { "x-api-key": "abc" } }),
@@ -145,7 +145,7 @@ describe("security validation: apiKey", () => {
     const spec = specWith({ apiKeyAuth: { type: "apiKey", in: "header", name: "X-API-Key" } }, [
       { apiKeyAuth: [] },
     ]);
-    const v = createValidator(spec, { validateSecurity: true });
+    const v = createValidator(spec, { validateSecurity: "shape" });
     const err = v.validateRequest({
       method: "GET",
       path: "/ping",
@@ -158,7 +158,7 @@ describe("security validation: apiKey", () => {
     const spec = specWith({ apiKeyAuth: { type: "apiKey", in: "query", name: "api_key" } }, [
       { apiKeyAuth: [] },
     ]);
-    const v = createValidator(spec, { validateSecurity: true });
+    const v = createValidator(spec, { validateSecurity: "shape" });
     expect(v.validateRequest({ method: "GET", path: "/ping" })?.code).toBe("request");
     expect(
       v.validateRequest({ method: "GET", path: "/ping", query: { api_key: "abc" } }),
@@ -169,7 +169,7 @@ describe("security validation: apiKey", () => {
     const spec = specWith({ apiKeyAuth: { type: "apiKey", in: "cookie", name: "session" } }, [
       { apiKeyAuth: [] },
     ]);
-    const v = createValidator(spec, { validateSecurity: true });
+    const v = createValidator(spec, { validateSecurity: "shape" });
     expect(v.validateRequest({ method: "GET", path: "/ping" })?.code).toBe("request");
     expect(
       v.validateRequest({ method: "GET", path: "/ping", cookies: { session: "abc" } }),
@@ -185,7 +185,7 @@ describe("security validation: OR across alternatives, AND within", () => {
     },
     [{ bearerAuth: [] }, { apiKeyAuth: [] }],
   );
-  const v = createValidator(spec, { validateSecurity: true });
+  const v = createValidator(spec, { validateSecurity: "shape" });
 
   it("either scheme on its own satisfies the operation", () => {
     expect(
@@ -220,7 +220,7 @@ describe("security validation: OR across alternatives, AND within", () => {
       },
       [{ bearerAuth: [], apiKeyAuth: [] }],
     );
-    const andV = createValidator(andSpec, { validateSecurity: true });
+    const andV = createValidator(andSpec, { validateSecurity: "shape" });
 
     // Only the bearer is present; AND fails.
     const err = andV.validateRequest({
@@ -248,7 +248,7 @@ describe("security validation: top-level vs operation-level", () => {
       [], // explicit opt-out on the operation
       [{ bearerAuth: [] }], // top-level requirement
     );
-    const v = createValidator(spec, { validateSecurity: true });
+    const v = createValidator(spec, { validateSecurity: "shape" });
     expect(v.validateRequest({ method: "GET", path: "/ping" })).toBeNull();
   });
 
@@ -258,17 +258,17 @@ describe("security validation: top-level vs operation-level", () => {
       undefined, // operation omits the field
       [{ bearerAuth: [] }],
     );
-    const v = createValidator(spec, { validateSecurity: true });
+    const v = createValidator(spec, { validateSecurity: "shape" });
     expect(v.validateRequest({ method: "GET", path: "/ping" })?.code).toBe("request");
   });
 });
 
 describe("security validation: configuration", () => {
-  it("defaults to off: security is not enforced unless validateSecurity: true is set", () => {
+  it("defaults to off: security is not enforced unless validateSecurity is set", () => {
     // The default reflects the "auth middleware runs upstream" reality:
     // by the time the validator sees a request, the credential has
     // already been verified (or rejected) by the host app's auth layer.
-    // Opt in with `true` for dev / prototyping without auth middleware
+    // Opt in with `"shape"` for dev / prototyping without auth middleware
     // or for decorator-only auth that doesn't reject unauthenticated.
     const spec = specWith({ bearerAuth: { type: "http", scheme: "bearer" } }, [{ bearerAuth: [] }]);
     const v = createValidator(spec);
@@ -277,7 +277,7 @@ describe("security validation: configuration", () => {
 
   it("an undeclared scheme name fails the check (fail-closed, no silent pass)", () => {
     const spec = specWith({ bearerAuth: { type: "http", scheme: "bearer" } }, [{ typoAuth: [] }]);
-    const v = createValidator(spec, { validateSecurity: true });
+    const v = createValidator(spec, { validateSecurity: "shape" });
     const err = v.validateRequest({ method: "GET", path: "/ping" });
     expect(firstLeaf(err)?.code).toBe("security");
   });
@@ -306,7 +306,7 @@ describe("security validation: configuration", () => {
         },
       },
     };
-    const v = createValidator(doc, { validateSecurity: true });
+    const v = createValidator(doc, { validateSecurity: "shape" });
     const err = v.validateRequest({
       method: "POST",
       path: "/echo",
@@ -329,7 +329,7 @@ describe("security validation: configuration", () => {
       },
       [{ oauth: ["read"] }],
     );
-    const v = createValidator(spec, { validateSecurity: true });
+    const v = createValidator(spec, { validateSecurity: "shape" });
     // No headers / query; oauth2 isn't shape-checked, so pass.
     expect(v.validateRequest({ method: "GET", path: "/ping" })).toBeNull();
   });
@@ -422,32 +422,6 @@ describe("security validation: configuration", () => {
           method: "GET",
           path: "/ping",
           headers: { authorization: "Bearer abc" },
-        }),
-      ).toBeNull();
-    });
-
-    it('boolean form: `true` aliases "shape", `false` aliases "off"', () => {
-      const spec = specWith(
-        {
-          oauth: {
-            type: "oauth2",
-            flows: { implicit: { authorizationUrl: "https://example.com/auth", scopes: {} } },
-          },
-        },
-        [{ oauth: ["read"] }],
-      );
-      // `true` -> "shape": oauth2 silently passes.
-      expect(
-        createValidator(spec, { validateSecurity: true }).validateRequest({
-          method: "GET",
-          path: "/ping",
-        }),
-      ).toBeNull();
-      // `false` -> "off": no check at all (same as default).
-      expect(
-        createValidator(spec, { validateSecurity: false }).validateRequest({
-          method: "GET",
-          path: "/ping",
         }),
       ).toBeNull();
     });

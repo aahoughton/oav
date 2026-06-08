@@ -8,7 +8,7 @@ import type {
 } from "@oav/core";
 import { resolveJsonPointer } from "@oav/core";
 import type { RouteMatch } from "@oav/router";
-import type { CompiledSchema } from "@oav/schema";
+import type { CompiledTreeSchema } from "@oav/schema";
 import type { BodyDirection } from "./body-schema-transform.js";
 import type { CompiledSecurity } from "./security.js";
 
@@ -20,10 +20,10 @@ import type { CompiledSecurity } from "./security.js";
  * @internal
  */
 export interface OperationCache {
-  pathParamValidators: Map<string, CompiledSchema>;
-  queryParamValidators: Map<string, CompiledSchema>;
-  headerParamValidators: Map<string, CompiledSchema>;
-  cookieParamValidators: Map<string, CompiledSchema>;
+  pathParamValidators: Map<string, CompiledTreeSchema>;
+  queryParamValidators: Map<string, CompiledTreeSchema>;
+  headerParamValidators: Map<string, CompiledTreeSchema>;
+  cookieParamValidators: Map<string, CompiledTreeSchema>;
   parameters: ParameterObject[];
   /**
    * Names of every declared `in: "query"` parameter, precomputed for
@@ -32,7 +32,7 @@ export interface OperationCache {
    */
   knownQueryParameters: Set<string>;
   requestBody: RequestBodyObject | undefined;
-  bodyValidators: Map<string, CompiledSchema>;
+  bodyValidators: Map<string, CompiledTreeSchema>;
   responses: Map<string, ResponseCompiled>;
   /**
    * Pre-compiled shape-only security check, or `undefined` when the
@@ -63,8 +63,8 @@ export interface ResponseCompiled {
   /** Header schemas keyed by lowercased name; compiled lazily. */
   headerSchemas: Map<string, SchemaOrBoolean>;
   /** Memoization caches for the lazy compiles. */
-  bodyValidators: Map<string, CompiledSchema>;
-  headerValidators: Map<string, CompiledSchema>;
+  bodyValidators: Map<string, CompiledTreeSchema>;
+  headerValidators: Map<string, CompiledTreeSchema>;
 }
 
 /**
@@ -77,8 +77,8 @@ export interface ResponseCompiled {
  */
 export interface OperationCacheDeps {
   resolveRef: <T>(value: T | ReferenceObject | undefined) => T | undefined;
-  compile: (schema: SchemaOrBoolean) => CompiledSchema;
-  compileForDirection: (schema: SchemaOrBoolean, direction: BodyDirection) => CompiledSchema;
+  compile: (schema: SchemaOrBoolean) => CompiledTreeSchema;
+  compileForDirection: (schema: SchemaOrBoolean, direction: BodyDirection) => CompiledTreeSchema;
 }
 
 /**
@@ -128,10 +128,10 @@ export function buildOperationCache(
     if (p.in === "query") knownQueryParameters.add(p.name);
   }
 
-  const pathParamValidators = new Map<string, CompiledSchema>();
-  const queryParamValidators = new Map<string, CompiledSchema>();
-  const headerParamValidators = new Map<string, CompiledSchema>();
-  const cookieParamValidators = new Map<string, CompiledSchema>();
+  const pathParamValidators = new Map<string, CompiledTreeSchema>();
+  const queryParamValidators = new Map<string, CompiledTreeSchema>();
+  const headerParamValidators = new Map<string, CompiledTreeSchema>();
+  const cookieParamValidators = new Map<string, CompiledTreeSchema>();
 
   for (const p of parameters) {
     const contentSchema = firstContentSchema(p);
@@ -149,7 +149,7 @@ export function buildOperationCache(
     target.set(p.name, v);
   }
 
-  const bodyValidators = new Map<string, CompiledSchema>();
+  const bodyValidators = new Map<string, CompiledTreeSchema>();
   const requestBody = deps.resolveRef<RequestBodyObject>(pathMatch.operation.requestBody);
   if (requestBody?.content) {
     for (const [mt, mto] of Object.entries(requestBody.content)) {

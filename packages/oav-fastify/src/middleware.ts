@@ -1,6 +1,6 @@
 import type { FastifyRequest, preValidationHookHandler } from "fastify";
-import type { HttpRequest } from "@oav/core";
-import type { Validator } from "@oav/validator";
+import { collectLeaves, type HttpRequest, type ValidationError } from "@oav/core";
+import type { TreeValidator, Validator } from "@oav/validator";
 import { httpRequestFromFastify } from "./extract.js";
 import { renderProblemDetails } from "./render.js";
 import type { ErrorHandler, FastifyContext } from "./types.js";
@@ -72,20 +72,30 @@ export interface ValidateRequestsOptions {
  * @public
  */
 export function validateRequests(
-  validator: Validator,
+  validator: Validator | TreeValidator,
   options: ValidateRequestsOptions = {},
 ): preValidationHookHandler {
+  // A predicate validator returns a bare boolean, so there are no errors
+  // to render. Fail loudly at construction rather than emitting empty 400s.
+  if (validator.output === "predicate") {
+    throw new Error(
+      'validateRequests: a predicate-mode validator (output: "predicate") cannot render ' +
+        'problem-details responses. Build the validator with output: "flat" (default) or "tree".',
+    );
+  }
   const toHttpRequest = options.toHttpRequest ?? httpRequestFromFastify;
   const onError = options.onError ?? renderProblemDetails;
 
   return async (request, reply) => {
     const httpReq = toHttpRequest(request);
-    const err = validator.validateRequest(httpReq);
-    if (err === null) return;
+    const result = validator.validateRequest(httpReq);
+    if (result.valid) return;
+    const errors: ValidationError[] =
+      "errors" in result ? result.errors : collectLeaves(result.error);
     // Fastify awaits the returned promise; thrown errors / rejected
     // promises propagate to Fastify's error handler. The hook
     // returns once onError settles; Fastify treats a sent reply
     // as "we handled it, skip the route handler."
-    await onError(err, { request, reply });
+    await onError(errors, { request, reply });
   };
 }

@@ -25,7 +25,7 @@ describe("error paths survive path-array reuse", () => {
           required: ["x"],
         },
       },
-      { dialect: jsonSchemaDialect },
+      { dialect: jsonSchemaDialect, output: "tree", maxErrors: Number.POSITIVE_INFINITY },
     );
     const r = validate(["not-an-object", { x: "bad" }]);
     if (r.valid) throw new Error("unexpected valid");
@@ -45,7 +45,7 @@ describe("error paths survive path-array reuse", () => {
         type: "object",
         properties: { kind: { const: "Cat" } },
       },
-      { dialect: jsonSchemaDialect },
+      { dialect: jsonSchemaDialect, output: "tree", maxErrors: Number.POSITIVE_INFINITY },
     );
     const r = validate({ kind: "Dog" });
     if (r.valid) throw new Error("unexpected valid");
@@ -64,7 +64,7 @@ describe("error paths survive path-array reuse", () => {
         type: "object",
         properties: { fins: { type: "integer", minimum: 0 } },
       },
-      { dialect: jsonSchemaDialect },
+      { dialect: jsonSchemaDialect, output: "tree", maxErrors: Number.POSITIVE_INFINITY },
     );
     const r = validate({ fins: -1.5 });
     if (r.valid) throw new Error("unexpected valid");
@@ -96,7 +96,7 @@ describe("error paths survive path-array reuse", () => {
           },
         },
       },
-      { dialect: jsonSchemaDialect },
+      { dialect: jsonSchemaDialect, output: "tree", maxErrors: Number.POSITIVE_INFINITY },
     );
     const r = validate({ user: {} });
     if (r.valid) throw new Error("unexpected valid");

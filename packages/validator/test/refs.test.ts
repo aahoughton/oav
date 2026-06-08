@@ -9,7 +9,7 @@
 import { describe, expect, it } from "vitest";
 import type { OpenAPIDocument } from "@oav/core";
 import { createMemoryReader, resolveSpec } from "@oav/spec";
-import { createValidator } from "../src/validator.js";
+import { createValidator } from "./fixtures.js";
 
 describe("operation-level $ref resolution", () => {
   it("resolves requestBody $ref", () => {

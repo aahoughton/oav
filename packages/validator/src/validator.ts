@@ -1,5 +1,6 @@
 import {
   classifyUnknownVersion,
+  collectLeaves,
   createBranchError,
   createLeafError,
   detectOpenAPIVersion,
@@ -22,12 +23,14 @@ import {
   oas30Dialect,
   openapi31Dialect,
   resolve,
-  type CompiledSchema,
+  type CompiledTreeSchema,
   type CustomKeywordValidator,
   type Dialect,
   type RefResolver,
   type RegexCompiler,
   type StrictIssue,
+  type TreeValidationResult,
+  type ValidationResult,
 } from "@oav/schema";
 import { deserialize, matchMediaType, matchResponseKey } from "./deserialize.js";
 import {
@@ -49,20 +52,16 @@ import { checkSecurity, compileOperationSecurity, type SecurityMode } from "./se
 import { checkBodyContentType, validateBody, validateParameter } from "./validate-step.js";
 
 /**
- * Coerce {@link ValidatorOptions.validateSecurity} (boolean | enum
- * string | undefined) to the `"off" | "shape" | "strict"` value the
- * security compiler reads. `true` aliases `"shape"`; `false` and
- * `undefined` alias `"off"`. The boolean form is deprecated and will
- * be removed in v3.
+ * Coerce {@link ValidatorOptions.validateSecurity} (enum string |
+ * undefined) to the `"off" | "shape" | "strict"` value the security
+ * compiler reads. `undefined` defaults to `"off"`.
  *
  * @internal
  */
 function normalizeSecurityMode(
-  value: boolean | "off" | "shape" | "strict" | undefined,
+  value: "off" | "shape" | "strict" | undefined,
 ): "off" | SecurityMode {
-  if (value === true) return "shape";
-  if (value === false || value === undefined) return "off";
-  return value;
+  return value ?? "off";
 }
 
 /**
@@ -84,9 +83,80 @@ function dialectFor(version: OpenAPIVersion): Dialect {
 }
 
 /**
- * The HTTP validator: after being built from a (resolved) OpenAPI document,
- * `validateRequest` / `validateResponse` each return a full
- * {@link ValidationError} tree (or `null`).
+ * Depth-first prune of an error tree to at most `max` leaves, dropping
+ * branches that become empty. Returns the trimmed root. Used to enforce
+ * the per-call `maxErrors` total in tree output.
+ */
+function trimTreeToLeaves(root: ValidationError, max: number): ValidationError {
+  let remaining = max;
+  const visit = (node: ValidationError): ValidationError | null => {
+    if (node.children.length === 0) {
+      if (remaining <= 0) return null;
+      remaining -= 1;
+      return node;
+    }
+    const kept: ValidationError[] = [];
+    for (const child of node.children) {
+      const v = visit(child);
+      if (v !== null) kept.push(v);
+    }
+    if (kept.length === 0) return null;
+    return { ...node, children: kept };
+  };
+  return visit(root) ?? root;
+}
+
+/**
+ * Reshape the validator's internal error tree (`ValidationError | null`)
+ * into the requested output, applying the per-call `maxErrors` total.
+ * `truncated` reports that the cap was reached (more problems may exist).
+ */
+function reshapeResult(
+  tree: ValidationError | null,
+  output: "flat" | "tree" | "predicate",
+  maxErrors: number,
+): ValidationResult | TreeValidationResult | boolean {
+  if (output === "predicate") return tree === null;
+  if (tree === null) return { valid: true };
+  const finite = Number.isFinite(maxErrors);
+  const leaves = collectLeaves(tree);
+  const truncated = finite && leaves.length >= maxErrors;
+  if (output === "tree") {
+    const error = finite && leaves.length > maxErrors ? trimTreeToLeaves(tree, maxErrors) : tree;
+    return { valid: false, error, truncated };
+  }
+  return { valid: false, errors: finite ? leaves.slice(0, maxErrors) : leaves, truncated };
+}
+
+/**
+ * Map a reshaped validation result onto the Fetch-wrapper return shape:
+ * `{ ok: true, body }` on success, or `{ ok: false }` plus the failure
+ * fields (`errors`/`error` + `truncated`, or nothing in predicate mode).
+ */
+function toFetchResult<T>(
+  result: ValidationResult | TreeValidationResult | boolean,
+  body: unknown,
+): {
+  ok: boolean;
+  body?: T;
+  errors?: ValidationError[];
+  error?: ValidationError;
+  truncated?: boolean;
+} {
+  if (result === true) return { ok: true, body: body as T };
+  if (result === false) return { ok: false };
+  if (result.valid) return { ok: true, body: body as T };
+  const { valid: _valid, ...failure } = result;
+  return { ok: false, ...failure };
+}
+
+/**
+ * The HTTP validator (flat output, the default). `validateRequest` /
+ * `validateResponse` return a {@link @aahoughton/oav/schema!ValidationResult}:
+ * `{ valid: true }` or `{ valid: false, errors, truncated }` with a flat
+ * list of leaf errors. Compile with `output: "tree"` for a
+ * {@link TreeValidator} (nested {@link ValidationError} tree) or
+ * `output: "predicate"` for a {@link PredicateValidator} (bare boolean).
  *
  * - **Per-call HTTP validation**: {@link Validator.validateRequest},
  *   {@link Validator.validateResponse}.
@@ -104,43 +174,46 @@ function dialectFor(version: OpenAPIVersion): Dialect {
  */
 export interface Validator {
   /**
-   * Validate one HTTP request against the spec. Returns `null` when the
-   * request matches the operation declared at its method + path,
-   * including parameters, headers, cookies, body, and content type;
-   * returns a {@link ValidationError} tree otherwise.
+   * Validate one HTTP request against the spec. Returns `{ valid: true }`
+   * when the request matches the operation declared at its method + path
+   * (parameters, headers, cookies, body, and content type); otherwise
+   * `{ valid: false, errors, truncated }` with a flat list of leaf
+   * errors.
    *
-   * The returned tree's top-level `code` is `"request"` for any failure,
-   * with branch children under `body`, `query.<name>`, `header.<name>`,
-   * `cookie.<name>`, `path-param.<name>`, or `security`. Route and
-   * method mismatches surface as top-level `"route"` / `"method"`
-   * codes; see {@link httpStatusFor} for the canonical status mapping.
+   * Each error's `path` is prefixed with its HTTP location: `["body",
+   * …]`, `["query", name]`, `["header", name]`, `["cookie", name]`,
+   * `["path-param", name]`, or `["security"]`. Route and method
+   * mismatches surface as `route` / `method` leaves; see
+   * {@link httpStatusFor} for the canonical status mapping.
+   *
+   * `truncated` is `true` when the `maxErrors` cap (default 1) was
+   * reached, so more problems may exist; raise `maxErrors` to collect
+   * them.
    *
    * Does not mutate `req`. Synchronous: parameter deserialization,
-   * content-type matching, and schema validation all run inline. Per
-   * `req` cost is dominated by the schema validation; bodies that
-   * pass validation incur a single tree walk and no allocation.
+   * content-type matching, and schema validation all run inline.
    *
    * Paths the spec doesn't declare are treated according to
    * {@link ValidatorOptions.ignoreUndocumented} and
    * {@link ValidatorOptions.ignorePaths}: by default an undeclared
-   * path returns a `"route"` error; configure to bypass the validator
+   * path returns a `route` error; configure to bypass the validator
    * entirely.
    *
    * @see {@link Validator.validateResponse} for the response-side pair.
    * @see {@link Validator.validateFetchRequest} for the Web Standards convenience wrapper.
    * @see {@link Validator.getOperation} to look up the matched operation without validating.
    */
-  validateRequest(req: HttpRequest): ValidationError | null;
+  validateRequest(req: HttpRequest): ValidationResult;
   /**
    * Validate one HTTP response against the spec, given the request it
-   * answers. Returns `null` when the response status, content type,
-   * headers, and body all match the responses declared on the operation
-   * `req` resolves to; returns a {@link ValidationError} tree otherwise.
+   * answers. Returns `{ valid: true }` when the response status, content
+   * type, headers, and body all match the responses declared on the
+   * operation `req` resolves to; otherwise `{ valid: false, errors,
+   * truncated }`.
    *
-   * The returned tree's top-level `code` is `"response"`, with branch
-   * children under `body`, `header.<name>`, or `status`. The `req`
-   * argument is used only to locate the operation; its body isn't
-   * read.
+   * Each error's `path` is prefixed with `["body", …]`, `["header",
+   * name]`, or `["status"]`. The `req` argument is used only to locate
+   * the operation; its body isn't read.
    *
    * Response-body schemas compile lazily on first use per `(status,
    * mediaType)` pairing; {@link ValidatorStats.responseBodiesCompiled}
@@ -152,7 +225,7 @@ export interface Validator {
    * @see {@link Validator.validateRequest} for the request-side pair.
    * @see {@link Validator.validateFetchResponse} for the Web Standards convenience wrapper.
    */
-  validateResponse(req: HttpRequest, res: HttpResponse): ValidationError | null;
+  validateResponse(req: HttpRequest, res: HttpResponse): ValidationResult;
   /**
    * Parse a Web Standards {@link Request} and validate it in one call.
    * Convenient for route handlers in frameworks that expose `Request`
@@ -162,8 +235,8 @@ export interface Validator {
    * Returns a discriminated union. On success, `body` is the parsed
    * request body, narrowed to the generic type the caller supplies
    * (validation has already confirmed the shape, so the cast is safe
-   * in practice). On failure, `error` is the same
-   * {@link ValidationError} tree `validateRequest` would return.
+   * in practice). On failure, `errors` / `truncated` are the same
+   * fields `validateRequest` would return.
    *
    * Body parsing recognizes `application/json` (and `*+json`),
    * `application/x-www-form-urlencoded`, `multipart/form-data`
@@ -181,7 +254,7 @@ export interface Validator {
    * ```ts
    * export async function POST(request: Request) {
    *   const r = await validator.validateFetchRequest<CreatePet>(request);
-   *   if (!r.ok) return problemResponse(r.error);
+   *   if (!r.ok) return problemResponse(r.errors);
    *   // r.body is typed as CreatePet
    * }
    * ```
@@ -189,7 +262,7 @@ export interface Validator {
   validateFetchRequest<T = unknown>(
     request: Request,
     options?: FetchRequestOptions,
-  ): Promise<{ ok: true; body: T } | { ok: false; error: ValidationError }>;
+  ): Promise<{ ok: true; body: T } | { ok: false; errors: ValidationError[]; truncated: boolean }>;
   /**
    * Validate a Web Standards {@link Response} against the operation
    * the {@link Request} resolves to. Mirrors
@@ -211,13 +284,13 @@ export interface Validator {
    * ```ts
    * const response = await fetch(upstreamUrl, init);
    * const r = await validator.validateFetchResponse<PetList>(req, response);
-   * if (!r.ok) log.warn("upstream returned malformed response", r.error);
+   * if (!r.ok) log.warn("upstream returned malformed response", r.errors);
    * ```
    */
   validateFetchResponse<T = unknown>(
     request: Request,
     response: Response,
-  ): Promise<{ ok: true; body: T } | { ok: false; error: ValidationError }>;
+  ): Promise<{ ok: true; body: T } | { ok: false; errors: ValidationError[]; truncated: boolean }>;
   /**
    * Look up the effective operation declaration for a method + path.
    * Returns the resolved (`$ref`s followed) and overlay-applied
@@ -255,6 +328,13 @@ export interface Validator {
    */
   readonly detectedVersion: OpenAPIVersion | undefined;
   /**
+   * The output shape this validator was built with (see
+   * {@link ValidatorOptions.output}): `"flat"` (default), `"tree"`, or
+   * `"predicate"`. Lets consumers (e.g. the framework adapters) branch
+   * on the result shape without a trial call.
+   */
+  readonly output: "flat" | "tree" | "predicate";
+  /**
    * Warnings collected during `createValidator`. Populated when
    * `onUnknownVersion: "warn"` fires, or when the `dialect` escape
    * hatch suppresses a category error that would otherwise throw
@@ -286,6 +366,57 @@ export interface Validator {
    * through indirect signals (throwing test schemas, source grepping).
    */
   readonly stats: ValidatorStats;
+}
+
+/** The four validation methods whose return type tracks `output`. */
+type OutputDependentMethods =
+  | "validateRequest"
+  | "validateResponse"
+  | "validateFetchRequest"
+  | "validateFetchResponse";
+
+/**
+ * The HTTP validator built with `output: "tree"`. Identical to
+ * {@link Validator} except `validateRequest` / `validateResponse` return
+ * a {@link @aahoughton/oav/schema!TreeValidationResult} (a nested
+ * {@link ValidationError} tree under `error`) instead of the flat default.
+ *
+ * @public
+ */
+export interface TreeValidator extends Omit<Validator, OutputDependentMethods> {
+  validateRequest(req: HttpRequest): TreeValidationResult;
+  validateResponse(req: HttpRequest, res: HttpResponse): TreeValidationResult;
+  validateFetchRequest<T = unknown>(
+    request: Request,
+    options?: FetchRequestOptions,
+  ): Promise<{ ok: true; body: T } | { ok: false; error: ValidationError; truncated: boolean }>;
+  validateFetchResponse<T = unknown>(
+    request: Request,
+    response: Response,
+  ): Promise<{ ok: true; body: T } | { ok: false; error: ValidationError; truncated: boolean }>;
+}
+
+/**
+ * The HTTP validator built with `output: "predicate"`. `validateRequest`
+ * / `validateResponse` return a bare `boolean` (no errors are ever
+ * constructed). The Fetch wrappers narrow the body on success and carry
+ * no error payload on failure. A predicate validator cannot render a
+ * problem-details response, so the framework adapters reject it at
+ * construction; use it for gating where only the yes/no answer matters.
+ *
+ * @public
+ */
+export interface PredicateValidator extends Omit<Validator, OutputDependentMethods> {
+  validateRequest(req: HttpRequest): boolean;
+  validateResponse(req: HttpRequest, res: HttpResponse): boolean;
+  validateFetchRequest<T = unknown>(
+    request: Request,
+    options?: FetchRequestOptions,
+  ): Promise<{ ok: true; body: T } | { ok: false }>;
+  validateFetchResponse<T = unknown>(
+    request: Request,
+    response: Response,
+  ): Promise<{ ok: true; body: T } | { ok: false }>;
 }
 
 /**
@@ -325,7 +456,8 @@ export interface ValidatorStats {
  * - **Dialect override**: {@link ValidatorOptions.dialect}.
  * - **Schema extension**: {@link ValidatorOptions.formats},
  *   {@link ValidatorOptions.keywords}.
- * - **Error budget**: {@link ValidatorOptions.maxErrors}.
+ * - **Output shape + error budget**: {@link ValidatorOptions.output},
+ *   {@link ValidatorOptions.maxErrors}.
  * - **Strict-mode linting**: {@link ValidatorOptions.strict}.
  * - **Security gating**: {@link ValidatorOptions.validateSecurity}.
  * - **Path filtering**: {@link ValidatorOptions.ignoreUndocumented},
@@ -340,7 +472,7 @@ export interface ValidatorStats {
  *
  *   1. Compile essentials: `dialect`.
  *   2. Shared extension points: `formats`, `keywords`.
- *   3. Error-collection policy: `maxErrors`.
+ *   3. Error-collection policy: `output`, `maxErrors`.
  *   4. Surface-specific extras last: here, `strictQueryParameters`,
  *      `onUnknownVersion`, `warn`.
  *
@@ -398,19 +530,35 @@ export interface ValidatorOptions {
   // --- 3. Error-collection policy ---
 
   /**
-   * Cap on the number of leaf schema errors collected per
-   * `validateRequest` / `validateResponse` call. Defaults to uncapped.
+   * What `validateRequest` / `validateResponse` return. Mirrors
+   * {@link @aahoughton/oav/schema!CompileOptions.output}:
    *
-   * Set to `1` for fast-fail semantics, or to a small number (say 10)
-   * to bound CPU and memory on validation of very large payloads
-   * (e.g. a 10 MB array where every element has the same structural
-   * error). When the cap is hit, the returned error tree is marked
-   * with a `truncated: true` param on the root so consumers can tell
-   * the report was shortened.
+   * - `"flat"` (default): a
+   *   {@link @aahoughton/oav/schema!ValidationResult}: `{ valid }` plus,
+   *   on failure, a flat `errors` leaf list and `truncated`. The
+   *   constructed validator has type {@link Validator}.
+   * - `"tree"`: a {@link @aahoughton/oav/schema!TreeValidationResult}: a
+   *   nested {@link ValidationError} tree under `error`. Type
+   *   {@link TreeValidator}.
+   * - `"predicate"`: a bare `boolean`. Type {@link PredicateValidator};
+   *   the framework adapters reject it (it can't render a 400 body).
+   *
+   * Defaults to `"flat"`.
+   */
+  output?: "flat" | "tree" | "predicate";
+  /**
+   * Cap on the number of leaf schema errors collected per
+   * `validateRequest` / `validateResponse` call, across all locations
+   * (body, parameters, headers). Defaults to `1` (fast-fail: the first
+   * error). Pass `Number.POSITIVE_INFINITY` to collect every error.
+   *
+   * When the cap is reached the result's `truncated` is `true`, so
+   * consumers can tell more problems may exist. A small cap also bounds
+   * CPU and memory on validation of very large invalid payloads (e.g. a
+   * 10 MB array where every element has the same structural error).
    *
    * Must be a positive integer (>= 1). `createValidator` throws on
-   * non-integer or zero/negative values; the compiler surfaces the
-   * error eagerly at construction time.
+   * non-integer or zero/negative values.
    */
   maxErrors?: number;
   /**
@@ -484,13 +632,8 @@ export interface ValidatorOptions {
    * auth layer only decorates `req` without rejecting unauthenticated
    * traffic. None of the modes substitute for actual credential
    * verification.
-   *
-   * The boolean form is a deprecated alias preserved for compatibility:
-   * `true` aliases `"shape"`, `false` aliases `"off"`. Both will be
-   * removed in v3 alongside the other deprecations queued for that
-   * release. New code should use the strings.
    */
-  validateSecurity?: boolean | "off" | "shape" | "strict";
+  validateSecurity?: "off" | "shape" | "strict";
   /** When `true`, reject unknown query parameters (default: `false`). */
   strictQueryParameters?: boolean;
   /**
@@ -578,7 +721,26 @@ export interface ValidatorOptions {
  * @see {@link ValidatorOptions}
  * @public
  */
-export function createValidator(spec: OpenAPIDocument, options: ValidatorOptions = {}): Validator {
+export function createValidator(
+  spec: OpenAPIDocument,
+  options: ValidatorOptions & { output: "tree" },
+): TreeValidator;
+export function createValidator(
+  spec: OpenAPIDocument,
+  options: ValidatorOptions & { output: "predicate" },
+): PredicateValidator;
+export function createValidator(
+  spec: OpenAPIDocument,
+  options?: ValidatorOptions & { output?: "flat" },
+): Validator;
+export function createValidator(
+  spec: OpenAPIDocument,
+  options?: ValidatorOptions,
+): Validator | TreeValidator | PredicateValidator;
+export function createValidator(
+  spec: OpenAPIDocument,
+  options: ValidatorOptions = {},
+): Validator | TreeValidator | PredicateValidator {
   if (
     options.maxErrors !== undefined &&
     Number.isFinite(options.maxErrors) &&
@@ -589,7 +751,7 @@ export function createValidator(spec: OpenAPIDocument, options: ValidatorOptions
     // would silently break validation: 0, negatives, non-integers.
     throw new Error(
       `createValidator: \`maxErrors\` must be a positive integer (got ${String(options.maxErrors)}). ` +
-        "Use `maxErrors: 1` for fast-fail, or omit the option for uncapped error collection.",
+        "Omit the option for fast-fail (1), or pass `Number.POSITIVE_INFINITY` to collect every error.",
     );
   }
   if (
@@ -602,6 +764,12 @@ export function createValidator(spec: OpenAPIDocument, options: ValidatorOptions
         "Omit the option for uncapped recursion depth.",
     );
   }
+  // Resolved output shape + per-call error budget. Both mirror
+  // `compileSchema`: flat output and `maxErrors: 1` by default. Each
+  // per-location sub-validator is capped at `maxErrors` (bounds the work
+  // per location); `reshapeResult` then enforces the per-call total.
+  const outputMode = options.output ?? "flat";
+  const maxErrors = options.maxErrors ?? 1;
   const paths = spec.paths ?? {};
   const router: Router = createRouter(paths);
   const formats = { ...builtInFormats, ...options.formats };
@@ -674,18 +842,25 @@ export function createValidator(spec: OpenAPIDocument, options: ValidatorOptions
     strictIssues,
   };
 
-  const compiledCache = new Map<SchemaOrBoolean, CompiledSchema>();
+  const compiledCache = new Map<SchemaOrBoolean, CompiledTreeSchema>();
   const compile = (
     schema: SchemaOrBoolean,
     resolver: RefResolver = refResolver,
-  ): CompiledSchema => {
+  ): CompiledTreeSchema => {
     const cached = compiledCache.get(schema);
     if (cached !== undefined) return cached;
     const c = compileSchema(schema, {
       dialect,
       formats,
       refResolver: resolver,
-      maxErrors: options.maxErrors,
+      // The validator builds a nested per-location tree internally and
+      // reshapes it to the requested `output` at the boundary, so the
+      // sub-validators always compile in tree mode. Each is capped at the
+      // per-call `maxErrors` (a per-location bound that prevents a single
+      // huge location from running away); `reshapeResult` then enforces
+      // the per-call total across all locations.
+      output: "tree",
+      maxErrors,
       maxDepth: options.maxDepth,
       keywords: options.keywords,
       strict: options.strict,
@@ -711,7 +886,10 @@ export function createValidator(spec: OpenAPIDocument, options: ValidatorOptions
     request: createDirectionResolver(refResolver, "request", directionTransformCache.request),
     response: createDirectionResolver(refResolver, "response", directionTransformCache.response),
   };
-  const compileForDirection = (schema: SchemaOrBoolean, direction: BodyDirection): CompiledSchema =>
+  const compileForDirection = (
+    schema: SchemaOrBoolean,
+    direction: BodyDirection,
+  ): CompiledTreeSchema =>
     compile(
       transformBodySchemaForDirection(
         schema,
@@ -728,11 +906,11 @@ export function createValidator(spec: OpenAPIDocument, options: ValidatorOptions
   // get the "response" transform (writeOnly properties forbidden);
   // response headers are direction-agnostic.
   const getResponseValidator = (
-    cache: Map<string, CompiledSchema>,
+    cache: Map<string, CompiledTreeSchema>,
     schemas: Map<string, SchemaOrBoolean>,
     key: string,
     direction?: BodyDirection,
-  ): CompiledSchema | undefined => {
+  ): CompiledTreeSchema | undefined => {
     const hit = cache.get(key);
     if (hit !== undefined) return hit;
     const schema = schemas.get(key);
@@ -766,7 +944,7 @@ export function createValidator(spec: OpenAPIDocument, options: ValidatorOptions
     return cache;
   };
 
-  const validateRequest = (req: HttpRequest): ValidationError | null => {
+  const validateRequestTree = (req: HttpRequest): ValidationError | null => {
     if (options.ignorePaths?.(req.path) === true) return null;
     const match = router.match(req.method, req.path);
     if (match === undefined) {
@@ -854,7 +1032,7 @@ export function createValidator(spec: OpenAPIDocument, options: ValidatorOptions
     );
   };
 
-  const validateResponse = (req: HttpRequest, res: HttpResponse): ValidationError | null => {
+  const validateResponseTree = (req: HttpRequest, res: HttpResponse): ValidationError | null => {
     if (options.ignorePaths?.(req.path) === true) return null;
     const match = router.match(req.method, req.path);
     if (match === undefined) {
@@ -970,29 +1148,29 @@ export function createValidator(spec: OpenAPIDocument, options: ValidatorOptions
     );
   };
 
-  const validateFetchRequest = async <T>(
-    request: Request,
-    options?: FetchRequestOptions,
-  ): Promise<{ ok: true; body: T } | { ok: false; error: ValidationError }> => {
-    const { httpRequest, body } = await httpRequestFromFetch(request, options);
-    const error = validateRequest(httpRequest);
-    if (error === null) return { ok: true, body: body as T };
-    return { ok: false, error };
+  // Public, output-shaped entry points: build the internal tree, then
+  // reshape to the requested output and per-call error budget.
+  const validateRequest = (req: HttpRequest): ValidationResult | TreeValidationResult | boolean =>
+    reshapeResult(validateRequestTree(req), outputMode, maxErrors);
+  const validateResponse = (
+    req: HttpRequest,
+    res: HttpResponse,
+  ): ValidationResult | TreeValidationResult | boolean =>
+    reshapeResult(validateResponseTree(req, res), outputMode, maxErrors);
+
+  const validateFetchRequest = async <T>(request: Request, fetchOptions?: FetchRequestOptions) => {
+    const { httpRequest, body } = await httpRequestFromFetch(request, fetchOptions);
+    return toFetchResult<T>(validateRequest(httpRequest), body);
   };
 
-  const validateFetchResponse = async <T>(
-    request: Request,
-    response: Response,
-  ): Promise<{ ok: true; body: T } | { ok: false; error: ValidationError }> => {
+  const validateFetchResponse = async <T>(request: Request, response: Response) => {
     // Build an HttpRequest from the fetch Request without reading its
     // body; we only need method + path to match the operation.
     const url = new URL(request.url);
     const method = request.method.toUpperCase();
     const httpRequest: HttpRequest = { method, path: url.pathname };
     const { httpResponse, body } = await httpResponseFromFetch(response);
-    const error = validateResponse(httpRequest, httpResponse);
-    if (error === null) return { ok: true, body: body as T };
-    return { ok: false, error };
+    return toFetchResult<T>(validateResponse(httpRequest, httpResponse), body);
   };
 
   const getOperation = (req: {
@@ -1016,6 +1194,10 @@ export function createValidator(spec: OpenAPIDocument, options: ValidatorOptions
     ? Object.freeze(lintResolvedSpec(spec))
     : [];
 
+  // The runtime methods return the `output`-dependent union; the
+  // overloads above resolve the precise interface for callers. The cast
+  // bridges the two: `outputMode` determines the real shape, which TS
+  // can't track from the value back to the literal overload.
   return {
     validateRequest,
     validateResponse,
@@ -1023,8 +1205,9 @@ export function createValidator(spec: OpenAPIDocument, options: ValidatorOptions
     validateFetchResponse,
     getOperation,
     detectedVersion,
+    output: outputMode,
     warnings,
     specHygieneIssues,
     stats,
-  };
+  } as unknown as Validator | TreeValidator | PredicateValidator;
 }

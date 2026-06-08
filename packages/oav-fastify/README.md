@@ -72,10 +72,10 @@ Mount on `preValidation` so oav sees the parsed body. If you also have per-route
 
 Returns a Fastify `preValidationHookHandler`.
 
-| option          | type                                       | default                  |
-| --------------- | ------------------------------------------ | ------------------------ |
-| `toHttpRequest` | `(request: FastifyRequest) => HttpRequest` | `httpRequestFromFastify` |
-| `onError`       | `(err, ctx) => void \| Promise<void>`      | `renderProblemDetails`   |
+| option          | type                                                        | default                  |
+| --------------- | ----------------------------------------------------------- | ------------------------ |
+| `toHttpRequest` | `(request: FastifyRequest) => HttpRequest`                  | `httpRequestFromFastify` |
+| `onError`       | `(errors: ValidationError[], ctx) => void \| Promise<void>` | `renderProblemDetails`   |
 
 `onError` may be async; the hook awaits it. Fastify awaits the returned promise, so thrown extractor errors and rejected `onError` promises propagate to Fastify's `setErrorHandler` automatically, no `try/catch` needed. The hook does **not** call `reply.send()` after `onError` returns; your callback owns the response (write to `ctx.reply`, or throw to delegate to Fastify's error handler).
 
@@ -91,17 +91,21 @@ Header keys passed through (Fastify already lowercases per HTTP spec), path stri
 
 Use this when you want to compose your own hook (e.g. validate inside a custom plugin) without re-implementing the extraction.
 
-### `renderProblemDetails(err, ctx)`
+### `renderProblemDetails(errors, ctx)`
 
-The default `onError`. RFC 9457 `application/problem+json` body (via `toProblemDetails`), status from `httpStatusFor`, `Allow` header from `allowHeaderFor` on 405.
+The default `onError`. Takes the flat list of failing leaves and writes
+an RFC 9457 `application/problem+json` body (via `toProblemDetails`),
+status from `httpStatusFor`, `Allow` header from `allowHeaderFor` on 405.
+`onError` receives the same leaf list whatever `output` the validator
+uses (a tree validator's result is flattened first).
 
 Exported standalone so a custom `onError` can call it as the fallback path:
 
 ```ts
 validateRequests(validator, {
-  onError: (err, ctx) => {
-    if (err.code === "security") return ctx.reply.code(401).send();
-    renderProblemDetails(err, ctx);
+  onError: (errors, ctx) => {
+    if (errors.some((e) => e.code === "security")) return ctx.reply.code(401).send();
+    renderProblemDetails(errors, ctx);
   },
 });
 ```
@@ -125,10 +129,10 @@ The check is shape-only: it confirms the declared credential is _present_, not t
 app.addHook(
   "preValidation",
   validateRequests(validator, {
-    onError: (err, ctx) => {
-      ctx.reply.code(httpStatusFor(err)).send({
-        message: formatSummary(err),
-        errors: collectIssues(err),
+    onError: (errors, ctx) => {
+      ctx.reply.code(httpStatusFor(errors)).send({
+        message: `${errors.length} validation error(s)`,
+        errors: collectIssues(errors),
       });
     },
   }),
@@ -143,8 +147,8 @@ Throw from `onError`; Fastify routes thrown errors to `setErrorHandler`:
 app.addHook(
   "preValidation",
   validateRequests(validator, {
-    onError: (err) => {
-      throw new ValidationFailure(err);
+    onError: (errors) => {
+      throw new ValidationFailure(errors);
     },
   }),
 );
@@ -166,9 +170,9 @@ Validation failures don't reach your registered `setErrorHandler` by default (th
 app.addHook(
   "preValidation",
   validateRequests(validator, {
-    onError: (err, ctx) => {
-      log.warn("validation failed", { url: ctx.request.url, code: err.code });
-      renderProblemDetails(err, ctx);
+    onError: (errors, ctx) => {
+      log.warn("validation failed", { url: ctx.request.url, codes: errors.map((e) => e.code) });
+      renderProblemDetails(errors, ctx);
     },
   }),
 );
@@ -182,9 +186,9 @@ Use this whenever your existing error pipeline (Sentry, structured logger, reque
 app.addHook(
   "preValidation",
   validateRequests(validator, {
-    onError: async (err, ctx) => {
-      await sentry.captureException(err);
-      renderProblemDetails(err, ctx);
+    onError: async (errors, ctx) => {
+      await sentry.captureException(errors);
+      renderProblemDetails(errors, ctx);
     },
   }),
 );

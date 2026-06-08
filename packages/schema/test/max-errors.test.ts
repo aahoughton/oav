@@ -3,17 +3,24 @@ import { collectLeaves } from "@oav/core";
 import { compileSchema } from "../src/compiler/compiler.js";
 import { jsonSchemaDialect } from "../src/keywords/vocabulary.js";
 
+// Tree output so the assertions can walk `r.error`; `maxErrors`
+// uncapped unless a test pins it. (The zero-config default is
+// `maxErrors: 1`, covered in default-output.test.ts.)
 function compile(schema: unknown, maxErrors?: number): ReturnType<typeof compileSchema> {
-  return compileSchema(schema as never, { dialect: jsonSchemaDialect, maxErrors });
+  return compileSchema(schema as never, {
+    dialect: jsonSchemaDialect,
+    output: "tree",
+    maxErrors: maxErrors ?? Number.POSITIVE_INFINITY,
+  });
 }
 
 describe("maxErrors option", () => {
-  it("is uncapped by default", () => {
+  it("collects every error when uncapped", () => {
     const v = compile({ required: ["a", "b", "c", "d"] });
     const r = v.validate({});
     expect(r.valid).toBe(false);
     expect(collectLeaves(r.error!)).toHaveLength(4);
-    expect(r.truncated).toBeUndefined();
+    expect(r.truncated).toBe(false);
   });
 
   it("caps total leaf errors at the configured maxErrors", () => {
@@ -80,17 +87,19 @@ describe("maxErrors option", () => {
     expect(r.truncated).toBe(true);
   });
 
-  it("does not set truncated when everything fit in the budget", () => {
+  it("reports truncated: false when everything fit in the budget", () => {
     const v = compile({ required: ["a"] }, 10);
     const r = v.validate({});
     expect(collectLeaves(r.error!)).toHaveLength(1);
-    expect(r.truncated).toBeUndefined();
+    expect(r.truncated).toBe(false);
   });
 
   it("valid input never sets truncated even with a tight cap", () => {
     const v = compile({ type: "number" }, 1);
-    expect(v.validate(42).valid).toBe(true);
-    expect(v.validate(42).truncated).toBeUndefined();
+    const r = v.validate(42);
+    expect(r.valid).toBe(true);
+    // Discriminated union: the `valid: true` branch has no truncated field.
+    expect("truncated" in r).toBe(false);
   });
 
   it("rejects maxErrors: 0 at compile time", () => {
@@ -98,7 +107,7 @@ describe("maxErrors option", () => {
     // `valid: true` for invalid data, a correctness trap. Predicate
     // mode is the explicit way to skip error collection entirely.
     expect(() => compile({ type: "number" }, 0)).toThrow(
-      /must be a positive integer.*Use `predicate: true`/,
+      /must be a positive integer.*Use `output: "predicate"`/,
     );
   });
 

@@ -1,11 +1,48 @@
-import type { OpenAPIDocument, ValidationError } from "@oav/core";
+import type { HttpRequest, HttpResponse, OpenAPIDocument, ValidationError } from "@oav/core";
 import { collectLeaves } from "@oav/core";
+import {
+  createValidator as createValidatorRaw,
+  type TreeValidator,
+  type ValidatorOptions,
+} from "../src/index.js";
 
 /**
  * Shared test helpers for the validator test suite. Extracted so the
  * request / response / custom-keywords / lazy-compile test files can
  * share a minimal vocabulary without each one inlining its own spec.
  */
+
+/**
+ * Test shim: a tree-mode, uncapped validator whose
+ * `validateRequest` / `validateResponse` return `ValidationError | null`.
+ * The logic-focused suites assert error codes, paths, and counts, all of
+ * which are output-shape-independent, so this shim lets them keep doing
+ * that without threading the v3 result object through every case. The
+ * `output` knob, the flat default, and reshaping/budget behavior are
+ * covered directly by `output-modes.test.ts`.
+ */
+export type TreeShim = Omit<TreeValidator, "validateRequest" | "validateResponse"> & {
+  validateRequest(req: HttpRequest): ValidationError | null;
+  validateResponse(req: HttpRequest, res: HttpResponse): ValidationError | null;
+};
+
+export function createValidator(spec: OpenAPIDocument, options: ValidatorOptions = {}): TreeShim {
+  const v = createValidatorRaw(spec, {
+    output: "tree",
+    maxErrors: Number.POSITIVE_INFINITY,
+    ...options,
+  });
+  return Object.assign(Object.create(null) as object, v, {
+    validateRequest: (req: HttpRequest): ValidationError | null => {
+      const r = v.validateRequest(req);
+      return r.valid ? null : r.error;
+    },
+    validateResponse: (req: HttpRequest, res: HttpResponse): ValidationError | null => {
+      const r = v.validateResponse(req, res);
+      return r.valid ? null : r.error;
+    },
+  }) as TreeShim;
+}
 
 export function leafCodes(err: ValidationError | null | undefined): string[] {
   return err === null || err === undefined ? [] : collectLeaves(err).map((l) => l.code);

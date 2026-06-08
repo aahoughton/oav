@@ -203,29 +203,38 @@ export async function validateCommand(
     entry: args.spec,
     overlays: overlayDocs,
   });
-  const validator = createValidator(document);
+  // The CLI renders a nested error tree and reports every problem it
+  // finds, so it compiles in tree mode with uncapped error collection
+  // rather than the flat fail-fast default.
+  const validator = createValidator(document, {
+    output: "tree",
+    maxErrors: Number.POSITIVE_INFINITY,
+  });
 
   let err: ValidationError | null;
   if (args.mode.kind === "request") {
     const raw = await io.readText(args.mode.file);
     const req = parseHttpFile(raw);
-    err = validator.validateRequest(req);
+    const r = validator.validateRequest(req);
+    err = r.valid ? null : r.error;
   } else if (args.mode.kind === "bodyForPath") {
     const rawBody = await io.readText(args.mode.body);
     const body = tryJson(rawBody) as JsonValue | undefined;
-    err = validator.validateRequest({
+    const r = validator.validateRequest({
       method: args.mode.method,
       path: args.mode.path,
       contentType: "application/json",
       body,
     });
+    err = r.valid ? null : r.error;
   } else if (args.mode.kind === "responseForPath") {
     const rawBody = await io.readText(args.mode.body);
     const body = tryJson(rawBody) as JsonValue | undefined;
-    err = validator.validateResponse(
+    const r = validator.validateResponse(
       { method: args.mode.method, path: args.mode.path },
       { status: args.mode.status, contentType: "application/json", body },
     );
+    err = r.valid ? null : r.error;
   } else {
     io.stderr("validate: no action specified\n");
     return { exitCode: 3 };

@@ -61,7 +61,7 @@ const ok = v.validateRequest({
   contentType: "application/json",
   body: { min: 3, max: 10 },
 });
-console.log("min=3 max=10  →", ok === null ? "ok" : "FAIL");
+console.log("min=3 max=10  →", ok.valid ? "ok" : "FAIL");
 
 const bad = v.validateRequest({
   method: "POST",
@@ -69,6 +69,6 @@ const bad = v.validateRequest({
   contentType: "application/json",
   body: { min: 10, max: 3 },
 });
-if (bad !== null) {
-  console.log("\nmin=10 max=3:\n" + formatText(bad));
+if (!bad.valid) {
+  console.log("\nmin=10 max=3:\n" + formatText(bad.errors));
 }

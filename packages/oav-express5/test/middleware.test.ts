@@ -50,6 +50,11 @@ function fakeReq(overrides: Partial<Request>): Request {
 describe("validateRequests", () => {
   const v = createValidator(petSpec());
 
+  it("rejects a predicate-mode validator at construction", () => {
+    const predicate = createValidator(petSpec(), { output: "predicate" });
+    expect(() => validateRequests(predicate as never)).toThrow(/predicate-mode/);
+  });
+
   it("calls next() for a valid request without writing a response", async () => {
     const mw = validateRequests(v);
     const res = fakeRes();
@@ -108,8 +113,9 @@ describe("validateRequests", () => {
       next,
     );
     expect(onError).toHaveBeenCalledTimes(1);
-    const [err, ctx] = onError.mock.calls[0]!;
-    expect((err as ValidationError).code).toBe("request");
+    const [errors, ctx] = onError.mock.calls[0]!;
+    expect(Array.isArray(errors)).toBe(true);
+    expect((errors as ValidationError[]).length).toBeGreaterThan(0);
     expect(ctx).toMatchObject({ res, next });
     expect(res.status).not.toHaveBeenCalled();
     expect(next).not.toHaveBeenCalled();

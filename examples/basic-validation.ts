@@ -22,7 +22,7 @@ const valid = v.validateRequest({
   contentType: "application/json",
   body: { name: "Fido", tag: "dog" },
 });
-console.log("valid request →", valid === null ? "ok" : "FAIL");
+console.log("valid request →", valid.valid ? "ok" : "FAIL");
 
 const bad = v.validateRequest({
   method: "POST",
@@ -30,12 +30,12 @@ const bad = v.validateRequest({
   contentType: "application/json",
   body: { tag: "dog" }, // missing required `name`
 });
-if (bad !== null) {
-  console.log("\ninvalid request:\n" + formatText(bad));
+if (!bad.valid) {
+  console.log("\ninvalid request:\n" + formatText(bad.errors));
 }
 
 const responseErr = v.validateResponse(
   { method: "POST", path: "/pets", body: { name: "Fido" }, contentType: "application/json" },
   { status: 201 },
 );
-console.log("\nresponse (201, no body) →", responseErr === null ? "ok" : "FAIL");
+console.log("\nresponse (201, no body) →", responseErr.valid ? "ok" : "FAIL");

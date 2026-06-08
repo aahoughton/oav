@@ -31,6 +31,10 @@ export interface FastifyContext {
  * awaits the return; rejected promises propagate through Fastify's
  * native promise handling to its error handler.
  *
+ * `errors` is the flat list of failing leaves, regardless of the
+ * validator's `output` mode (a tree validator's result is flattened
+ * before the handler is called).
+ *
  * @public
  */
-export type ErrorHandler<Ctx> = (err: ValidationError, ctx: Ctx) => void | Promise<void>;
+export type ErrorHandler<Ctx> = (errors: ValidationError[], ctx: Ctx) => void | Promise<void>;

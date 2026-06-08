@@ -25,11 +25,13 @@ export {
   type CompiledPredicate,
   type CompiledRegex,
   type CompiledSchema,
+  type CompiledTreeSchema,
   type CompileOptions,
   type CompileStats,
   type FlatValidationResult,
   type RegexCompiler,
   type StrictIssue,
+  type TreeValidationResult,
   type Validator,
   type ValidationResult,
 } from "./compiler/index.js";

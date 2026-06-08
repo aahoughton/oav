@@ -215,7 +215,7 @@ describe("validator.validateFetchRequest", () => {
     const result = await v.validateFetchRequest(req);
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.error.code).toBe("request");
+      expect(result.errors[0]?.path[0]).toBe("body");
     }
   });
 
@@ -223,7 +223,7 @@ describe("validator.validateFetchRequest", () => {
     const req = new Request("https://example.com/nope", { method: "DELETE" });
     const result = await v.validateFetchRequest(req);
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error.code).toBe("route");
+    if (!result.ok) expect(result.errors[0]?.code).toBe("route");
   });
 
   it("accepts a multipart upload body", async () => {
@@ -420,7 +420,7 @@ describe("validator.validateFetchResponse", () => {
     });
     const result = await v.validateFetchResponse(req, res);
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error.code).toBe("response");
+    if (!result.ok) expect(result.errors[0]?.path[0]).toBe("body");
   });
 
   it("flags an undeclared status code", async () => {
@@ -428,7 +428,7 @@ describe("validator.validateFetchResponse", () => {
     const res = new Response(null, { status: 500 });
     const result = await v.validateFetchResponse(req, res);
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error.code).toBe("response");
+    if (!result.ok) expect(result.errors[0]?.code).toBe("status");
   });
 
   it("flags unknown routes at the request level", async () => {
@@ -436,7 +436,7 @@ describe("validator.validateFetchResponse", () => {
     const res = new Response(null, { status: 200 });
     const result = await v.validateFetchResponse(req, res);
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error.code).toBe("route");
+    if (!result.ok) expect(result.errors[0]?.code).toBe("route");
   });
 
   it("doesn't read the request body", async () => {

@@ -13,7 +13,10 @@ export interface FormatOptions {
 }
 
 /**
- * Render a {@link ValidationError} tree as an indented human-readable string.
+ * Render validation errors as an indented human-readable string.
+ * Accepts either a nested error tree (`output: "tree"`) or the flat leaf
+ * list the default validator returns; a flat list renders one line per
+ * leaf.
  *
  * @remarks
  * Every node renders as `<path> <message> [<code>]`. Children are indented
@@ -21,19 +24,22 @@ export interface FormatOptions {
  * programmatic consumption; use {@link toJsonObject} or
  * {@link formatSummary} for that.
  *
- * @param error - Root of the error tree.
+ * @param error - Root of the error tree, or a flat list of leaves.
  * @param options - Optional rendering settings.
  * @returns A multi-line string ready to print.
  *
  * @example
  * ```ts
- * const out = formatText(rootError);
- * console.error(out);
+ * const r = validator.validateRequest(httpRequest);
+ * if (!r.valid) console.error(formatText(r.errors));
  * ```
  *
  * @public
  */
-export function formatText(error: ValidationError, options: FormatOptions = {}): string {
+export function formatText(
+  error: ValidationError | readonly ValidationError[],
+  options: FormatOptions = {},
+): string {
   const indent = options.indent ?? "  ";
   const maxDepth = options.maxDepth ?? Number.POSITIVE_INFINITY;
   const lines: string[] = [];
@@ -48,7 +54,7 @@ export function formatText(error: ValidationError, options: FormatOptions = {}):
     lines.push(`${prefix}${pathPart}${node.message} [${node.code}]`);
     for (const child of node.children) render(child, depth + 1);
   };
-  render(error, 0);
+  for (const root of Array.isArray(error) ? error : [error as ValidationError]) render(root, 0);
   return lines.join("\n");
 }
 
@@ -223,59 +229,4 @@ export function countErrors(error: ValidationError): number {
     n += 1;
   });
   return n;
-}
-
-// ---------------------------------------------------------------------------
-// Deprecated: kept exported for source compatibility; absent from user-facing
-// docs. Behavior identical to the new canonical names. Removal in v3.
-// ---------------------------------------------------------------------------
-
-/**
- * @deprecated Use {@link toJsonObject}. Same return shape; the new name
- *   reflects that it returns an object, not a string. Removal in v3.
- *
- * @public
- */
-export function formatJson(error: ValidationError): ValidationError {
-  return toJsonObject(error);
-}
-
-/**
- * Options for the deprecated {@link summarize}. Use
- * {@link FormatSummaryOptions} instead.
- *
- * @deprecated Use {@link FormatSummaryOptions}. Removal in v3.
- *
- * @public
- */
-export interface SummarizeOptions {
-  /** @deprecated See {@link FormatSummaryOptions.select}. Removal in v3. */
-  select?: SummarizeSelect;
-}
-
-/**
- * @deprecated Use {@link FormatSummarySelect}. Note: the new type also
- *   accepts `"all"` for flat all-leaves output. Removal in v3.
- *
- * @public
- */
-export type SummarizeSelect = "first" | "deepest" | { byCode: readonly string[] };
-
-/**
- * @deprecated Use {@link formatSummary}. Same defaults and behavior.
- *   Removal in v3.
- *
- * @public
- */
-export function summarize(error: ValidationError, options: SummarizeOptions = {}): string {
-  return formatSummary(error, options);
-}
-
-/**
- * @deprecated Use `formatSummary(err, { select: "all" })`. Removal in v3.
- *
- * @public
- */
-export function formatFlat(error: ValidationError): string {
-  return formatSummary(error, { select: "all" });
 }

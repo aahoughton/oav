@@ -21,7 +21,7 @@ const { validate } = compileSchema(
 );
 
 validate({ name: "Fido" }); // { valid: true }
-validate({}); // { valid: false, error: { code: "required", ... } }
+validate({}); // { valid: false, errors: [{ code: "required", ... }], truncated: false }
 ```
 
 `compileSchema` returns `{ validate, source, stats }`. `validate(data,
@@ -29,6 +29,12 @@ startPath?)` runs the generated validator; `startPath` prepends segments
 to every error's `path` (used by the HTTP validator to prefix `"body"`,
 `"query"`, etc.). `source` is the generated JS, exposed for debugging;
 `stats.functionCount` is the number of helper functions emitted.
+
+By default `validate` returns a flat `errors` list and stops at the
+first problem (`maxErrors: 1`), matching Ajv's defaults. Pass
+`output: "tree"` for a nested error tree under `error`,
+`output: "predicate"` for a bare boolean, and
+`maxErrors: Number.POSITIVE_INFINITY` to collect every error.
 
 ## Dialects
 
@@ -107,15 +113,25 @@ you emit generated code directly.
 This is a contributor-facing surface; the full compile-context API and
 flag reference live in [`CLAUDE.md`](../../CLAUDE.md#how-to-add-a-new-keyword).
 
-## Error-collection modes
+## Output and error-collection modes
 
-`compileSchema(schema, { maxErrors: N })` caps the tree at N leaves and
-short-circuits hot loops once the budget is exhausted. `maxErrors: 1`
-is classic fast-fail; larger values bound CPU/memory on huge invalid
-payloads. Results carry `truncated: true` when the tree was capped.
-Omit the option for zero-overhead unlimited collection: codegen is
-specialized so uncapped callers emit plain `errors.push` with no
-budget checks.
+`output` selects the result shape: `"flat"` (default) returns
+`{ valid, errors, truncated }` with a de-nested leaf list; `"tree"`
+returns `{ valid, error, truncated }` with the nested error tree;
+`"predicate"` returns a bare boolean and builds no errors at all.
+
+`maxErrors` caps the leaves collected and short-circuits hot loops once
+the budget is exhausted. The default is `1` (classic fast-fail, matching
+Ajv); larger values bound CPU/memory on huge invalid payloads, and
+`Number.POSITIVE_INFINITY` collects everything with zero-overhead
+codegen (plain `errors.push`, no budget checks). A failing result
+carries `truncated: true` when the cap was reached.
+
+`output` and `maxErrors` are orthogonal. A finite `maxErrors` never
+changes a valid/invalid verdict; for schemas using
+`unevaluatedProperties` / `unevaluatedItems` the short-circuit is
+disabled (every error is collected) so the cap can't suppress a real
+`unevaluated*` error.
 
 ## `$ref` and cycles
 

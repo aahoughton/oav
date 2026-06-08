@@ -5,7 +5,7 @@ import {
   type ValidationError,
 } from "@oav/core";
 import type { RouteMatch } from "@oav/router";
-import type { CompiledSchema } from "@oav/schema";
+import type { CompiledTreeSchema } from "@oav/schema";
 import { deserialize, matchMediaType } from "./deserialize.js";
 import type { OperationCache } from "./operation-cache.js";
 import { assembleObjectQueryParam } from "./query-assembly.js";
@@ -52,7 +52,7 @@ export function validateParameter(
   cache: OperationCache,
 ): ValidationError | null {
   let raw: string | string[] | undefined;
-  let validator: CompiledSchema | undefined;
+  let validator: CompiledTreeSchema | undefined;
   let pathPrefix: (string | number)[];
   let code: string;
 

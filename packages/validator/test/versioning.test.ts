@@ -12,7 +12,7 @@
 import { describe, expect, it } from "vitest";
 import type { OpenAPIDocument } from "@oav/core";
 import { jsonSchemaDialect } from "@oav/schema";
-import { createValidator } from "../src/validator.js";
+import { createValidator } from "./fixtures.js";
 
 function spec32(): OpenAPIDocument {
   return {

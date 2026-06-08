@@ -46,7 +46,7 @@ Ajv and oav trade differently depending on the workload:
 | Validate, simple schemas (tiny / tree)                  | tied                                                               | Within ~10% either way; predicate mode slightly ahead of ajv          |
 | Validate, complex shapes (oneOf / allOf, large arrays)  | ajv 2–5× faster                                                    | ajv's codegen excels on deep applicators                              |
 | Validate, `uniqueItems` arrays / length-bounded strings | **oav faster**                                                     | oav ~1.5–3× on `uniqueItems`; larger margin on length-bounded strings |
-| Validate, predicate mode                                | ≈ ajv                                                              | `compileSchema(..., { predicate: true })` closes most of the gap      |
+| Validate, predicate mode                                | ≈ ajv                                                              | `compileSchema(..., { output: "predicate" })` closes most of the gap  |
 | Compile, synthetic (per shape)                          | **oav 30–180× faster**                                             | The largest gap in either direction                                   |
 | Compile, real-world OpenAPI spec                        | **oav 8× on Stripe** (886 schemas); **5.5× on Adyen** (44 schemas) | Matches the synthetic trend at spec scale                             |
 
@@ -159,23 +159,24 @@ type: "string" }` to `{ type: ["string", "number", "boolean",
   externally-owned base spec at load time (add a required header to
   every operation, extend a component schema, swap a response shape)
   without forking or preprocessing the upstream file.
-- **Structured error tree.** Errors preserve the applicator structure
-  (`oneOf` with per-branch `children`, `allOf` with failed-conjunct
-  children). HTTP consumers can group by HTTP location
-  (`body.items[3].name`, `query.limit`) and inspect which branch of a
-  composition failed without parsing message strings. Ajv emits a
-  flat errors array.
-- **Predicate mode.** `compileSchema(schema, { predicate: true })`
+- **Opt-in structured error tree.** Like Ajv, the default output is a
+  flat errors array. Pass `output: "tree"` and errors instead preserve
+  the applicator structure (`oneOf` with per-branch `children`, `allOf`
+  with failed-conjunct children), so HTTP consumers can inspect which
+  branch of a composition failed without parsing message strings. Ajv
+  has no equivalent nested shape. Either way, leaves carry their HTTP
+  location in the path (`body.items[3].name`, `query.limit`).
+- **Predicate mode.** `compileSchema(schema, { output: "predicate" })`
   returns `{ validate: (x) => boolean }`. No error tree construction,
   no path snapshotting, no accumulator allocation. Ajv's
   `allErrors: false` still maintains error infrastructure; oav's
   predicate mode compiles to a different function entirely.
-- **Bounded error collection.** `maxErrors: N` caps the error tree at
-  N leaves; the generated code short-circuits hot loops when the
-  budget is exhausted. Ajv has `allErrors: true | false` but no
-  explicit count budget. When unset, oav's codegen emits plain
-  `errors.push` with no runtime checks; zero overhead for the
-  uncapped case.
+- **Explicit error budget.** `maxErrors: N` caps the errors collected
+  and short-circuits hot loops when the budget is exhausted. The default
+  is `1` (fast-fail, like Ajv's `allErrors: false`); Ajv has
+  `allErrors: true | false` but no explicit count budget. Pass
+  `Number.POSITIVE_INFINITY` for zero-overhead uncapped collection
+  (codegen emits plain `errors.push` with no budget checks).
 - **Direction-aware body transforms.** Request-body validators reject
   `readOnly` properties and exempt them from `required`; response-body
   validators do the same for `writeOnly`. Applied as a pre-compile

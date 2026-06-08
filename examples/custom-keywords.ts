@@ -36,7 +36,7 @@ const ok = v.validateRequest({
   contentType: "application/json",
   body: { tenantId: "t_acme", name: "Widget A" },
 });
-console.log("t_acme (active) →", ok === null ? "ok" : "FAIL");
+console.log("t_acme (active) →", ok.valid ? "ok" : "FAIL");
 
 const bad = v.validateRequest({
   method: "POST",
@@ -44,6 +44,6 @@ const bad = v.validateRequest({
   contentType: "application/json",
   body: { tenantId: "t_unknown", name: "Widget B" },
 });
-if (bad !== null) {
-  console.log("\nt_unknown:\n" + formatText(bad));
+if (!bad.valid) {
+  console.log("\nt_unknown:\n" + formatText(bad.errors));
 }

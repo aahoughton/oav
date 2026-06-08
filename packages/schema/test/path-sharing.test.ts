@@ -19,7 +19,11 @@ import { compileSchema } from "../src/compiler/compiler.js";
 import { jsonSchemaDialect } from "../src/keywords/vocabulary.js";
 
 function compile(schema: unknown) {
-  return compileSchema(schema as never, { dialect: jsonSchemaDialect });
+  return compileSchema(schema as never, {
+    dialect: jsonSchemaDialect,
+    output: "tree",
+    maxErrors: Number.POSITIVE_INFINITY,
+  });
 }
 
 describe("path sharing: correctness under stress", () => {
@@ -171,6 +175,7 @@ describe("path sharing: correctness under stress", () => {
     // that DID get pushed must still be correct.
     const v = compileSchema({ type: "array", items: { type: "number" } } as never, {
       dialect: jsonSchemaDialect,
+      output: "tree",
       maxErrors: 3,
     });
     const r = v.validate(["a", "b", "c", "d", "e"]);
