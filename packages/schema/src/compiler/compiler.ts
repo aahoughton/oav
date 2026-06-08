@@ -395,16 +395,13 @@ export type CompiledSchema = {
  * set. Same `validate(data, startPath?)` signature as
  * {@link CompiledSchema}, but returns a {@link TreeValidationResult} (a
  * single nested error tree) instead of the flat default. See
- * {@link CompileOptions.output}.
+ * {@link CompileOptions.output}. Carries the same `source` / `stats` as
+ * {@link CompiledSchema}; only the `validate` return type differs.
  *
  * @public
  */
-export type CompiledTreeSchema = {
+export type CompiledTreeSchema = Omit<CompiledSchema, "validate"> & {
   validate: (data: unknown, startPath?: readonly PathSegment[]) => TreeValidationResult;
-  /** The generated source. Exposed for debugging/snapshot testing only. */
-  source: string;
-  /** Compile-time stats about the generated validator. */
-  stats: CompileStats;
 };
 
 /**
@@ -412,16 +409,13 @@ export type CompiledTreeSchema = {
  * is set. The validator collects no errors, allocates no tree, and
  * returns a boolean: a true yes/no predicate. Use when consumers only
  * need to know whether the value conforms (e.g. routing, gating), not
- * why it doesn't.
+ * why it doesn't. Carries the same `source` / `stats` as
+ * {@link CompiledSchema}; only the `validate` return type differs.
  *
  * @public
  */
-export type CompiledPredicate = {
+export type CompiledPredicate = Omit<CompiledSchema, "validate"> & {
   validate: (data: unknown) => boolean;
-  /** The generated source. Exposed for debugging/snapshot testing only. */
-  source: string;
-  /** Compile-time stats about the generated validator. */
-  stats: CompileStats;
 };
 
 /**
