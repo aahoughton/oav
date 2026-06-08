@@ -190,8 +190,7 @@ per package:
 
 - **`@oav/core`**: the shared error-tree model and HTTP/format
   helpers. Every package except the leaf `@oav/formats` depends on it;
-  it depends on nothing. Legacy formatter aliases (`formatJson` /
-  `formatFlat` / `summarize`) are deprecated, removal in v3.
+  it depends on nothing.
 - **`@oav/schema`**: the JSON Schema 2020-12 compiler; walks a schema,
   dispatches each keyword via `KeywordDefinition.compile(ctx)`, and
   `eval`s the generated source through `new Function(deps, src)`.
