@@ -189,9 +189,9 @@ package's README covers its responsibilities. The non-obvious nugget
 per package:
 
 - **`@oav/core`**: the shared error-tree model and HTTP/format
-  helpers. Everything depends on it; it depends on nothing. Legacy
-  formatter aliases (`formatJson` / `formatFlat` / `summarize`) are
-  deprecated, removal in v3.
+  helpers. Every package except the leaf `@oav/formats` depends on it;
+  it depends on nothing. Legacy formatter aliases (`formatJson` /
+  `formatFlat` / `summarize`) are deprecated, removal in v3.
 - **`@oav/schema`**: the JSON Schema 2020-12 compiler; walks a schema,
   dispatches each keyword via `KeywordDefinition.compile(ctx)`, and
   `eval`s the generated source through `new Function(deps, src)`.
@@ -200,7 +200,8 @@ per package:
   mechanics live behind the `oav/schema/internals` subpath (not
   semver-covered; reach for them only when a plugin truly needs them).
 - **`@oav/formats`**: pure string validators, a `Record<string, (s:
-string) => boolean>` shaped for `compileSchema`'s `formats` option.
+string) => boolean>` shaped for `compileSchema`'s `formats` option. A
+  leaf alongside `core`: no workspace dependencies.
 - **`@oav/spec`**: `DocumentReader` (file/http/memory/composite) plus
   `resolveSpec()`, which inlines external `$ref`s and leaves circular
   ones as internal refs. `applyOverlays()` is the extension system.
@@ -231,7 +232,7 @@ string) => boolean>` shaped for `compileSchema`'s `formats` option.
 ```
 cli           → validator → router
                          → spec → core
-                         → formats → core
+                         → formats
                          → schema → core
                          → core
               → spec → core
