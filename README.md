@@ -121,8 +121,8 @@ handles local YAML, remote JSON / YAML, and local JSON transparently.
 `validateRequest` / `validateResponse` return `{ valid: true }` on
 success, or `{ valid: false, errors, truncated }` on failure. The
 zero-config default is a flat `errors` list that stops at the first
-problem (`maxErrors: 1`), matching Ajv's defaults; raise `maxErrors` to
-collect more, or pass `output: "tree"` for a nested error tree under
+problem (`maxErrors: 1`); raise `maxErrors` to collect more, or pass
+`output: "tree"` for a nested error tree under
 `error` (or `output: "predicate"` for a bare boolean). Every error
 carries a stable `code` (e.g. `"type"`, `"required"`, `"content-type"`,
 `"oneOf"`), a `path` rooted at the HTTP frame (e.g. `["body", "pets", 3,

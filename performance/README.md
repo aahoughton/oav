@@ -266,7 +266,7 @@ fast path.
   rather than inlining into the enclosing body (V8 monomorphizes
   hot-loop calls better than massive inline bodies); and on the
   rejection path oav still builds a structured leaf for the failing
-  keyword. oav's default already matches ajv's fail-fast (flat,
+  keyword. oav's default is already fail-fast (flat,
   `maxErrors: 1`); `output: "predicate"` sheds the error infrastructure
   entirely for the cases that only need a yes/no answer.
 

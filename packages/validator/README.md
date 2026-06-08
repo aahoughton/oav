@@ -26,8 +26,8 @@ const responseResult = validator.validateResponse(
 
 Both methods return `{ valid: true }` on success, or
 `{ valid: false, errors, truncated }` on failure. The default is a flat
-`errors` list that stops at the first problem (`maxErrors: 1`), matching
-Ajv; pass `output: "tree"` for a nested `error` tree, or
+`errors` list that stops at the first problem (`maxErrors: 1`); pass
+`output: "tree"` for a nested `error` tree, or
 `maxErrors: Number.POSITIVE_INFINITY` to collect every error. Errors are
 rooted at the HTTP frame (`["body", …]`, `["query", name, …]`,
 `["header", name, …]`, etc.) so downstream code can group by location.

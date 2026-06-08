@@ -182,7 +182,7 @@ type: "string" }` to `{ type: ["string", "number", "boolean",
   predicate mode compiles to a different function entirely.
 - **Explicit error budget.** `maxErrors: N` caps the errors collected
   and short-circuits hot loops when the budget is exhausted. The default
-  is `1` (fast-fail, like Ajv's `allErrors: false`); Ajv has
+  is `1` (fast-fail); Ajv has
   `allErrors: true | false` but no explicit count budget. Pass
   `Number.POSITIVE_INFINITY` for zero-overhead uncapped collection
   (codegen emits plain `errors.push` with no budget checks).

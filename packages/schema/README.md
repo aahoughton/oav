@@ -4,7 +4,7 @@ JSON Schema 2020-12 compiler. Walks the schema once at construction
 time and emits a JavaScript function via code generation, with no
 schema-walking on the hot path. Compiled validators return `{ valid }`
 plus, on failure, a flat `errors` list and `truncated` (the
-`output: "flat"` default, matching Ajv); `output: "tree"` swaps in a
+`output: "flat"` default); `output: "tree"` swaps in a
 nested `error` tree.
 
 Use this module directly when you want schema validation without the
@@ -33,7 +33,7 @@ to every error's `path` (used by the HTTP validator to prefix `"body"`,
 `stats.functionCount` is the number of helper functions emitted.
 
 By default `validate` returns a flat `errors` list and stops at the
-first problem (`maxErrors: 1`), matching Ajv's defaults. Pass
+first problem (`maxErrors: 1`). Pass
 `output: "tree"` for a nested error tree under `error`,
 `output: "predicate"` for a bare boolean, and
 `maxErrors: Number.POSITIVE_INFINITY` to collect every error.
@@ -123,8 +123,8 @@ returns `{ valid, error, truncated }` with the nested error tree;
 `"predicate"` returns a bare boolean and builds no errors at all.
 
 `maxErrors` caps the leaves collected and short-circuits hot loops once
-the budget is exhausted. The default is `1` (classic fast-fail, matching
-Ajv); larger values bound CPU/memory on huge invalid payloads, and
+the budget is exhausted. The default is `1` (classic fast-fail); larger
+values bound CPU/memory on huge invalid payloads, and
 `Number.POSITIVE_INFINITY` collects everything with zero-overhead
 codegen (plain `errors.push`, no budget checks). A failing result
 carries `truncated: true` when the cap was reached.

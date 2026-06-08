@@ -1,8 +1,8 @@
 # Migrating to v3
 
-v3 changes the zero-config defaults so a bare `compileSchema(schema)` (and
-`createValidator(spec)`) matches Ajv's out-of-the-box behaviour: a **flat**
-list of errors, stopping at the **first** one. The richer nested error tree
+v3 changes the zero-config defaults: a bare `compileSchema(schema)` (and
+`createValidator(spec)`) now returns a **flat** list of errors, stopping
+at the **first** one. The richer nested error tree
 and full error collection are one option away. This guide lists every
 breaking change and how to restore the v2 behaviour where you want it.
 
