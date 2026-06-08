@@ -97,7 +97,7 @@ the upstream test suites live in
 | `maxErrors`             | Per-call total cap on leaf errors. Default `1` (fast-fail); `Number.POSITIVE_INFINITY` collects every error.                     |
 | `strictQueryParameters` | Reject undeclared query parameters. Default `false`.                                                                             |
 | `validateSecurity`      | `"off"` (default), `"shape"` (check recognized schemes; pass on oauth2/oidc/mTLS), or `"strict"` (fail on unrecognized schemes). |
-| `ignoreUndocumented`    | Return `null` on requests whose path the router can't match. Default `false`.                                                    |
+| `ignoreUndocumented`    | Treat requests whose path the router can't match as valid (`{ valid: true }`). Default `false`.                                  |
 | `ignorePaths`           | `(path: string) => boolean` predicate that short-circuits validation when it returns `true` (runs before routing).               |
 | `onUnknownVersion`      | `"fallback31"` \| `"warn"` \| `"throw"` when `openapi` is missing or unsupported. Default `"fallback31"`.                        |
 

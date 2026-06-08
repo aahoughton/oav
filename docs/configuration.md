@@ -15,8 +15,8 @@ this page is a recipe-oriented overview.
 | `strict`                | Compile-time schema lint mode: `"off"`, `"warn-partial"` (default), or `"strict"`. Issues surface via `validator.stats.strictIssues`.                                        |
 | `strictQueryParameters` | Reject undeclared query parameters. Default `false`.                                                                                                                         |
 | `validateSecurity`      | `"off"` (default), `"shape"` (check recognized schemes; pass on oauth2/oidc/mTLS), or `"strict"` (fail on unrecognized schemes).                                             |
-| `ignoreUndocumented`    | Return `null` on requests whose path the router can't match. Default `false`.                                                                                                |
-| `ignorePaths`           | Predicate `(path) => boolean`; returning `true` short-circuits validation to `null` before routing.                                                                          |
+| `ignoreUndocumented`    | Treat requests whose path the router can't match as valid (`{ valid: true }`) instead of a `route` error. Default `false`.                                                   |
+| `ignorePaths`           | Predicate `(path) => boolean`; returning `true` short-circuits validation to a valid result (`{ valid: true }`) before routing.                                              |
 | `onUnknownVersion`      | Policy for specs with missing/unsupported `openapi`: `"fallback31"` (default), `"warn"`, or `"throw"`.                                                                       |
 | `regexCompiler`         | Compiler for `pattern` keywords and `format: "regex"`. Defaults to `new RegExp(p, "u")` with a non-u fallback. Plug in `re2` or a safe-regex check for hardening; see below. |
 
