@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.0.0](https://github.com/aahoughton/oav/compare/oav-v2.4.0...oav-v3.0.0) (2026-06-08)
+
+
+### Chore
+
+* **oav:** Synchronize oav versions
+
 ## [2.4.0](https://github.com/aahoughton/oav/compare/oav-v2.3.0...oav-v2.4.0) (2026-06-06)
 
 

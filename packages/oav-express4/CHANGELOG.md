@@ -1,5 +1,16 @@
 # Changelog
 
+## [3.0.0](https://github.com/aahoughton/oav/compare/oav-express4-v2.4.0...oav-express4-v3.0.0) (2026-06-08)
+
+
+### ⚠ BREAKING CHANGES
+
+* compileSchema and createValidator default to flat error output and maxErrors:1. validateRequest/validateResponse return a result object ({ valid, errors?, error?, truncated }) instead of ValidationError|null. Adapter onError receives a ValidationError[] leaf list. ValidationResult and CompiledSchema now name the flat shapes (tree is TreeValidationResult/CompiledTreeSchema). undefined-valued object properties count as absent. formatJson/summarize/formatFlat and the validateSecurity boolean form are removed. See docs/migration-v3.md.
+
+### Features
+
+* v3 - flat error output and maxErrors:1 as zero-config defaults ([#344](https://github.com/aahoughton/oav/issues/344)) ([4d4c52e](https://github.com/aahoughton/oav/commit/4d4c52e521b5e171b9834eafca80e6ae7508ea67))
+
 ## [2.4.0](https://github.com/aahoughton/oav/compare/oav-express4-v2.3.0...oav-express4-v2.4.0) (2026-06-06)
 
 
