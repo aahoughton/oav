@@ -22,5 +22,5 @@ export {
   type ResponseOverride,
   type SpecOverlay,
 } from "./overlay.js";
-export { loadSpec, type LoadSpecOptions } from "./load.js";
+export { loadSpec, loadSpecSync, type LoadSpecOptions, type LoadSpecSyncOptions } from "./load.js";
 export { lintResolvedSpec, type SpecHygieneIssue } from "./lint.js";

@@ -22,9 +22,20 @@
  * ```
  */
 
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve as resolvePath } from "node:path";
-import type { DocumentReader } from "@oav/spec";
+import {
+  loadSpecSync as loadSpecSyncCore,
+  type DocumentReader,
+  type LoadSpecSyncOptions,
+  type ResolvedSpec,
+} from "@oav/spec";
+import {
+  composeReadersSync,
+  createFileReaderSync,
+  type SyncDocumentReader,
+} from "@oav/spec/internals";
 import { parse as parseYaml } from "yaml";
 
 function decodePercent(s: string): string {
@@ -159,4 +170,65 @@ export function createSmartHttpReader(): DocumentReader {
  */
 export function parseYamlString(source: string): unknown {
   return parseYaml(source);
+}
+
+/**
+ * Synchronous YAML filesystem reader: the sync counterpart of
+ * {@link createYamlFileReader}, used as the default reader inside
+ * {@link loadSpecSync}. Kept module-internal on purpose: the narrow
+ * sync surface is `loadSpecSync` alone, which defaults its reader, so
+ * the common case never names a reader. (The JSON sync primitives are
+ * reachable via `oav/spec/internals` for custom compose orders; a
+ * caller needing YAML in a custom sync compose can pass `loadSpecSync`
+ * a `reader` built from those plus their own YAML step.)
+ */
+function createYamlFileReaderSync(cwd: string = process.cwd()): SyncDocumentReader {
+  return {
+    canRead(uri) {
+      if (/^(https?|memory):/i.test(uri)) return false;
+      return hasYamlExtension(uri);
+    },
+    read(uri) {
+      const stripped = uri.replace(/^file:\/\//, "");
+      const decoded = decodePercent(stripped);
+      const path = resolvePath(cwd, decoded);
+      return parseYaml(readFileSync(path, "utf8"));
+    },
+  };
+}
+
+/**
+ * Synchronous spec loader for the batteries-included distribution.
+ * Same contract as {@link @aahoughton/oav/spec!loadSpecSync} from
+ * `oav-core`, but its default reader reads YAML and JSON files from
+ * disk (the core loader is JSON-only), so `loadSpecSync({ entry:
+ * "openapi.yaml" })` works without composing readers.
+ *
+ * For load-once-at-boot programs and CLIs that build a validator in a
+ * synchronous bootstrap and can't await {@link loadSpec}. Blocking by
+ * construction (`readFileSync`); for boot-time / CLI use, not
+ * per-request. For non-blocking contexts the async {@link loadSpec}
+ * stays the right tool. An unreadable or malformed spec throws; a
+ * caller wanting "unreadable spec disables validation rather than
+ * crashing boot" wraps the call in its own `try`/`catch`.
+ *
+ * Pass `reader` to override the default (a `{ read, canRead }` object
+ * satisfies the synchronous reader shape; the JSON-only primitives live
+ * at `oav/spec/internals`).
+ *
+ * @example
+ * ```ts
+ * import { loadSpecSync } from "@aahoughton/oav";
+ * import { createValidator } from "@aahoughton/oav";
+ *
+ * const { document } = loadSpecSync({ entry: "openapi.yaml" });
+ * const validator = createValidator(document);
+ * ```
+ *
+ * @public
+ */
+export function loadSpecSync(options: LoadSpecSyncOptions): ResolvedSpec {
+  const reader =
+    options.reader ?? composeReadersSync([createYamlFileReaderSync(), createFileReaderSync()]);
+  return loadSpecSyncCore({ ...options, reader });
 }

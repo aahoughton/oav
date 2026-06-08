@@ -77,6 +77,16 @@
         "default": "./dist/spec.cjs"
       }
     },
+    "./spec/internals": {
+      "import": {
+        "types": "./dist/spec-internals.d.ts",
+        "default": "./dist/spec-internals.js"
+      },
+      "require": {
+        "types": "./dist/spec-internals.d.cts",
+        "default": "./dist/spec-internals.cjs"
+      }
+    },
     "./overlay-spec": {
       "import": {
         "types": "./dist/overlay-spec.d.ts",

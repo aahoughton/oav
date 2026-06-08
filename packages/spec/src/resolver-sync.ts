@@ -1,6 +1,7 @@
 import { resolveJsonPointer, type OpenAPIDocument } from "@oav/core";
-import type { DocumentReader } from "./reader.js";
-import { lintResolvedSpec, type SpecHygieneIssue } from "./lint.js";
+import type { SyncDocumentReader } from "./reader.js";
+import { lintResolvedSpec } from "./lint.js";
+import type { ResolvedSpec } from "./resolver.js";
 import {
   baseDirOf,
   cycleKey,
@@ -11,93 +12,68 @@ import {
   rewriteInternalRefTarget,
 } from "./resolver-shared.js";
 
-// Re-export the canonical implementation so @oav/spec consumers who
-// imported `resolveJsonPointer` keep working.
-export { resolveJsonPointer };
-
 /**
- * Options accepted by {@link resolveSpec}.
- *
- * @public
+ * Options accepted by {@link resolveSpecSync}. Mirror of
+ * {@link ResolveSpecOptions} with a {@link SyncDocumentReader}.
  */
-export interface ResolveSpecOptions {
-  /** Reader used to fetch documents by URI. */
-  reader: DocumentReader;
+export interface ResolveSpecSyncOptions {
+  /** Synchronous reader used to fetch documents by URI. */
+  reader: SyncDocumentReader;
   /** Entry URI. */
   entry: string;
   /** Base directory/URI for resolving relative refs. Defaults to the entry's directory. */
   baseUri?: string;
-  /**
-   * Run spec-hygiene lint passes against the resolved document.
-   * Findings land in {@link ResolvedSpec.specHygieneIssues}. Defaults
-   * to `false`. See {@link lintResolvedSpec}.
-   */
+  /** Run spec-hygiene lint passes against the resolved document. Defaults to `false`. */
   lint?: boolean;
 }
 
 /**
- * Output of {@link resolveSpec}: the stitched OpenAPI document plus a record
- * of how every external file was inlined.
+ * Synchronous mirror of {@link resolveSpec}. Identical resolution
+ * semantics (external-ref inlining, circular-ref stitching under
+ * `$defs.__ext__`, internal-ref rewriting, sibling preservation, the
+ * source list, and lint), driven by a {@link SyncDocumentReader} so it
+ * returns a {@link ResolvedSpec} directly instead of a `Promise`.
+ *
+ * The walk skeleton below is a deliberate structural copy of
+ * `resolveSpec`'s: JS function coloring means one body can't be both
+ * `async` and sync, and the async resolver is the package's primary,
+ * production surface that must not be rewritten to serve the
+ * synchronous path. The duplication is confined to the
+ * read-interleaving skeleton; every pure sub-step lives in
+ * `./resolver-shared.ts`, shared with the async path. The sync/async
+ * parity suite asserts the two produce identical output, throw
+ * equivalently, and read documents in the identical order, so any
+ * change to one walk that isn't mirrored in the other breaks the build.
+ *
+ * Blocking by construction (the reader reads files synchronously); for
+ * boot-time / CLI use, not per-request. Use the async
+ * {@link resolveSpec} for non-blocking contexts.
  *
  * @public
  */
-export interface ResolvedSpec {
-  document: OpenAPIDocument;
-  /** URIs of every external file that was loaded during resolution. */
-  sources: string[];
-  /**
-   * Spec-hygiene findings from {@link lintResolvedSpec}. Empty unless
-   * {@link ResolveSpecOptions.lint} was set. Same name and shape as
-   * {@link Validator.specHygieneIssues} on the validator side.
-   */
-  specHygieneIssues: readonly SpecHygieneIssue[];
-}
-
-/**
- * Load an OpenAPI 3.1 document and inline all external `$ref`s, producing a
- * single self-contained document. Circular references are materialized under
- * `$defs.__ext__/<encoded-uri>` so the compiler can resolve them via the
- * identity-keyed schema cache; non-circular external refs are fully inlined.
- *
- * The synchronous mirror is `resolveSpecSync` (reachable via
- * `oav/spec/internals`); both share the pure URI / ref-rewriting helpers
- * in `./resolver-shared.ts` and are pinned to identical behavior by the
- * parity suite. Keep any change to the walk here mirrored there.
- *
- * @param options - Reader + entry URI.
- * @returns Resolved document + the list of files loaded.
- *
- * @example
- * ```ts
- * const reader = composeReaders([createFileReader()]);
- * const { document } = await resolveSpec({ reader, entry: "openapi.yaml" });
- * ```
- *
- * @public
- */
-export async function resolveSpec(options: ResolveSpecOptions): Promise<ResolvedSpec> {
+export function resolveSpecSync(options: ResolveSpecSyncOptions): ResolvedSpec {
   const { reader } = options;
   const baseDir = options.baseUri ?? baseDirOf(options.entry);
   const sources = new Set<string>([options.entry]);
   const docs = new Map<string, unknown>();
 
-  const entryDoc = await reader.read(options.entry);
+  const entryDoc = reader.read(options.entry);
   docs.set(options.entry, entryDoc);
 
   const visiting = new Set<string>();
   const stitchQueue = new Set<string>();
 
-  const walk = async (
+  const walk = (
     value: unknown,
     currentBase: string,
     stitchingUri: string | null,
     externalSourceUri: string | null,
-  ): Promise<unknown> => {
+  ): unknown => {
     if (value === null || typeof value !== "object") return value;
     if (Array.isArray(value)) {
       const out: unknown[] = [];
       for (const item of value) {
-        out.push(await walk(item, currentBase, stitchingUri, externalSourceUri));
+        out.push(walk(item, currentBase, stitchingUri, externalSourceUri));
       }
       return out;
     }
@@ -122,7 +98,7 @@ export async function resolveSpec(options: ResolveSpecOptions): Promise<Resolved
       sources.add(targetUri);
       let targetDoc = docs.get(targetUri);
       if (targetDoc === undefined) {
-        targetDoc = await reader.read(targetUri);
+        targetDoc = reader.read(targetUri);
         docs.set(targetUri, targetDoc);
       }
       const resolved = fragment === "" ? targetDoc : resolveJsonPointer(targetDoc, fragment);
@@ -131,13 +107,13 @@ export async function resolveSpec(options: ResolveSpecOptions): Promise<Resolved
       // subtree are actually refs into this external file and will be
       // rewritten to point at its stitched location (see the internal-
       // ref branch below).
-      const inlined = await walk(resolved, baseDirOf(targetUri), stitchingUri, targetUri);
+      const inlined = walk(resolved, baseDirOf(targetUri), stitchingUri, targetUri);
       visiting.delete(cycleKey(targetUri, fragment));
       // preserve sibling properties (OpenAPI 3.1 allows $ref + siblings for some objects)
       const siblings: Mutable = {};
       for (const key of Object.keys(obj)) {
         if (key === "$ref") continue;
-        siblings[key] = await walk(obj[key], currentBase, stitchingUri, externalSourceUri);
+        siblings[key] = walk(obj[key], currentBase, stitchingUri, externalSourceUri);
       }
       if (Object.keys(siblings).length === 0) return inlined;
       return inlined !== null && typeof inlined === "object" && !Array.isArray(inlined)
@@ -155,18 +131,18 @@ export async function resolveSpec(options: ResolveSpecOptions): Promise<Resolved
       const siblings: Mutable = { $ref: rewritten };
       for (const key of Object.keys(obj)) {
         if (key === "$ref") continue;
-        siblings[key] = await walk(obj[key], currentBase, stitchingUri, externalSourceUri);
+        siblings[key] = walk(obj[key], currentBase, stitchingUri, externalSourceUri);
       }
       return siblings;
     }
     const out: Mutable = {};
     for (const key of Object.keys(obj)) {
-      out[key] = await walk(obj[key], currentBase, stitchingUri, externalSourceUri);
+      out[key] = walk(obj[key], currentBase, stitchingUri, externalSourceUri);
     }
     return out;
   };
 
-  const resolved = (await walk(entryDoc, baseDir, null, null)) as OpenAPIDocument;
+  const resolved = walk(entryDoc, baseDir, null, null) as OpenAPIDocument;
 
   if (stitchQueue.size > 0) {
     const stitched: Mutable = {};
@@ -177,7 +153,7 @@ export async function resolveSpec(options: ResolveSpecOptions): Promise<Resolved
       sources.add(uri);
       let targetDoc = docs.get(uri);
       if (targetDoc === undefined) {
-        targetDoc = await reader.read(uri);
+        targetDoc = reader.read(uri);
         docs.set(uri, targetDoc);
       }
       // Walk the full document from scratch. Self-references collapse
@@ -188,7 +164,7 @@ export async function resolveSpec(options: ResolveSpecOptions): Promise<Resolved
       // location, not at the root document.
       const savedVisiting = new Set(visiting);
       visiting.clear();
-      const inlined = await walk(targetDoc, baseDirOf(uri), uri, uri);
+      const inlined = walk(targetDoc, baseDirOf(uri), uri, uri);
       visiting.clear();
       for (const v of savedVisiting) visiting.add(v);
       stitched[uri] = inlined;

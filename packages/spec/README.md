@@ -39,6 +39,47 @@ For custom composition (e.g. validate between resolve and overlay, or
 load overlays yourself), call the primitives directly:
 `resolveSpec({ reader, entry })`, then `applyOverlays(document, [...])`.
 
+### Synchronous loading
+
+`loadSpecSync` is the blocking mirror of `loadSpec`: it runs the
+identical pipeline (resolve external `$ref`s, apply overlays, optional
+lint) and returns a `ResolvedSpec` directly instead of a `Promise`. It
+exists for code that builds a validator in a synchronous bootstrap and
+can't `await`: a server or CLI that loads its spec once at startup.
+
+```ts
+import { loadSpecSync } from "@aahoughton/oav/spec";
+
+const { document } = loadSpecSync({ entry: "openapi.json" });
+const validator = createValidator(document);
+```
+
+It differs from `loadSpec` in one deliberate way: `reader` is
+**optional**, defaulting to a JSON filesystem reader, so the common case
+needs no reader composition. To read from a custom synchronous source,
+pass a `{ read, canRead }` object as `reader`.
+
+`oav-core`'s `loadSpecSync` is JSON-only. For YAML, use the batteries
+`loadSpecSync` from `oav`, whose default reader covers `.yaml` /
+`.yml` and `.json`.
+
+`loadSpecSync` blocks on filesystem reads (`readFileSync`); use it at
+boot or in a CLI, not on a per-request path. For non-blocking contexts,
+`loadSpec` stays the right tool. An unreadable or malformed spec throws,
+the same as `loadSpec`. To keep one bad spec from aborting startup,
+catch it and decide locally:
+
+```ts
+function loadOrSkip(entry: string): Validator | null {
+  try {
+    return createValidator(loadSpecSync({ entry }).document);
+  } catch (err) {
+    log.warn(`spec ${entry} unreadable; skipping`, err);
+    return null;
+  }
+}
+```
+
 ## Readers
 
 Readers implement `DocumentReader`:
