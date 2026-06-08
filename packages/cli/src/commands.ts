@@ -388,6 +388,10 @@ export async function compileSpecCommand(
     requestsOnly?: boolean;
     /** `{ method, path }` include-list; empty = all ops. */
     only?: Array<{ method: string; path: string }>;
+    /** Result shape of the emitted validators. Default `"flat"`. */
+    outputMode?: "flat" | "tree" | "predicate";
+    /** Leaf-error cap baked into the emitted validators. Default `1`. */
+    maxErrors?: number;
     /** Test-only: rewrite emit imports to `@oav` so the workspace resolves. */
     importPrefix?: string;
     /** Test-only: override esbuild's resolveDir for in-workspace bundle. */
@@ -417,6 +421,8 @@ export async function compileSpecCommand(
       dialect: args.dialect,
       requestsOnly: args.requestsOnly === true,
       only: args.only,
+      outputMode: args.outputMode,
+      maxErrors: args.maxErrors,
       importPrefix: args.importPrefix,
     });
   } catch (err) {

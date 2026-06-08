@@ -213,6 +213,16 @@ export function buildProgram(options: BuildProgramOptions = {}): Command {
       collectOnly,
       [],
     )
+    .option(
+      "--output-mode <mode>",
+      "result shape of the emitted validators: flat | tree | predicate (default: flat)",
+      parseOutputMode,
+    )
+    .option(
+      "--max-errors <n>",
+      'leaf-error cap baked into the validators: a positive integer or "all" (default: 1)',
+      parseMaxErrors,
+    )
     .option("-o, --output <file>", "write output to a file instead of stdout")
     .action(
       async (
@@ -222,6 +232,8 @@ export function buildProgram(options: BuildProgramOptions = {}): Command {
           dialect?: StandaloneDialect;
           requestsOnly?: boolean;
           only: Array<{ method: string; path: string }>;
+          outputMode?: "flat" | "tree" | "predicate";
+          maxErrors?: number;
           output?: string;
         },
       ) => {
@@ -233,6 +245,8 @@ export function buildProgram(options: BuildProgramOptions = {}): Command {
             dialect: opts.dialect,
             requestsOnly: opts.requestsOnly === true,
             only: opts.only,
+            outputMode: opts.outputMode,
+            maxErrors: opts.maxErrors,
           },
           io,
         );
@@ -256,6 +270,24 @@ function collectOnly(
 
 function collectOverlays(value: string, previous: string[]): string[] {
   return [...previous, value];
+}
+
+function parseOutputMode(value: string): "flat" | "tree" | "predicate" {
+  if (value !== "flat" && value !== "tree" && value !== "predicate") {
+    throw new Error(`--output-mode must be flat | tree | predicate, got ${JSON.stringify(value)}`);
+  }
+  return value;
+}
+
+function parseMaxErrors(value: string): number {
+  if (value === "all" || value === "infinity") return Number.POSITIVE_INFINITY;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 1) {
+    throw new Error(
+      `--max-errors must be a positive integer or "all", got ${JSON.stringify(value)}`,
+    );
+  }
+  return n;
 }
 
 function deriveMode(opts: {

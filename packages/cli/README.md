@@ -65,6 +65,8 @@ below for the expected shape.
 | `--dialect 2020-12\|openapi-3.1\|openapi-3.0` | compile-schema / compile-spec     | Schema dialect. Defaults: 2020-12 (compile-schema), auto-detect from `openapi` field (compile-spec). |
 | `--requests-only`                             | compile-spec                      | Skip response-validator emit. Smaller output.                                                        |
 | `--only <method-path...>`                     | compile-spec                      | Repeatable; restrict emit to given ops, e.g. `--only "POST /pets"`.                                  |
+| `--output-mode flat\|tree\|predicate`         | compile-spec                      | Result shape of the emitted validators. Default `flat`. Mirrors `output`.                            |
+| `--max-errors <n>`                            | compile-spec                      | Leaf-error cap baked in: a positive integer or `all`. Default `1`. Mirrors `maxErrors`.              |
 | `-o <file>`                                   | all                               | Write output to a file instead of stdout.                                                            |
 | `--quiet`                                     | resolve / validate                | Exit code only, no stdout.                                                                           |
 
@@ -101,6 +103,13 @@ same surface as `createValidator(document)`: `validateRequest`,
 parameter / body / response schemas are pre-compiled and inlined.
 esbuild bundles everything; the resulting module has zero imports.
 
+The emitted `validate*` return the same result shapes as the library:
+`{ valid: true }` or `{ valid: false, errors, truncated }`, stopping at
+the first error by default (flat + `maxErrors: 1`), the same zero-config
+behaviour as `createValidator`. `--output-mode` and `--max-errors`
+(below) tune the shape, exactly mirroring the `output` / `maxErrors`
+options.
+
 Consumers who were running `createValidator(await loadSpec(...))` at
 application boot get the same behavior with no YAML parse, no
 `$ref` walk, no schema compilation at load time. Target use cases:
@@ -122,11 +131,20 @@ application boot get the same behavior with no YAML parse, no
   time. Same semantics as `oav resolve`.
 - **`--dialect <name>`**: forces a specific schema dialect. Default
   is auto-detected from the spec's `openapi` field.
+- **`--output-mode flat|tree|predicate`**: result shape of the emitted
+  validators, mirroring `createValidator`'s `output`. Default `flat`
+  (a de-nested `errors` list); `tree` for the nested `error` tree;
+  `predicate` for a bare boolean.
+- **`--max-errors <n>`**: leaf-error cap baked into the validators,
+  mirroring `maxErrors`. A positive integer or `all` (unbounded).
+  Default `1` (fast-fail). A failing result sets `truncated: true`
+  when the cap was reached.
 - **`--requests-only`**: skips response-validator emit.
-  `validateResponse` / `validateFetchResponse` are still exported
-  but return `null`. Output shrinks significantly on response-heavy
-  specs (rough rule of thumb: ~50% smaller on Stripe-shape, ~20–30%
-  on petstore-shape).
+  `validateResponse` / `validateFetchResponse` are still exported but
+  report every response as valid (a passing result in the configured
+  output mode). Output shrinks significantly on response-heavy specs
+  (rough rule of thumb: ~50% smaller on Stripe-shape, ~20–30% on
+  petstore-shape).
 - **`--only "METHOD PATH"`** (repeatable): restricts emit to
   specified operations. OR-combined across multiple flags. Paths not
   matching any `--only` are dropped from the router. Methods dropped

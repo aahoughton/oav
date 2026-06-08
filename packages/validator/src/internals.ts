@@ -59,3 +59,13 @@ export { checkSecurity, compileOperationSecurity } from "./security.js";
 // `oav/validator/internals` so the emitted module only
 // has to reach into one subpath.
 export { createRouter, type RouteMatch, type Router } from "@oav/router";
+
+// Result reshaping. The validator builds a nested error tree internally
+// and reshapes it to the requested `output` / `maxErrors` at the public
+// boundary; `oav compile-spec`'s emitted module reuses the same two
+// functions so its AOT output's result shape matches `createValidator`
+// exactly (`reshapeResult` for `validate{Request,Response}`,
+// `toFetchResult` for the `validateFetch*` wrappers). Sourced from the
+// standalone `./reshape.js` so re-exporting here doesn't pull the
+// validator's `node:fs`-bearing graph into the compile-spec bundle.
+export { reshapeResult, toFetchResult } from "./reshape.js";
