@@ -8,10 +8,20 @@ import { jsonSchemaDialect } from "../src/keywords/vocabulary.js";
 type Opts = { maxErrors?: number };
 
 function tree(schema: unknown, opts: Opts = {}): ReturnType<typeof compileSchema> {
-  return compileSchema(schema as never, { dialect: jsonSchemaDialect, ...opts });
+  return compileSchema(schema as never, {
+    dialect: jsonSchemaDialect,
+    output: "tree",
+    maxErrors: Number.POSITIVE_INFINITY,
+    ...opts,
+  });
 }
 function flat(schema: unknown, opts: Opts = {}) {
-  return compileSchema(schema as never, { dialect: jsonSchemaDialect, flat: true, ...opts });
+  return compileSchema(schema as never, {
+    dialect: jsonSchemaDialect,
+    output: "flat",
+    maxErrors: Number.POSITIVE_INFINITY,
+    ...opts,
+  });
 }
 
 // Full-fidelity multiset key: a flat record and its tree-leaf counterpart

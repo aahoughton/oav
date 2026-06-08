@@ -10,7 +10,11 @@ import { compileSchema } from "../src/compiler/compiler.js";
 import { jsonSchemaDialect } from "../src/keywords/vocabulary.js";
 
 function compile(schema: unknown): ReturnType<typeof compileSchema> {
-  return compileSchema(schema as never, { dialect: jsonSchemaDialect });
+  return compileSchema(schema as never, {
+    dialect: jsonSchemaDialect,
+    output: "tree",
+    maxErrors: Number.POSITIVE_INFINITY,
+  });
 }
 
 describe("subschema inlining", () => {
@@ -91,7 +95,7 @@ describe("subschema inlining", () => {
   it("inlining respects maxErrors: allocated paths still wear the budget cap", () => {
     const v = compileSchema(
       { type: "array", items: { type: "number" } },
-      { dialect: jsonSchemaDialect, maxErrors: 3 },
+      { dialect: jsonSchemaDialect, output: "tree", maxErrors: 3 },
     );
     const r = v.validate(["a", "b", "c", "d", "e"]);
     expect(r.valid).toBe(false);

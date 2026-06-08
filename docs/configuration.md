@@ -5,19 +5,20 @@ canonical reference is the
 [`ValidatorOptions`](../packages/validator/src/validator.ts) TSDoc;
 this page is a recipe-oriented overview.
 
-| Option                  | Effect                                                                                                                                                                                         |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `dialect`               | Force a specific schema dialect, bypassing version detection.                                                                                                                                  |
-| `formats`               | Extra string format validators merged on top of the built-ins.                                                                                                                                 |
-| `keywords`              | Register user-defined schema keywords (see below).                                                                                                                                             |
-| `maxErrors`             | Cap on leaf errors; `1` is fast-fail, default is uncapped.                                                                                                                                     |
-| `strict`                | Compile-time schema lint mode: `"off"`, `"warn-partial"` (default), or `"strict"`. Issues surface via `validator.stats.strictIssues`.                                                          |
-| `strictQueryParameters` | Reject undeclared query parameters. Default `false`.                                                                                                                                           |
-| `validateSecurity`      | `"off"` (default), `"shape"` (check recognized schemes; pass on oauth2/oidc/mTLS), or `"strict"` (fail on unrecognized schemes). Boolean form deprecated; `true`->`"shape"`, `false`->`"off"`. |
-| `ignoreUndocumented`    | Return `null` on requests whose path the router can't match. Default `false`.                                                                                                                  |
-| `ignorePaths`           | Predicate `(path) => boolean`; returning `true` short-circuits validation to `null` before routing.                                                                                            |
-| `onUnknownVersion`      | Policy for specs with missing/unsupported `openapi`: `"fallback31"` (default), `"warn"`, or `"throw"`.                                                                                         |
-| `regexCompiler`         | Compiler for `pattern` keywords and `format: "regex"`. Defaults to `new RegExp(p, "u")` with a non-u fallback. Plug in `re2` or a safe-regex check for hardening; see below.                   |
+| Option                  | Effect                                                                                                                                                                       |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `dialect`               | Force a specific schema dialect, bypassing version detection.                                                                                                                |
+| `formats`               | Extra string format validators merged on top of the built-ins.                                                                                                               |
+| `keywords`              | Register user-defined schema keywords (see below).                                                                                                                           |
+| `output`                | Result shape: `"flat"` (default; `{ valid, errors, truncated }`), `"tree"` (nested `{ valid, error, truncated }`), or `"predicate"` (bare boolean). Mirrors `compileSchema`. |
+| `maxErrors`             | Per-call total cap on leaf errors. Default `1` (fast-fail); pass `Number.POSITIVE_INFINITY` to collect every error.                                                          |
+| `strict`                | Compile-time schema lint mode: `"off"`, `"warn-partial"` (default), or `"strict"`. Issues surface via `validator.stats.strictIssues`.                                        |
+| `strictQueryParameters` | Reject undeclared query parameters. Default `false`.                                                                                                                         |
+| `validateSecurity`      | `"off"` (default), `"shape"` (check recognized schemes; pass on oauth2/oidc/mTLS), or `"strict"` (fail on unrecognized schemes).                                             |
+| `ignoreUndocumented`    | Return `null` on requests whose path the router can't match. Default `false`.                                                                                                |
+| `ignorePaths`           | Predicate `(path) => boolean`; returning `true` short-circuits validation to `null` before routing.                                                                          |
+| `onUnknownVersion`      | Policy for specs with missing/unsupported `openapi`: `"fallback31"` (default), `"warn"`, or `"throw"`.                                                                       |
+| `regexCompiler`         | Compiler for `pattern` keywords and `format: "regex"`. Defaults to `new RegExp(p, "u")` with a non-u fallback. Plug in `re2` or a safe-regex check for hardening; see below. |
 
 ## Custom keywords
 
@@ -37,21 +38,27 @@ Custom keywords plug into generated code alongside the built-ins. See
 end-to-end run, and `CustomKeywordValidator` in the TSDoc for the full
 return-shape contract (boolean, error object, or array of errors).
 
-## Bounded error collection
+## Error budget
+
+The validator stops at the first error by default (`maxErrors: 1`),
+matching Ajv's zero-config behaviour. The cap is a per-call total
+across every location (body, query, headers).
 
 ```ts
-createValidator(spec, { maxErrors: 1 }); // fast-fail
+createValidator(spec); // fast-fail: the first error
 createValidator(spec, { maxErrors: 10 }); // bound CPU/memory on huge payloads
+createValidator(spec, { maxErrors: Number.POSITIVE_INFINITY }); // every error
 ```
 
 Hot loops (array items, object properties, `allOf` / `anyOf` branches)
-short-circuit once the budget is exhausted. Results carry
-`truncated: true` so callers know the tree was capped.
+short-circuit once the budget is exhausted. A failing result carries
+`truncated: true` when the cap was reached, so callers know more
+problems may exist.
 
 `maxErrors` must be a positive integer (>= 1); `createValidator`
-throws on `0`, negative values, or non-integers. To opt out of error
-collection entirely (yes/no answers only), use `compileSchema(schema,
-{ predicate: true })` from `@aahoughton/oav/schema` instead.
+throws on `0`, negative values, or non-integers. For a yes/no answer
+with no errors collected at all, build the validator with
+`output: "predicate"`.
 
 ## Hardening against untrusted regex patterns
 

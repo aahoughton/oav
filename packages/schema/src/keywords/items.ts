@@ -97,7 +97,13 @@ export const containsKeyword: KeywordDefinition = {
   implements: ["minContains", "maxContains"],
   compile(ctx: KeywordCompileContext): void {
     const subSchema = ctx.schema as SchemaOrBoolean;
-    const fn = ctx.compileSubschema(subSchema);
+    // `contains` only reports its own count failure; the per-item match
+    // errors are never surfaced. Test membership with a predicate sub in
+    // every mode so failing items allocate no error tree and (critically)
+    // never decrement the shared `maxErrors` budget. Running the sub in
+    // error mode would consume the budget on thrown-away item errors and
+    // could starve a real sibling error, flipping a verdict under a cap.
+    const predFn = ctx.compileSubschema(subSchema, "predicate");
     const minLit =
       ctx.parentSchema.minContains === undefined
         ? "1"
@@ -121,7 +127,7 @@ export const containsKeyword: KeywordDefinition = {
         // exists only to populate `evaluatedItems` for any sibling
         // `unevaluatedItems`.
         g.forRange(i, len, (gi) => {
-          gi.if(`${fn}(${ctx.data}[${i}])`, (gii) => {
+          gi.if(`${predFn}(${ctx.data}[${i}])`, (gii) => {
             gii.line(`${count} += 1;`);
             if (ctx.evaluatedItemsVar !== null) {
               gii.line(`${ctx.evaluatedItemsVar}.add(${i});`);
@@ -132,19 +138,9 @@ export const containsKeyword: KeywordDefinition = {
         if (maxLit !== null) g.line(`if (${count} > ${maxLit}) return false;`);
         return;
       }
-      const matchedIdx = g.scope.name("matched");
-      g.const(matchedIdx, "[]");
       g.forRange(i, len, (gi) => {
-        const errVar = gi.scope.name("e");
-        // Function-call subschema: push/pop around the call so the
-        // callee sees the extended path via the shared array (avoids
-        // per-call allocation of `[...path, i]`).
-        gi.line(`${ctx.path}.push(${i});`);
-        gi.const(errVar, `${fn}(${ctx.data}[${i}], ${ctx.path})`);
-        gi.line(`${ctx.path}.pop();`);
-        gi.if(`${errVar} === null`, (gii) => {
+        gi.if(`${predFn}(${ctx.data}[${i}])`, (gii) => {
           gii.line(`${count} += 1;`);
-          gii.line(`${matchedIdx}.push(${i});`);
           if (ctx.evaluatedItemsVar !== null) {
             gii.line(`${ctx.evaluatedItemsVar}.add(${i});`);
           }

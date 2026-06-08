@@ -17,17 +17,12 @@ export {
 
 export {
   countErrors,
-  formatFlat,
-  formatJson,
   formatSummary,
   formatText,
-  summarize,
   toJsonObject,
   type FormatOptions,
   type FormatSummaryOptions,
   type FormatSummarySelect,
-  type SummarizeOptions,
-  type SummarizeSelect,
 } from "./format.js";
 
 export {

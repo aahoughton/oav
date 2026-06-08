@@ -1,7 +1,7 @@
 import { collectLeaves, type OpenAPIDocument, type ValidationError } from "@oav/core";
 import { describe, expect, it } from "vitest";
 import type { CustomKeywordValidator } from "../src/index.js";
-import { createValidator } from "../src/validator.js";
+import { createValidator } from "./fixtures.js";
 
 describe("custom keywords via createValidator", () => {
   function sku(): OpenAPIDocument {

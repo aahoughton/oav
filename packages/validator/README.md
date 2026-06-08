@@ -9,7 +9,7 @@ import { createValidator } from "@aahoughton/oav";
 
 const validator = createValidator(resolvedSpec);
 
-const requestErr = validator.validateRequest({
+const requestResult = validator.validateRequest({
   method: "POST",
   path: "/pets",
   query: { limit: "10" },
@@ -18,17 +18,19 @@ const requestErr = validator.validateRequest({
   body: { name: "Fido" },
 });
 
-const responseErr = validator.validateResponse(
+const responseResult = validator.validateResponse(
   { method: "GET", path: "/pets" },
   { status: 200, contentType: "application/json", body: [{ name: "Fido" }] },
 );
 ```
 
-Both methods return `null` on success or a `ValidationError` tree on
-failure. Errors are rooted at the HTTP frame (`["body", …]`,
-`["query", name, …]`, `["header", name, …]`, etc.) so downstream code
-can group by location. The top-level node's `code` (`"request"` vs
-`"response"`) distinguishes the leg.
+Both methods return `{ valid: true }` on success, or
+`{ valid: false, errors, truncated }` on failure. The default is a flat
+`errors` list that stops at the first problem (`maxErrors: 1`), matching
+Ajv; pass `output: "tree"` for a nested `error` tree, or
+`maxErrors: Number.POSITIVE_INFINITY` to collect every error. Errors are
+rooted at the HTTP frame (`["body", …]`, `["query", name, …]`,
+`["header", name, …]`, etc.) so downstream code can group by location.
 
 `validator.detectedVersion` reflects the `openapi` string that was
 detected on construction (or `undefined` if the field was missing or
@@ -76,8 +78,8 @@ the upstream test suites live in
 
 | Method                                        | Purpose                                                                                                                                                                   |
 | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `validateRequest(req)`                        | Check an `HttpRequest` against the spec. Returns `null` on success or a `ValidationError` tree.                                                                           |
-| `validateResponse(req, res)`                  | Check an `HttpResponse` against the spec (request is used only for method + path). Returns `null` or a tree.                                                              |
+| `validateRequest(req)`                        | Check an `HttpRequest` against the spec. Returns `{ valid: true }` or `{ valid: false, errors, truncated }` (flat by default; `output: "tree"` for a nested `error`).     |
+| `validateResponse(req, res)`                  | Check an `HttpResponse` against the spec (request is used only for method + path). Same result shape as `validateRequest`.                                                |
 | `validateFetchRequest<T>(request, opts?)`     | Convenience for Web Standards `Request`: reads URL, headers, body; returns a discriminated union with a typed body. See [docs/integration.md](../../docs/integration.md). |
 | `validateFetchResponse<T>(request, response)` | Symmetric Web Standards `Response` check. Useful for contract-testing an upstream.                                                                                        |
 | `getOperation({ method, path })`              | Startup-time introspection: returns the resolved, overlay-applied `OperationObject` + matched template for a (method, path) pair.                                         |
@@ -86,17 +88,18 @@ the upstream test suites live in
 
 ## Options
 
-| Option                  | Effect                                                                                                                                                                                         |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `dialect`               | Force a specific {@link Dialect}, bypassing version detection.                                                                                                                                 |
-| `formats`               | Extra string format validators merged with `oav/formats`.                                                                                                                                      |
-| `keywords`              | User-registered schema keywords (see below).                                                                                                                                                   |
-| `maxErrors`             | Cap on leaf errors; `1` is fast-fail. Default: uncapped.                                                                                                                                       |
-| `strictQueryParameters` | Reject undeclared query parameters. Default `false`.                                                                                                                                           |
-| `validateSecurity`      | `"off"` (default), `"shape"` (check recognized schemes; pass on oauth2/oidc/mTLS), or `"strict"` (fail on unrecognized schemes). Boolean form deprecated; `true`->`"shape"`, `false`->`"off"`. |
-| `ignoreUndocumented`    | Return `null` on requests whose path the router can't match. Default `false`.                                                                                                                  |
-| `ignorePaths`           | `(path: string) => boolean` predicate that short-circuits validation when it returns `true` (runs before routing).                                                                             |
-| `onUnknownVersion`      | `"fallback31"` \| `"warn"` \| `"throw"` when `openapi` is missing or unsupported. Default `"fallback31"`.                                                                                      |
+| Option                  | Effect                                                                                                                           |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `dialect`               | Force a specific {@link Dialect}, bypassing version detection.                                                                   |
+| `formats`               | Extra string format validators merged with `oav/formats`.                                                                        |
+| `keywords`              | User-registered schema keywords (see below).                                                                                     |
+| `output`                | Result shape: `"flat"` (default), `"tree"`, or `"predicate"`. Mirrors `compileSchema`.                                           |
+| `maxErrors`             | Per-call total cap on leaf errors. Default `1` (fast-fail); `Number.POSITIVE_INFINITY` collects every error.                     |
+| `strictQueryParameters` | Reject undeclared query parameters. Default `false`.                                                                             |
+| `validateSecurity`      | `"off"` (default), `"shape"` (check recognized schemes; pass on oauth2/oidc/mTLS), or `"strict"` (fail on unrecognized schemes). |
+| `ignoreUndocumented`    | Return `null` on requests whose path the router can't match. Default `false`.                                                    |
+| `ignorePaths`           | `(path: string) => boolean` predicate that short-circuits validation when it returns `true` (runs before routing).               |
+| `onUnknownVersion`      | `"fallback31"` \| `"warn"` \| `"throw"` when `openapi` is missing or unsupported. Default `"fallback31"`.                        |
 
 ## Custom keywords
 
@@ -128,14 +131,16 @@ an end-to-end.
 ## Fast-fail / bounded error collection
 
 ```ts
-createValidator(spec, { maxErrors: 1 }); // stop after first leaf
+createValidator(spec); // default: stop after the first error
 createValidator(spec, { maxErrors: 10 }); // cap while still getting useful feedback
+createValidator(spec, { maxErrors: Number.POSITIVE_INFINITY }); // every error
 ```
 
-Hot loops (array items, object properties, `allOf` / `anyOf` branches)
-short-circuit once the budget is exhausted, so a 10 MB invalid payload
-doesn't cost proportional CPU or memory. Results carry `truncated:
-true` when the tree was capped.
+`maxErrors` is a per-call total across all locations (body, query,
+headers). Hot loops (array items, object properties, `allOf` / `anyOf`
+branches) short-circuit once the budget is exhausted, so a 10 MB invalid
+payload doesn't cost proportional CPU or memory. A failing result
+carries `truncated: true` when the cap was reached.
 
 ## Handling unknown `openapi` versions
 

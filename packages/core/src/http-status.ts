@@ -69,16 +69,21 @@ export const DEFAULT_HTTP_STATUS_MAP: HttpStatusMap = {
  *
  * @public
  */
-export function httpStatusFor(err: ValidationError, overrides?: Partial<HttpStatusMap>): number {
+export function httpStatusFor(
+  err: ValidationError | readonly ValidationError[],
+  overrides?: Partial<HttpStatusMap>,
+): number {
   const map =
     overrides === undefined
       ? DEFAULT_HTTP_STATUS_MAP
       : { ...DEFAULT_HTTP_STATUS_MAP, ...overrides };
-  if (err.code === "route") return map.route;
-  if (err.code === "method") return map.method;
-  // Dive into the wrapper for codes that never appear at the top level.
-  // Priority order matches the HTTP gate ladder: 401 before 415 before 500.
-  const leaves = collectLeaves(err);
+  // Accepts either a nested error tree or the flat leaf list the default
+  // (flat) validator returns. Scan leaves in HTTP-gate priority order
+  // (404 -> 405 -> 415 -> 401 -> 500 -> 400); `route` / `method` fire as
+  // standalone leaves, the rest as leaves anywhere in the report.
+  const leaves = Array.isArray(err) ? err : collectLeaves(err as ValidationError);
+  if (leaves.some((l) => l.code === "route")) return map.route;
+  if (leaves.some((l) => l.code === "method")) return map.method;
   if (leaves.some((l) => l.code === "security")) return map.security;
   if (leaves.some((l) => l.code === "content-type")) return map["content-type"];
   if (leaves.some((l) => l.code === "status")) return map.status;
@@ -98,9 +103,13 @@ export function httpStatusFor(err: ValidationError, overrides?: Partial<HttpStat
  *
  * @public
  */
-export function allowHeaderFor(err: ValidationError): string | undefined {
-  if (err.code !== "method") return undefined;
-  const allowed = (err.params as { allowed?: unknown }).allowed;
+export function allowHeaderFor(
+  err: ValidationError | readonly ValidationError[],
+): string | undefined {
+  const leaves = Array.isArray(err) ? err : collectLeaves(err as ValidationError);
+  const method = leaves.find((l) => l.code === "method");
+  if (method === undefined) return undefined;
+  const allowed = (method.params as { allowed?: unknown }).allowed;
   if (!Array.isArray(allowed)) return undefined;
   return allowed.join(", ");
 }

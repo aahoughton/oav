@@ -98,8 +98,11 @@ export interface ProblemDetailsOptions {
  *
  * @public
  */
-export function collectIssues(error: ValidationError): ValidationIssue[] {
-  return collectLeaves(error).map((leaf) => ({
+export function collectIssues(
+  error: ValidationError | readonly ValidationError[],
+): ValidationIssue[] {
+  const leaves = Array.isArray(error) ? error : collectLeaves(error as ValidationError);
+  return leaves.map((leaf) => ({
     code: leaf.code,
     path: leaf.path,
     pointer: toJsonPointer(leaf.path),
@@ -144,15 +147,18 @@ export function collectIssues(error: ValidationError): ValidationIssue[] {
  * @public
  */
 export function toProblemDetails(
-  error: ValidationError,
+  error: ValidationError | readonly ValidationError[],
   options: ProblemDetailsOptions = {},
 ): ProblemDetails {
   const issues = collectIssues(error);
+  // `detail` summarises the first failing leaf. For a flat leaf list
+  // that's the list head; for a tree it's the first leaf in tree order.
+  const summarySource = Array.isArray(error) ? error[0] : (error as ValidationError);
   const result: ProblemDetails = {
     type: options.type ?? "about:blank",
     title: options.title ?? "Validation failed",
     status: options.status ?? 400,
-    detail: options.detail ?? formatSummary(error),
+    detail: options.detail ?? (summarySource !== undefined ? formatSummary(summarySource) : ""),
     issues,
   };
   if (options.instance !== undefined) result.instance = options.instance;

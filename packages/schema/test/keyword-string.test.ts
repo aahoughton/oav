@@ -129,7 +129,11 @@ describe("string keywords", () => {
     const schema = await import("../src/index.js");
     const v = schema.compileSchema(
       { format: "email" },
-      { dialect: schema.openapi31Dialect, formats: { email: (s) => /@/.test(s) } },
+      {
+        dialect: schema.openapi31Dialect,
+        output: "tree",
+        formats: { email: (s) => /@/.test(s) },
+      },
     );
     expect(v.validate("x@y").valid).toBe(true);
     expect(v.validate("nope").valid).toBe(false);

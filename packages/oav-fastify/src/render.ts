@@ -3,11 +3,10 @@ import type { FastifyContext } from "./types.js";
 
 /**
  * The default `onError` for {@link validateRequests}. Renders the
- * validation tree as an RFC 9457 `application/problem+json` response:
+ * failing leaves as an RFC 9457 `application/problem+json` response:
  * status from {@link httpStatusFor}, `Allow` header from
  * {@link allowHeaderFor} on a 405, body from {@link toProblemDetails}
- * (whose `detail` is the first failing leaf via
- * {@link formatSummary}).
+ * (whose `detail` is the first failing leaf).
  *
  * Exported standalone for two cases:
  *
@@ -23,11 +22,11 @@ import type { FastifyContext } from "./types.js";
  *
  * @public
  */
-export function renderProblemDetails(err: ValidationError, ctx: FastifyContext): void {
-  const allow = allowHeaderFor(err);
+export function renderProblemDetails(errors: ValidationError[], ctx: FastifyContext): void {
+  const allow = allowHeaderFor(errors);
   if (allow !== undefined) ctx.reply.header("Allow", allow);
   ctx.reply
-    .code(httpStatusFor(err))
+    .code(httpStatusFor(errors))
     .type("application/problem+json")
-    .send(toProblemDetails(err, { instance: ctx.request.url }));
+    .send(toProblemDetails(errors, { instance: ctx.request.url }));
 }

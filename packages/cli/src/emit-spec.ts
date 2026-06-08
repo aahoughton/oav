@@ -108,7 +108,16 @@ export function emitSpec(document: OpenAPIDocument, options: EmitSpecOptions = {
   const named = (schema: SchemaOrBoolean): string => {
     const existing = schemaNames.get(schema);
     if (existing !== undefined) return existing;
-    const c = compileSchema(schema, { dialect, refResolver, formats: builtInFormats });
+    // Mirror @oav/validator's runtime contract: the emitted module nests
+    // per-location error subtrees, so each schema compiles in tree mode
+    // with uncapped errors, independent of the v3 flat/maxErrors:1 default.
+    const c = compileSchema(schema, {
+      dialect,
+      refResolver,
+      formats: builtInFormats,
+      output: "tree",
+      maxErrors: Number.POSITIVE_INFINITY,
+    });
     const name = `S${compiled.length}`;
     compiled.push({ name, source: c.source });
     schemaNames.set(schema, name);

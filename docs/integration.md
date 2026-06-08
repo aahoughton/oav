@@ -61,39 +61,45 @@ interface HttpResponse {
 }
 ```
 
-Both methods return `null` on success or a `ValidationError` tree on
-failure. The top-level node's `code` is `"request"` or `"response"`;
-children hang off `body`, `query.<name>`, `headers.<name>`, etc.
+Both methods return a result object: `{ valid: true }` on success, or
+`{ valid: false, errors, truncated }` on failure. By default `errors`
+is a flat `ValidationError[]` (one entry per failing leaf), and
+`truncated` indicates whether the error budget cut the list short. Each
+error's `code`, dotted path, and pointer locate the failure under
+`body`, `query.<name>`, `headers.<name>`, etc.
 
 ## Supporting helpers
 
 All shipped from `oav` (or `oav-core` for the
 lean install). The recipes below assume these are in scope.
 
-- **`httpStatusFor(err, overrides?)`**: maps a `ValidationError`
-  tree to an HTTP status: `route` → 404, `method` → 405, `security`
+`httpStatusFor`, `allowHeaderFor`, `toProblemDetails`, and
+`collectIssues` each accept either a single `ValidationError` tree or
+a flat `ValidationError[]`, so `result.errors` passes straight through.
+
+- **`httpStatusFor(errors, overrides?)`**: maps the failure to an
+  HTTP status: `route` → 404, `method` → 405, `security`
   (leaf) → 401, `content-type` (leaf) → 415, `status` (leaf) → 500,
   everything else → 400. Pass `{ default: 422 }` (or any other key)
-  to override a slot. The helper inspects the tree correctly:
+  to override a slot. The helper inspects the failure correctly:
   writing this switch by hand is a common mistake, because
   `"content-type"` / `"security"` / `"status"` appear as leaves
-  under a top-level `"request"` / `"response"` branch, not as
-  `err.code` directly.
+  under a top-level `"request"` / `"response"` branch, not as a
+  top-level `code` directly.
 
-- **`allowHeaderFor(err)`**: returns the `Allow` header value for a
+- **`allowHeaderFor(errors)`**: returns the `Allow` header value for a
   405 (RFC 9110 §15.5.6 requires it) or `undefined` otherwise.
 
-- **`toProblemDetails(err, opts?)`**: renders the error tree as an
+- **`toProblemDetails(errors, opts?)`**: renders the failure as an
   [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457.html)
   `application/problem+json` body with the failing leaves carried in
   an `issues` field (a non-standard field alongside the required
-  ones). The `detail` field defaults to `formatSummary(err)` (a
-  one-line description of the first failing leaf); pass `detail`
-  explicitly for an override.
+  ones). The `detail` field defaults to a one-line description of the
+  first failing leaf; pass `detail` explicitly for an override.
 
-- **`formatSummary(err, opts?)`**: render the error tree as a
-  string. Default is a single line summarising the first failing
-  leaf as `<dotted-path> <message>`; use it for log lines,
+- **`formatSummary(err, opts?)`**: render a single `ValidationError`
+  tree as a string. Default is a single line summarising the first
+  failing leaf as `<dotted-path> <message>`; use it for log lines,
   error-monitoring titles (Sentry/New Relic group by message), or
   as the top-level `message` field in custom response envelopes.
   Pass `{ select: "all" }` for a multi-line enumeration of every
@@ -101,7 +107,7 @@ lean install). The recipes below assume these are in scope.
   See `FormatSummaryOptions.select` for the full policy
   (`"first"` / `"deepest"` / `"all"` / `{ byCode }`).
 
-- **`collectIssues(err)`**: flat leaf list. Each issue carries both
+- **`collectIssues(errors)`**: flat leaf list. Each issue carries both
   a raw `path: PathSegment[]` and a pre-formatted RFC 6901 `pointer`
   string. Use this when you're keeping a custom envelope shape
   rather than RFC 9457 problem-details.
@@ -134,7 +140,7 @@ Defaults: status from `httpStatusFor`, `Allow` header from
 `allowHeaderFor` on 405, body from `toProblemDetails` (RFC 9457
 `application/problem+json`). The package also exports
 `httpRequestFromExpress(req)` (the extractor) and
-`renderProblemDetails(err, ctx)` (the default renderer) standalone,
+`renderProblemDetails(errors, ctx)` (the default renderer) standalone,
 for callers composing their own middleware. See the
 [adapter README](https://github.com/aahoughton/oav/blob/main/packages/oav-express4/README.md)
 for the options (`toHttpRequest`, `onError`), async `onError`
@@ -150,7 +156,7 @@ automatically. Wrap in `try/catch`:
 ```ts
 app.use((req, res, next) => {
   try {
-    const err = validator.validateRequest({
+    const result = validator.validateRequest({
       method: req.method,
       path: req.path,
       query: req.query as Record<string, string | string[]>,
@@ -159,13 +165,13 @@ app.use((req, res, next) => {
       body: req.body,
       cookies: req.cookies,
     });
-    if (err === null) return next();
-    const allow = allowHeaderFor(err);
+    if (result.valid) return next();
+    const allow = allowHeaderFor(result.errors);
     if (allow !== undefined) res.setHeader("Allow", allow);
     res
-      .status(httpStatusFor(err))
+      .status(httpStatusFor(result.errors))
       .type("application/problem+json")
-      .json(toProblemDetails(err, { instance: req.originalUrl }));
+      .json(toProblemDetails(result.errors, { instance: req.originalUrl }));
   } catch (e) {
     next(e);
   }
@@ -200,7 +206,7 @@ handler automatically.
 
 ```ts
 app.use(async (req, res, next) => {
-  const err = validator.validateRequest({
+  const result = validator.validateRequest({
     method: req.method,
     path: req.path,
     query: req.query as Record<string, string | string[]>,
@@ -209,13 +215,13 @@ app.use(async (req, res, next) => {
     body: req.body,
     cookies: req.cookies,
   });
-  if (err === null) return next();
-  const allow = allowHeaderFor(err);
+  if (result.valid) return next();
+  const allow = allowHeaderFor(result.errors);
   if (allow !== undefined) res.setHeader("Allow", allow);
   res
-    .status(httpStatusFor(err))
+    .status(httpStatusFor(result.errors))
     .type("application/problem+json")
-    .json(toProblemDetails(err, { instance: req.originalUrl }));
+    .json(toProblemDetails(result.errors, { instance: req.originalUrl }));
 });
 ```
 
@@ -256,7 +262,7 @@ but before the route handler.
 ```ts
 fastify.addHook("preValidation", async (request, reply) => {
   const url = new URL(request.url, `http://${request.headers.host ?? "localhost"}`);
-  const err = validator.validateRequest({
+  const result = validator.validateRequest({
     method: request.method,
     path: url.pathname,
     query: Object.fromEntries(url.searchParams.entries()),
@@ -264,13 +270,13 @@ fastify.addHook("preValidation", async (request, reply) => {
     contentType: request.headers["content-type"],
     body: request.body,
   });
-  if (err !== null) {
-    const allow = allowHeaderFor(err);
+  if (!result.valid) {
+    const allow = allowHeaderFor(result.errors);
     if (allow !== undefined) reply.header("Allow", allow);
     return reply
-      .code(httpStatusFor(err))
+      .code(httpStatusFor(result.errors))
       .type("application/problem+json")
-      .send(toProblemDetails(err, { instance: request.url }));
+      .send(toProblemDetails(result.errors, { instance: request.url }));
   }
 });
 ```
@@ -312,11 +318,11 @@ type CreatePet = { name: string; tag?: string };
 export async function POST(request: Request) {
   const result = await validator.validateFetchRequest<CreatePet>(request);
   if (!result.ok) {
-    const allow = allowHeaderFor(result.error);
+    const allow = allowHeaderFor(result.errors);
     const headers: Record<string, string> = { "Content-Type": "application/problem+json" };
     if (allow !== undefined) headers["Allow"] = allow;
-    return Response.json(toProblemDetails(result.error, { instance: request.url }), {
-      status: httpStatusFor(result.error),
+    return Response.json(toProblemDetails(result.errors, { instance: request.url }), {
+      status: httpStatusFor(result.errors),
       headers,
     });
   }
@@ -358,12 +364,12 @@ export const config = {
 export async function middleware(request: NextRequest) {
   const result = await validator.validateFetchRequest(request);
   if (result.ok) return NextResponse.next();
-  const allow = allowHeaderFor(result.error);
+  const allow = allowHeaderFor(result.errors);
   const headers: Record<string, string> = { "Content-Type": "application/problem+json" };
   if (allow !== undefined) headers["Allow"] = allow;
   return new NextResponse(
-    JSON.stringify(toProblemDetails(result.error, { instance: request.url })),
-    { status: httpStatusFor(result.error), headers },
+    JSON.stringify(toProblemDetails(result.errors, { instance: request.url })),
+    { status: httpStatusFor(result.errors), headers },
   );
 }
 ```
@@ -383,7 +389,7 @@ import { httpRequestFromFetch } from "@aahoughton/oav";
 
 const { httpRequest } = await httpRequestFromFetch(request);
 // Mutate httpRequest.body however you need, then:
-const err = validator.validateRequest(httpRequest);
+const result = validator.validateRequest(httpRequest);
 ```
 
 **Hono, cross-cutting alternative.** `app.use('*', mw)` can host
@@ -431,7 +437,7 @@ const request = new Request(upstreamUrl);
 const response = await fetch(request);
 const result = await validator.validateFetchResponse<PetList>(request, response);
 if (!result.ok) {
-  log.warn("upstream returned a response the spec doesn't declare", result.error);
+  log.warn("upstream returned a response the spec doesn't declare", result.errors);
 }
 // result.body is the parsed response body, typed as PetList on success.
 ```
@@ -633,8 +639,8 @@ client. Two override points are exposed: pass `detail` to
 ```ts
 import { httpStatusFor, toProblemDetails, type ValidationError } from "@aahoughton/oav";
 
-function safeProblemDetails(err: ValidationError, instance: string) {
-  const pd = toProblemDetails(err, { instance });
+function safeProblemDetails(errors: ValidationError[], instance: string) {
+  const pd = toProblemDetails(errors, { instance });
   return {
     ...pd,
     // Structural summary; nothing about the offending value reaches detail.
@@ -646,11 +652,11 @@ function safeProblemDetails(err: ValidationError, instance: string) {
 
 app.use(
   validateRequests(validator, {
-    onError: (err, ctx) => {
+    onError: (errors, ctx) => {
       ctx.res
-        .status(httpStatusFor(err))
+        .status(httpStatusFor(errors))
         .type("application/problem+json")
-        .json(safeProblemDetails(err, ctx.req.originalUrl));
+        .json(safeProblemDetails(errors, ctx.req.originalUrl));
     },
   }),
 );
@@ -671,14 +677,14 @@ starting point.
 Migrating an existing service may mean a documented client
 contract you can't change without breaking callers. Keep your
 envelope, fill it from `collectIssues` (per-issue path,
-message, code) plus `formatSummary` (top-level summary) plus
+message, code), an error count for the top-level summary, and
 `httpStatusFor` (status). Don't walk the tree by hand; the helpers
 already do the right thing for nested branches, route/method
 top-levels, and security/content-type leaves under `request` /
 `response` wrappers.
 
 ```ts
-import { collectIssues, formatSummary, httpStatusFor, type ValidationError } from "@aahoughton/oav";
+import { collectIssues, httpStatusFor, type ValidationError } from "@aahoughton/oav";
 
 // .. or whatever your clients already parse.
 type ClientError = {
@@ -686,10 +692,10 @@ type ClientError = {
   errors: Array<{ path: string; message: string; errorCode: string }>;
 };
 
-function toClientError(err: ValidationError): ClientError {
+function toClientError(errors: ValidationError[]): ClientError {
   return {
-    message: formatSummary(err),
-    errors: collectIssues(err).map((issue) => ({
+    message: `${errors.length} validation error(s)`,
+    errors: collectIssues(errors).map((issue) => ({
       path: issue.pointer, // RFC 6901, e.g. "/body/email"
       message: issue.message,
       errorCode: issue.code, // bare code, e.g. "required"
@@ -699,8 +705,8 @@ function toClientError(err: ValidationError): ClientError {
 
 app.use(
   validateRequests(validator, {
-    onError: (err, ctx) => {
-      ctx.res.status(httpStatusFor(err)).json(toClientError(err));
+    onError: (errors, ctx) => {
+      ctx.res.status(httpStatusFor(errors)).json(toClientError(errors));
     },
   }),
 );
@@ -711,7 +717,7 @@ and `email: "not-an-email"` (fails `format: email`), the response would be:
 
 ```json
 {
-  "message": "body.age must be <= 30",
+  "message": "2 validation error(s)",
   "errors": [
     {
       "path": "/body/age",
@@ -807,18 +813,18 @@ app.post("/avatar", upload.any(), async (req, res, next) => {
   const files = Object.fromEntries(
     ((req.files as Express.Multer.File[]) ?? []).map((f) => [f.fieldname, f.buffer]),
   );
-  const err = validator.validateRequest({
+  const result = validator.validateRequest({
     method: req.method,
     path: req.path,
     contentType: req.get("content-type"),
     headers: req.headers as Record<string, string | string[]>,
     body: { ...req.body, ...files },
   });
-  if (err !== null) {
+  if (!result.valid) {
     return res
-      .status(httpStatusFor(err))
+      .status(httpStatusFor(result.errors))
       .type("application/problem+json")
-      .json(toProblemDetails(err, { instance: req.originalUrl }));
+      .json(toProblemDetails(result.errors, { instance: req.originalUrl }));
   }
   // handler uses req.body + req.files as normal
 });
@@ -977,7 +983,7 @@ body shape you've already built:
 
 ```ts
 const body = await myCustomStreamingPipeline(request);
-const err = validator.validateRequest({
+const result = validator.validateRequest({
   method: request.method,
   path: new URL(request.url).pathname,
   contentType: request.headers.get("content-type") ?? undefined,
@@ -1009,12 +1015,12 @@ app.get("/pets/:id", async (req, res) => {
   const body = pet ?? { error: "not found" };
   const status = pet ? 200 : 404;
 
-  const err = validator.validateResponse(
+  const result = validator.validateResponse(
     { method: req.method, path: req.path },
     { status, contentType: "application/json", body },
   );
-  if (err !== null) {
-    log.warn("response validation failed", { path: req.path, err });
+  if (!result.valid) {
+    log.warn("response validation failed", { path: req.path, errors: result.errors });
   }
   res.status(status).json(body);
 });
@@ -1027,14 +1033,14 @@ auto-interception behavior for every response:
 app.use((req, res, next) => {
   const json = res.json.bind(res);
   res.json = (body) => {
-    const err = validator.validateResponse(
+    const result = validator.validateResponse(
       { method: req.method, path: req.path },
       { status: res.statusCode, contentType: "application/json", body },
     );
-    if (err !== null) {
+    if (!result.valid) {
       // Default: log + send anyway. See "Failure mode" below.
       res.setHeader("X-Response-Validation", "failed");
-      log.warn("response validation failed", { path: req.path, err });
+      log.warn("response validation failed", { path: req.path, errors: result.errors });
     }
     return json(body);
   };
@@ -1071,10 +1077,10 @@ budget burns for free.
    period, you can flip the policy in your `res.json` wrapper:
 
    ```ts
-   if (err !== null) {
-     log.error("response validation failed (hard)", { path: req.path, err });
+   if (!result.valid) {
+     log.error("response validation failed (hard)", { path: req.path, errors: result.errors });
      res.statusCode = 500;
-     return json(toProblemDetails(err, { instance: req.originalUrl }));
+     return json(toProblemDetails(result.errors, { instance: req.originalUrl }));
    }
    ```
 
@@ -1230,11 +1236,11 @@ back to the manual pattern:
 
 ```ts
 app.use(async (req, res, next) => {
-  const err = validator.validateRequest({
+  const result = validator.validateRequest({
     /* ... */
   });
-  if (err === null) return next();
-  if (err.code === "route") return next(); // unvalidated path, let routing continue
+  if (result.valid) return next();
+  if (result.errors.some((e) => e.code === "route")) return next(); // unvalidated path, let routing continue
   // ... 4xx response as usual
 });
 ```

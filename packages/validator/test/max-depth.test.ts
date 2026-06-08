@@ -1,6 +1,6 @@
 import { collectLeaves, httpStatusFor, type OpenAPIDocument } from "@oav/core";
 import { describe, expect, it } from "vitest";
-import { createValidator } from "../src/validator.js";
+import { createValidator } from "./fixtures.js";
 
 // A spec whose request body is a self-recursive `Node` (tree shape).
 function treeSpec(): OpenAPIDocument {

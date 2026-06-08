@@ -50,6 +50,11 @@ function fakeRequest(overrides: Partial<FastifyRequest>): FastifyRequest {
 describe("validateRequests", () => {
   const v = createValidator(petSpec());
 
+  it("rejects a predicate-mode validator at construction", () => {
+    const predicate = createValidator(petSpec(), { output: "predicate" });
+    expect(() => validateRequests(predicate as never)).toThrow(/predicate-mode/);
+  });
+
   it("resolves without sending for a valid request", async () => {
     const hook = validateRequests(v);
     const reply = fakeReply();
@@ -105,8 +110,9 @@ describe("validateRequests", () => {
       () => {},
     );
     expect(onError).toHaveBeenCalledTimes(1);
-    const [err, ctx] = onError.mock.calls[0]!;
-    expect((err as ValidationError).code).toBe("request");
+    const [errors, ctx] = onError.mock.calls[0]!;
+    expect(Array.isArray(errors)).toBe(true);
+    expect((errors as ValidationError[]).length).toBeGreaterThan(0);
     expect(ctx).toMatchObject({ reply });
     expect(reply.code).not.toHaveBeenCalled();
     expect(reply.send).not.toHaveBeenCalled();

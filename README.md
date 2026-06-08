@@ -19,10 +19,10 @@ openapi.yaml` emits a single zero-dependency ES module exposing
 "POST /pets"` (repeatable) scopes the output to specific
   operations without touching the source spec.
 
-Errors come back as a typed tree (`code`, `path`, `message`,
-`params`, `children`). One validator call covers the full HTTP
-frame: method, path, parameters, body, content type, status, and
-headers.
+Errors come back as a flat list of typed leaves (`code`, `path`,
+`message`, `params`) by default, or a nested tree on request. One
+validator call covers the full HTTP frame: method, path, parameters,
+body, content type, status, and headers.
 
 If you only need generic JSON Schema validation across many drafts,
 start with Ajv. If you want a one-line Express middleware with file
@@ -103,7 +103,7 @@ const { document } = await loadSpec({
 });
 const validator = createValidator(document);
 
-const err = validator.validateRequest({
+const result = validator.validateRequest({
   method: "POST",
   path: "/pets",
   contentType: "application/json",
@@ -111,19 +111,23 @@ const err = validator.validateRequest({
   body: { name: "Fido" },
 });
 
-if (err !== null) console.error(formatText(err));
+if (!result.valid) console.error(formatText(result.errors));
 ```
 
 For a multi-file spec or a spec hosted over HTTP, compose readers:
 `composeReaders([createYamlFileReader(), createSmartHttpReader(), createFileReader()])`
 handles local YAML, remote JSON / YAML, and local JSON transparently.
 
-`validateRequest` / `validateResponse` return `null` on success or a
-`ValidationError` tree on failure. Every error carries a stable `code`
-(e.g. `"type"`, `"required"`, `"content-type"`, `"oneOf"`), a `path`
-rooted at the HTTP frame (e.g. `["body", "pets", 3, "name"]`), a
-human-readable `message`, and a machine-readable `params` object whose
-shape per code is documented in `BuiltInErrorParams`.
+`validateRequest` / `validateResponse` return `{ valid: true }` on
+success, or `{ valid: false, errors, truncated }` on failure. The
+zero-config default is a flat `errors` list that stops at the first
+problem (`maxErrors: 1`), matching Ajv's defaults; raise `maxErrors` to
+collect more, or pass `output: "tree"` for a nested error tree under
+`error` (or `output: "predicate"` for a bare boolean). Every error
+carries a stable `code` (e.g. `"type"`, `"required"`, `"content-type"`,
+`"oneOf"`), a `path` rooted at the HTTP frame (e.g. `["body", "pets", 3,
+"name"]`), a human-readable `message`, and a machine-readable `params`
+object whose shape per code is documented in `BuiltInErrorParams`.
 
 Runnable end-to-end demos in [`examples/`](./examples/README.md):
 custom formats, custom keywords, cross-field constraints, error
@@ -207,28 +211,30 @@ hardware will vary.
 
 **Compile: oav is meaningfully faster.**
 
-|                                            | Ajv   | oav       |
-| ------------------------------------------ | ----- | --------- |
-| Single synthetic schema (varies by shape)  | ~6 ms | 25–200 µs |
-| Real-world spec (petstore-31, ~10 schemas) | 27 ms | 1.6 ms    |
+|                                            | Ajv     | oav       |
+| ------------------------------------------ | ------- | --------- |
+| Single synthetic schema (varies by shape)  | ~2.7 ms | 15–200 µs |
+| Real-world spec (petstore-31, ~10 schemas) | 27 ms   | 1.6 ms    |
 
 Ajv compile is essentially constant overhead per schema; oav scales
-with shape. The advantage shows up wherever validator construction
-sits in the hot path: per-request, per-tenant, per-test, edge
-cold-start, AOT module emit.
+with shape, running 20–175× faster across the synthetic shapes and
+~5–8× on real-world specs (Stripe, Adyen). The advantage shows up
+wherever validator construction sits in the hot path: per-request,
+per-tenant, per-test, edge cold-start, AOT module emit.
 
-**Validate: roughly tied on simple shapes; Ajv wins on complex.**
+**Validate: close on typical shapes at matched defaults.**
 
-Both libraries are sub-microsecond per check on typical OpenAPI
-bodies. On complex `oneOf`/`allOf` or large arrays, Ajv leads by
-2–4× (say 100 ns to 400 ns per call, or 1.7 µs to 4 µs); oav leads
-on `uniqueItems` arrays and length-bounded strings. oav's
-`predicate` mode (`compileSchema(..., { predicate: true })`) closes
-most of Ajv's lead on the complex shapes for yes/no use cases.
+Comparing each library's zero-config default (oav flat + `maxErrors: 1`
+against Ajv `allErrors: false`, both stopping at the first error): the
+two are within ~25% on typical request bodies (small objects, recursive
+trees, large arrays). Ajv leads by ~2.5× on `oneOf` / `allOf` rejection,
+where oav materialises the composition error; oav's `predicate` mode
+(`compileSchema(..., { output: "predicate" })`) reaches parity there.
+oav leads ~1.6–3× on `uniqueItems` arrays.
 
 For typical HTTP workloads (1k–10k req/sec × ~1 validation per
-request), the difference is invisible at any of those numbers. For
-validation-heavy code (millions of validations per second), Ajv wins.
+request), the difference is invisible. For validation-heavy code
+(millions of validations per second), measure your own shapes.
 
 Full per-shape breakdown: [`docs/comparison.md`](./docs/comparison.md). Raw
 benchmark data and methodology:
@@ -322,7 +328,7 @@ inline Express 5 adapter is about this long:
 import { allowHeaderFor, httpStatusFor, toProblemDetails } from "@aahoughton/oav";
 
 app.use(async (req, res, next) => {
-  const err = validator.validateRequest({
+  const result = validator.validateRequest({
     method: req.method,
     path: req.path,
     query: req.query as Record<string, string | string[]>,
@@ -330,15 +336,19 @@ app.use(async (req, res, next) => {
     contentType: req.get("content-type") ?? undefined,
     body: req.body,
   });
-  if (err === null) return next();
-  const allow = allowHeaderFor(err);
+  if (result.valid) return next();
+  const allow = allowHeaderFor(result.errors);
   if (allow !== undefined) res.setHeader("Allow", allow);
   res
-    .status(httpStatusFor(err))
+    .status(httpStatusFor(result.errors))
     .type("application/problem+json")
-    .json(toProblemDetails(err, { instance: req.originalUrl }));
+    .json(toProblemDetails(result.errors, { instance: req.originalUrl }));
 });
 ```
+
+`httpStatusFor`, `allowHeaderFor`, and `toProblemDetails` accept either
+the flat `errors` list or a tree `error`, so this wiring is the same
+whichever `output` the validator uses.
 
 Companion adapter packages cover common request-validation wiring:
 [`oav-express4`](./packages/oav-express4/README.md),
@@ -358,8 +368,8 @@ The adapters cover request validation; response validation, auth
 dispatch, upload parsing, and custom error envelopes stay explicit in
 your application. In return, the validator does not mutate `req` or
 `res`, OpenAPI 3.0 behavior is built into the dialect, and failures
-come back as structured error trees rather than framework-specific
-error classes.
+come back as structured errors (a flat list by default, a nested tree
+on request) rather than framework-specific error classes.
 
 ## Known limitations
 

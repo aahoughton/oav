@@ -27,6 +27,10 @@ export interface ExpressContext {
  * awaits the return; rejected promises propagate through Express 5's
  * native promise handling to the host's error middleware.
  *
+ * `errors` is the flat list of failing leaves, regardless of the
+ * validator's `output` mode (a tree validator's result is flattened
+ * before the handler is called).
+ *
  * @public
  */
-export type ErrorHandler<Ctx> = (err: ValidationError, ctx: Ctx) => void | Promise<void>;
+export type ErrorHandler<Ctx> = (errors: ValidationError[], ctx: Ctx) => void | Promise<void>;

@@ -52,7 +52,7 @@ const missing = v.validateRequest({
   body: { name: "Fido" },
 });
 console.log("POST /pets without `vaccinated`:");
-if (missing !== null) console.log(formatText(missing));
+if (!missing.valid) console.log(formatText(missing.errors));
 
 // With vaccinated: clean.
 const ok = v.validateRequest({
@@ -61,4 +61,4 @@ const ok = v.validateRequest({
   contentType: "application/json",
   body: { name: "Fido", vaccinated: true },
 });
-console.log("\nPOST /pets with `vaccinated: true` →", ok === null ? "ok" : "FAIL");
+console.log("\nPOST /pets with `vaccinated: true` →", ok.valid ? "ok" : "FAIL");

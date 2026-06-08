@@ -102,6 +102,7 @@ describe("createValidator forwards regexCompiler", () => {
       contentType: "application/json",
       body: { sku: "OAV-42" },
     });
-    expect(err).not.toBeNull();
+    expect(err.valid).toBe(false);
+    if (!err.valid) expect(err.errors.some((e) => e.code === "pattern")).toBe(true);
   });
 });

@@ -25,7 +25,12 @@ describe("custom keywords", () => {
       typeof data !== "number" || data % (schemaValue as number) === 0;
     const compiled = compileSchema(
       { type: "integer", divisibleBy: 7 } as unknown as Record<string, unknown>,
-      { dialect: baseDialect, keywords: { divisibleBy } },
+      {
+        dialect: baseDialect,
+        output: "tree",
+        maxErrors: Number.POSITIVE_INFINITY,
+        keywords: { divisibleBy },
+      },
     );
     expect(compiled.validate(14).valid).toBe(true);
     expect(compiled.validate(21).valid).toBe(true);
@@ -53,7 +58,12 @@ describe("custom keywords", () => {
           b: { type: "string", myKw: { check: "b" } },
         },
       } as unknown as Record<string, unknown>,
-      { dialect: baseDialect, keywords: { myKw: recorder } },
+      {
+        dialect: baseDialect,
+        output: "tree",
+        maxErrors: Number.POSITIVE_INFINITY,
+        keywords: { myKw: recorder },
+      },
     );
     compiled.validate({ a: "x", b: "y" });
     expect(received).toHaveLength(2);
@@ -72,7 +82,12 @@ describe("custom keywords", () => {
     };
     const compiled = compileSchema(
       { type: "string", noSpaces: true } as unknown as Record<string, unknown>,
-      { dialect: baseDialect, keywords: { noSpaces: fn } },
+      {
+        dialect: baseDialect,
+        output: "tree",
+        maxErrors: Number.POSITIVE_INFINITY,
+        keywords: { noSpaces: fn },
+      },
     );
     expect(compiled.validate("ok").valid).toBe(true);
     const bad = compiled.validate("has spaces");
@@ -100,7 +115,7 @@ describe("custom keywords", () => {
         type: "array",
         items: { type: "string", alwaysBad: true },
       } as unknown as Record<string, unknown>,
-      { dialect: baseDialect, keywords: { alwaysBad: always }, maxErrors: 2 },
+      { dialect: baseDialect, output: "tree", keywords: { alwaysBad: always }, maxErrors: 2 },
     );
     const res = compiled.validate(["a", "b", "c", "d", "e"]);
     expect(res.valid).toBe(false);

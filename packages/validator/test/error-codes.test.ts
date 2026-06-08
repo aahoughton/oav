@@ -5,7 +5,7 @@ import {
   type ValidationError,
 } from "@oav/core";
 import { describe, expect, it } from "vitest";
-import { createValidator } from "../src/index.js";
+import { createValidator } from "./fixtures.js";
 
 /**
  * Cross-check between actual emitted error codes and the documented

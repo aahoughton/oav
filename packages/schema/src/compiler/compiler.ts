@@ -209,44 +209,75 @@ function runStrictLint(
 }
 
 /**
- * Result of compiling a JSON Schema 2020-12 document. The shape mirrors what
- * the user-facing validator in `@oav/validator` wants: a `{ valid, error? }`
- * object.
+ * Result of a default-mode `validate()` call: a flat list of leaf
+ * errors under `errors`. This is the v3 default (`output: "flat"`),
+ * shaped to match ajv's zero-config result. Every failing leaf keyword
+ * (`type`, `required`, `minimum`, …) is its own record, plus a childless
+ * marker leaf for each failed composition keyword (`anyOf` / `oneOf`);
+ * no `"schema"` branch wrappers. Each record is a {@link ValidationError}
+ * with an empty `children`, so the `@oav/core` renderers consume it
+ * unchanged. For the nested error tree, compile with `output: "tree"`
+ * and see {@link TreeValidationResult}.
+ *
+ * A discriminated union on `valid`: a successful result carries no error
+ * fields; a failing result always carries both `errors` (the flat leaf
+ * list, non-empty) and `truncated`. Narrow on `result.valid` to reach
+ * the error fields. The narrowing also makes a mistaken `result.error`
+ * access (the tree-mode field) a compile error rather than a silent
+ * `undefined`.
  *
  * @public
  */
-export interface ValidationResult {
-  valid: boolean;
-  error?: ValidationError;
-  /**
-   * `true` when at least one error was dropped because the configured
-   * `maxErrors` cap was hit. Only ever set on `{ valid: false }` results.
-   */
-  truncated?: boolean;
-}
+export type ValidationResult =
+  | { valid: true }
+  | {
+      valid: false;
+      /** The flat list of leaf errors. Always non-empty when `!valid`. */
+      errors: ValidationError[];
+      /**
+       * `true` when at least one error was dropped because the configured
+       * `maxErrors` cap was hit. The v3 default is `maxErrors: 1`, so a
+       * payload with more than one problem reports `truncated: true`;
+       * `false` when the list is complete.
+       */
+      truncated: boolean;
+    };
 
 /**
- * Result of a flat-mode (`flat: true`) `validate()` call. Where the
- * default mode returns a single nested {@link ValidationError} tree
- * under `error`, flat mode returns a de-nested list of leaf errors under
- * `errors`: every failing leaf keyword (`type`, `required`, `minimum`, …)
- * as its own record, plus a childless marker leaf for each failed
- * composition keyword (`anyOf` / `oneOf`). No `"schema"` branch
- * wrappers. Each record is a {@link ValidationError} with an empty
- * `children`, so the `@oav/core` renderers still consume it.
+ * Result of a tree-mode (`output: "tree"`) `validate()` call: a single
+ * nested {@link ValidationError} tree under `error`, with `"schema"`
+ * branch nodes mirroring the schema's composition structure. The opt-in
+ * counterpart to the flat {@link ValidationResult} default. The HTTP
+ * validator in `@oav/validator` compiles in this mode so it can nest
+ * per-location subtrees (`body`, `query`, …) under one root.
+ *
+ * A discriminated union on `valid`: a successful result carries no error
+ * fields; a failing result always carries both `error` (the tree root)
+ * and `truncated`.
  *
  * @public
  */
-export interface FlatValidationResult {
-  valid: boolean;
-  /** The flat list of leaf errors. Present (and non-empty) iff `!valid`. */
-  errors?: ValidationError[];
-  /**
-   * `true` when at least one error was dropped because the configured
-   * `maxErrors` cap was hit. Only ever set on `{ valid: false }` results.
-   */
-  truncated?: boolean;
-}
+export type TreeValidationResult =
+  | { valid: true }
+  | {
+      valid: false;
+      /** The root of the nested error tree. Always present when `!valid`. */
+      error: ValidationError;
+      /**
+       * `true` when at least one error was dropped because the configured
+       * `maxErrors` cap was hit; `false` when the tree is complete.
+       */
+      truncated: boolean;
+    };
+
+/**
+ * @deprecated Renamed to {@link ValidationResult} now that flat is the
+ * default error shape (v3). This alias is kept for one major and will be
+ * removed in v4. Update imports to `ValidationResult`.
+ *
+ * @public
+ */
+export type FlatValidationResult = ValidationResult;
 
 /**
  * Compile-time statistics about the generated validator. Exposed so
@@ -355,8 +386,25 @@ export type CompiledSchema = {
 };
 
 /**
- * The shape returned by {@link compileSchema} when `predicate: true` is
- * set. The validator collects no errors, allocates no tree, and
+ * The shape returned by {@link compileSchema} when `output: "tree"` is
+ * set. Same `validate(data, startPath?)` signature as
+ * {@link CompiledSchema}, but returns a {@link TreeValidationResult} (a
+ * single nested error tree) instead of the flat default. See
+ * {@link CompileOptions.output}.
+ *
+ * @public
+ */
+export type CompiledTreeSchema = {
+  validate: (data: unknown, startPath?: readonly PathSegment[]) => TreeValidationResult;
+  /** The generated source. Exposed for debugging/snapshot testing only. */
+  source: string;
+  /** Compile-time stats about the generated validator. */
+  stats: CompileStats;
+};
+
+/**
+ * The shape returned by {@link compileSchema} when `output: "predicate"`
+ * is set. The validator collects no errors, allocates no tree, and
  * returns a boolean: a true yes/no predicate. Use when consumers only
  * need to know whether the value conforms (e.g. routing, gating), not
  * why it doesn't.
@@ -372,21 +420,14 @@ export type CompiledPredicate = {
 };
 
 /**
- * The shape returned by {@link compileSchema} when `flat: true` is set.
- * Same `validate(data, startPath?)` signature as {@link CompiledSchema},
- * but returns a {@link FlatValidationResult} (a flat leaf list) instead
- * of a nested error tree. See {@link FlatValidationResult} for the
- * trade-off and {@link CompileOptions.flat}.
+ * @deprecated Flat is the default error shape now (v3), so the default
+ * {@link CompiledSchema} already returns a flat {@link ValidationResult}.
+ * This alias is kept for one major and will be removed in v4. Drop the
+ * `flat: true` option and use `CompiledSchema`.
  *
  * @public
  */
-export type CompiledFlatSchema = {
-  validate: (data: unknown, startPath?: readonly PathSegment[]) => FlatValidationResult;
-  /** The generated source. Exposed for debugging/snapshot testing only. */
-  source: string;
-  /** Compile-time stats about the generated validator. */
-  stats: CompileStats;
-};
+export type CompiledFlatSchema = CompiledSchema;
 
 /**
  * Options accepted by {@link compileSchema}.
@@ -397,9 +438,8 @@ export type CompiledFlatSchema = {
  *
  *   1. Compile essentials: `dialect`.
  *   2. Shared extension points: `formats`, `keywords`.
- *   3. Error-collection policy: `maxErrors`.
- *   4. Surface-specific extras last: here, `external`, `refResolver`,
- *      `predicate`.
+ *   3. Error-collection policy: `output`, `maxErrors`.
+ *   4. Surface-specific extras last: here, `external`, `refResolver`.
  *
  * Options common to both surfaces share names and positions so a
  * reader of one declaration can predict the other. When adding a new
@@ -444,22 +484,53 @@ export interface CompileOptions {
   // --- 3. Error-collection policy ---
 
   /**
+   * What `validate()` returns. Selects the result shape:
+   *
+   * - `"flat"` (default): a {@link ValidationResult}: `{ valid }` plus,
+   *   on failure, a de-nested `errors` leaf list and `truncated`. Shaped
+   *   to match ajv's zero-config output. With the default
+   *   `maxErrors: 1`, this is the fast-fail path that hits ajv-class
+   *   numbers on the rejection benchmark.
+   * - `"tree"`: a {@link TreeValidationResult}: `{ valid }` plus, on
+   *   failure, a single nested {@link ValidationError} tree under `error`
+   *   and `truncated`. The rich diagnostic shape; what `@oav/validator`
+   *   compiles in so it can nest per-location subtrees.
+   * - `"predicate"`: a {@link CompiledPredicate} whose `validate(data)`
+   *   returns a bare `boolean`. No {@link ValidationError} tree is ever
+   *   constructed, so consumers who only need a yes/no answer pay nothing
+   *   for error-reporting machinery (leaf allocation, path snapshot,
+   *   params object, message string).
+   *
+   * Defaults to `"flat"`. The deprecated `flat: true` / `predicate: true`
+   * booleans still work as aliases for `output: "flat"` / `"predicate"`;
+   * supplying both `output` and a conflicting legacy boolean throws.
+   *
+   * `output: "predicate"` is mutually exclusive with a finite
+   * {@link CompileOptions.maxErrors}: a predicate short-circuits at the
+   * first failure, so there is nothing to count. The compiler throws when
+   * both are supplied.
+   */
+  output?: "flat" | "tree" | "predicate";
+  /**
    * Cap on the number of leaf errors collected per `validate()` call.
-   * Defaults to `Number.POSITIVE_INFINITY` (collect everything).
+   * Defaults to `1` (fast-fail: stop at the first error), matching ajv's
+   * `allErrors: false` zero-config behaviour. Pass
+   * `Number.POSITIVE_INFINITY` to collect everything.
    *
    * When set to a finite value:
    * - Once the cap is reached, further errors are dropped and
-   *   {@link ValidationResult.truncated} is set on the returned result.
+   *   `truncated: true` is set on the returned result.
    * - Hot loops (array items, object properties, `allOf`/`anyOf`
    *   branches) short-circuit as soon as the budget is exhausted, so
    *   the CPU and memory cost of validating a huge payload is bounded.
    *
-   * `maxErrors: 1` is the classic fast-fail mode.
+   * `maxErrors: 1` is the default (classic fast-fail). To collect every
+   * error, pass `Number.POSITIVE_INFINITY`.
    *
    * Must be a positive integer (>= 1) when supplied. A cap of 0 is
    * effectively predicate mode (no errors collected, validation
-   * collapses to yes/no); for that, prefer
-   * {@link CompileOptions.predicate} which compiles a fully
+   * collapses to yes/no); for that, prefer `output: "predicate"`
+   * (see {@link CompileOptions.output}) which compiles a fully
    * specialized function with no error infrastructure at all.
    * `compileSchema` throws on `maxErrors <= 0`.
    */
@@ -509,40 +580,18 @@ export interface CompileOptions {
   /** Custom ref resolver; overrides the default (which resolves fragments within the root). */
   refResolver?: RefResolver;
   /**
-   * When `true`, compile a boolean predicate rather than an
-   * error-collecting validator. The returned {@link CompiledPredicate}'s
-   * `validate(data)` returns `boolean`: no {@link ValidationError}
-   * tree is ever constructed, so consumers who only need a yes/no
-   * answer pay nothing for error-reporting machinery (leaf allocation,
-   * path snapshot, params object, message string).
-   *
-   * Mutually exclusive with a finite {@link CompileOptions.maxErrors}.
-   * Predicate mode already short-circuits at the first failure;
-   * combining the two is meaningless, so the compiler throws when
-   * both are supplied.
+   * @deprecated Use `output: "predicate"` (see
+   * {@link CompileOptions.output}). `predicate: true` remains a working
+   * alias for one major and will be removed in v4. Supplying it together
+   * with a conflicting `output` throws.
    */
   predicate?: boolean;
   /**
-   * When `true`, compile a flat-collection validator. The returned
-   * {@link CompiledFlatSchema}'s `validate(data, startPath?)` returns a
-   * {@link FlatValidationResult}: a de-nested `ValidationError[]` of
-   * leaf errors (every failing leaf keyword as its own record, plus a
-   * childless marker leaf per failed `anyOf` / `oneOf`), with no
-   * `"schema"` branch wrappers. This produces ajv-class memory on large
-   * invalid payloads, where the default nested tree retains far more
-   * (branch nodes plus per-leaf path arrays). The records are still
-   * {@link ValidationError}s (empty `children`), so the `@oav/core`
-   * renderers keep working.
-   *
-   * Reach for it when you want *every* error on a very large invalid
-   * body cheaply. For merely bounding memory, {@link CompileOptions.maxErrors}
-   * already caps the tree; flat mode is for the "all errors, cheaply"
-   * case.
-   *
-   * Composes with `maxErrors` (the flat list is capped and
-   * {@link FlatValidationResult.truncated} is set). Mutually exclusive
-   * with {@link CompileOptions.predicate} (a predicate has no errors to
-   * flatten); the compiler throws when both are supplied.
+   * @deprecated Flat is the default error shape now (v3), so the bare
+   * `compileSchema(schema)` already returns a flat
+   * {@link ValidationResult}. `flat: true` remains a working alias for
+   * `output: "flat"` for one major and will be removed in v4. Supplying
+   * it together with a conflicting `output` throws.
    */
   flat?: boolean;
   /**
@@ -594,9 +643,17 @@ export interface CompileState {
   readonly graph: ResolvedGraph;
   readonly compileValidator: (schema: SchemaOrBoolean, mode: CompileMode) => string;
   /**
-   * `true` when a finite `maxErrors` was configured. Codegen uses this
-   * to emit the extra budget checks; when errors are uncapped we emit
-   * plain `errors.push` with no runtime overhead.
+   * `true` when the runtime error-budget short-circuit is active: a
+   * finite `maxErrors` was configured AND the schema does not track
+   * evaluated keys. Codegen uses this to emit the extra budget checks;
+   * otherwise we emit plain `errors.push` with no runtime overhead.
+   *
+   * The `unevaluated*` exclusion is a correctness guard, not an
+   * optimization: under a finite cap, an evaluated-key-harvesting
+   * sub-validator can exhaust the budget mid-evaluation, truncating its
+   * evaluated-key set or starving a real error, which flips an
+   * `unevaluatedProperties` / `unevaluatedItems` verdict. So schemas that
+   * use those keywords collect every error (the cap is not enforced).
    */
   readonly gated: boolean;
   /**
@@ -689,6 +746,35 @@ function schemaUsesUnevaluated(schema: SchemaOrBoolean): boolean {
 }
 
 /**
+ * Resolve the output mode from `output` plus the deprecated `flat` /
+ * `predicate` booleans. `output` is canonical and wins; a legacy boolean
+ * is accepted as an alias but throws if it disagrees with an explicit
+ * `output` (a contradiction the caller should resolve, not a default to
+ * paper over). Absent everything, the v3 default is `"flat"`.
+ */
+function resolveOutputMode(options: CompileOptions): "flat" | "tree" | "predicate" {
+  const legacyPredicate = options.predicate === true;
+  const legacyFlat = options.flat === true;
+  if (legacyPredicate && legacyFlat) {
+    throw new Error(
+      "compileSchema: `flat: true` is mutually exclusive with `predicate: true`. " +
+        "A predicate collects no errors, so there is nothing to return as a flat list.",
+    );
+  }
+  const legacy = legacyPredicate ? "predicate" : legacyFlat ? "flat" : undefined;
+  if (options.output !== undefined) {
+    if (legacy !== undefined && legacy !== options.output) {
+      throw new Error(
+        `compileSchema: \`output: "${options.output}"\` conflicts with the deprecated ` +
+          `\`${legacy === "predicate" ? "predicate" : "flat"}: true\`. Pass only \`output\`.`,
+      );
+    }
+    return options.output;
+  }
+  return legacy ?? "flat";
+}
+
+/**
  * Compile a JSON Schema 2020-12 document into an executable validator.
  *
  * @param schema - The schema (object or boolean) to compile.
@@ -699,31 +785,35 @@ function schemaUsesUnevaluated(schema: SchemaOrBoolean): boolean {
  * ```ts
  * const v = compileSchema({ type: "number" }, { dialect: jsonSchemaDialect });
  * v.validate(1.5); // { valid: true }
- * v.validate("x"); // { valid: false, error: { code: "type", ... } }
+ * v.validate("x"); // { valid: false, errors: [{ code: "type", ... }], truncated: false }
+ *
+ * // Opt into the nested error tree:
+ * const t = compileSchema({ type: "number" }, { dialect: jsonSchemaDialect, output: "tree" });
+ * t.validate("x"); // { valid: false, error: { code: "type", ... }, truncated: false }
  * ```
  *
  * @public
  */
 export function compileSchema(
   schema: SchemaOrBoolean,
-  options: CompileOptions & { predicate: true },
+  options: CompileOptions & ({ output: "predicate" } | { predicate: true }),
 ): CompiledPredicate;
 export function compileSchema(
   schema: SchemaOrBoolean,
-  options: CompileOptions & { flat: true; predicate?: false | undefined },
-): CompiledFlatSchema;
+  options: CompileOptions & { output: "tree" },
+): CompiledTreeSchema;
 export function compileSchema(
   schema: SchemaOrBoolean,
-  options: CompileOptions & { predicate?: false | undefined; flat?: false | undefined },
+  options: CompileOptions & { output?: "flat" | undefined; predicate?: false | undefined },
 ): CompiledSchema;
 export function compileSchema(
   schema: SchemaOrBoolean,
   options: CompileOptions,
-): CompiledSchema | CompiledPredicate | CompiledFlatSchema;
+): CompiledSchema | CompiledTreeSchema | CompiledPredicate;
 export function compileSchema(
   schema: SchemaOrBoolean,
   options: CompileOptions,
-): CompiledSchema | CompiledPredicate | CompiledFlatSchema {
+): CompiledSchema | CompiledTreeSchema | CompiledPredicate {
   const byKeyword = new Map<string, KeywordDefinition>();
   const ordered: KeywordDefinition[] = [];
   for (const vocab of options.dialect.vocabularies) {
@@ -746,21 +836,28 @@ export function compileSchema(
     }
   }
 
-  const maxErrors = options.maxErrors ?? Number.POSITIVE_INFINITY;
+  const mode = resolveOutputMode(options);
+  const predicate = mode === "predicate";
+  const flat = mode === "flat";
+
+  // v3 default: fast-fail (stop at the first error), matching ajv's
+  // `allErrors: false`. Predicate mode never counts errors, so its
+  // effective cap is irrelevant; keep it uncapped so the explicit-cap
+  // conflict check below only fires on a caller-supplied value.
+  const maxErrors = options.maxErrors ?? (predicate ? Number.POSITIVE_INFINITY : 1);
   if (
     options.maxErrors !== undefined &&
-    Number.isFinite(maxErrors) &&
-    (!Number.isInteger(maxErrors) || maxErrors < 1)
+    Number.isFinite(options.maxErrors) &&
+    (!Number.isInteger(options.maxErrors) || options.maxErrors < 1)
   ) {
     // Reject values that would silently neutralise validation. A cap
     // of 0 collects nothing and would return `valid: true` for invalid
-    // data; non-integers are likely a typo. Predicate mode is the
-    // explicit way to skip error collection entirely. `Infinity` is
-    // degenerate (equivalent to omitting the option) but harmless,
-    // and existing callers may pass it explicitly; accept it.
+    // data; non-integers are likely a typo. `output: "predicate"` is the
+    // explicit way to skip error collection entirely. `Infinity` is the
+    // uncapped escape hatch and is accepted explicitly.
     throw new Error(
       `compileSchema: \`maxErrors\` must be a positive integer (got ${String(options.maxErrors)}). ` +
-        "Use `predicate: true` if you want a yes/no validator with no error tree.",
+        'Use `output: "predicate"` if you want a yes/no validator with no error tree.',
     );
   }
   const maxDepth = options.maxDepth ?? Number.POSITIVE_INFINITY;
@@ -777,23 +874,13 @@ export function compileSchema(
         "Omit the option for uncapped recursion depth.",
     );
   }
-  const predicate = options.predicate === true;
-  if (predicate && Number.isFinite(maxErrors)) {
+  if (predicate && options.maxErrors !== undefined && Number.isFinite(options.maxErrors)) {
     // Predicate mode short-circuits at the first failure by design;
     // a finite maxErrors cap would be shadowed and callers would be
     // misled into thinking errors were being counted. Fail loudly.
     throw new Error(
-      "compileSchema: `predicate: true` is mutually exclusive with a finite `maxErrors`. " +
+      'compileSchema: `output: "predicate"` is mutually exclusive with a finite `maxErrors`. ' +
         "Predicate mode short-circuits on the first failure, so there is nothing to count.",
-    );
-  }
-  const flat = options.flat === true;
-  if (flat && predicate) {
-    // A predicate returns a boolean and collects no errors, so there is
-    // nothing to flatten. Fail loudly rather than silently ignoring one.
-    throw new Error(
-      "compileSchema: `flat: true` is mutually exclusive with `predicate: true`. " +
-        "A predicate collects no errors, so there is nothing to return as a flat list.",
     );
   }
   const deps = createDeps({ maxErrors, maxDepth, regexCompiler: options.regexCompiler });
@@ -844,7 +931,14 @@ export function compileSchema(
     refResolver,
     graph,
     nextFn: 0,
-    gated: Number.isFinite(maxErrors),
+    // The runtime error-budget short-circuit is unsafe when the schema
+    // tracks evaluated keys: a finite cap can exhaust mid-evaluation,
+    // truncating a sub-validator's evaluated-key set or starving a real
+    // error, which flips `unevaluatedProperties` / `unevaluatedItems`
+    // verdicts. So short-circuit only when nothing uses `unevaluated*`;
+    // those schemas collect every error (the cap is not enforced). They
+    // never appear in OpenAPI, so the HTTP fast path is unaffected.
+    gated: Number.isFinite(maxErrors) && !unevaluatedTracking,
     depthGated: Number.isFinite(maxDepth),
     compiling: new Set(),
     predicate,
@@ -892,21 +986,23 @@ export function compileSchema(
   }
   const factory = new Function(NAMES.DEPS, wholeSource) as (
     deps: ValidatorDeps,
-  ) => CompiledSchemaFactory;
+  ) => CompiledTreeSchemaFactory;
   const { validate } = factory(deps);
   return { validate, source: wholeSource, stats };
 }
 
-interface CompiledSchemaFactory {
+/** Flat-mode (default) runtime factory: `validate()` returns a {@link ValidationResult}. */
+interface CompiledFlatSchemaFactory {
   validate: (data: unknown, startPath?: readonly PathSegment[]) => ValidationResult;
+}
+
+/** Tree-mode (`output: "tree"`) runtime factory: returns a {@link TreeValidationResult}. */
+interface CompiledTreeSchemaFactory {
+  validate: (data: unknown, startPath?: readonly PathSegment[]) => TreeValidationResult;
 }
 
 interface CompiledPredicateFactory {
   validate: (data: unknown) => boolean;
-}
-
-interface CompiledFlatSchemaFactory {
-  validate: (data: unknown, startPath?: readonly PathSegment[]) => FlatValidationResult;
 }
 
 /** Per-mode slice of {@link CompileState.compiledFor}, created on demand. */
@@ -1266,7 +1362,7 @@ function assembleSource(state: CompileState, rootName: string): string {
         `  if (${NAMES.DEPS}.truncated) return { valid: false, errors: errs, truncated: true };`,
       );
     }
-    parts.push(`  return { valid: false, errors: errs };`);
+    parts.push(`  return { valid: false, errors: errs, truncated: false };`);
     parts.push(`}`);
   } else {
     parts.push(`function validate(${NAMES.DATA}, startPath) {`);
@@ -1288,7 +1384,7 @@ function assembleSource(state: CompileState, rootName: string): string {
         `  if (${NAMES.DEPS}.truncated) return { valid: false, error: err, truncated: true };`,
       );
     }
-    parts.push(`  return { valid: false, error: err };`);
+    parts.push(`  return { valid: false, error: err, truncated: false };`);
     parts.push(`}`);
   }
   parts.push("return { validate };");

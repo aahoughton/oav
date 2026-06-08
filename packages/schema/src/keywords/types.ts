@@ -164,8 +164,10 @@ export interface KeywordCompileContext {
   /** JS expression for the Set tracking evaluated items, or `null`. */
   readonly evaluatedItemsVar: string | null;
   /**
-   * `true` when a finite `maxErrors` cap was configured. Keyword
-   * authors usually don't need to read this directly; prefer
+   * `true` when the runtime error-budget short-circuit is active (a
+   * finite `maxErrors` was configured and the schema does not track
+   * evaluated keys; see the note on the compiler's `CompileState.gated`).
+   * Keyword authors usually don't need to read this directly; prefer
    * {@link KeywordCompileContext.emitError} /
    * {@link KeywordCompileContext.emitBudgetBreak} which inspect it.
    */

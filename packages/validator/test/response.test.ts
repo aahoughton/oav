@@ -1,7 +1,6 @@
 import type { OpenAPIDocument } from "@oav/core";
 import { describe, expect, it } from "vitest";
-import { createValidator } from "../src/validator.js";
-import { leafAt, leafCodes, petSpec } from "./fixtures.js";
+import { createValidator, leafAt, leafCodes, petSpec } from "./fixtures.js";
 
 describe("validateResponse", () => {
   const v = createValidator(petSpec());

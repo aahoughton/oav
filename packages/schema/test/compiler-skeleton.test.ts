@@ -19,7 +19,7 @@ describe("compileSchema", () => {
   });
 
   it("rejects everything when the schema is `false`", () => {
-    const v = compileSchema(false, { dialect: emptyDialect });
+    const v = compileSchema(false, { dialect: emptyDialect, output: "tree" });
     const result = v.validate(1);
     expect(result.valid).toBe(false);
     expect(result.error?.code).toBe("false");
@@ -44,20 +44,20 @@ describe("compileSchema", () => {
   });
 
   it("builds a path array at the root", () => {
-    const result = compileSchema(false, { dialect: emptyDialect }).validate(1);
+    const result = compileSchema(false, { dialect: emptyDialect, output: "tree" }).validate(1);
     expect(result.valid).toBe(false);
     expect(result.error?.path).toEqual([]);
   });
 
   it("prepends startPath to every error path", () => {
-    const v = compileSchema(false, { dialect: emptyDialect });
+    const v = compileSchema(false, { dialect: emptyDialect, output: "tree" });
     const result = v.validate(1, ["body"]);
     expect(result.valid).toBe(false);
     expect(result.error?.path).toEqual(["body"]);
   });
 
   it("does not mutate the caller's startPath", () => {
-    const v = compileSchema(false, { dialect: emptyDialect });
+    const v = compileSchema(false, { dialect: emptyDialect, output: "tree" });
     const prefix: (string | number)[] = ["body"];
     v.validate(1, prefix);
     expect(prefix).toEqual(["body"]);

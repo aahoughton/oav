@@ -16,6 +16,8 @@
 
 export {
   createValidator,
+  type PredicateValidator,
+  type TreeValidator,
   type Validator,
   type ValidatorOptions,
   type ValidatorStats,

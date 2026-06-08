@@ -9,7 +9,6 @@
  */
 
 import { fileURLToPath } from "node:url";
-import { collectLeaves } from "../packages/core/src/index.ts";
 import { createYamlFileReader } from "../packages/oav/src/yaml.ts";
 import { loadSpec } from "../packages/spec/src/index.ts";
 import { createValidator } from "../packages/validator/src/index.ts";
@@ -30,13 +29,13 @@ const runAndCount = (label: string, maxErrors: number | undefined): void => {
     body: bulk,
   });
   const ms = performance.now() - start;
-  const leafCount = err === null ? 0 : collectLeaves(err).length;
+  const leafCount = err.valid ? 0 : err.errors.length;
   console.log(
     `${label.padEnd(20)} leaves=${String(leafCount).padStart(3)}  time=${ms.toFixed(2)}ms`,
   );
 };
 
-runAndCount("uncapped (default)", undefined);
-runAndCount("fast-fail (1)", 1);
+runAndCount("fast-fail (default)", undefined);
 runAndCount("bounded (3)", 3);
 runAndCount("bounded (10)", 10);
+runAndCount("uncapped (Infinity)", Number.POSITIVE_INFINITY);

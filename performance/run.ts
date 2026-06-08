@@ -38,7 +38,7 @@ const specPath = specArg?.slice("--spec=".length);
 type Result = {
   schema: string;
   metric: "compile" | "validate";
-  lib: "ajv" | "ajv-fast" | "hyperjump" | "oav" | "oav-predicate";
+  lib: "ajv" | "ajv-fast" | "hyperjump" | "oav" | "oav-all" | "oav-predicate";
   hz: number; // ops/sec
   mean: number; // µs/op
   variant?: string; // full task name (e.g. "oav validate (valid)")
@@ -149,15 +149,24 @@ async function benchSchema(s: PerfSchema): Promise<void> {
   registerSchema(s.schema, hjUri);
   const hjV = await hjValidate(hjUri);
 
+  // oav's zero-config default: flat output, maxErrors 1 (fail-fast). The
+  // apples-to-apples partner for ajv-fast (allErrors: false).
   const oav = compileSchema(s.schema as never, {
     dialect: jsonSchemaDialect,
     formats: builtInFormats,
   });
 
+  // oav collecting every error: the partner for ajv (allErrors: true).
+  const oavAll = compileSchema(s.schema as never, {
+    dialect: jsonSchemaDialect,
+    formats: builtInFormats,
+    maxErrors: Number.POSITIVE_INFINITY,
+  });
+
   const oavPredicate = compileSchema(s.schema as never, {
     dialect: jsonSchemaDialect,
     formats: builtInFormats,
-    predicate: true,
+    output: "predicate",
   });
 
   // Measure both the happy path (valid) and the failure path (invalid)
@@ -191,6 +200,12 @@ async function benchSchema(s: PerfSchema): Promise<void> {
     })
     .add("oav validate (invalid)", () => {
       oav.validate(invalidSample);
+    })
+    .add("oav-all validate (valid)", () => {
+      oavAll.validate(validSample);
+    })
+    .add("oav-all validate (invalid)", () => {
+      oavAll.validate(invalidSample);
     })
     .add("oav-predicate validate (valid)", () => {
       oavPredicate.validate(validSample);
@@ -403,6 +418,7 @@ if (specPath !== undefined) {
       "ajv-fast".padEnd(10) +
       "hyperjump".padEnd(12) +
       "oav".padEnd(8) +
+      "oav-all".padEnd(9) +
       "oav-pred",
   );
   console.log("-".repeat(80));
@@ -421,6 +437,7 @@ if (specPath !== undefined) {
     const ajvFast = row["ajv-fast"] ?? 0;
     const hj = row["hyperjump"] ?? 0;
     const oav = row["oav"] ?? 0;
+    const oavAll = row["oav-all"] ?? 0;
     const oavPred = row["oav-predicate"] ?? 0;
     const base = ajv || 1;
     const fmt = (n: number) => (n === 0 ? "—" : (n / base).toFixed(2));
@@ -431,6 +448,7 @@ if (specPath !== undefined) {
         fmt(ajvFast).padEnd(10) +
         fmt(hj).padEnd(12) +
         fmt(oav).padEnd(8) +
+        fmt(oavAll).padEnd(9) +
         fmt(oavPred),
     );
   }

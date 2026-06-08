@@ -32,7 +32,7 @@ console.log(
     path: "/pets",
     contentType: "application/json",
     body: { name: "Fido", tag: null },
-  }) === null
+  }).valid
     ? "ok"
     : "FAIL",
 );
@@ -45,7 +45,7 @@ console.log(
       contentType: "application/json",
       body: { name: "Fido", priority: 10 }, // exclusiveMaximum: true means must be < 10
     });
-    return e === null ? "ok (should fail!)" : "rejected (as expected)";
+    return e.valid ? "ok (should fail!)" : "rejected (as expected)";
   })(),
 );
 
@@ -59,7 +59,7 @@ console.log(
     path: "/pets",
     contentType: "application/json",
     body: { name: "Fido", tag: null },
-  }) === null
+  }).valid
     ? "ok"
     : "FAIL",
 );
@@ -73,4 +73,4 @@ const r = v32.validateRequest({
   contentType: "application/json",
   body: { filter: "cats" },
 });
-console.log("3.2.0  QUERY /search  →", r === null ? "ok" : "FAIL:\n" + formatText(r));
+console.log("3.2.0  QUERY /search  →", r.valid ? "ok" : "FAIL:\n" + formatText(r.errors));

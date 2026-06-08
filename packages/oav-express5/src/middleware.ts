@@ -1,6 +1,6 @@
 import type { Request, RequestHandler } from "express";
-import type { HttpRequest } from "@oav/core";
-import type { Validator } from "@oav/validator";
+import { collectLeaves, type HttpRequest, type ValidationError } from "@oav/core";
+import type { TreeValidator, Validator } from "@oav/validator";
 import { httpRequestFromExpress } from "./extract.js";
 import { renderProblemDetails } from "./render.js";
 import type { ErrorHandler, ExpressContext } from "./types.js";
@@ -69,22 +69,32 @@ export interface ValidateRequestsOptions {
  * @public
  */
 export function validateRequests(
-  validator: Validator,
+  validator: Validator | TreeValidator,
   options: ValidateRequestsOptions = {},
 ): RequestHandler {
+  // A predicate validator returns a bare boolean, so there are no errors
+  // to render. Fail loudly at construction rather than emitting empty 400s.
+  if (validator.output === "predicate") {
+    throw new Error(
+      'validateRequests: a predicate-mode validator (output: "predicate") cannot render ' +
+        'problem-details responses. Build the validator with output: "flat" (default) or "tree".',
+    );
+  }
   const toHttpRequest = options.toHttpRequest ?? httpRequestFromExpress;
   const onError = options.onError ?? renderProblemDetails;
 
   return async (req, res, next) => {
     const httpReq = toHttpRequest(req);
-    const err = validator.validateRequest(httpReq);
-    if (err === null) {
+    const result = validator.validateRequest(httpReq);
+    if (result.valid) {
       next();
       return;
     }
+    const errors: ValidationError[] =
+      "errors" in result ? result.errors : collectLeaves(result.error);
     // Express 5 awaits the returned promise; thrown errors and
     // rejected promises propagate to the host's error middleware.
     // Sync onError handlers complete inline; async ones get awaited.
-    await onError(err, { req, res, next });
+    await onError(errors, { req, res, next });
   };
 }

@@ -1,6 +1,6 @@
 import type { Request, RequestHandler } from "express";
-import type { HttpRequest } from "@oav/core";
-import type { Validator } from "@oav/validator";
+import { collectLeaves, type HttpRequest, type ValidationError } from "@oav/core";
+import type { TreeValidator, Validator } from "@oav/validator";
 import { httpRequestFromExpress } from "./extract.js";
 import { renderProblemDetails } from "./render.js";
 import type { ErrorHandler, ExpressContext } from "./types.js";
@@ -69,9 +69,17 @@ export interface ValidateRequestsOptions {
  * @public
  */
 export function validateRequests(
-  validator: Validator,
+  validator: Validator | TreeValidator,
   options: ValidateRequestsOptions = {},
 ): RequestHandler {
+  // A predicate validator returns a bare boolean, so there are no errors
+  // to render. Fail loudly at construction rather than emitting empty 400s.
+  if (validator.output === "predicate") {
+    throw new Error(
+      'validateRequests: a predicate-mode validator (output: "predicate") cannot render ' +
+        'problem-details responses. Build the validator with output: "flat" (default) or "tree".',
+    );
+  }
   const toHttpRequest = options.toHttpRequest ?? httpRequestFromExpress;
   const onError = options.onError ?? renderProblemDetails;
 
@@ -83,16 +91,18 @@ export function validateRequests(
       next(e);
       return;
     }
-    const err = validator.validateRequest(httpReq);
-    if (err === null) {
+    const result = validator.validateRequest(httpReq);
+    if (result.valid) {
       next();
       return;
     }
+    const errors: ValidationError[] =
+      "errors" in result ? result.errors : collectLeaves(result.error);
     // onError may be sync or async. Awaiting a sync (void) return is
     // essentially free; awaiting a Promise lets handlers do async work
     // (remote logging, dynamic rendering config) before the response
     // settles. Promise rejection is forwarded to next(err) so the
     // host's error middleware sees it.
-    Promise.resolve(onError(err, { req, res, next })).catch(next);
+    Promise.resolve(onError(errors, { req, res, next })).catch(next);
   };
 }
