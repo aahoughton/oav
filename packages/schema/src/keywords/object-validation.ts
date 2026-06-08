@@ -141,6 +141,37 @@ export const requiredKeyword: KeywordDefinition = {
   compile(ctx: KeywordCompileContext): void {
     const required = ctx.schema as string[];
     if (required.length === 0) return;
+    if (required.length <= 8) {
+      const emitCheck = (name: string): void => {
+        const keyLit = quoteString(name);
+        ctx.gen.if(propertyAbsent(ctx.data, keyLit, name), () => {
+          ctx.emitError(
+            "leaf",
+            ctx.leafErrorExpr(
+              quoteString("required"),
+              JSON.stringify(`must have required property "${name}"`),
+              `{ missing: ${keyLit} }`,
+              [keyLit],
+            ),
+          );
+          ctx.emitBudgetBreak();
+        });
+      };
+      ctx.gen.if(objectGuardVar(ctx), (g) => {
+        if (ctx.predicate) {
+          for (const name of required) emitCheck(name);
+          return;
+        }
+        // Keep emitBudgetBreak() valid without paying iterator/dynamic
+        // lookup overhead for the common small fixed-list case.
+        g.line("do {");
+        g.indent();
+        for (const name of required) emitCheck(name);
+        g.dedent();
+        g.line("} while (false);");
+      });
+      return;
+    }
     const requiredVar = ctx.hoistConstant(JSON.stringify(required), "required");
     // The loop variable is dynamic, but the set of names is fixed at
     // compile time: if none of them is an inherited `Object.prototype`
