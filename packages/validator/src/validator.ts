@@ -638,7 +638,8 @@ export interface ValidatorOptions {
   strictQueryParameters?: boolean;
   /**
    * When `true`, an unmatched path no longer produces a `route` error;
-   * `validateRequest` / `validateResponse` return `null`. Mirrors
+   * `validateRequest` / `validateResponse` report the request as valid
+   * (`{ valid: true }`). Mirrors
    * `express-openapi-validator`'s `ignoreUndocumented`. Does not affect
    * the `method` code: a path that matched but whose verb wasn't
    * declared still surfaces (that's a 405, not an "undocumented route").
@@ -647,7 +648,8 @@ export interface ValidatorOptions {
   /**
    * Predicate for finer control than {@link ValidatorOptions.ignoreUndocumented}.
    * Runs before route matching; when it returns `true` for the request's
-   * `path`, the validator short-circuits and returns `null`. Useful for
+   * `path`, the validator short-circuits to a valid result
+   * (`{ valid: true }`). Useful for
    * per-prefix allowlists ("skip anything under `/internal/`"),
    * regex-driven exclusions, or keeping parts of the surface out of
    * spec validation for staged rollout.
