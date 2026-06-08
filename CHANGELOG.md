@@ -1,5 +1,37 @@
 # Changelog
 
+## [3.0.0](https://github.com/aahoughton/oav/compare/oav-core-v2.4.0...oav-core-v3.0.0) (2026-06-08)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** `oav compile-spec` output now returns the v3 result object ({ valid, ... }) instead of `ValidationError | null`, and defaults to flat + maxErrors:1. Consumers reading the old null/tree shape should read `result.valid` / `result.errors` (or pass `--output-mode tree` for the nested `error`).
+* compileSchema and createValidator default to flat error output and maxErrors:1. validateRequest/validateResponse return a result object ({ valid, errors?, error?, truncated }) instead of ValidationError|null. Adapter onError receives a ValidationError[] leaf list. ValidationResult and CompiledSchema now name the flat shapes (tree is TreeValidationResult/CompiledTreeSchema). undefined-valued object properties count as absent. formatJson/summarize/formatFlat and the validateSecurity boolean form are removed. See docs/migration-v3.md.
+
+### Features
+
+* **cli:** compile-spec result-shape parity with createValidator ([#355](https://github.com/aahoughton/oav/issues/355)) ([5081b4a](https://github.com/aahoughton/oav/commit/5081b4a2a6bfb3ed313f655fc568403dde7be163))
+* **schema:** flat error-collection mode ([#337](https://github.com/aahoughton/oav/issues/337)) ([7c4852e](https://github.com/aahoughton/oav/commit/7c4852e23e8c83880231bb83d0c9985e7a070a59))
+* v3 - flat error output and maxErrors:1 as zero-config defaults ([#344](https://github.com/aahoughton/oav/issues/344)) ([4d4c52e](https://github.com/aahoughton/oav/commit/4d4c52e521b5e171b9834eafca80e6ae7508ea67))
+
+
+### Performance
+
+* **schema:** cheaper property presence via !== undefined ([#343](https://github.com/aahoughton/oav/issues/343)) ([32010b3](https://github.com/aahoughton/oav/commit/32010b3216137d964412cdec280cfefc77e302a7))
+* **schema:** two-phase composition (predicate decision + lazy errors) ([#342](https://github.com/aahoughton/oav/issues/342)) ([6a832d4](https://github.com/aahoughton/oav/commit/6a832d41e55d54d411c5b8c433783bf0a783ebdb))
+
+
+### Documentation
+
+* drop "matching Ajv" framing from the defaults ([#356](https://github.com/aahoughton/oav/issues/356)) ([1d287b6](https://github.com/aahoughton/oav/commit/1d287b64ff409f06436d83ffa375124c0ee5902d))
+* post-v3 cleanup of stale deprecation notes ([#347](https://github.com/aahoughton/oav/issues/347)) ([f0922f4](https://github.com/aahoughton/oav/commit/f0922f4eb64eba1ccf996beeb52d8dee16b060c5))
+* sweep stale v2 result-shape and pre-maxDepth language ([#354](https://github.com/aahoughton/oav/issues/354)) ([0bc3c2b](https://github.com/aahoughton/oav/commit/0bc3c2b98eb4ceefc55310d1f78ba5cd9d4cdd97))
+
+
+### Refactoring
+
+* **schema:** derive compiled artifact variants from CompiledSchema ([#348](https://github.com/aahoughton/oav/issues/348)) ([e66af95](https://github.com/aahoughton/oav/commit/e66af95fec5ff2ac20069e5622b62b33288dc377))
+
 ## [2.4.0](https://github.com/aahoughton/oav/compare/oav-core-v2.3.0...oav-core-v2.4.0) (2026-06-06)
 
 
