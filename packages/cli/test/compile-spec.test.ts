@@ -65,9 +65,20 @@ const petstore: OpenAPIDocument = {
   },
 };
 
+/**
+ * The emitted validate* return the same v3 result shapes as
+ * `createValidator`: `{ valid: true }` or `{ valid: false, ... }` (flat
+ * carries `errors`, tree carries `error`), or a bare boolean in predicate
+ * mode.
+ */
+type AotResult =
+  | boolean
+  | { valid: true }
+  | { valid: false; errors?: ValidationError[]; error?: ValidationError; truncated: boolean };
+
 interface AotValidator {
-  validateRequest: (req: unknown) => ValidationError | null;
-  validateResponse: (req: unknown, res: unknown) => ValidationError | null;
+  validateRequest: (req: unknown) => AotResult;
+  validateResponse: (req: unknown, res: unknown) => AotResult;
   getOperation: (req: {
     method: string;
     path: string;
@@ -76,11 +87,25 @@ interface AotValidator {
   warnings: readonly string[];
 }
 
+/** The nested error tree of a tree-mode result, or null when valid. */
+function treeOf(r: AotResult): ValidationError | null {
+  if (typeof r === "boolean" || r.valid) return null;
+  return r.error ?? null;
+}
+
+/** The flat leaf list of a flat-mode result, or [] when valid. */
+function flatErrors(r: AotResult): ValidationError[] {
+  if (typeof r === "boolean" || r.valid) return [];
+  return r.errors ?? [];
+}
+
 async function buildAot(
   document: OpenAPIDocument,
   extra: {
     requestsOnly?: boolean;
     only?: Array<{ method: string; path: string }>;
+    outputMode?: "flat" | "tree" | "predicate";
+    maxErrors?: number;
   } = {},
 ): Promise<AotValidator> {
   const mem = memoryIo([["spec.json", document]]);
@@ -93,6 +118,8 @@ async function buildAot(
       resolveDir: RESOLVE_DIR,
       requestsOnly: extra.requestsOnly,
       only: extra.only,
+      outputMode: extra.outputMode,
+      maxErrors: extra.maxErrors,
     },
     mem.io,
   );
@@ -131,7 +158,10 @@ describe("compile-spec: equivalence vs createValidator", () => {
       output: "tree",
       maxErrors: Number.POSITIVE_INFINITY,
     });
-    const aot = await buildAot(petstore);
+    const aot = await buildAot(petstore, {
+      outputMode: "tree",
+      maxErrors: Number.POSITIVE_INFINITY,
+    });
 
     const cases: Array<{ name: string; req: unknown }> = [
       {
@@ -194,7 +224,7 @@ describe("compile-spec: equivalence vs createValidator", () => {
     for (const c of cases) {
       const ra = runtime.validateRequest(c.req as never);
       const a = ra.valid ? null : ra.error;
-      const b = aot.validateRequest(c.req);
+      const b = treeOf(aot.validateRequest(c.req));
       if (!equivalent(a, b)) {
         console.error(
           `${c.name}\n  runtime: ${a === null ? "ok" : `${a.code} / ${collectLeafCodes(a).join(",")}`}\n  aot:     ${b === null ? "ok" : `${b.code} / ${collectLeafCodes(b).join(",")}`}`,
@@ -263,13 +293,13 @@ describe("compile-spec: equivalence vs createValidator", () => {
 });
 
 describe("compile-spec --requests-only", () => {
-  it("emits a validateResponse that passes through (returns null)", async () => {
+  it("emits a validateResponse that passes through (valid)", async () => {
     const aot = await buildAot(petstore, { requestsOnly: true });
     const r = aot.validateResponse(
       { method: "GET", path: "/pets" },
       { status: 999, contentType: "application/json", body: [{ shape: "wrong" }] },
     );
-    expect(r).toBe(null);
+    expect(r).toEqual({ valid: true });
   });
 
   it("still validates requests correctly", async () => {
@@ -281,7 +311,7 @@ describe("compile-spec --requests-only", () => {
       headers: { "x-tenant": "acme" },
       body: { name: "Fido" },
     });
-    expect(valid).toBe(null);
+    expect(valid).toEqual({ valid: true });
   });
 });
 
@@ -318,10 +348,60 @@ describe("compile-spec --only", () => {
       headers: { "x-tenant": "acme" },
       body: { name: "Fido" },
     });
-    expect(included).toBe(null);
+    expect(included).toEqual({ valid: true });
 
     // GET /pets dropped → route miss (404)
     const dropped = aot.validateRequest({ method: "GET", path: "/pets" });
-    expect(dropped?.code).toBe("route");
+    expect(flatErrors(dropped)[0]?.code).toBe("route");
+  });
+});
+
+describe("compile-spec --output-mode / --max-errors (result-shape parity)", () => {
+  // Two independent problems: missing required X-Tenant header AND a body
+  // whose `name` violates minLength:1. Params validate before body, so the
+  // uncapped leaf order is [header-param, minLength].
+  const twoProblems = {
+    method: "POST",
+    path: "/pets",
+    contentType: "application/json",
+    body: { name: "" },
+  };
+  const validReq = {
+    method: "POST",
+    path: "/pets",
+    contentType: "application/json",
+    headers: { "x-tenant": "acme" },
+    body: { name: "Fido" },
+  };
+
+  it("defaults to flat + maxErrors:1 (matches createValidator's zero-config)", async () => {
+    const aot = await buildAot(petstore);
+    const r = aot.validateRequest(twoProblems);
+    expect(r).toMatchObject({ valid: false, truncated: true });
+    expect(flatErrors(r)).toHaveLength(1);
+    expect(aot.validateRequest(validReq)).toEqual({ valid: true });
+  });
+
+  it("--max-errors all collects every leaf (truncated: false)", async () => {
+    const aot = await buildAot(petstore, { maxErrors: Number.POSITIVE_INFINITY });
+    const r = aot.validateRequest(twoProblems);
+    expect(r).toMatchObject({ valid: false, truncated: false });
+    expect(flatErrors(r).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("--output-mode tree returns the nested error tree", async () => {
+    const aot = await buildAot(petstore, {
+      outputMode: "tree",
+      maxErrors: Number.POSITIVE_INFINITY,
+    });
+    const r = aot.validateRequest(twoProblems);
+    expect(r).toMatchObject({ valid: false });
+    expect(treeOf(r)?.code).toBe("request");
+  });
+
+  it("--output-mode predicate returns a bare boolean", async () => {
+    const aot = await buildAot(petstore, { outputMode: "predicate" });
+    expect(aot.validateRequest(twoProblems)).toBe(false);
+    expect(aot.validateRequest(validReq)).toBe(true);
   });
 });

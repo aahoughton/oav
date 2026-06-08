@@ -5,7 +5,11 @@
  * `validateFetchRequest`, `validateFetchResponse`, `getOperation`,
  * `detectedVersion`, `warnings`, but with every operation's schemas
  * already compiled into the module. After bundling through esbuild the
- * module has zero imports.
+ * module has zero imports. The emitted `validate*` return the same
+ * result shapes as `createValidator` (`{ valid, errors?/error?,
+ * truncated }` or a predicate boolean), tuned by `outputMode` /
+ * `maxErrors`; each builds the nested tree internally and reshapes at
+ * the boundary via the shared `reshapeResult` / `toFetchResult`.
  *
  * Consumers who were doing `createValidator(await loadSpec(...))` at
  * runtime get the same behavior with no YAML parse, no `$ref`
@@ -66,6 +70,17 @@ export interface EmitSpecOptions {
    * resolves against the workspace aliases.
    */
   importPrefix?: string;
+  /**
+   * Result shape of the emitted `validate*` exports, matching
+   * `createValidator`'s `output` option. Default `"flat"`.
+   */
+  outputMode?: "flat" | "tree" | "predicate";
+  /**
+   * Per-call leaf-error cap baked into the emitted validators, matching
+   * `createValidator`'s `maxErrors`. Default `1` (fast-fail);
+   * `Number.POSITIVE_INFINITY` collects every error.
+   */
+  maxErrors?: number;
 }
 
 const DIALECT_MAP: Record<StandaloneDialect, Dialect> = {
@@ -82,6 +97,12 @@ const DIALECT_MAP: Record<StandaloneDialect, Dialect> = {
  */
 export function emitSpec(document: OpenAPIDocument, options: EmitSpecOptions = {}): string {
   const importPrefix = options.importPrefix ?? "@aahoughton/oav";
+  const outputMode = options.outputMode ?? "flat";
+  const maxErrors = options.maxErrors ?? 1;
+  // Bake the cap as a JS literal; Infinity has no JSON form.
+  const maxErrorsLiteral = Number.isFinite(maxErrors)
+    ? String(maxErrors)
+    : "Number.POSITIVE_INFINITY";
   const warnings: string[] = [];
   const dialect = resolveDialect(document, options.dialect, warnings);
   const graph = resolve(document as unknown as SchemaOrBoolean);
@@ -214,7 +235,7 @@ export function emitSpec(document: OpenAPIDocument, options: EmitSpecOptions = {
     `import { createLeafError, createBranchError, createError } from "${importPrefix}/core";`,
     `import { createDeps, deepEqual, typeOf, wrapErrors } from "${importPrefix}/schema/internals";`,
     `import { builtInFormats } from "${importPrefix}/formats";`,
-    `import { deserialize, matchMediaType, matchResponseKey, httpRequestFromFetch, httpResponseFromFetch, checkSecurity, compileOperationSecurity, resolveOperationRef, createRouter } from "${importPrefix}/validator/internals";`,
+    `import { deserialize, matchMediaType, matchResponseKey, httpRequestFromFetch, httpResponseFromFetch, checkSecurity, compileOperationSecurity, resolveOperationRef, createRouter, reshapeResult, toFetchResult } from "${importPrefix}/validator/internals";`,
     "",
     "void createBranchError; void createError; void deepEqual; void typeOf; void wrapErrors;",
     "void resolveOperationRef;",
@@ -266,13 +287,17 @@ export function emitSpec(document: OpenAPIDocument, options: EmitSpecOptions = {
     `export const detectedVersion = ${JSON.stringify(detectVersionBucket(document))};`,
     `export const warnings = Object.freeze(${JSON.stringify(warnings)});`,
     "",
-    renderValidateRequest(),
+    "// ---- output shape (from --output-mode / --max-errors) ----",
+    "// Each validate* builds the nested error tree internally, then",
+    "// reshapeResult / toFetchResult shape it to match createValidator.",
+    `const __outputMode = ${JSON.stringify(outputMode)};`,
+    `const __maxErrors = ${maxErrorsLiteral};`,
     "",
-    options.requestsOnly === true ? renderValidateResponseNoop() : renderValidateResponse(),
+    renderValidateRequestTree(),
     "",
-    renderValidateFetchRequest(),
+    options.requestsOnly === true ? renderValidateResponseTreeNoop() : renderValidateResponseTree(),
     "",
-    renderValidateFetchResponse(),
+    renderPublicValidators(),
     "",
     renderGetOperation(),
     "",
@@ -553,13 +578,15 @@ function resolveDialect(
 
 const HTTP_METHODS = ["get", "put", "post", "delete", "options", "head", "patch", "trace", "query"];
 
-function renderValidateRequest(): string {
-  // Mirrors validator.ts's validateRequest closely. Differences:
+function renderValidateRequestTree(): string {
+  // Mirrors validator.ts's validateRequestTree closely. Differences:
   //   - state comes from the `ops` table, keyed on
   //     `${pathPattern}::${method}`, rather than cacheFor+WeakMap
   //   - security is pre-compiled at module load (op.compiledSecurity)
   //   - no strict-query-parameter option surfaced yet
-  return `export function validateRequest(req) {
+  // Returns the nested error tree (or null when valid); the exported
+  // validateRequest wrapper reshapes it to the configured output.
+  return `function __validateRequestTree(req) {
   const method = (req.method ?? "GET").toUpperCase();
   const match = router.match(method, req.path);
   if (match === undefined) {
@@ -680,16 +707,16 @@ function __readParamRaw(p, req, match) {
 `;
 }
 
-function renderValidateResponseNoop(): string {
-  return `export function validateResponse(_req, _res) {
+function renderValidateResponseTreeNoop(): string {
+  return `function __validateResponseTree(_req, _res) {
   // compile-spec was run with --requests-only; responses are a pass-through.
   return null;
 }
 `;
 }
 
-function renderValidateResponse(): string {
-  return `export function validateResponse(req, res) {
+function renderValidateResponseTree(): string {
+  return `function __validateResponseTree(req, res) {
   const method = (req.method ?? "GET").toUpperCase();
   const match = router.match(method, req.path);
   if (match === undefined) {
@@ -759,23 +786,30 @@ function renderValidateResponse(): string {
 `;
 }
 
-function renderValidateFetchRequest(): string {
-  return `export async function validateFetchRequest(request, options) {
-  const { httpRequest, bodyPresent: _bp, bodyValue } = await httpRequestFromFetch(request, options);
-  const error = validateRequest(httpRequest);
-  if (error !== null) return { ok: false, error };
-  return { ok: true, body: bodyValue };
-}
-`;
+/**
+ * The exported validate* surface. Each builds the nested tree via the
+ * internal __validate*Tree helper, then reshapes to the configured
+ * output (`__outputMode` / `__maxErrors`) exactly as validator.ts does
+ * at its public boundary, so the AOT output matches `createValidator`.
+ */
+function renderPublicValidators(): string {
+  return `export function validateRequest(req) {
+  return reshapeResult(__validateRequestTree(req), __outputMode, __maxErrors);
 }
 
-function renderValidateFetchResponse(): string {
-  return `export async function validateFetchResponse(request, response) {
+export function validateResponse(req, res) {
+  return reshapeResult(__validateResponseTree(req, res), __outputMode, __maxErrors);
+}
+
+export async function validateFetchRequest(request, options) {
+  const { httpRequest, bodyValue } = await httpRequestFromFetch(request, options);
+  return toFetchResult(validateRequest(httpRequest), bodyValue);
+}
+
+export async function validateFetchResponse(request, response) {
   const requestHttp = await httpRequestFromFetch(request);
   const { httpResponse, bodyValue } = await httpResponseFromFetch(response);
-  const error = validateResponse(requestHttp.httpRequest, httpResponse);
-  if (error !== null) return { ok: false, error };
-  return { ok: true, body: bodyValue };
+  return toFetchResult(validateResponse(requestHttp.httpRequest, httpResponse), bodyValue);
 }
 `;
 }
