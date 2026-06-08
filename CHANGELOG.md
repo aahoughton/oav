@@ -1,5 +1,22 @@
 # Changelog
 
+## [3.1.0](https://github.com/aahoughton/oav/compare/oav-core-v3.0.0...oav-core-v3.1.0) (2026-06-08)
+
+
+### Features
+
+* synchronous spec loader (loadSpecSync) ([#362](https://github.com/aahoughton/oav/issues/362)) ([efbf842](https://github.com/aahoughton/oav/commit/efbf842a99d9405066ed4f3fc451ec3b9eb6ea9c))
+
+
+### Performance
+
+* **schema:** emit direct property checks for small required arrays ([#358](https://github.com/aahoughton/oav/issues/358)) ([fa4b111](https://github.com/aahoughton/oav/commit/fa4b111015afc613832893eaafbb83abee32eb04))
+
+
+### Documentation
+
+* correct stale README claims against code ([#361](https://github.com/aahoughton/oav/issues/361)) ([bdd2654](https://github.com/aahoughton/oav/commit/bdd265431797255aa118ab3e9ddb33a4c50c0b56))
+
 ## [3.0.0](https://github.com/aahoughton/oav/compare/oav-core-v2.4.0...oav-core-v3.0.0) (2026-06-08)
 
 

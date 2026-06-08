@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.1.0](https://github.com/aahoughton/oav/compare/oav-v3.0.0...oav-v3.1.0) (2026-06-08)
+
+
+### Features
+
+* synchronous spec loader (loadSpecSync) ([#362](https://github.com/aahoughton/oav/issues/362)) ([efbf842](https://github.com/aahoughton/oav/commit/efbf842a99d9405066ed4f3fc451ec3b9eb6ea9c))
+
 ## [3.0.0](https://github.com/aahoughton/oav/compare/oav-v2.4.0...oav-v3.0.0) (2026-06-08)
 
 
