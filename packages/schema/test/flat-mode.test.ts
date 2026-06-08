@@ -128,6 +128,29 @@ describe("flat mode: leaf-set parity with the tree (non-composition schemas)", (
   }
 });
 
+describe("flat mode: finite-maxErrors leaf-set parity with the tree (non-composition)", () => {
+  // The budget short-circuit drops errors mid-evaluation. Flat codegen and
+  // tree codegen run the identical keyword dispatch under the identical gated
+  // counter, so a finite cap must drop the SAME leaves in both modes: the flat
+  // list and collectLeaves(tree) stay equal, and truncated agrees. Nothing else
+  // forces these two flat-list producers equal under a budget (the Infinity
+  // block above only exercises the un-gated path).
+  for (const { name, schema, data } of LEAF_CASES) {
+    for (const maxErrors of [1, 2, 3]) {
+      it(`${name} @ maxErrors=${maxErrors}`, () => {
+        const t = tree(schema, { maxErrors }).validate(data);
+        const f = flat(schema, { maxErrors }).validate(data);
+        expect(t.valid).toBe(false);
+        expect(f.valid).toBe(false);
+        expect(bag(f.errors!)).toEqual(bag(collectLeaves(t.error!)));
+        expect(f.errors!.length).toBeLessThanOrEqual(maxErrors);
+        expect(f.truncated).toBe(t.truncated);
+        for (const e of f.errors!) expect(e.children).toEqual([]);
+      });
+    }
+  }
+});
+
 describe("flat mode: composition markers", () => {
   it("anyOf all-fail: branch leaves plus one anyOf marker", () => {
     const r = flat({ anyOf: [{ type: "string" }, { type: "number" }] }).validate(true);
@@ -206,12 +229,18 @@ describe("flat mode: validity agreement with the tree", () => {
     { schema: recursive, data: { value: 1, children: [{ value: "bad" }, { extra: true }] } },
   ];
 
+  // Run each case un-gated AND under finite budgets. A finite maxErrors must
+  // never flip a valid/invalid verdict (it only caps how many errors are
+  // reported); pinning flat.valid === tree.valid across caps guards that v3
+  // claim at the compiler's public boundary, composition/refs/recursion incl.
   for (const [i, { schema, data }] of AGREEMENT.entries()) {
-    it(`case ${i}: flat.valid === tree.valid`, () => {
-      const t = tree(schema).validate(data);
-      const f = flat(schema).validate(data);
-      expect(f.valid).toBe(t.valid);
-    });
+    for (const maxErrors of [1, 2, Number.POSITIVE_INFINITY]) {
+      it(`case ${i} @ maxErrors=${maxErrors}: flat.valid === tree.valid`, () => {
+        const t = tree(schema, { maxErrors }).validate(data);
+        const f = flat(schema, { maxErrors }).validate(data);
+        expect(f.valid).toBe(t.valid);
+      });
+    }
   }
 });
 
