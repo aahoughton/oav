@@ -6,8 +6,9 @@
 > contributors navigating the monorepo. Third-party consumers get the
 > router's functionality transparently via `createValidator`.
 
-Trie-based OpenAPI path matcher. Resolves `method + path` to the
-matching `OperationObject` in the spec.
+OpenAPI path matcher: a specificity-sorted route list, scanned
+linearly per request. Resolves `method + path` to the matching
+`OperationObject` in the spec.
 
 ```ts
 // Internal usage inside the monorepo
