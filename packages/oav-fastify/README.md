@@ -4,7 +4,7 @@ Fastify adapter for [`oav-core`](https://www.npmjs.com/package/@aahoughton/oav-c
 
 Same shape as the Express siblings ([`oav-express4`](../oav-express4/README.md), [`oav-express5`](../oav-express5/README.md)); only the framework-typed argument and Fastify's hook-vs-middleware distinction differ. Fastify is async-native, so thrown errors and rejected promises propagate to Fastify's error handler automatically, with no `try/catch` wrapper.
 
-Sibling packages: [`oav-express4`](../oav-express4/README.md), [`oav-express5`](../oav-express5/README.md). Same export names, option shapes, and defaults; only the framework-typed argument differs.
+Sibling packages: [`oav-express4`](../oav-express4/README.md), [`oav-express5`](../oav-express5/README.md). Identical option shapes and defaults; `validateRequests` and `renderProblemDetails` share names across the family, while the `httpRequestFrom*` extractor and `*Context` type carry framework-native names.
 
 ## Install
 

@@ -29,7 +29,12 @@ replace them.
 - **IP**: `ipv4`, `ipv6`
 - **URI**: `uri`, `uri-reference`, `iri`, `iri-reference`, `uri-template`
 - **JSON Pointer**: `json-pointer`, `relative-json-pointer`
-- **Misc**: `regex`, `uuid`
+- **Misc**: `uuid`
+
+`regex` also works as a `format`, but it isn't a key in `builtInFormats`:
+`oav/schema` registers it inside `createDeps` so it routes through the
+same compile path as the `pattern` keyword (and honors `regexCompiler`).
+The standalone `validateRegex` predicate is still exported for direct use.
 
 ## Registering a custom format
 
