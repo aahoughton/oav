@@ -44,7 +44,7 @@ app.get("/__memory", (req, res) => {
 // Validator adapter.
 app.use(async (req, res, next) => {
   if (req.path === "/__memory") return next();
-  const err = validator.validateRequest({
+  const result = validator.validateRequest({
     method: req.method,
     path: req.path,
     query: req.query,
@@ -52,13 +52,14 @@ app.use(async (req, res, next) => {
     contentType: req.get("content-type") ?? undefined,
     body: req.body,
   });
-  if (err === null) return next();
-  const allow = allowHeaderFor(err);
+  if (result.valid) return next();
+  const errors = result.errors;
+  const allow = allowHeaderFor(errors);
   if (allow !== undefined) res.setHeader("Allow", allow);
   res
-    .status(httpStatusFor(err))
+    .status(httpStatusFor(errors))
     .type("application/problem+json")
-    .json(toProblemDetails(err, { instance: req.originalUrl }));
+    .json(toProblemDetails(errors, { instance: req.originalUrl }));
 });
 
 // Business handlers.
