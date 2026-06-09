@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.1.0](https://github.com/aahoughton/oav/compare/oav-express4-v3.0.0...oav-express4-v3.1.0) (2026-06-09)
+
+
+### Documentation
+
+* correct stale README claims against code ([#361](https://github.com/aahoughton/oav/issues/361)) ([bdd2654](https://github.com/aahoughton/oav/commit/bdd265431797255aa118ab3e9ddb33a4c50c0b56))
+
 ## [3.0.0](https://github.com/aahoughton/oav/compare/oav-express4-v2.4.0...oav-express4-v3.0.0) (2026-06-08)
 
 

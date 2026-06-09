@@ -1,6 +1,6 @@
 {
   "name": "@aahoughton/oav-express4",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "Express 4 adapter for @aahoughton/oav-core. Ships a request-validator middleware factory plus standalone helpers (httpRequestFromExpress, renderProblemDetails) for callers that want to compose their own.",
   "keywords": [
     "express",
