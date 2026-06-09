@@ -35,34 +35,108 @@ comes down to the shape of integration you want.
 
 This document is about behavior and capabilities. For raw numbers
 and methodology see [`performance/README.md`](../performance/README.md);
-the shape of the trade-off is sketched below.
+the host-stamped per-shape numbers are below.
 
-## Performance sketch
+## Performance
 
-The numbers below compare matched defaults: oav's zero-config output
-(flat, `maxErrors: 1`) against Ajv's zero-config `allErrors: false`.
-Both stop at the first error. Validate ratios are oav ÷ Ajv, so `1.00`
-is parity, above is oav faster, below is Ajv faster. Synthetic bench,
-one machine; treat them as orders of magnitude, not exact figures.
+- **Host:** AWS c7i.large, Intel Xeon Platinum 8488C (Sapphire Rapids),
+  x86_64, 2 vCPU, Linux
+- **Runtime:** Node v22.22.3, Ajv 8.20.0
+- **Method:** synthetic shape suite, 1000 ms/task, 500 ms cooldown,
+  median of 3 runs; commit `2754996`, 2026-06-09
 
-| Workload                                            | oav ÷ Ajv | Notes                                                                                                                     |
-| --------------------------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------- |
-| Validate, small objects (tiny / petstore)           | 0.75–1.0  | Within ~25%; Ajv a little ahead on the rejection path                                                                     |
-| Validate, recursive tree                            | ~1.0      | Tied                                                                                                                      |
-| Validate, large array of small objects              | 0.86–0.99 | Within ~15%                                                                                                               |
-| Validate, `oneOf` / `allOf` rejection               | ~0.4      | Ajv ~2.5× faster: oav materialises the composition error (more when collecting all). `output: "predicate"` reaches parity |
-| Validate, `uniqueItems` arrays                      | 1.6–3.2   | oav faster                                                                                                                |
-| Validate, predicate mode (vs Ajv `allErrors:false`) | 0.9–3.2   | At or above parity across shapes                                                                                          |
-| Compile, synthetic (per shape)                      | 20–175×   | oav faster                                                                                                                |
-| Compile, real-world OpenAPI spec                    | ~5–8×     | oav faster: ~8× on Stripe (886 schemas), ~5.5× on Adyen (44 schemas)                                                      |
+The harness measures five configurations: Ajv fast-fail
+(`allErrors: false`), Ajv full-collect (`allErrors: true`), oav fast-fail
+(flat, `maxErrors: 1`, the zero-config default), oav full-collect
+(`maxErrors: Infinity`), and oav predicate (`output: "predicate"`).
+Validate is compared against the matched Ajv mode: oav fast-fail vs Ajv
+fast-fail, oav full-collect vs Ajv full-collect, oav predicate vs Ajv
+fast-fail.
 
-The shape of the trade-off: on validate throughput the two are close on
-typical request bodies, Ajv leads on `oneOf` / `allOf` rejection, and
-oav leads on `uniqueItems` and predicate-mode checks. oav's larger and
-more consistent advantage is compile time, which matters wherever
-validator construction is in the hot path (per-request, per-tenant,
-per-test, edge cold-start, AOT module emit). Full methodology, raw
-numbers, and the benchmark harness live in
+### Compile
+
+oav's clearest, most consistent win. Ajv's compile is near-constant
+per-schema overhead; oav scales with shape and runs an order of
+magnitude or two faster. This matters wherever validator construction
+is in the hot path (per-request, per-tenant, per-test, edge cold-start,
+AOT module emit).
+
+| shape               | Ajv     | oav      | speedup |
+| ------------------- | ------- | -------- | ------- |
+| `tiny`              | 9.38 ms | 32.7 µs  | 287×    |
+| `petstore`          | 7.96 ms | 160.2 µs | 50×     |
+| `tree`              | 8.00 ms | 81.2 µs  | 99×     |
+| `composition`       | 8.13 ms | 358.2 µs | 23×     |
+| `array-heavy`       | 7.66 ms | 117.6 µs | 65×     |
+| `unique-primitives` | 7.01 ms | 46.7 µs  | 150×    |
+| `long-string`       | 7.12 ms | 85.3 µs  | 83×     |
+
+### Validate
+
+Each cell is oav's throughput as a percent of the matched Ajv mode:
+`100%` is parity, above is oav faster, below is Ajv faster. On typical
+request bodies the absolute per-call gaps are tens of nanoseconds, so
+these percentages move real numbers only at extreme validation volume.
+
+Valid input:
+
+| shape               | oav fast-fail | oav full-collect | oav predicate |
+| ------------------- | ------------- | ---------------- | ------------- |
+| `tiny`              | 144%          | 149%             | 149%          |
+| `petstore`          | 74%           | 101%             | 107%          |
+| `tree`              | 99%           | 103%             | 121%          |
+| `composition`       | 139%          | 170%             | 183%          |
+| `array-heavy`       | 111%          | 115%             | 211%          |
+| `unique-primitives` | 159%          | 162%             | 161%          |
+| `long-string`       | >1000×†       | >1000×†          | >1000×†       |
+
+Invalid input (averaged across failure-position fixtures):
+
+| shape               | oav fast-fail | oav full-collect | oav predicate |
+| ------------------- | ------------- | ---------------- | ------------- |
+| `tiny`              | 81%           | 104%             | 123%          |
+| `petstore`          | 61%           | 93%              | 147%          |
+| `tree`              | 87%           | 115%             | 189%          |
+| `composition`       | 97%           | 75%              | 228%          |
+| `array-heavy`       | 106%          | 78%              | 208%          |
+| `unique-primitives` | 313%          | 295%             | 316%          |
+| `long-string`       | 42%           | 89%              | >1000×†       |
+
+The trade-off: oav fast-fail trails Ajv fast-fail on plain object
+rejection (`petstore` 61–74%), trades places on the other shapes, and
+leads clearly on `uniqueItems`. oav full-collect stays close to Ajv
+full-collect: ahead on most accept-path shapes, mixed on rejection
+(trailing on `composition` and `array-heavy`, where collecting every
+error costs more). oav predicate mode, which skips error
+materialisation, is at or above parity everywhere.
+
+† `long-string` is a pathological shape. On the accept path oav is
+roughly three to four thousand times faster than Ajv (capped here to
+`>1000×`), because Ajv's handling of very long length-bounded strings is
+expensive on this input while oav short-circuits. The reject path is
+noisier and swings the other way for fast-fail (oav at 42%). Read this
+row as a shape-specific signal, not a typical result.
+
+### Memory
+
+Steady-state HTTP-server footprint over 50,000 requests, oav vs
+`express-openapi-validator` (which wraps Ajv), both Express 4 against the
+same 40-schema spec and identical traffic:
+
+| metric                          | oav      | eov + Ajv |
+| ------------------------------- | -------- | --------- |
+| Baseline RSS                    | 75.6 MB  | 72.4 MB   |
+| Steady-state RSS (avg)          | 102.5 MB | 106.6 MB  |
+| Steady-state heap used (avg)    | 12.8 MB  | 14.7 MB   |
+| Post-idle RSS                   | 102.3 MB | 106.8 MB  |
+| Throughput (ms / 500-req batch) | 525 ms   | 578 ms    |
+
+oav settles a few percent lighter on RSS, carries less heap, and turns
+the same workload over a little faster. Neither footprint is large; the
+gap is unlikely to decide a deployment.
+
+Full methodology, the synthetic shape definitions, the `--spec` mode for
+real-world OpenAPI documents, and the raw host-stamped JSON live in
 [`performance/README.md`](../performance/README.md).
 
 ## Where Ajv (+ express-openapi-validator) does more
@@ -240,9 +314,9 @@ Pick oav when you want a structured error tree, overlays over specs you
 don't own, an OpenAPI 3.0 dialect built into the validator, explicit
 control over where validation runs in your HTTP stack, or standalone
 OpenAPI HTTP validator output for edge/serverless deployments. It also
-fits compile-heavy workloads: current benchmarks show one to two orders
-of magnitude faster schema compile than Ajv, including 8× on Stripe's
-real-world spec; see the performance sketch above.
+fits compile-heavy workloads: the benchmarks show one to two orders
+of magnitude faster schema compile than Ajv; see the Performance
+section above.
 
 For benchmark numbers rather than feature comparisons, see
 [`performance/README.md`](../performance/README.md).

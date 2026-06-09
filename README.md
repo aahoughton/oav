@@ -205,40 +205,22 @@ OpenAPI validator output. See [docs/comparison.md](https://github.com/aahoughton
 for the feature map, and [docs/migration-from-eov.md](https://github.com/aahoughton/oav/blob/main/docs/migration-from-eov.md)
 if you are migrating from `express-openapi-validator`.
 
-Numbers below are from the [`performance/`](https://github.com/aahoughton/oav/blob/main/performance/README.md)
-benchmark on AWS c7i.large (Intel Sapphire Rapids, Node 22). Your
-hardware will vary.
+On raw speed, oav wins some and loses some against Ajv, and for most
+services the difference is immaterial. oav compiles schemas far faster
+(tens of microseconds against milliseconds), validates competitively on
+typical request bodies, and carries a slightly smaller steady-state
+memory footprint than `express-openapi-validator`. Ajv is faster on
+fast-fail validation of some ordinary object shapes. At normal request
+volumes (a validation or two per request, thousands of requests per
+second) these gaps are nanoseconds per call and vanish into everything
+else a handler does. They only start to matter if you validate at
+extreme volume or against pathological shapes (very large `uniqueItems`
+arrays, very long length-bounded strings).
 
-**Compile: oav is meaningfully faster.**
-
-|                                            | Ajv     | oav       |
-| ------------------------------------------ | ------- | --------- |
-| Single synthetic schema (varies by shape)  | ~2.7 ms | 15–200 µs |
-| Real-world spec (petstore-31, ~10 schemas) | 27 ms   | 1.6 ms    |
-
-Ajv compile is essentially constant overhead per schema; oav scales
-with shape, running 20–175× faster across the synthetic shapes and
-~5–8× on real-world specs (Stripe, Adyen). The advantage shows up
-wherever validator construction sits in the hot path: per-request,
-per-tenant, per-test, edge cold-start, AOT module emit.
-
-**Validate: close on typical shapes at matched defaults.**
-
-Comparing each library's zero-config default (oav flat + `maxErrors: 1`
-against Ajv `allErrors: false`, both stopping at the first error): the
-two are within ~25% on typical request bodies (small objects, recursive
-trees, large arrays). Ajv leads by ~2.5× on `oneOf` / `allOf` rejection,
-where oav materialises the composition error; oav's `predicate` mode
-(`compileSchema(..., { output: "predicate" })`) reaches parity there.
-oav leads ~1.6–3× on `uniqueItems` arrays.
-
-For typical HTTP workloads (1k–10k req/sec × ~1 validation per
-request), the difference is invisible. For validation-heavy code
-(millions of validations per second), measure your own shapes.
-
-Full per-shape breakdown: [`docs/comparison.md`](https://github.com/aahoughton/oav/blob/main/docs/comparison.md). Raw
-benchmark data and methodology:
-[`performance/README.md`](https://github.com/aahoughton/oav/blob/main/performance/README.md).
+For the host-stamped per-shape numbers, the memory comparison, and the
+methodology, see [docs/comparison.md](https://github.com/aahoughton/oav/blob/main/docs/comparison.md).
+Raw benchmark data lives in
+[`performance/`](https://github.com/aahoughton/oav/blob/main/performance/README.md).
 
 ## Conformance
 
