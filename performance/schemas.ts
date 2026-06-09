@@ -51,11 +51,15 @@ const petstore: PerfSchema = {
     { id: 1, name: "Fido" },
     { id: 2, name: "Whiskers", tag: "cat", status: "available", price: 12.5 },
   ],
+  // Failure positions span early (required) → mid (a prop constraint) →
+  // deep (a nested numeric bound) → late (additionalProperties, only
+  // after every declared property is checked) → many (several at once).
   invalidInputs: [
-    { name: "Missing id" },
-    { id: 1, name: "" },
-    { id: 1, name: "Fido", extra: true },
-    { id: 1, name: "Fido", price: -1 },
+    { name: "Missing id" }, // early: required `id`
+    { id: 1, name: "" }, // mid: name minLength
+    { id: 1, name: "Fido", price: -1 }, // deep: a property's numeric minimum
+    { id: 1, name: "Fido", extra: true }, // late: additionalProperties
+    { id: 0, name: "", status: "nope", price: -5, extra: 1 }, // many: five errors at once
   ],
 };
 
@@ -89,10 +93,17 @@ const tree: PerfSchema = {
       ],
     },
   ],
+  // Failure depth spread: root-required → shallow type → one level deep
+  // → three levels into the recursion (stresses the recursive call path
+  // before failing).
   invalidInputs: [
-    { value: "not a number" },
-    { value: 1, children: [{ value: "bad" }] },
-    { label: "missing value" },
+    { label: "missing value" }, // early: required `value` at the root
+    { value: "not a number" }, // shallow: root value type
+    { value: 1, children: [{ value: "bad" }] }, // one level deep
+    {
+      value: 1,
+      children: [{ value: 2, children: [{ value: 3, children: [{ value: "deep" }] }] }],
+    }, // deep: failure three levels into the recursion
   ],
 };
 
@@ -127,11 +138,16 @@ const composition: PerfSchema = {
     { kind: "Dog", bark: "woof" },
     { kind: "Fish", fins: 2 },
   ],
+  // Spread across the oneOf dispatch: missing discriminator (fails the
+  // allOf earliest) → no branch matches → matched branch missing a
+  // required field → matched branch wrong type → matched branch deep
+  // numeric bound.
   invalidInputs: [
-    { kind: "Cat" },
-    { kind: "Lizard" },
-    { kind: "Dog", bark: 42 },
-    { kind: "Fish", fins: -1 },
+    {}, // earliest: allOf required `kind` missing
+    { kind: "Lizard" }, // no oneOf branch's const matches
+    { kind: "Cat" }, // matches Cat const, missing required `purr`
+    { kind: "Dog", bark: 42 }, // matches Dog const, wrong type for `bark`
+    { kind: "Fish", fins: -1 }, // matches Fish const, fails `fins` minimum
   ],
 };
 
@@ -148,7 +164,13 @@ const uniquePrimitives: PerfSchema = {
     items: { type: "string" },
   },
   validInputs: [makeUniqueStrings(500)],
-  invalidInputs: [makeDuplicateStrings(500)],
+  // Vary where the duplicate sits so the scan detects it early, mid, or
+  // only after a full pass.
+  invalidInputs: [
+    makeDuplicateStrings(500, 1), // early: duplicate near the start
+    makeDuplicateStrings(500, 250), // middle
+    makeDuplicateStrings(500, 499), // late: duplicate at the end (full scan)
+  ],
 };
 
 function makeUniqueStrings(n: number): string[] {
@@ -157,11 +179,11 @@ function makeUniqueStrings(n: number): string[] {
   return out;
 }
 
-function makeDuplicateStrings(n: number): string[] {
+function makeDuplicateStrings(n: number, dupAt: number): string[] {
   const out = makeUniqueStrings(n);
-  // Put the duplicate in the middle so the scan can't trivially
-  // short-circuit on the first pair.
-  out[Math.floor(n / 2)] = out[0]!;
+  // Collide out[dupAt] with out[0] so the second occurrence (the
+  // earliest point a scan can detect the duplicate) sits at `dupAt`.
+  out[dupAt] = out[0]!;
   return out;
 }
 
@@ -183,7 +205,14 @@ const arrayHeavy: PerfSchema = {
     },
   },
   validInputs: [makeValidArray(100)],
-  invalidInputs: [makeInvalidArray(100)],
+  // First-element vs last-element failure separates fast-fail (exits at
+  // the first bad item) from the cost of walking to a late failure;
+  // every-element-fails stresses full-collect (100 errors gathered).
+  invalidInputs: [
+    makeInvalidArrayAt(100, 0), // early: first element fails
+    makeInvalidArrayAt(100, 99), // late: last element fails
+    makeAllInvalidArray(100), // many: every element fails
+  ],
 };
 
 // 7. Large strings with length bounds — exercises minLength / maxLength
@@ -205,7 +234,14 @@ const longString: PerfSchema = {
     },
   },
   validInputs: [{ title: "Hello", body: makeAscii(100_000) }],
-  invalidInputs: [{ title: "", body: makeAscii(2_500_000) }],
+  // Separates a cheap early failure (empty title, body never inspected)
+  // from the expensive one (title fine, so the big maxLength count on a
+  // 2.5M-char body has to run) and the both-fail case.
+  invalidInputs: [
+    { title: "", body: makeAscii(100_000) }, // cheap/early: title minLength fails first
+    { title: "ok", body: makeAscii(2_500_000) }, // expensive: body overshoots maxLength
+    { title: "", body: makeAscii(2_500_000) }, // both fail
+  ],
 };
 
 function makeAscii(n: number): string {
@@ -220,9 +256,15 @@ function makeValidArray(n: number): Array<Record<string, unknown>> {
   return out;
 }
 
-function makeInvalidArray(n: number): Array<Record<string, unknown>> {
+function makeInvalidArrayAt(n: number, idx: number): Array<Record<string, unknown>> {
   const out = makeValidArray(n);
-  (out[n - 1] as Record<string, unknown>).id = -1;
+  (out[idx] as Record<string, unknown>).id = -1;
+  return out;
+}
+
+function makeAllInvalidArray(n: number): Array<Record<string, unknown>> {
+  const out = makeValidArray(n);
+  for (const item of out) (item as Record<string, unknown>).id = -1;
   return out;
 }
 

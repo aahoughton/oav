@@ -1,44 +1,65 @@
 /**
- * Cross-library benchmarks for @oav/schema vs ajv (2020) vs
- * @hyperjump/json-schema (2020-12).
+ * Cross-library benchmarks for @oav/schema vs ajv (2020-12 dialect).
  *
  * Two modes:
  *
  *   - Synthetic (default): iterate over ./schemas.ts and measure
  *     compile + validate with hand-authored valid/invalid inputs.
- *   - Spec (--spec <path>): load an OpenAPI document, extract every
- *     unique request/response body schema, and measure each
- *     library's compile time across the set. Validate is skipped in
- *     this mode because real-world schemas come without paired
- *     valid/invalid fixtures.
+ *   - Spec (--spec=<path>): load an OpenAPI document, extract every
+ *     unique request/response body schema, and measure each library's
+ *     compile time across the set. Validate is skipped in this mode
+ *     because real-world schemas come without paired valid/invalid
+ *     fixtures.
  *
- * See ./README.md for details.
+ * Output is a timestamped JSON file under ./results/ (gitignored;
+ * numbers are host-dependent). Render it into markdown tables with
+ * `pnpm bench:render`. See ./README.md for details.
+ *
+ * Flags:
+ *   --time=<ms>      tinybench time budget per task (default 500)
+ *   --cooldown=<ms>  fallow sleep after each task to limit cross-talk
+ *                    (default 0; set it for publishable runs)
+ *   --filter=<name>  run only schemas whose name includes <name>
+ *   --spec=<path>    real-world spec compile mode
  */
 
+import { execSync } from "node:child_process";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { cpus, arch, platform } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import $RefParser from "@apidevtools/json-schema-ref-parser";
 import { Bench } from "tinybench";
 import Ajv from "ajv/dist/2020.js";
-import {
-  registerSchema,
-  unregisterSchema,
-  validate as hjValidate,
-} from "@hyperjump/json-schema/draft-2020-12";
 import { compileSchema, jsonSchemaDialect } from "../packages/schema/src/index.ts";
 import { builtInFormats } from "../packages/formats/src/index.ts";
 import { perfSchemas, type PerfSchema } from "./schemas.ts";
 
 const args = process.argv.slice(2);
+const numArg = (name: string, dflt: number): number => {
+  const a = args.find((x) => x.startsWith(`--${name}=`));
+  return a ? Number.parseInt(a.slice(name.length + 3), 10) : dflt;
+};
 const filterArg = args.find((a) => a.startsWith("--filter="));
 const filter = filterArg?.slice("--filter=".length);
-const timeArg = args.find((a) => a.startsWith("--time="));
-const time = timeArg ? Number.parseInt(timeArg.slice("--time=".length), 10) : 500;
+const time = numArg("time", 500);
+const cooldown = numArg("cooldown", 0);
 const specArg = args.find((a) => a.startsWith("--spec="));
 const specPath = specArg?.slice("--spec=".length);
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+// Fallow period after every task so thermal / GC state from one task
+// doesn't bleed into the next. Applied as a tinybench per-task afterAll
+// hook; tasks run sequentially, so this spaces the whole sweep.
+const taskOpts = cooldown > 0 ? { afterAll: () => sleep(cooldown) } : {};
 
 type Result = {
   schema: string;
   metric: "compile" | "validate";
-  lib: "ajv" | "ajv-fast" | "hyperjump" | "oav" | "oav-all" | "oav-predicate";
+  lib: "ajv" | "ajv-fast" | "oav" | "oav-all" | "oav-predicate";
+  validity?: "valid" | "invalid";
   hz: number; // ops/sec
   mean: number; // µs/op
   variant?: string; // full task name (e.g. "oav validate (valid)")
@@ -73,46 +94,40 @@ function taskErrorMessage(t: { result?: unknown }): string | undefined {
   return r?.error?.message;
 }
 
+function validityOf(taskName: string): "valid" | "invalid" | undefined {
+  if (taskName.includes("(valid)")) return "valid";
+  if (taskName.includes("(invalid")) return "invalid";
+  return undefined;
+}
+
 async function benchSchema(s: PerfSchema): Promise<void> {
   console.log(`\n=== ${s.name} — ${s.description} ===`);
 
-  // Pre-allocate per-iteration scratch that is NOT part of what we want
-  // to measure so the hot loop reduces to the library's work.
-  // - Hyperjump caches compiled validators per URI, so we need a fresh
-  //   URI per iteration; pre-generate the pool.
-  // - Compile options for oav / ajv are identical each iteration, so
-  //   hoist them.
-  const URI_POOL = 50_000;
-  const hjCompileUris = Array.from({ length: URI_POOL }, (_, i) => `bench://c-${s.name}-${i}`);
-  let hjCompileIdx = 0;
+  // Compile options for oav / ajv are identical each iteration, so hoist
+  // them; the hot loop reduces to the library's work.
   const oavOpts = { dialect: jsonSchemaDialect, formats: builtInFormats };
   const ajvFactory = () => new Ajv({ allErrors: true, strict: false });
 
   // COMPILE BENCH: each task turns a fresh schema object into a callable
   // validator. For ajv that includes `new Ajv()` (it's part of the
   // cold-start cost — a pool of compiled schemas still needs an instance
-  // to own them). For hyperjump, `registerSchema` + `validate(uri)`.
+  // to own them).
   const compileBench = new Bench({ time });
   compileBench
-    .add("ajv compile", () => {
-      ajvFactory().compile(s.schema);
-    })
-    .add("hyperjump compile", async () => {
-      const uri = hjCompileUris[hjCompileIdx];
-      hjCompileIdx += 1;
-      if (uri === undefined) throw new Error("uri pool exhausted; raise URI_POOL");
-      registerSchema(s.schema, uri);
-      try {
-        await hjValidate(uri);
-      } finally {
-        // Registry doesn't need to grow across iterations — unregister keeps
-        // registerSchema's cost stable instead of degrading as we add entries.
-        unregisterSchema(uri);
-      }
-    })
-    .add("oav compile", () => {
-      compileSchema(s.schema as never, oavOpts);
-    });
+    .add(
+      "ajv compile",
+      () => {
+        ajvFactory().compile(s.schema);
+      },
+      taskOpts,
+    )
+    .add(
+      "oav compile",
+      () => {
+        compileSchema(s.schema as never, oavOpts);
+      },
+      taskOpts,
+    );
 
   await compileBench.run();
 
@@ -136,18 +151,14 @@ async function benchSchema(s: PerfSchema): Promise<void> {
   // no modulo, no cursor math — so what we measure is as close as
   // possible to the real production cost of "I already loaded the spec;
   // now validate this one payload".
+
+  // ajv collecting every error (allErrors: true): full-collect.
   const ajv = new Ajv({ allErrors: true, strict: false });
   const ajvValidate = ajv.compile(s.schema);
 
-  // ajv's default (fail-fast) mode — the fair comparison for oav's
-  // predicate mode. Both stop at the first failure and report
-  // yes/no-style rather than building a full error tree.
+  // ajv's fail-fast mode (allErrors: false): stops at the first failure.
   const ajvFast = new Ajv({ allErrors: false, strict: false });
   const ajvValidateFast = ajvFast.compile(s.schema);
-
-  const hjUri = `bench://validate-${s.name}`;
-  registerSchema(s.schema, hjUri);
-  const hjV = await hjValidate(hjUri);
 
   // oav's zero-config default: flat output, maxErrors 1 (fail-fast). The
   // apples-to-apples partner for ajv-fast (allErrors: false).
@@ -163,56 +174,72 @@ async function benchSchema(s: PerfSchema): Promise<void> {
     maxErrors: Number.POSITIVE_INFINITY,
   });
 
+  // oav predicate mode: boolean only, no error materialization.
   const oavPredicate = compileSchema(s.schema as never, {
     dialect: jsonSchemaDialect,
     formats: builtInFormats,
     output: "predicate",
   });
 
-  // Measure both the happy path (valid) and the failure path (invalid)
-  // so nobody gets to win by short-circuiting. Pick one representative
-  // sample of each up front — no per-iteration selection work.
-  const validSample = s.validInputs[0];
-  const invalidSample = s.invalidInputs[0];
+  // Each config: how to run it (timed) and its boolean verdict (used by
+  // the pre-flight check). Flat / full-collect return `{ valid }`;
+  // predicate and ajv return a bare boolean.
+  const configs: {
+    lib: Result["lib"];
+    run: (x: unknown) => void;
+    verdict: (x: unknown) => boolean;
+  }[] = [
+    { lib: "ajv", run: (x) => void ajvValidate(x), verdict: (x) => ajvValidate(x) === true },
+    {
+      lib: "ajv-fast",
+      run: (x) => void ajvValidateFast(x),
+      verdict: (x) => ajvValidateFast(x) === true,
+    },
+    {
+      lib: "oav",
+      run: (x) => void oav.validate(x),
+      verdict: (x) => (oav.validate(x) as { valid: boolean }).valid,
+    },
+    {
+      lib: "oav-all",
+      run: (x) => void oavAll.validate(x),
+      verdict: (x) => (oavAll.validate(x) as { valid: boolean }).valid,
+    },
+    {
+      lib: "oav-predicate",
+      run: (x) => void oavPredicate.validate(x),
+      verdict: (x) => oavPredicate.validate(x) === true,
+    },
+  ];
 
-  const validateBench = new Bench({ time });
-  validateBench
-    .add("ajv validate (valid)", () => {
-      ajvValidate(validSample);
-    })
-    .add("ajv validate (invalid)", () => {
-      ajvValidate(invalidSample);
-    })
-    .add("ajv-fast validate (valid)", () => {
-      ajvValidateFast(validSample);
-    })
-    .add("ajv-fast validate (invalid)", () => {
-      ajvValidateFast(invalidSample);
-    })
-    .add("hyperjump validate (valid)", () => {
-      hjV(validSample);
-    })
-    .add("hyperjump validate (invalid)", () => {
-      hjV(invalidSample);
-    })
-    .add("oav validate (valid)", () => {
-      oav.validate(validSample);
-    })
-    .add("oav validate (invalid)", () => {
-      oav.validate(invalidSample);
-    })
-    .add("oav-all validate (valid)", () => {
-      oavAll.validate(validSample);
-    })
-    .add("oav-all validate (invalid)", () => {
-      oavAll.validate(invalidSample);
-    })
-    .add("oav-predicate validate (valid)", () => {
-      oavPredicate.validate(validSample);
-    })
-    .add("oav-predicate validate (invalid)", () => {
-      oavPredicate.validate(invalidSample);
+  // Pre-flight: every authored input must validate as labeled under
+  // every config. This both confirms fixtures are correctly labeled and
+  // that ajv and oav agree on the verdict; a mismatch means a timed task
+  // would measure the wrong path, so fail loudly before timing.
+  for (const c of configs) {
+    s.validInputs.forEach((x, i) => {
+      if (!c.verdict(x)) throw new Error(`${s.name}: ${c.lib} rejects validInputs[${i}]`);
     });
+    s.invalidInputs.forEach((x, i) => {
+      if (c.verdict(x)) throw new Error(`${s.name}: ${c.lib} accepts invalidInputs[${i}]`);
+    });
+  }
+
+  // Valid path: one representative sample per config. Invalid path: one
+  // task per authored fixture per config, so the published invalid
+  // number spans the failure-position spread instead of a single point.
+  // Each task still validates ONE fixed payload — pure hot loop, no
+  // per-iteration selection.
+  const validSample = s.validInputs[0];
+  const validateBench = new Bench({ time });
+  for (const c of configs) {
+    validateBench.add(`${c.lib} validate (valid)`, () => c.run(validSample), taskOpts);
+  }
+  for (const c of configs) {
+    s.invalidInputs.forEach((sample, i) => {
+      validateBench.add(`${c.lib} validate (invalid #${i})`, () => c.run(sample), taskOpts);
+    });
+  }
   await validateBench.run();
 
   console.log("validate:");
@@ -231,13 +258,12 @@ async function benchSchema(s: PerfSchema): Promise<void> {
       schema: s.name,
       metric: "validate",
       lib,
+      validity: validityOf(t.name),
       hz: stats.hz,
       mean: stats.mean,
       variant: t.name,
     });
   }
-
-  unregisterSchema(hjUri);
 }
 
 /**
@@ -276,9 +302,9 @@ function extractBodySchemas(doc: unknown): unknown[] {
 
 async function benchSpec(path: string): Promise<void> {
   // Use @apidevtools/json-schema-ref-parser to produce a fully
-  // dereferenced document. That isolates compile-time comparisons
-  // from any resolver differences between libraries and gives ajv /
-  // hyperjump / oav an identical input.
+  // dereferenced document. That isolates compile-time comparisons from
+  // any resolver differences between libraries and gives ajv / oav an
+  // identical input.
   const doc = await $RefParser.dereference(path);
   const schemas = extractBodySchemas(doc);
   console.log(`\n=== Real-world spec: ${path} ===`);
@@ -289,10 +315,8 @@ async function benchSpec(path: string): Promise<void> {
   // warmup + iteration machinery is overkill at ms scale and across
   // 100+ schemas it blows past anything resembling a reasonable run time.
   const ajvTimes: number[] = [];
-  const hjTimes: number[] = [];
   const oavTimes: number[] = [];
   const ajvErrors: string[] = [];
-  const hjErrors: string[] = [];
   const oavErrors: string[] = [];
 
   for (let i = 0; i < schemas.length; i += 1) {
@@ -302,40 +326,12 @@ async function benchSpec(path: string): Promise<void> {
       const t0 = performance.now();
       // `logger: false` suppresses "unknown format X" warnings that
       // would otherwise flood the output; the schemas use OAS-specific
-      // formats (`duration`, `float`) that neither ajv nor
-      // ajv-formats recognize by default.
+      // formats (`duration`, `float`) that neither ajv nor ajv-formats
+      // recognize by default.
       new Ajv({ allErrors: true, strict: false, logger: false }).compile(schema as never);
       ajvTimes.push(performance.now() - t0);
     } catch (err) {
       ajvErrors.push(err instanceof Error ? err.message : String(err));
-    }
-
-    const uri = `bench://spec-${i}`;
-    // Spec-derived schemas don't declare `$schema`. Pin 2020-12
-    // explicitly so hyperjump doesn't refuse on dialect detection.
-    // OAS 3.0 keywords (`nullable`, etc.) will still trip it; those
-    // show up as per-schema compile failures, which is accurate: the
-    // benchmark is measuring what the library can actually do with
-    // the input, not what it could do with a hand-crafted fixture.
-    //
-    // Hyperjump prints unknown-format warnings to stdout on register.
-    // Swallow them so the bench output stays readable.
-    const origLog = console.log;
-    console.log = () => {};
-    try {
-      registerSchema(schema as never, uri, "https://json-schema.org/draft/2020-12/schema");
-      const t0 = performance.now();
-      await hjValidate(uri);
-      hjTimes.push(performance.now() - t0);
-    } catch (err) {
-      hjErrors.push(err instanceof Error ? err.message : String(err));
-    } finally {
-      console.log = origLog;
-      try {
-        unregisterSchema(uri);
-      } catch {
-        // registry state may already be clean; ignore.
-      }
     }
 
     try {
@@ -369,14 +365,9 @@ async function benchSpec(path: string): Promise<void> {
 
   console.log("compile (per library, aggregated across every schema):");
   row("ajv", ajvTimes, ajvErrors);
-  row("hyperjump", hjTimes, hjErrors);
   row("oav", oavTimes, oavErrors);
 
-  for (const [lib, errs] of [
-    ["ajv", ajvErrors] as const,
-    ["hyperjump", hjErrors] as const,
-    ["oav", oavErrors] as const,
-  ]) {
+  for (const [lib, errs] of [["ajv", ajvErrors] as const, ["oav", oavErrors] as const]) {
     if (errs.length === 0) continue;
     console.log(`\n${lib} compile errors:`);
     const counts = new Map<string, number>();
@@ -387,7 +378,7 @@ async function benchSpec(path: string): Promise<void> {
     if (counts.size > 5) console.log(`  … and ${counts.size - 5} other distinct error(s)`);
   }
 
-  const pushSpec = (lib: "ajv" | "hyperjump" | "oav", times: number[]): void => {
+  const pushSpec = (lib: "ajv" | "oav", times: number[]): void => {
     if (times.length === 0) return;
     const total = times.reduce((a, b) => a + b, 0);
     results.push({
@@ -399,7 +390,6 @@ async function benchSpec(path: string): Promise<void> {
     });
   };
   pushSpec("ajv", ajvTimes);
-  pushSpec("hyperjump", hjTimes);
   pushSpec("oav", oavTimes);
 }
 
@@ -413,18 +403,16 @@ if (specPath !== undefined) {
   console.log("\n=== Relative throughput (vs ajv = 1.00) ===");
   console.log(
     "schema".padEnd(14) +
-      "metric".padEnd(22) +
+      "task".padEnd(22) +
       "ajv".padEnd(8) +
       "ajv-fast".padEnd(10) +
-      "hyperjump".padEnd(12) +
       "oav".padEnd(8) +
       "oav-all".padEnd(9) +
       "oav-pred",
   );
-  console.log("-".repeat(80));
+  console.log("-".repeat(72));
   const byKey = new Map<string, Record<string, number>>();
   for (const r of results) {
-    // Distinguish validate-valid vs validate-invalid when we have variants.
     const variantLabel = r.variant ? r.variant.replace(/^\S+\s+/, "") : r.metric;
     const key = `${r.schema}|${variantLabel}`;
     const row = byKey.get(key) ?? {};
@@ -432,10 +420,9 @@ if (specPath !== undefined) {
     byKey.set(key, row);
   }
   for (const [key, row] of byKey) {
-    const [schema, metric] = key.split("|");
+    const [schema, task] = key.split("|");
     const ajv = row["ajv"] ?? 0;
     const ajvFast = row["ajv-fast"] ?? 0;
-    const hj = row["hyperjump"] ?? 0;
     const oav = row["oav"] ?? 0;
     const oavAll = row["oav-all"] ?? 0;
     const oavPred = row["oav-predicate"] ?? 0;
@@ -443,21 +430,15 @@ if (specPath !== undefined) {
     const fmt = (n: number) => (n === 0 ? "—" : (n / base).toFixed(2));
     console.log(
       (schema ?? "").padEnd(14) +
-        (metric ?? "").padEnd(22) +
+        (task ?? "").padEnd(22) +
         "1.00".padEnd(8) +
         fmt(ajvFast).padEnd(10) +
-        fmt(hj).padEnd(12) +
         fmt(oav).padEnd(8) +
         fmt(oavAll).padEnd(9) +
         fmt(oavPred),
     );
   }
 }
-
-import { mkdirSync, writeFileSync } from "node:fs";
-import { resolve, dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { execSync } from "node:child_process";
 
 const perfDir = dirname(fileURLToPath(import.meta.url));
 
@@ -471,13 +452,29 @@ function gitSha(): string {
   }
 }
 
+function ajvVersion(): string {
+  try {
+    return (createRequire(import.meta.url)("ajv/package.json") as { version: string }).version;
+  } catch {
+    return "unknown";
+  }
+}
+
 const timestamp = new Date().toISOString();
+const cpuList = cpus();
 const meta = {
   timestamp,
   commitSha: gitSha(),
   nodeVersion: process.version,
+  platform: platform(),
+  arch: arch(),
+  cpu: cpuList[0]?.model ?? "unknown",
+  cpuCount: cpuList.length,
+  ajvVersion: ajvVersion(),
   timePerTaskMs: time,
+  cooldownMs: cooldown,
   mode: specPath !== undefined ? "spec" : "synthetic",
+  specPath: specPath ?? null,
 } as const;
 const payload = JSON.stringify({ meta, results }, null, 2);
 
@@ -488,3 +485,4 @@ const outPath = join(historyDir, `${fileSafeTs}.json`);
 writeFileSync(outPath, payload);
 
 console.log(`\nRaw numbers written to ${outPath}`);
+console.log(`Render a table with:  pnpm bench:render ${outPath}`);

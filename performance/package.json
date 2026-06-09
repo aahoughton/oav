@@ -2,18 +2,18 @@
   "name": "@oav-dev/performance",
   "version": "0.0.0",
   "private": true,
-  "description": "Benchmarks: @oav/schema compile + validate performance vs ajv (2020) and @hyperjump/json-schema.",
+  "description": "Benchmarks: @oav/schema compile + validate performance vs ajv (2020-12).",
   "type": "module",
   "scripts": {
     "bench": "tsx run.ts",
     "bench:long": "tsx run.ts --time=1500",
+    "bench:render": "tsx render.ts",
     "bench:mem": "tsx mem.ts",
     "bench:large": "tsx large-payload.ts",
     "bench:anatomy": "node --expose-gc --import tsx error-tree-anatomy.ts"
   },
   "devDependencies": {
     "@apidevtools/json-schema-ref-parser": "^15.3.5",
-    "@hyperjump/json-schema": "^1.17.6",
     "ajv": "^8.20.0",
     "tinybench": "^6.0.2",
     "tsx": "^4.22.4",

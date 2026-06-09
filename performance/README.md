@@ -1,8 +1,7 @@
 # @oav-dev/performance
 
 Cross-library benchmarks for `@oav/schema` vs
-[ajv](https://github.com/ajv-validator/ajv) (2020-12 dialect) vs
-[@hyperjump/json-schema](https://github.com/hyperjump-io/json-schema).
+[ajv](https://github.com/ajv-validator/ajv) (2020-12 dialect).
 Two benchmark entry points, two use cases.
 
 ## Bootstrap
@@ -23,8 +22,27 @@ pnpm bench                                      # default 500ms per task
 pnpm bench:long                                 # 1500ms per task
 pnpm bench -- --filter=petstore                 # one schema only
 pnpm bench -- --time=250                        # quick smoke
+pnpm bench -- --cooldown=500                    # fallow sleep after each task
 pnpm bench -- --spec=path/to/openapi.yaml       # real spec mode
 ```
+
+Each run writes a timestamped JSON file under `./results/` (gitignored;
+numbers are host-dependent). The file carries a `meta` block (host CPU,
+arch, Node and ajv versions, git commit, time-per-task, cooldown) so a
+table can never drift away from the machine it was measured on. Render
+the latest run (or a given file) into markdown tables with:
+
+```bash
+pnpm bench:render                               # newest results file
+pnpm bench:render results/<timestamp>.json      # a specific run
+```
+
+`render.ts` emits three tables, one concern each: **compile** (ajv vs
+oav), **validate / valid input**, and **validate / invalid input** (each
+across the five configs: ajv fast-fail, ajv full-collect, oav fast-fail,
+oav full-collect, oav predicate). `--cooldown` adds a fallow sleep after
+every task; set it for publishable runs to limit thermal / GC cross-talk
+between tasks.
 
 Two modes, one script:
 
@@ -39,7 +57,7 @@ Two modes, one script:
 
 - **`--spec=<path>` (real-world).** Loads the given OpenAPI entry via
   [`@apidevtools/json-schema-ref-parser`](https://github.com/APIDevTools/json-schema-ref-parser)
-  (to keep the input identical across all three libraries), extracts
+  (to keep the input identical across both libraries), extracts
   every unique request- and response-body schema, and times each
   library's compile across the whole set with plain
   `performance.now()`. Validate is skipped in this mode: real-world
@@ -99,7 +117,7 @@ retention.
 
 | You want to know...                                                    | Use                                                                       |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| Is oav competitive with ajv / hyperjump on shape X?                    | `run.ts` (synthetic, pick the matching schema in `schemas.ts` or add one) |
+| Is oav competitive with ajv on shape X?                                | `run.ts` (synthetic, pick the matching schema in `schemas.ts` or add one) |
 | How does library choice scale across a real spec's schemas?            | `run.ts --spec=<path>`                                                    |
 | Does this real spec load cleanly through oav's pipeline?               | `bench-real-world.mjs`                                                    |
 | How long does oav take from spec-on-disk to "first validated request"? | `bench-real-world.mjs`                                                    |
@@ -113,7 +131,6 @@ retention.
 === petstore — object with required + scalar properties; realistic small API payload ===
 compile:
   ajv compile                  356 ops/s       2.85ms / op
-  hyperjump compile           5.9K ops/s     189.94µs / op
   oav compile                17.1K ops/s      67.49µs / op
 validate:
   ajv validate (valid)              23.7M ops/s      42.95ns / op
@@ -122,7 +139,9 @@ validate:
 
 Per-library line per task. `ops/s` is tinybench's measured throughput,
 `/ op` is mean latency per call. Bigger ops/s = faster. The relative
-table at the end normalizes against ajv as baseline.
+table at the end normalizes against ajv as baseline. For the publishable
+markdown tables, run `pnpm bench:render` against the JSON instead of
+reading this console output.
 
 ### Spec mode
 
@@ -131,7 +150,6 @@ table at the end normalizes against ajv as baseline.
 277 unique request/response body schemas.
 compile (per library, aggregated across every schema):
   ajv         total  3858.40ms   mean    13.93ms   p95    41.17ms   max    54.78ms
-  hyperjump   total  1337.84ms   mean     4.83ms   p95    17.01ms   max    22.35ms
   oav         total    336.77ms   mean     1.22ms   p95     3.86ms   max     5.92ms
 ```
 
@@ -206,23 +224,32 @@ library's work:
 - **ajv**: `new Ajv({allErrors, strict:false}).compile(schema)`. The
   instance construction stays in — it's part of the cold-start cost
   for a consumer that doesn't already have an Ajv around.
-- **hyperjump**: `registerSchema(schema, uri)` then `await validate(uri)`
-  then `unregisterSchema(uri)`. URIs come from a pre-generated pool
-  so no string construction is in the hot loop; the unregister keeps
-  registry size bounded.
 - **oav**: `compileSchema(schema, opts)` with pre-built `opts`.
 
 **Compile (spec mode).** Same per-library semantics, one iteration
-per schema. Hyperjump gets an explicit `https://json-schema.org/draft/2020-12/schema`
-dialect URI passed to `registerSchema` (spec-derived schemas don't
-carry `$schema`). Ajv runs with `logger: false` so OAS-specific
-format warnings don't flood stdout.
+per schema. Ajv runs with `logger: false` so OAS-specific format
+warnings don't flood stdout.
 
 **Validate (synthetic).** Every library pre-compiles its validator
 once, outside the timed loop. The hot path is literally
 `validator(sample)` — no closures, no cursor math, no per-iteration
-setup. One representative sample each for the valid and invalid
-paths so neither side wins by short-circuiting.
+setup; each task validates one fixed payload.
+
+The **valid** path uses one representative sample per shape. The
+**invalid** path runs one task per authored invalid fixture, because
+where and how badly a payload fails dominates the number: a `uniqueItems`
+duplicate near the start vs. the end, a first- vs. last-element array
+failure, a cheap early reject vs. an expensive late one. Each fixture is
+its own pure-loop task; `render.ts` reports the median across them with
+the min–max range, so the published invalid number spans the
+failure-position spread rather than a single cherry-picked point. The
+fixtures in `schemas.ts` are deliberately authored to cover that spread
+(early / mid / deep / late / many-errors).
+
+Before any timing, a pre-flight pass validates every authored input
+under all five configs and asserts the verdict matches its label —
+catching a mislabeled fixture or an ajv/oav disagreement that would
+otherwise silently time the wrong path.
 
 The bench runs five validators so each comparison is apples-to-apples:
 `oav` is the zero-config default (flat, `maxErrors: 1`) and pairs with
@@ -285,8 +312,15 @@ type RunOutput = {
     timestamp: string; // ISO 8601
     commitSha: string;
     nodeVersion: string;
+    platform: string; // os.platform()
+    arch: string; // os.arch()
+    cpu: string; // os.cpus()[0].model
+    cpuCount: number;
+    ajvVersion: string; // resolved ajv version compared against
     timePerTaskMs: number;
+    cooldownMs: number;
     mode: "synthetic" | "spec";
+    specPath: string | null;
   };
   results: Result[];
 };
@@ -294,7 +328,8 @@ type RunOutput = {
 type Result = {
   schema: string; // schema name or spec path
   metric: "compile" | "validate";
-  lib: "ajv" | "ajv-fast" | "hyperjump" | "oav" | "oav-predicate";
+  lib: "ajv" | "ajv-fast" | "oav" | "oav-all" | "oav-predicate";
+  validity?: "valid" | "invalid"; // validate only
   hz: number; // ops/sec
   mean: number; // µs per op
   variant?: string; // e.g. "oav-predicate validate (valid)"
