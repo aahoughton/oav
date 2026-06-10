@@ -83,6 +83,7 @@ the upstream test suites live in
 | `validateFetchRequest<T>(request, opts?)`     | Convenience for Web Standards `Request`: reads URL, headers, body; returns a discriminated union with a typed body. See [docs/integration.md](../../docs/integration.md). |
 | `validateFetchResponse<T>(request, response)` | Symmetric Web Standards `Response` check. Useful for contract-testing an upstream.                                                                                        |
 | `getOperation({ method, path })`              | Startup-time introspection: returns the resolved, overlay-applied `OperationObject` + matched template for a (method, path) pair.                                         |
+| `routes`                                      | `readonly RouteInfo[]`: every declared `{ method, pathPattern }` pair (uppercased method), in route-specificity order. Frozen at construction.                            |
 | `detectedVersion`                             | The `openapi` string detected on construction, or `undefined` for an unrecognised / missing version (see `onUnknownVersion`).                                             |
 | `warnings`                                    | `readonly string[]`: warnings accumulated at construction time (`onUnknownVersion: "warn"` or `dialect`-suppressed category error). Empty when neither path fires.        |
 

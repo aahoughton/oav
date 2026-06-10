@@ -81,6 +81,24 @@ export interface MethodNotAllowed {
 }
 
 /**
+ * A single declared operation, surfaced by {@link Router.routes}.
+ * `method` is uppercased (`"GET"`); `pathPattern` is the template
+ * exactly as declared in the spec (`"/pets/{id}"`).
+ *
+ * Lists operations actually declared on each `PathItem`; the implicit
+ * HEAD that any GET resource also answers (RFC 9110 §9.3.2) is a
+ * match-time fallback, not a declaration, so it is not enumerated here.
+ *
+ * @public
+ */
+export interface RouteInfo {
+  /** Uppercased HTTP method (e.g. `"GET"`). */
+  method: string;
+  /** Path template as declared in the spec (e.g. `"/pets/{id}"`). */
+  pathPattern: string;
+}
+
+/**
  * The router interface. `match` returns:
  *
  * - `RouteMatch`: the path matched and the method is declared on it.
@@ -93,6 +111,14 @@ export interface MethodNotAllowed {
  */
 export interface Router {
   match(method: string, path: string): RouteMatch | MethodNotAllowed | undefined;
+  /**
+   * Every declared (method, pathPattern) pair, in the router's
+   * specificity sort order (more literal segments first). Static for
+   * the router's lifetime; the same frozen array is returned each call.
+   * Used for spec introspection and cross-router overlap checks (see
+   * `@oav/validator`'s `combineValidators`).
+   */
+  routes(): readonly RouteInfo[];
 }
 
 // HTTP methods to scan on a `PathItem` when collecting `allowed` for a
@@ -292,7 +318,21 @@ export function createRouter(paths: Record<string, PathItem>): Router {
     return a.pathPattern.localeCompare(b.pathPattern);
   });
 
+  // Enumerate declared operations once, in sort order. Frozen so the
+  // accessor can hand the same array out repeatedly without copying.
+  const routeList: readonly RouteInfo[] = Object.freeze(
+    routes.flatMap((route) =>
+      ALL_METHODS.filter((m) => route.pathItem[m] !== undefined).map((m) => ({
+        method: m.toUpperCase(),
+        pathPattern: route.pathPattern,
+      })),
+    ),
+  );
+
   return {
+    routes() {
+      return routeList;
+    },
     match(method, path) {
       const normMethod = method.toLowerCase() as HttpMethod;
       const stripped = path.split("?")[0] ?? path;

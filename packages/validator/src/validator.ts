@@ -14,7 +14,7 @@ import {
   type ValidationError,
 } from "@oav/core";
 import { builtInFormats } from "@oav/formats";
-import { createRouter, type RouteMatch, type Router } from "@oav/router";
+import { createRouter, type RouteInfo, type RouteMatch, type Router } from "@oav/router";
 import { lintResolvedSpec, type SpecHygieneIssue } from "@oav/spec";
 import {
   compileSchema,
@@ -252,6 +252,21 @@ export interface Validator {
     pathItem: PathItem;
     operation: OperationObject;
   } | null;
+  /**
+   * Every operation the spec declares, as `{ method, pathPattern }`
+   * pairs in route-specificity order (more literal segments first).
+   * `method` is uppercased (`"GET"`); `pathPattern` is the template as
+   * declared (`"/pets/{id}"`). The implicit HEAD that a GET resource
+   * also answers (RFC 9110 §9.3.2) is a match-time fallback, not a
+   * declaration, so it is not listed.
+   *
+   * Startup-time introspection over the same route table the validator
+   * matches against, frozen at `createValidator` time. Useful for
+   * mounting per-route middleware, generating coverage reports, or
+   * asserting two specs are route-disjoint before
+   * {@link combineValidators} stacks them.
+   */
+  readonly routes: readonly RouteInfo[];
   /**
    * The OpenAPI version detected from the spec's `openapi` field, or
    * `undefined` when the field was missing/malformed and the validator
@@ -1138,6 +1153,7 @@ export function createValidator(
     validateFetchRequest,
     validateFetchResponse,
     getOperation,
+    routes: router.routes(),
     detectedVersion,
     output: outputMode,
     warnings,

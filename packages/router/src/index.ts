@@ -2,6 +2,7 @@ export {
   createRouter,
   parseTemplate,
   type MethodNotAllowed,
+  type RouteInfo,
   type RouteMatch,
   type Router,
   type Segment,
