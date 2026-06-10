@@ -60,6 +60,11 @@ const defaultOnError: ErrorHandler<ExpressContext> = (errors) => {
   throw new ResponseValidationError(errors);
 };
 
+// Marks a response already wrapped by validateResponses; a second
+// mount on the same chain is a configuration error (it would validate
+// every response twice and can fire onError twice for one failure).
+const WRAPPED = Symbol("oav.validateResponses");
+
 // res.getHeaders() reports numeric values (Content-Length, or any
 // res.setHeader(name, number)) as numbers; the validator's header
 // deserializer expects strings.
@@ -84,7 +89,10 @@ function responseHeaders(res: Response): Record<string, string | string[]> {
  * (typically on in development, off in production via a conditional
  * mount). This is the one place an adapter wraps `res`; the core
  * `validateResponse` stays a pure function that reads its arguments. See
- * the migration note in `docs/migration-from-eov.md`.
+ * the migration note in `docs/migration-from-eov.md`. Mounting it twice
+ * on one route chain is a configuration error; the second mount fails
+ * the request via `next(err)` with a clear message instead of validating
+ * every response twice.
  *
  * Only JSON responses are validated: `res.json(obj)`, `res.send(obj)`
  * (which Express routes through `json`), and `res.send(jsonString)` when
@@ -120,6 +128,17 @@ export function validateResponses(
   const onError = options.onError ?? defaultOnError;
 
   return (req, res, next) => {
+    const marked = res as Response & { [WRAPPED]?: boolean };
+    if (marked[WRAPPED] === true) {
+      next(
+        new Error(
+          "validateResponses: res is already wrapped (middleware mounted twice on this route chain); mount it once",
+        ),
+      );
+      return;
+    }
+    marked[WRAPPED] = true;
+
     let httpReq: HttpRequest;
     try {
       httpReq = toHttpRequest(req);

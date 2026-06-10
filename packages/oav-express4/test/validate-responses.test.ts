@@ -254,6 +254,18 @@ describe("validateResponses (Express 4)", () => {
     expect(erroredWith(next)).toBeUndefined();
   });
 
+  it("fails the request when mounted twice on one chain", () => {
+    const { res } = fakeRes();
+    const next1 = vi.fn();
+    const next2 = vi.fn();
+    validateResponses(v)(fakeReq(), res, next1 as unknown as NextFunction);
+    validateResponses(v)(fakeReq(), res, next2 as unknown as NextFunction);
+    expect(next1).toHaveBeenCalledWith();
+    const err = next2.mock.calls[0]?.[0] as Error;
+    expect(err).toBeInstanceOf(Error);
+    expect(err.message).toMatch(/mounted twice/);
+  });
+
   it("log-and-continue: an onError that returns normally lets the body go out", () => {
     const onError = vi.fn(); // returns undefined -> normal completion
     const { res, sentJson } = fakeRes();

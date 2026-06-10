@@ -376,6 +376,40 @@ describe("oav-express4 integration: validateResponses log-and-continue", () => {
   });
 });
 
+describe("oav-express4 integration: validateResponses double mount", () => {
+  let server: Server;
+  let baseUrl: string;
+
+  beforeAll(async () => {
+    const validator = createValidator(widgetSpec());
+    const app = express();
+    app.use(validateResponses(validator));
+    app.use(validateResponses(validator)); // configuration error
+    app.get("/widgets/:id", (_req, res) => res.json({ id: "ok" }));
+    app.use(((err: Error, _req, res, next) => {
+      // Respond through the unwrapped res.end: the first mount's wrapper
+      // is still active and would treat this 500 (undeclared in the
+      // spec) as a finding of its own.
+      res.statusCode = 500;
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({ error: err.message }));
+      void next;
+    }) as express.ErrorRequestHandler);
+    ({ server, baseUrl } = await listenOnZero(app));
+  });
+
+  afterAll(async () => {
+    await closeServer(server);
+  });
+
+  it("the second mount fails the request with a clear error", async () => {
+    const r = await fetch(`${baseUrl}/widgets/ok`);
+    expect(r.status).toBe(500);
+    const body = (await r.json()) as { error: string };
+    expect(body.error).toMatch(/mounted twice/);
+  });
+});
+
 describe("oav-express4 integration: deprecated two-arg response methods", () => {
   let server: Server;
   let baseUrl: string;
