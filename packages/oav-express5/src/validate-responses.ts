@@ -174,8 +174,12 @@ export function validateResponses(
 
     res.send = (body: unknown): Response => {
       // Objects route through res.json internally (and are validated
-      // there); only a JSON string needs handling here.
-      if (typeof body === "string") {
+      // there); only a JSON string needs handling here. The handled gate
+      // also covers the re-entry from a validated res.json (originalJson
+      // serializes and re-dispatches through send); without it every
+      // JSON response would be fully re-parsed just for check() to
+      // discard the result.
+      if (!handled && typeof body === "string") {
         const contentType = String(res.getHeader("content-type") ?? "");
         if (/\bjson\b/i.test(contentType)) {
           let parsed: unknown;

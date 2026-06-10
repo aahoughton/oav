@@ -169,6 +169,38 @@ describe("validateResponses (Express 5)", () => {
     expect(ctx).toMatchObject({ res, next });
   });
 
+  it("does not re-parse the serialized body when res.json re-enters res.send", () => {
+    // Model Express's real flow: json serializes the body, sets the
+    // content type, and re-dispatches through send.
+    const sentSend = vi.fn();
+    const lower: Record<string, string> = {};
+    const res = {
+      statusCode: 200,
+      headersSent: false,
+      getHeader: (n: string) => lower[n.toLowerCase()],
+      getHeaders: () => lower,
+      json(body: unknown) {
+        lower["content-type"] ??= "application/json";
+        return this.send(JSON.stringify(body));
+      },
+      send(body: unknown) {
+        sentSend(body);
+        return this;
+      },
+    };
+    const next = vi.fn();
+    validateResponses(v)(fakeReq(), res as unknown as Response, next as unknown as NextFunction);
+    const parse = vi.spyOn(JSON, "parse");
+    try {
+      (res as unknown as Response).json({ id: "ok" });
+      expect(parse).not.toHaveBeenCalled();
+    } finally {
+      parse.mockRestore();
+    }
+    expect(sentSend).toHaveBeenCalledWith(JSON.stringify({ id: "ok" }));
+    expect(erroredWith(next)).toBeUndefined();
+  });
+
   it("log-and-continue: an onError that returns normally lets the body go out", () => {
     const onError = vi.fn(); // returns undefined -> normal completion
     const { res, sentJson } = fakeRes();
