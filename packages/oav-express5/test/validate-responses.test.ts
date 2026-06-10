@@ -183,6 +183,41 @@ describe("validateResponses (Express 5)", () => {
     expect(erroredWith(next)).toBeUndefined();
   });
 
+  it("checks the status of an empty res.json() body", () => {
+    const { res, sent } = fakeRes(418);
+    const next = vi.fn();
+    mount(res, next);
+    res.json();
+    expect(sent).not.toHaveBeenCalled();
+    expect(erroredWith(next)).toBeInstanceOf(ResponseValidationError);
+  });
+
+  it("an empty res.json() body with a declared status passes", () => {
+    const { res, sent } = fakeRes();
+    const next = vi.fn();
+    mount(res, next);
+    res.json();
+    expect(sent).toHaveBeenCalledWith(undefined);
+    expect(erroredWith(next)).toBeUndefined();
+  });
+
+  it("checks declared headers on an empty res.json() body", () => {
+    const spec = widgetSpec();
+    const get = spec.paths!["/widgets/{id}"]!.get as unknown as {
+      responses: Record<string, { headers?: unknown }>;
+    };
+    get.responses["200"]!.headers = {
+      "X-Request-Id": { required: true, schema: { type: "string" } },
+    };
+    const hv = createValidator(spec);
+    const { res, sent } = fakeRes(); // header not set
+    const next = vi.fn();
+    validateResponses(hv)(fakeReq(), res, next as unknown as NextFunction);
+    res.json();
+    expect(sent).not.toHaveBeenCalled();
+    expect(erroredWith(next)).toBeInstanceOf(ResponseValidationError);
+  });
+
   it("forwards multi-arg send calls to Express untouched", () => {
     const { res, sent } = fakeRes(200, { "content-type": "application/json" });
     const next = vi.fn();

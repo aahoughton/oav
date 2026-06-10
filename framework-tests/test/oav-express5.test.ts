@@ -478,6 +478,11 @@ describe("oav-express5 integration: validateResponses send variants", () => {
     app.use(validateResponses(validator));
     app.get("/widgets/:id", (req, res) => {
       switch (req.params.id) {
+        case "empty":
+          return res.json();
+        case "empty-undeclared":
+          res.status(202);
+          return res.json();
         case "obj-send":
           return res.send({ id: "ok" });
         case "obj-send-bad":
@@ -506,6 +511,17 @@ describe("oav-express5 integration: validateResponses send variants", () => {
 
   afterAll(async () => {
     await closeServer(server);
+  });
+
+  it("an empty JSON-typed response with a declared status passes", async () => {
+    const r = await fetch(`${baseUrl}/widgets/empty`);
+    expect(r.status).toBe(200);
+    expect(await r.text()).toBe("");
+  });
+
+  it("an empty JSON-typed response with an undeclared status is a finding", async () => {
+    const r = await fetch(`${baseUrl}/widgets/empty-undeclared`);
+    expect(r.status).toBe(500);
   });
 
   it("an object through res.send is validated (valid passes)", async () => {

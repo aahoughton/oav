@@ -101,6 +101,8 @@ if (process.env.NODE_ENV !== "production") {
 
 The default `onError` throws a `ResponseValidationError` (routed to `setErrorHandler`, since a non-conforming response is a server bug). Return normally from a custom `onError` to log-and-continue: the original payload is sent unchanged. Every declared status is checked by default (4xx / 5xx too); an undeclared status is itself a finding.
 
+String payloads with a JSON content type are parsed and validated in full. An empty reply with a JSON content type has its status and declared headers checked, but the missing body itself is not a finding: OpenAPI declares response content without a required flag. Buffers, streams, non-JSON content types, and malformed JSON pass through untouched.
+
 ### `httpRequestFromFastify(request)`
 
 Convert a `FastifyRequest` to oav's framework-agnostic `HttpRequest` shape. Read what's already on the request; body parsing is Fastify's responsibility (handled by content-type parsers before `preValidation`).

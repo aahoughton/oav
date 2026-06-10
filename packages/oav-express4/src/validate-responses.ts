@@ -184,15 +184,20 @@ export function validateResponses(
       // back through here serialized, and is validated then).
       if (args.length > 1) return originalSend(...args);
       const body = args[0];
-      if (!handled && typeof body === "string") {
+      // An undefined body (res.json() with no argument) still gets its
+      // status and declared headers checked; the core validator skips
+      // body validation when the body is absent.
+      if (!handled && (typeof body === "string" || body === undefined)) {
         const contentType = String(res.getHeader("content-type") ?? "");
         if (/\bjson\b/i.test(contentType)) {
           let parsed: unknown;
           let parseable = true;
-          try {
-            parsed = JSON.parse(body);
-          } catch {
-            parseable = false;
+          if (typeof body === "string") {
+            try {
+              parsed = JSON.parse(body);
+            } catch {
+              parseable = false;
+            }
           }
           if (parseable) {
             const errors = check(parsed, contentType);

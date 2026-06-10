@@ -390,6 +390,12 @@ describe("oav-fastify integration: default validateResponses", () => {
         reply.code(418); // undeclared status
         return { id: "ok" };
       }
+      if (id === "empty") {
+        return reply.header("content-type", "application/json").send();
+      }
+      if (id === "empty-undeclared") {
+        return reply.code(202).header("content-type", "application/json").send();
+      }
       return { id };
     });
     await app.ready();
@@ -415,6 +421,17 @@ describe("oav-fastify integration: default validateResponses", () => {
 
   it("an undeclared response status is a finding (500)", async () => {
     const r = await app.inject({ method: "GET", url: "/widgets/teapot" });
+    expect(r.statusCode).toBe(500);
+  });
+
+  it("an empty JSON-typed response with a declared status passes", async () => {
+    const r = await app.inject({ method: "GET", url: "/widgets/empty" });
+    expect(r.statusCode).toBe(200);
+    expect(r.body).toBe("");
+  });
+
+  it("an empty JSON-typed response with an undeclared status is a finding", async () => {
+    const r = await app.inject({ method: "GET", url: "/widgets/empty-undeclared" });
     expect(r.statusCode).toBe(500);
   });
 });

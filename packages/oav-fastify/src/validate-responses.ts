@@ -83,9 +83,10 @@ const VALIDATED = Symbol("oav.responseValidated");
  * {@link ResponseValidationError} to Fastify's error handler as a 500).
  *
  * Only JSON payloads are validated; non-JSON payloads pass through
- * untouched. A per-request guard means the error handler's own response
- * (rendered in reaction to a failure) is not re-validated, so there is
- * no loop.
+ * untouched, and an empty JSON-typed reply still has its status and
+ * declared headers checked. A per-request guard means the error
+ * handler's own response (rendered in reaction to a failure) is not
+ * re-validated, so there is no loop.
  *
  * @example
  * ```ts
@@ -121,14 +122,19 @@ export function validateResponses(
     if (!shouldValidate(reply.statusCode)) return payload;
 
     const contentType = String(reply.getHeader("content-type") ?? "");
-    // Only JSON payloads are validatable here; Fastify's default
-    // serializer hands us a string. Anything else (Buffer, stream,
-    // non-JSON content type, malformed JSON) passes through.
-    if (typeof payload !== "string" || !/\bjson\b/i.test(contentType)) return payload;
+    if (!/\bjson\b/i.test(contentType)) return payload;
+    // Fastify's default serializer hands us a string; parse and validate
+    // it in full. An absent payload still gets its status and declared
+    // headers checked (the core validator skips body validation when the
+    // body is absent). Buffers, streams, and malformed JSON pass through.
     let body: unknown;
-    try {
-      body = JSON.parse(payload);
-    } catch {
+    if (typeof payload === "string") {
+      try {
+        body = JSON.parse(payload);
+      } catch {
+        return payload;
+      }
+    } else if (payload !== null && payload !== undefined) {
       return payload;
     }
 

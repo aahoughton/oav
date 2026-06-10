@@ -116,6 +116,25 @@ describe("validateResponses (Fastify)", () => {
     );
   });
 
+  it("checks the status of an empty payload with a JSON content type", async () => {
+    await expect(
+      run(validateResponses(v), fakeRequest(), fakeReply(418), null),
+    ).rejects.toBeInstanceOf(ResponseValidationError);
+  });
+
+  it("an empty payload with a declared status passes", async () => {
+    await expect(
+      run(validateResponses(v), fakeRequest(), fakeReply(200), null),
+    ).resolves.toBeNull();
+  });
+
+  it("passes a Buffer payload through untouched", async () => {
+    const payload = Buffer.from(JSON.stringify({ id: 123 }));
+    await expect(run(validateResponses(v), fakeRequest(), fakeReply(), payload)).resolves.toBe(
+      payload,
+    );
+  });
+
   it("does not re-validate the error handler's own response (no loop)", async () => {
     const hook = validateResponses(v);
     const request = fakeRequest();
