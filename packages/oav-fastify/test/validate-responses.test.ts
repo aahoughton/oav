@@ -1,0 +1,143 @@
+import { type OpenAPIDocument } from "@oav/core";
+import { createValidator } from "@oav/validator";
+import type { FastifyReply, FastifyRequest } from "fastify";
+import { describe, expect, it, vi } from "vitest";
+import { ResponseValidationError } from "../src/response-error.js";
+import { validateResponses } from "../src/validate-responses.js";
+
+function widgetSpec(): OpenAPIDocument {
+  return {
+    openapi: "3.1.0",
+    info: { title: "t", version: "1" },
+    paths: {
+      "/widgets/{id}": {
+        get: {
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+          responses: {
+            "200": {
+              description: "ok",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["id"],
+                    properties: { id: { type: "string" } },
+                    additionalProperties: false,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  };
+}
+
+function fakeReply(statusCode = 200, contentType = "application/json"): FastifyReply {
+  const headers: Record<string, string> = { "content-type": contentType };
+  return {
+    statusCode,
+    getHeader: (n: string) => headers[n.toLowerCase()],
+    getHeaders: () => headers,
+  } as unknown as FastifyReply;
+}
+
+function fakeRequest(): FastifyRequest {
+  return { method: "GET", url: "/widgets/42", headers: {} } as unknown as FastifyRequest;
+}
+
+const v = createValidator(widgetSpec());
+
+// The hook ignores `this`; the cast satisfies the onSendHookHandler call shape.
+function run(
+  hook: ReturnType<typeof validateResponses>,
+  request: FastifyRequest,
+  reply: FastifyReply,
+  payload: unknown,
+) {
+  return (
+    hook as unknown as (
+      req: FastifyRequest,
+      reply: FastifyReply,
+      payload: unknown,
+    ) => Promise<unknown>
+  )(request, reply, payload);
+}
+
+describe("validateResponses (Fastify)", () => {
+  it("rejects a predicate-mode validator at construction", () => {
+    const predicate = createValidator(widgetSpec(), { output: "predicate" });
+    expect(() => validateResponses(predicate as never)).toThrow(/predicate-mode/);
+  });
+
+  it("returns a valid payload unchanged", async () => {
+    const payload = JSON.stringify({ id: "ok" });
+    await expect(run(validateResponses(v), fakeRequest(), fakeReply(), payload)).resolves.toBe(
+      payload,
+    );
+  });
+
+  it("throws a ResponseValidationError for an invalid payload", async () => {
+    await expect(
+      run(validateResponses(v), fakeRequest(), fakeReply(), JSON.stringify({ id: 123 })),
+    ).rejects.toBeInstanceOf(ResponseValidationError);
+  });
+
+  it("treats an undeclared status as a finding by default", async () => {
+    await expect(
+      run(validateResponses(v), fakeRequest(), fakeReply(418), JSON.stringify({ id: "ok" })),
+    ).rejects.toBeInstanceOf(ResponseValidationError);
+  });
+
+  it("skips statuses the predicate excludes", async () => {
+    const payload = JSON.stringify({ anything: true });
+    await expect(
+      run(
+        validateResponses(v, { statuses: (s) => s < 500 }),
+        fakeRequest(),
+        fakeReply(500),
+        payload,
+      ),
+    ).resolves.toBe(payload);
+  });
+
+  it("passes non-JSON payloads through untouched", async () => {
+    const payload = "<html>not json</html>";
+    await expect(
+      run(validateResponses(v), fakeRequest(), fakeReply(200, "text/html"), payload),
+    ).resolves.toBe(payload);
+  });
+
+  it("passes a malformed JSON payload through untouched", async () => {
+    const payload = "{not valid json";
+    await expect(run(validateResponses(v), fakeRequest(), fakeReply(), payload)).resolves.toBe(
+      payload,
+    );
+  });
+
+  it("does not re-validate the error handler's own response (no loop)", async () => {
+    const hook = validateResponses(v);
+    const request = fakeRequest();
+    await expect(
+      run(hook, request, fakeReply(), JSON.stringify({ id: 123 })),
+    ).rejects.toBeInstanceOf(ResponseValidationError);
+    // Fastify renders the error reply through onSend again with the same request.
+    const errorPayload = JSON.stringify({ statusCode: 500, error: "Internal Server Error" });
+    await expect(run(hook, request, fakeReply(500), errorPayload)).resolves.toBe(errorPayload);
+  });
+
+  it("invokes a custom onError with the failing leaves and context", async () => {
+    const onError = vi.fn();
+    const reply = fakeReply();
+    const payload = JSON.stringify({ id: 123 });
+    // onError returns normally, so the (invalid) payload is sent unchanged.
+    await expect(
+      run(validateResponses(v, { onError }), fakeRequest(), reply, payload),
+    ).resolves.toBe(payload);
+    expect(onError).toHaveBeenCalledTimes(1);
+    const [errors, ctx] = onError.mock.calls[0]!;
+    expect(Array.isArray(errors)).toBe(true);
+    expect(ctx).toMatchObject({ reply });
+  });
+});

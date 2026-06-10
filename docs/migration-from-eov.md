@@ -21,10 +21,16 @@ auth wiring where needed. In exchange:
   maps the validator's stable `code` field to whatever status codes
   your API contract requires; `httpStatusFor` covers the common
   case in one call.
-- **No wrapping of `res.json`.** eov wraps the response methods to
-  auto-intercept. `oav` reads its arguments and returns a result; it
-  does not touch `req` or `res`. Response validation happens when
-  you call `validateResponse`.
+- **Response wrapping is opt-in and explicit.** eov always wraps the
+  response methods to auto-intercept. In `oav` the core stays a pure
+  function: `validateResponse` reads its arguments and returns a
+  result, never touching `req` / `res`. The Express adapters offer a
+  `validateResponses` middleware that _does_ wrap `res.json` / `res.send`,
+  but only where you mount it (off in production by convention); the
+  Fastify adapter does the same via an `onSend` hook with no
+  monkey-patching at all. So response checking is available as a
+  one-liner without making it always-on-and-implicit. See
+  [integration.md, Response validation](./integration.md#response-validation).
 - **Structured error trees.** Every error is
   `{ code, path, message, params, children }`. Downstream code can
   narrow on fields (`err.code === "required"`,
@@ -44,18 +50,18 @@ The behavior deltas surfaced by real eov-to-oav migrations. Most are
 defensible improvements; a few are cosmetic. Either way, expect
 fixture / test churn.
 
-| What                               | eov                                                                                         | oav                                                                                                                                                                                                                       |
-| ---------------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Empty POST, no Content-Type**    | 415 unsupported-media-type                                                                  | 400 body-required (no client signal to be "wrong about")                                                                                                                                                                  |
-| **Path-parameter label**           | `/params/<name>` in error paths                                                             | `/path/<name>` (OpenAPI's actual location name)                                                                                                                                                                           |
-| **404 message wording**            | `"not found"`                                                                               | `"no route matches POST /path/here"` (more actionable)                                                                                                                                                                    |
-| **Top-level message**              | first leaf by default; every leaf `, `-joined under `validateRequests: { allErrors: true }` | configurable via `formatSummary`: `{ select: "first" }` (default; first leaf) or `{ select: "all" }` (every leaf, newline-joined). Per-leaf details always in `errors[]` / `issues[]`. Shape differs from eov; see below. |
-| **Top-level `path` on 404s**       | offending URL                                                                               | `[]` (empty array, `""` pointer); same kind of error, different rendering                                                                                                                                                 |
-| **`errorCode` names**              | `required.openapi.validation`                                                               | bare codes (`required`); the `.openapi.validation` suffix was always noise                                                                                                                                                |
-| **`oneOf` with binary fields**     | silently accepted (looser inside binary fields)                                             | surfaces the genuine ambiguity with `matchCount: 2`; see [integration.md, File uploads](./integration.md#file-uploads-with-multer) for the spec-level fix                                                                 |
-| **Error response monkey-patching** | `res.send("{...}")` (string form) caught via wrappers                                       | not caught unless you write the wrapper yourself; see [integration.md, Response validation](./integration.md#response-validation-no-monkey-patching)                                                                      |
-| **Optional `openapi` version**     | throws on missing / unsupported                                                             | silently uses 3.1 by default; see `onUnknownVersion`                                                                                                                                                                      |
-| **`format` semantics**             | always assertive in OpenAPI context                                                         | assertive in OpenAPI context; annotation-only under raw `jsonSchemaDialect` (per 2020-12 default)                                                                                                                         |
+| What                            | eov                                                                                         | oav                                                                                                                                                                                                                       |
+| ------------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Empty POST, no Content-Type** | 415 unsupported-media-type                                                                  | 400 body-required (no client signal to be "wrong about")                                                                                                                                                                  |
+| **Path-parameter label**        | `/params/<name>` in error paths                                                             | `/path/<name>` (OpenAPI's actual location name)                                                                                                                                                                           |
+| **404 message wording**         | `"not found"`                                                                               | `"no route matches POST /path/here"` (more actionable)                                                                                                                                                                    |
+| **Top-level message**           | first leaf by default; every leaf `, `-joined under `validateRequests: { allErrors: true }` | configurable via `formatSummary`: `{ select: "first" }` (default; first leaf) or `{ select: "all" }` (every leaf, newline-joined). Per-leaf details always in `errors[]` / `issues[]`. Shape differs from eov; see below. |
+| **Top-level `path` on 404s**    | offending URL                                                                               | `[]` (empty array, `""` pointer); same kind of error, different rendering                                                                                                                                                 |
+| **`errorCode` names**           | `required.openapi.validation`                                                               | bare codes (`required`); the `.openapi.validation` suffix was always noise                                                                                                                                                |
+| **`oneOf` with binary fields**  | silently accepted (looser inside binary fields)                                             | surfaces the genuine ambiguity with `matchCount: 2`; see [integration.md, File uploads](./integration.md#file-uploads-with-multer) for the spec-level fix                                                                 |
+| **Response validation**         | always-on `res.json` / `res.send` wrapping                                                  | opt-in `validateResponses` middleware (Express wraps `res.json`/`res.send`; Fastify uses `onSend`), mounted where you want it; see [integration.md, Response validation](./integration.md#response-validation)            |
+| **Optional `openapi` version**  | throws on missing / unsupported                                                             | silently uses 3.1 by default; see `onUnknownVersion`                                                                                                                                                                      |
+| **`format` semantics**          | always assertive in OpenAPI context                                                         | assertive in OpenAPI context; annotation-only under raw `jsonSchemaDialect` (per 2020-12 default)                                                                                                                         |
 
 For the `oneOf [array<binary>, binary]` pattern specifically: the
 spec was already ambiguous before oav surfaced it (the `format:
@@ -89,9 +95,9 @@ makes sense for your API.
 
 ### Response validation
 
-| eov option                | oav equivalent                                                                      |
-| ------------------------- | ----------------------------------------------------------------------------------- |
-| `validateResponses: true` | `validator.validateResponse(...)` in handler or a `res.json` wrapper (see recipes). |
+| eov option                | oav equivalent                                                                                                                                                                                                                   |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `validateResponses: true` | `validateResponses(validator)` middleware (Express) / `onSend` hook (Fastify), mounted where you want it; or `validateResponse(...)` per-route. See [integration.md, Response validation](./integration.md#response-validation). |
 
 ### Formats and custom keywords
 
@@ -121,9 +127,6 @@ makes sense for your API.
 - **Security handler dispatch.** Use your existing auth middleware, or the [per-scheme dispatch recipe](./integration.md#per-scheme-auth-dispatch).
 - **`operationHandlers` filesystem routing.** Write Express routes
   manually or keep whatever routing you had.
-- **`res.json` wrapping for automatic response validation.** Call
-  `validateResponse` explicitly where you need it, or wrap `res.json`
-  yourself (~15 lines; see the [response-validation recipe](./integration.md#response-validation-no-monkey-patching)).
 - **`serDes` payload mutations.** Do these in your handler rather
   than the validator.
 - **Typed error classes** (`BadRequest`, `Unauthorized`, etc.). Use

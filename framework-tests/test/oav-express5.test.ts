@@ -1,5 +1,11 @@
 import { type OpenAPIDocument } from "@oav/core";
-import { httpRequestFromExpress, renderProblemDetails, validateRequests } from "@oav/oav-express5";
+import {
+  httpRequestFromExpress,
+  renderProblemDetails,
+  ResponseValidationError,
+  validateRequests,
+  validateResponses,
+} from "@oav/oav-express5";
 import { createValidator } from "@oav/validator";
 import express, { type Express, type Request } from "express-5";
 import type { Server } from "node:http";
@@ -258,6 +264,116 @@ describe("oav-express5 integration: custom toHttpRequest", () => {
       body: JSON.stringify({}),
     });
     expect(r.status).toBe(200);
+  });
+});
+
+function widgetSpec(): OpenAPIDocument {
+  return {
+    openapi: "3.1.0",
+    info: { title: "t", version: "1" },
+    paths: {
+      "/widgets/{id}": {
+        get: {
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+          responses: {
+            "200": {
+              description: "ok",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["id"],
+                    properties: { id: { type: "string" } },
+                    additionalProperties: false,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  };
+}
+
+describe("oav-express5 integration: default validateResponses", () => {
+  let server: Server;
+  let baseUrl: string;
+
+  beforeAll(async () => {
+    const validator = createValidator(widgetSpec());
+    const app = express();
+    app.use(validateResponses(validator));
+    app.get("/widgets/:id", (req, res) => {
+      if (req.params.id === "bad") return res.json({ id: 123 }); // id must be a string
+      if (req.params.id === "teapot") return res.status(418).json({ id: "ok" }); // undeclared status
+      return res.json({ id: req.params.id });
+    });
+    app.use(((err: Error, _req, res, next) => {
+      if (err instanceof ResponseValidationError) {
+        res.status(err.statusCode).json({ responseInvalid: true, count: err.errors.length });
+        return;
+      }
+      void next;
+    }) as express.ErrorRequestHandler);
+    ({ server, baseUrl } = await listenOnZero(app));
+  });
+
+  afterAll(async () => {
+    await closeServer(server);
+  });
+
+  it("a valid response body passes through unchanged", async () => {
+    const r = await fetch(`${baseUrl}/widgets/ok`);
+    expect(r.status).toBe(200);
+    expect((await r.json()) as unknown).toEqual({ id: "ok" });
+  });
+
+  it("an invalid response body forwards a 500 to the host error handler", async () => {
+    const r = await fetch(`${baseUrl}/widgets/bad`);
+    expect(r.status).toBe(500);
+    const body = (await r.json()) as { responseInvalid: boolean; count: number };
+    expect(body.responseInvalid).toBe(true);
+    expect(body.count).toBeGreaterThan(0);
+  });
+
+  it("an undeclared response status is a finding (500)", async () => {
+    const r = await fetch(`${baseUrl}/widgets/teapot`);
+    expect(r.status).toBe(500);
+  });
+});
+
+describe("oav-express5 integration: validateResponses log-and-continue", () => {
+  let server: Server;
+  let baseUrl: string;
+  const logged: number[] = [];
+
+  beforeAll(async () => {
+    const validator = createValidator(widgetSpec());
+    const app = express();
+    app.use(
+      validateResponses(validator, {
+        // Log the finding and return; the adapter sends the original
+        // (invalid) body unchanged.
+        onError: (errors) => {
+          logged.push(errors.length);
+        },
+      }),
+    );
+    app.get("/widgets/:id", (_req, res) => res.json({ id: 123 }));
+    ({ server, baseUrl } = await listenOnZero(app));
+  });
+
+  afterAll(async () => {
+    await closeServer(server);
+  });
+
+  it("custom onError can record the finding and still send the body", async () => {
+    const r = await fetch(`${baseUrl}/widgets/anything`);
+    expect(r.status).toBe(200);
+    expect((await r.json()) as unknown).toEqual({ id: 123 });
+    expect(logged.length).toBe(1);
+    expect(logged[0]).toBeGreaterThan(0);
   });
 });
 

@@ -87,6 +87,26 @@ Returns an Express 4 `RequestHandler`.
 
 > **Validation failures don't traverse Express's error chain by default.** The default `onError` (`renderProblemDetails`) writes the response directly. If you're migrating from `express-openapi-validator` (which emits validation failures as `HttpError` through `next(err)`), your existing error middleware won't see oav's failures unless you forward them; see [Forward to Express's error middleware](#forward-to-expresss-error-middleware) below. Same goes for observability: see [Add observability without changing the response](#add-observability-without-changing-the-response).
 
+### `validateResponses(validator, options?)`
+
+Opt-in middleware that validates outgoing JSON responses (`res.json`, `res.send`) against the spec. Mount it where you want response checking, conventionally on in development and off in production:
+
+```ts
+import { validateResponses } from "@aahoughton/oav-express4";
+
+if (process.env.NODE_ENV !== "production") {
+  app.use(validateResponses(validator));
+}
+```
+
+| option          | type                                                        | default                         |
+| --------------- | ----------------------------------------------------------- | ------------------------------- |
+| `toHttpRequest` | `(req: Request) => HttpRequest`                             | `httpRequestFromExpress`        |
+| `statuses`      | `(status: number) => boolean`                               | validate every status           |
+| `onError`       | `(errors: ValidationError[], ctx) => void \| Promise<void>` | throw `ResponseValidationError` |
+
+The default `onError` throws a `ResponseValidationError` (forwarded via `next(err)` to your error middleware, since a non-conforming response is a server bug). Return normally from a custom `onError` to log-and-continue: the original body is sent unchanged. Every declared status is checked by default (4xx / 5xx too); an undeclared status is itself a finding. Only the core `validateResponse` stays pure; this is the one place the adapter wraps `res`, and only where you mount it.
+
 ### `httpRequestFromExpress(req)`
 
 Convert an Express 4 `Request` to oav's framework-agnostic `HttpRequest` shape. Read what's already on `req`; body parsing is the host app's responsibility.

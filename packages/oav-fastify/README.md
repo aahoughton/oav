@@ -81,6 +81,26 @@ Returns a Fastify `preValidationHookHandler`.
 
 > **Validation failures don't traverse Fastify's `setErrorHandler` by default.** The default `onError` (`renderProblemDetails`) writes the response directly. If you want validation failures in your existing error pipeline, throw from `onError` (Fastify routes throws to `setErrorHandler`) or compose a logger before `renderProblemDetails`; see [Add observability without changing the response](#add-observability-without-changing-the-response).
 
+### `validateResponses(validator, options?)`
+
+Opt-in `onSend` hook that validates outgoing JSON responses against the spec. No monkey-patching: Fastify's `onSend` receives the serialized payload natively. Register it where you want response checking, conventionally on in development and off in production:
+
+```ts
+import { validateResponses } from "@aahoughton/oav-fastify";
+
+if (process.env.NODE_ENV !== "production") {
+  app.addHook("onSend", validateResponses(validator));
+}
+```
+
+| option          | type                                                        | default                         |
+| --------------- | ----------------------------------------------------------- | ------------------------------- |
+| `toHttpRequest` | `(request: FastifyRequest) => HttpRequest`                  | `httpRequestFromFastify`        |
+| `statuses`      | `(status: number) => boolean`                               | validate every status           |
+| `onError`       | `(errors: ValidationError[], ctx) => void \| Promise<void>` | throw `ResponseValidationError` |
+
+The default `onError` throws a `ResponseValidationError` (routed to `setErrorHandler`, since a non-conforming response is a server bug). Return normally from a custom `onError` to log-and-continue: the original payload is sent unchanged. Every declared status is checked by default (4xx / 5xx too); an undeclared status is itself a finding.
+
 ### `httpRequestFromFastify(request)`
 
 Convert a `FastifyRequest` to oav's framework-agnostic `HttpRequest` shape. Read what's already on the request; body parsing is Fastify's responsibility (handled by content-type parsers before `preValidation`).
