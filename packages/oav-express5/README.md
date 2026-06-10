@@ -97,6 +97,8 @@ if (process.env.NODE_ENV !== "production") {
 }
 ```
 
+Mount it after `validateRequests`. Mounted before, it also validates the 400 problem-details bodies the request validator renders; unless the spec declares those responses, every request-validation 400 becomes a 500 finding.
+
 | option          | type                                                        | default                         |
 | --------------- | ----------------------------------------------------------- | ------------------------------- |
 | `toHttpRequest` | `(req: Request) => HttpRequest`                             | `httpRequestFromExpress`        |

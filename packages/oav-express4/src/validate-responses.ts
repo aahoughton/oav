@@ -109,6 +109,11 @@ function responseHeaders(res: Response): Record<string, string | string[]> {
  * reaction to a failure) is not itself re-validated, so there is no
  * loop.
  *
+ * Mount it after `validateRequests`, as in the example. Mounted before,
+ * it also validates the 400 problem-details bodies the request validator
+ * renders, and a spec that does not declare those responses turns every
+ * request-validation 400 into a 500 finding.
+ *
  * @example
  * ```ts
  * import { validateRequests, validateResponses } from "@aahoughton/oav-express4";

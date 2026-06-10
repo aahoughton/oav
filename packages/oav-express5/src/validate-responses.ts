@@ -97,9 +97,17 @@ function responseHeaders(res: Response): Record<string, string | string[]> {
  * Only JSON responses are validated: `res.json(obj)`, `res.send(obj)`
  * (which Express routes through `json`), and `res.send(jsonString)` when
  * the content type is JSON. Non-JSON `send` payloads, `res.end`, and
- * streamed responses pass through untouched. A per-response guard means
- * the error handler's own response (rendered in reaction to a failure)
- * is not itself re-validated, so there is no loop.
+ * streamed responses pass through untouched. So does `res.jsonp` when a
+ * callback parameter is present (the payload goes out as JavaScript);
+ * without one Express serves plain JSON and it is validated. A
+ * per-response guard means the error handler's own response (rendered in
+ * reaction to a failure) is not itself re-validated, so there is no
+ * loop.
+ *
+ * Mount it after `validateRequests`, as in the example. Mounted before,
+ * it also validates the 400 problem-details bodies the request validator
+ * renders, and a spec that does not declare those responses turns every
+ * request-validation 400 into a 500 finding.
  *
  * @example
  * ```ts

@@ -1040,6 +1040,11 @@ if (process.env.NODE_ENV !== "production") {
 }
 ```
 
+Keep that order. Mounted above `validateRequests`, response checking
+also sees the 400 problem-details bodies the request validator
+renders, and unless the spec declares those responses every
+request-validation 400 becomes a 500 finding.
+
 It validates every JSON response (`res.json(obj)`, `res.send(obj)`,
 and a JSON `res.send(string)`) against the response declared for its
 status. On failure the default throws a `ResponseValidationError`,
