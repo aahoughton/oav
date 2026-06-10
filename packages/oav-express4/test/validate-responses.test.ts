@@ -49,12 +49,12 @@ function fakeRes(statusCode = 200, headers: Record<string, string> = {}): FakeRe
     statusCode,
     getHeader: (n: string) => lower[n.toLowerCase()],
     getHeaders: () => lower,
-    json(body: unknown) {
-      sentJson(body);
+    json(...args: unknown[]) {
+      sentJson(...args);
       return this;
     },
-    send(body: unknown) {
-      sentSend(body);
+    send(...args: unknown[]) {
+      sentSend(...args);
       return this;
     },
   };
@@ -167,6 +167,27 @@ describe("validateResponses (Express 4)", () => {
     const [errors, ctx] = onError.mock.calls[0]!;
     expect(Array.isArray(errors)).toBe(true);
     expect(ctx).toMatchObject({ res, next });
+  });
+
+  it("forwards the deprecated res.json(status, body) form intact", () => {
+    const { res, sentJson } = fakeRes();
+    const next = vi.fn();
+    validateResponses(v)(fakeReq(), res, next as unknown as NextFunction);
+    // Legacy two-arg call: the wrapper must forward both args untouched
+    // and let Express disambiguate (validation then happens on Express's
+    // re-dispatch through send, which this fake does not model).
+    (res.json as (...args: unknown[]) => unknown)(201, { id: 123 });
+    expect(sentJson).toHaveBeenCalledWith(201, { id: 123 });
+    expect(erroredWith(next)).toBeUndefined();
+  });
+
+  it("forwards the deprecated res.send(body, status) form intact", () => {
+    const { res, sentSend } = fakeRes(200, { "content-type": "application/json" });
+    const next = vi.fn();
+    validateResponses(v)(fakeReq(), res, next as unknown as NextFunction);
+    (res.send as (...args: unknown[]) => unknown)(JSON.stringify({ id: 7 }), 201);
+    expect(sentSend).toHaveBeenCalledWith(JSON.stringify({ id: 7 }), 201);
+    expect(erroredWith(next)).toBeUndefined();
   });
 
   it("log-and-continue: an onError that returns normally lets the body go out", () => {

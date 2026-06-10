@@ -77,9 +77,17 @@ const defaultOnError: ErrorHandler<ExpressContext> = (errors) => {
  * Only JSON responses are validated: `res.json(obj)`, `res.send(obj)`
  * (which Express routes through `json`), and `res.send(jsonString)` when
  * the content type is JSON. Non-JSON `send` payloads, `res.end`, and
- * streamed responses pass through untouched. A per-response guard means
- * the error handler's own response (rendered in reaction to a failure)
- * is not itself re-validated, so there is no loop.
+ * streamed responses pass through untouched. So does `res.jsonp` when a
+ * callback parameter is present (the payload goes out as JavaScript);
+ * without one Express serves plain JSON and it is validated. Express 4's
+ * deprecated two-argument forms (`res.json(status, obj)`,
+ * `res.send(body, status)`, and friends) are forwarded to Express
+ * untouched, status and body intact; Express disambiguates them itself,
+ * and once it has (status set, body serialized) the re-dispatch through
+ * `send` still validates a JSON body against the actual status. A
+ * per-response guard means the error handler's own response (rendered in
+ * reaction to a failure) is not itself re-validated, so there is no
+ * loop.
  *
  * @example
  * ```ts
@@ -158,21 +166,33 @@ export function validateResponses(
       }
     };
 
-    const originalJson = res.json.bind(res);
-    const originalSend = res.send.bind(res);
+    const originalJson = res.json.bind(res) as (...args: unknown[]) => Response;
+    const originalSend = res.send.bind(res) as (...args: unknown[]) => Response;
 
-    res.json = (body: unknown): Response => {
+    res.json = ((...args: unknown[]): Response => {
+      // Express 4's deprecated two-argument forms (res.json(status, obj),
+      // res.json(obj, status)) disambiguate inside Express; forward them
+      // rather than guessing which argument is the body. Express then
+      // re-dispatches through send with the status set and the body
+      // serialized, and validation happens there.
+      if (args.length > 1) return originalJson(...args);
+      const body = args[0];
       const contentType =
         (res.getHeader("content-type") as string | undefined) ?? "application/json";
       const errors = check(body, contentType);
       if (errors !== null) {
-        handleFailure(errors, () => originalJson(body));
+        handleFailure(errors, () => originalJson(...args));
         return res;
       }
-      return originalJson(body);
-    };
+      return originalJson(...args);
+    }) as Response["json"];
 
-    res.send = (body: unknown): Response => {
+    res.send = ((...args: unknown[]): Response => {
+      // Deprecated two-argument forms are forwarded, as in res.json
+      // above; an object body still validates via Express's re-dispatch
+      // through json.
+      if (args.length > 1) return originalSend(...args);
+      const body = args[0];
       // Objects route through res.json internally (and are validated
       // there); only a JSON string needs handling here.
       if (typeof body === "string") {
@@ -187,14 +207,14 @@ export function validateResponses(
           if (parsed !== undefined) {
             const errors = check(parsed, contentType);
             if (errors !== null) {
-              handleFailure(errors, () => originalSend(body));
+              handleFailure(errors, () => originalSend(...args));
               return res;
             }
           }
         }
       }
-      return originalSend(body);
-    };
+      return originalSend(...args);
+    }) as Response["send"];
 
     next();
   };

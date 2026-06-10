@@ -376,6 +376,60 @@ describe("oav-express4 integration: validateResponses log-and-continue", () => {
   });
 });
 
+describe("oav-express4 integration: deprecated two-arg response methods", () => {
+  let server: Server;
+  let baseUrl: string;
+
+  beforeAll(async () => {
+    // widgetSpec plus a declared 201 so the legacy routes' real status
+    // has a contract to validate against.
+    const spec = widgetSpec();
+    const widget = spec.paths!["/widgets/{id}"] as {
+      get: { responses: Record<string, unknown> };
+    };
+    widget.get.responses["201"] = widget.get.responses["200"];
+    const validator = createValidator(spec);
+    const app = express();
+    app.use(validateResponses(validator));
+    // Express 4 still honors the deprecated two-argument forms. The
+    // wrapper must forward them intact (status preserved, body
+    // preserved); Express disambiguates, then its re-dispatch through
+    // send validates the body against the actual (legacy-set) status.
+    type LegacyJson = (...args: unknown[]) => unknown;
+    app.get("/widgets/body-first", (_req, res) => {
+      (res.json as LegacyJson)({ id: "ok" }, 201);
+    });
+    app.get("/widgets/status-first", (_req, res) => {
+      (res.json as LegacyJson)(201, { id: "ok" });
+    });
+    app.get("/widgets/legacy-bad", (_req, res) => {
+      (res.json as LegacyJson)({ id: 123 }, 201); // id must be a string
+    });
+    ({ server, baseUrl } = await listenOnZero(app));
+  });
+
+  afterAll(async () => {
+    await closeServer(server);
+  });
+
+  it("res.json(body, status) keeps its status and body", async () => {
+    const r = await fetch(`${baseUrl}/widgets/body-first`);
+    expect(r.status).toBe(201);
+    expect((await r.json()) as unknown).toEqual({ id: "ok" });
+  });
+
+  it("res.json(status, body) keeps its status and body", async () => {
+    const r = await fetch(`${baseUrl}/widgets/status-first`);
+    expect(r.status).toBe(201);
+    expect((await r.json()) as unknown).toEqual({ id: "ok" });
+  });
+
+  it("an invalid legacy-form body is validated against the legacy-set status", async () => {
+    const r = await fetch(`${baseUrl}/widgets/legacy-bad`);
+    expect(r.status).toBe(500);
+  });
+});
+
 describe("oav-express4 integration: Express 4 specifics", () => {
   let server: Server;
   let baseUrl: string;
