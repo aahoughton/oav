@@ -1047,9 +1047,13 @@ request-validation 400 becomes a 500 finding.
 
 It validates every JSON response (`res.json(obj)`, `res.send(obj)`,
 and a JSON `res.send(string)`) against the response declared for its
-status. On failure the default throws a `ResponseValidationError`,
-which the adapter forwards to your error middleware (a response that
-doesn't match the contract is a server bug, so it surfaces as a 500).
+status. Validation runs on the serialized wire body, after `toJSON`
+methods, the `json replacer` setting, and `Date` serialization have
+been applied, so what is checked is exactly what the client receives;
+the per-adapter coverage list is in each package README. On failure
+the default throws a `ResponseValidationError`, which the adapter
+forwards to your error middleware (a response that doesn't match the
+contract is a server bug, so it surfaces as a 500).
 
 Fastify is the same shape with no monkey-patching: it registers an
 `onSend` hook instead of wrapping response methods.

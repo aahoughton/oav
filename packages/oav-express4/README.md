@@ -109,6 +109,12 @@ Mount it after `validateRequests`. Mounted before, it also validates the 400 pro
 
 The default `onError` throws a `ResponseValidationError` (forwarded via `next(err)` to your error middleware, since a non-conforming response is a server bug). Return normally from a custom `onError` to log-and-continue: the original body is sent unchanged. Every declared status is checked by default (4xx / 5xx too); an undeclared status is itself a finding. Only the core `validateResponse` stays pure; this is the one place the adapter wraps `res`, and only where you mount it.
 
+**What is validated: the serialized wire body.** The middleware wraps `res.send`, the one point every JSON response passes through as a serialized string (`res.json` stringifies and re-dispatches through it), parses that string, and validates the result. Serialization runs first, so `toJSON` methods (ORM documents, `Date` fields), the app's `json replacer` / `json spaces` settings, and dropped `undefined` keys are all reflected in what is checked: validation sees exactly what the client receives. Cost is one `JSON.parse` per JSON response while mounted; mount it dev-only and that cost never reaches production.
+
+Covered: `res.json(obj)`, `res.send(obj)`, `res.send(jsonString)` with a JSON content type, `res.jsonp` without a callback parameter, and the bodies Express computes for HEAD requests (a HEAD request validates against the GET operation when the spec declares no HEAD). Passed through untouched: non-JSON content types, Buffers, streamed bodies (`res.write` / `res.end`), `res.sendFile`, `res.sendStatus`, redirects, `res.jsonp` with a callback, malformed JSON strings, and `res.json()` with no argument. Express 4's deprecated two-argument forms (`res.json(status, obj)` and friends) are forwarded to Express untouched; once Express disambiguates them, the body comes back through `send` and is validated against the actual status.
+
+**Error-middleware responses are responses too.** A body your error middleware renders for an ordinary thrown error is validated like any other, so declare your error statuses in the spec or scope them out with `statuses`. The exception is the reply to a response-validation failure itself, which is never re-validated (no loop). Mounting the middleware twice on one chain fails every request with a clear error instead of validating twice.
+
 ### `httpRequestFromExpress(req)`
 
 Convert an Express 4 `Request` to oav's framework-agnostic `HttpRequest` shape. Read what's already on `req`; body parsing is the host app's responsibility.
