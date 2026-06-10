@@ -36,29 +36,31 @@ function widgetSpec(): OpenAPIDocument {
 
 interface FakeRes {
   res: Response;
-  sentJson: ReturnType<typeof vi.fn>;
-  sentSend: ReturnType<typeof vi.fn>;
+  sent: ReturnType<typeof vi.fn>;
 }
 
-function fakeRes(statusCode = 200, headers: Record<string, string> = {}): FakeRes {
-  const sentJson = vi.fn();
-  const sentSend = vi.fn();
-  const lower: Record<string, string> = {};
+// Models the Express flow the wrapper relies on: res.json serializes,
+// defaults the content type, and re-dispatches through res.send.
+function fakeRes(statusCode = 200, headers: Record<string, unknown> = {}): FakeRes {
+  const sent = vi.fn();
+  const lower: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(headers)) lower[k.toLowerCase()] = v;
   const res = {
     statusCode,
+    headersSent: false,
     getHeader: (n: string) => lower[n.toLowerCase()],
     getHeaders: () => lower,
     json(body: unknown) {
-      sentJson(body);
-      return this;
+      lower["content-type"] ??= "application/json";
+      return this.send(JSON.stringify(body));
     },
-    send(body: unknown) {
-      sentSend(body);
+    send(...args: unknown[]) {
+      sent(...args);
+      this.headersSent = true;
       return this;
     },
   };
-  return { res: res as unknown as Response, sentJson, sentSend };
+  return { res: res as unknown as Response, sent };
 }
 
 function fakeReq(): Request {
@@ -72,6 +74,10 @@ function fakeReq(): Request {
 
 const v = createValidator(widgetSpec());
 
+function mount(res: Response, next: ReturnType<typeof vi.fn>, options = {}): void {
+  validateResponses(v, options)(fakeReq(), res, next as unknown as NextFunction);
+}
+
 function erroredWith(next: ReturnType<typeof vi.fn>): ResponseValidationError | undefined {
   const call = next.mock.calls.find((c) => c[0] instanceof ResponseValidationError);
   return call?.[0] as ResponseValidationError | undefined;
@@ -84,121 +90,118 @@ describe("validateResponses (Express 5)", () => {
   });
 
   it("sends a valid response body through unchanged", () => {
-    const { res, sentJson } = fakeRes();
+    const { res, sent } = fakeRes();
     const next = vi.fn();
-    validateResponses(v)(fakeReq(), res, next as unknown as NextFunction);
+    mount(res, next);
     res.json({ id: "ok" });
-    expect(sentJson).toHaveBeenCalledWith({ id: "ok" });
+    expect(sent).toHaveBeenCalledWith(JSON.stringify({ id: "ok" }));
     expect(erroredWith(next)).toBeUndefined();
   });
 
   it("forwards a ResponseValidationError and suppresses the bad body", () => {
-    const { res, sentJson } = fakeRes();
+    const { res, sent } = fakeRes();
     const next = vi.fn();
-    validateResponses(v)(fakeReq(), res, next as unknown as NextFunction);
+    mount(res, next);
     res.json({ id: 123 }); // id must be a string
-    expect(sentJson).not.toHaveBeenCalled();
+    expect(sent).not.toHaveBeenCalled();
     const err = erroredWith(next);
     expect(err).toBeInstanceOf(ResponseValidationError);
     expect(err?.statusCode).toBe(500);
     expect(err?.errors.length).toBeGreaterThan(0);
   });
 
-  it("treats an undeclared status as a finding by default", () => {
-    const { res, sentJson } = fakeRes(418);
+  it("validates the serialized wire body, not the live object", () => {
+    const { res, sent } = fakeRes();
     const next = vi.fn();
-    validateResponses(v)(fakeReq(), res, next as unknown as NextFunction);
+    mount(res, next);
+    res.json({
+      id: "ok",
+      toJSON() {
+        return { id: "ok" };
+      },
+    });
+    expect(sent).toHaveBeenCalledWith(JSON.stringify({ id: "ok" }));
+    expect(erroredWith(next)).toBeUndefined();
+  });
+
+  it("parses the wire body exactly once", () => {
+    const { res, sent } = fakeRes();
+    const next = vi.fn();
+    mount(res, next);
+    const parse = vi.spyOn(JSON, "parse");
+    try {
+      res.json({ id: "ok" });
+      expect(parse).toHaveBeenCalledTimes(1);
+    } finally {
+      parse.mockRestore();
+    }
+    expect(sent).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats an undeclared status as a finding by default", () => {
+    const { res, sent } = fakeRes(418);
+    const next = vi.fn();
+    mount(res, next);
     res.json({ id: "ok" });
-    expect(sentJson).not.toHaveBeenCalled();
+    expect(sent).not.toHaveBeenCalled();
     expect(erroredWith(next)).toBeInstanceOf(ResponseValidationError);
   });
 
   it("skips statuses the predicate excludes", () => {
-    const { res, sentJson } = fakeRes(500);
+    const { res, sent } = fakeRes(500);
     const next = vi.fn();
-    validateResponses(v, { statuses: (s) => s < 500 })(
-      fakeReq(),
-      res,
-      next as unknown as NextFunction,
-    );
+    mount(res, next, { statuses: (s: number) => s < 500 });
     res.json({ anything: true }); // would fail 200 schema, but 500 is skipped
-    expect(sentJson).toHaveBeenCalledWith({ anything: true });
+    expect(sent).toHaveBeenCalledWith(JSON.stringify({ anything: true }));
     expect(erroredWith(next)).toBeUndefined();
   });
 
   it("validates a JSON string sent via res.send", () => {
-    const { res, sentSend } = fakeRes(200, { "content-type": "application/json" });
+    const { res, sent } = fakeRes(200, { "content-type": "application/json" });
     const next = vi.fn();
-    validateResponses(v)(fakeReq(), res, next as unknown as NextFunction);
+    mount(res, next);
     res.send(JSON.stringify({ id: 7 })); // id must be a string
-    expect(sentSend).not.toHaveBeenCalled();
+    expect(sent).not.toHaveBeenCalled();
     expect(erroredWith(next)).toBeInstanceOf(ResponseValidationError);
   });
 
   it("passes non-JSON send payloads through untouched", () => {
-    const { res, sentSend } = fakeRes(200, { "content-type": "text/html" });
+    const { res, sent } = fakeRes(200, { "content-type": "text/html" });
     const next = vi.fn();
-    validateResponses(v)(fakeReq(), res, next as unknown as NextFunction);
+    mount(res, next);
     res.send("<html>not json</html>");
-    expect(sentSend).toHaveBeenCalledWith("<html>not json</html>");
+    expect(sent).toHaveBeenCalledWith("<html>not json</html>");
+    expect(erroredWith(next)).toBeUndefined();
+  });
+
+  it("passes a malformed JSON payload through untouched", () => {
+    const { res, sent } = fakeRes(200, { "content-type": "application/json" });
+    const next = vi.fn();
+    mount(res, next);
+    res.send("{not valid json");
+    expect(sent).toHaveBeenCalledWith("{not valid json");
+    expect(erroredWith(next)).toBeUndefined();
+  });
+
+  it("forwards multi-arg send calls to Express untouched", () => {
+    const { res, sent } = fakeRes(200, { "content-type": "application/json" });
+    const next = vi.fn();
+    mount(res, next);
+    (res.send as (...args: unknown[]) => unknown)(JSON.stringify({ id: 7 }), 201);
+    expect(sent).toHaveBeenCalledWith(JSON.stringify({ id: 7 }), 201);
     expect(erroredWith(next)).toBeUndefined();
   });
 
   it("does not re-validate the error handler's own response (no loop)", () => {
-    const { res, sentJson } = fakeRes();
+    const { res, sent } = fakeRes();
     const next = vi.fn();
-    validateResponses(v)(fakeReq(), res, next as unknown as NextFunction);
+    mount(res, next);
     res.json({ id: 123 }); // fails -> forwards
     expect(erroredWith(next)).toBeInstanceOf(ResponseValidationError);
     // Simulate the error middleware sending its own (also-invalid) body.
     res.json({ problem: "details" });
-    expect(sentJson).toHaveBeenCalledWith({ problem: "details" });
-    // Still only one forwarded error.
+    expect(sent).toHaveBeenCalledWith(JSON.stringify({ problem: "details" }));
     expect(next.mock.calls.filter((c) => c[0] instanceof ResponseValidationError)).toHaveLength(1);
-  });
-
-  it("invokes a custom onError with the failing leaves and context", () => {
-    const onError = vi.fn();
-    const { res } = fakeRes();
-    const next = vi.fn();
-    validateResponses(v, { onError })(fakeReq(), res, next as unknown as NextFunction);
-    res.json({ id: 123 });
-    expect(onError).toHaveBeenCalledTimes(1);
-    const [errors, ctx] = onError.mock.calls[0]!;
-    expect(Array.isArray(errors)).toBe(true);
-    expect(ctx).toMatchObject({ res, next });
-  });
-
-  it("does not re-parse the serialized body when res.json re-enters res.send", () => {
-    // Model Express's real flow: json serializes the body, sets the
-    // content type, and re-dispatches through send.
-    const sentSend = vi.fn();
-    const lower: Record<string, string> = {};
-    const res = {
-      statusCode: 200,
-      headersSent: false,
-      getHeader: (n: string) => lower[n.toLowerCase()],
-      getHeaders: () => lower,
-      json(body: unknown) {
-        lower["content-type"] ??= "application/json";
-        return this.send(JSON.stringify(body));
-      },
-      send(body: unknown) {
-        sentSend(body);
-        return this;
-      },
-    };
-    const next = vi.fn();
-    validateResponses(v)(fakeReq(), res as unknown as Response, next as unknown as NextFunction);
-    const parse = vi.spyOn(JSON, "parse");
-    try {
-      (res as unknown as Response).json({ id: "ok" });
-      expect(parse).not.toHaveBeenCalled();
-    } finally {
-      parse.mockRestore();
-    }
-    expect(sentSend).toHaveBeenCalledWith(JSON.stringify({ id: "ok" }));
-    expect(erroredWith(next)).toBeUndefined();
   });
 
   it("stringifies numeric header values before validating declared response headers", () => {
@@ -210,26 +213,11 @@ describe("validateResponses (Express 5)", () => {
       "X-Request-Id": { required: true, schema: { type: "string" } },
     };
     const hv = createValidator(spec);
-    const sentJson = vi.fn();
-    const res = {
-      statusCode: 200,
-      getHeader: () => undefined,
-      // Node allows numeric header values (res.setHeader("X-Request-Id",
-      // 42)) and getHeaders() reports them as numbers; the wrapper must
-      // hand the validator strings or a string-typed header misfires.
-      getHeaders: () => ({ "x-request-id": 42 }),
-      json(body: unknown) {
-        sentJson(body);
-        return this;
-      },
-      send() {
-        return this;
-      },
-    };
+    const { res, sent } = fakeRes(200, { "x-request-id": 42 });
     const next = vi.fn();
-    validateResponses(hv)(fakeReq(), res as unknown as Response, next as unknown as NextFunction);
-    (res as unknown as Response).json({ id: "ok" });
-    expect(sentJson).toHaveBeenCalledWith({ id: "ok" });
+    validateResponses(hv)(fakeReq(), res, next as unknown as NextFunction);
+    res.json({ id: "ok" });
+    expect(sent).toHaveBeenCalledWith(JSON.stringify({ id: "ok" }));
     expect(erroredWith(next)).toBeUndefined();
   });
 
@@ -237,21 +225,33 @@ describe("validateResponses (Express 5)", () => {
     const { res } = fakeRes();
     const next1 = vi.fn();
     const next2 = vi.fn();
-    validateResponses(v)(fakeReq(), res, next1 as unknown as NextFunction);
-    validateResponses(v)(fakeReq(), res, next2 as unknown as NextFunction);
+    mount(res, next1);
+    mount(res, next2);
     expect(next1).toHaveBeenCalledWith();
     const err = next2.mock.calls[0]?.[0] as Error;
     expect(err).toBeInstanceOf(Error);
     expect(err.message).toMatch(/mounted twice/);
   });
 
+  it("invokes a custom onError with the failing leaves and context", () => {
+    const onError = vi.fn();
+    const { res } = fakeRes();
+    const next = vi.fn();
+    mount(res, next, { onError });
+    res.json({ id: 123 });
+    expect(onError).toHaveBeenCalledTimes(1);
+    const [errors, ctx] = onError.mock.calls[0]!;
+    expect(Array.isArray(errors)).toBe(true);
+    expect(ctx).toMatchObject({ res, next });
+  });
+
   it("log-and-continue: an onError that returns normally lets the body go out", () => {
     const onError = vi.fn(); // returns undefined -> normal completion
-    const { res, sentJson } = fakeRes();
+    const { res, sent } = fakeRes();
     const next = vi.fn();
-    validateResponses(v, { onError })(fakeReq(), res, next as unknown as NextFunction);
+    mount(res, next, { onError });
     res.json({ id: 123 }); // invalid, but onError doesn't throw
-    expect(sentJson).toHaveBeenCalledWith({ id: 123 });
+    expect(sent).toHaveBeenCalledWith(JSON.stringify({ id: 123 }));
     expect(erroredWith(next)).toBeUndefined();
   });
 });

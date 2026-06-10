@@ -60,13 +60,12 @@ const defaultOnError: ErrorHandler<ExpressContext> = (errors) => {
   throw new ResponseValidationError(errors);
 };
 
-// Marks a response already wrapped by validateResponses; a second
-// mount on the same chain is a configuration error (it would validate
-// every response twice and can fire onError twice for one failure).
+// Marks a response already wrapped by validateResponses; a second mount
+// on the same chain would validate every response twice.
 const WRAPPED = Symbol("oav.validateResponses");
 
-// res.getHeaders() reports numeric values (Content-Length, or any
-// res.setHeader(name, number)) as numbers; the validator's header
+// getHeaders() reports numeric values (Content-Length, or any
+// setHeader(name, number)) as numbers; the validator's header
 // deserializer expects strings.
 function responseHeaders(res: Response): Record<string, string | string[]> {
   const headers: Record<string, string | string[]> = {};
@@ -78,41 +77,20 @@ function responseHeaders(res: Response): Record<string, string | string[]> {
 }
 
 /**
- * Build an Express 4 middleware that validates every outgoing response
- * against the spec. It wraps `res.json` / `res.send` so that when a
- * route handler sends a JSON body, the body is checked against the
- * response declared for its status before it goes out; on failure the
- * configured `onError` runs (default: throw, forwarded to the host
- * error handler as a 500).
+ * Build an Express 4 middleware that validates outgoing JSON responses
+ * against the spec. It wraps `res.send`, the single point every JSON
+ * response passes through as a serialized string (`res.json` stringifies
+ * and re-dispatches through it), parses that string, and validates the
+ * exact wire body: `toJSON` methods, the app's `json replacer` / `json
+ * spaces` settings, and `Date` serialization are all applied before
+ * validation. On failure the configured `onError` runs (default: throw,
+ * forwarded to the host error handler as a 500).
  *
  * Opt-in and explicit: mount it only where you want response checking
- * (typically on in development, off in production via a conditional
- * mount). This is the one place an adapter wraps `res`; the core
- * `validateResponse` stays a pure function that reads its arguments. See
- * the migration note in `docs/migration-from-eov.md`. Mounting it twice
- * on one route chain is a configuration error; the second mount fails
- * the request via `next(err)` with a clear message instead of validating
- * every response twice.
- *
- * Only JSON responses are validated: `res.json(obj)`, `res.send(obj)`
- * (which Express routes through `json`), and `res.send(jsonString)` when
- * the content type is JSON. Non-JSON `send` payloads, `res.end`, and
- * streamed responses pass through untouched. So does `res.jsonp` when a
- * callback parameter is present (the payload goes out as JavaScript);
- * without one Express serves plain JSON and it is validated. Express 4's
- * deprecated two-argument forms (`res.json(status, obj)`,
- * `res.send(body, status)`, and friends) are forwarded to Express
- * untouched, status and body intact; Express disambiguates them itself,
- * and once it has (status set, body serialized) the re-dispatch through
- * `send` still validates a JSON body against the actual status. A
- * per-response guard means the error handler's own response (rendered in
- * reaction to a failure) is not itself re-validated, so there is no
- * loop.
- *
- * Mount it after `validateRequests`, as in the example. Mounted before,
- * it also validates the 400 problem-details bodies the request validator
- * renders, and a spec that does not declare those responses turns every
- * request-validation 400 into a 500 finding.
+ * (typically on in development, off in production), and after
+ * `validateRequests`. What is and isn't validated, ordering caveats,
+ * cost, and failure-mode recipes are in the package README; the core
+ * `validateResponse` stays a pure function that reads its arguments.
  *
  * @example
  * ```ts
@@ -160,15 +138,11 @@ export function validateResponses(
       return;
     }
 
-    // Per-response guard: validate at most once, so the error handler's
-    // own response (sent through this same wrapped res) is not
-    // re-validated into a loop.
+    // Validate at most once per response; the error handler's own reply
+    // re-enters this same wrapped send and must not loop.
     let handled = false;
 
-    // Returns the failing leaves, or null when the response is valid,
-    // skipped by the status predicate, or already handled.
     const check = (body: unknown, contentType: string): ValidationError[] | null => {
-      if (handled) return null;
       handled = true;
       if (!shouldValidate(res.statusCode)) return null;
       const httpRes: HttpResponse = {
@@ -202,49 +176,25 @@ export function validateResponses(
       }
     };
 
-    const originalJson = res.json.bind(res) as (...args: unknown[]) => Response;
     const originalSend = res.send.bind(res) as (...args: unknown[]) => Response;
 
-    res.json = ((...args: unknown[]): Response => {
-      // Express 4's deprecated two-argument forms (res.json(status, obj),
-      // res.json(obj, status)) disambiguate inside Express; forward them
-      // rather than guessing which argument is the body. Express then
-      // re-dispatches through send with the status set and the body
-      // serialized, and validation happens there.
-      if (args.length > 1) return originalJson(...args);
-      const body = args[0];
-      const contentType =
-        (res.getHeader("content-type") as string | undefined) ?? "application/json";
-      const errors = check(body, contentType);
-      if (errors !== null) {
-        handleFailure(errors, () => originalJson(...args));
-        return res;
-      }
-      return originalJson(...args);
-    }) as Response["json"];
-
     res.send = ((...args: unknown[]): Response => {
-      // Deprecated two-argument forms are forwarded, as in res.json
-      // above; an object body still validates via Express's re-dispatch
-      // through json.
+      // Multi-arg calls are Express 4's deprecated status/body forms;
+      // forward them and let Express disambiguate (an object body comes
+      // back through here serialized, and is validated then).
       if (args.length > 1) return originalSend(...args);
       const body = args[0];
-      // Objects route through res.json internally (and are validated
-      // there); only a JSON string needs handling here. The handled gate
-      // also covers the re-entry from a validated res.json (originalJson
-      // serializes and re-dispatches through send); without it every
-      // JSON response would be fully re-parsed just for check() to
-      // discard the result.
       if (!handled && typeof body === "string") {
         const contentType = String(res.getHeader("content-type") ?? "");
         if (/\bjson\b/i.test(contentType)) {
           let parsed: unknown;
+          let parseable = true;
           try {
             parsed = JSON.parse(body);
           } catch {
-            parsed = undefined;
+            parseable = false;
           }
-          if (parsed !== undefined) {
+          if (parseable) {
             const errors = check(parsed, contentType);
             if (errors !== null) {
               handleFailure(errors, () => originalSend(...args));

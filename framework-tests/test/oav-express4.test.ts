@@ -295,6 +295,97 @@ function widgetSpec(): OpenAPIDocument {
   };
 }
 
+function thingSpec(): OpenAPIDocument {
+  return {
+    openapi: "3.1.0",
+    info: { title: "t", version: "1" },
+    paths: {
+      "/things": {
+        get: {
+          responses: {
+            "200": {
+              description: "ok",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["id"],
+                    properties: { id: { type: "string" }, createdAt: { type: "string" } },
+                    additionalProperties: false,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  };
+}
+
+describe("oav-express4 integration: validateResponses serialization fidelity", () => {
+  let server: Server;
+  let baseUrl: string;
+
+  beforeAll(async () => {
+    const validator = createValidator(thingSpec());
+    const app = express();
+    // Settings real apps use; both change the wire body relative to the
+    // object handed to res.json.
+    app.set("json spaces", 2);
+    app.set("json replacer", (key: string, value: unknown) =>
+      key === "secret" ? undefined : value,
+    );
+    app.use(validateResponses(validator));
+    app.get("/things", (req, res) => {
+      const kind = String(req.query.kind ?? "");
+      if (kind === "date") return res.json({ id: "ok", createdAt: new Date() });
+      if (kind === "tojson") {
+        class Thing {
+          id = "ok";
+          internal = "not in spec";
+          toJSON() {
+            return { id: this.id };
+          }
+        }
+        return res.json(new Thing());
+      }
+      if (kind === "replacer") return res.json({ id: "ok", secret: "stripped on the wire" });
+      if (kind === "bad") return res.json({ id: 123 });
+      return res.json({ id: "ok" });
+    });
+    ({ server, baseUrl } = await listenOnZero(app));
+  });
+
+  afterAll(async () => {
+    await closeServer(server);
+  });
+
+  it("a Date serializing to a declared string field is valid", async () => {
+    const r = await fetch(`${baseUrl}/things?kind=date`);
+    expect(r.status).toBe(200);
+    const body = (await r.json()) as { id: string; createdAt: string };
+    expect(typeof body.createdAt).toBe("string");
+  });
+
+  it("toJSON output is what gets validated, not the live instance", async () => {
+    const r = await fetch(`${baseUrl}/things?kind=tojson`);
+    expect(r.status).toBe(200);
+    expect((await r.json()) as unknown).toEqual({ id: "ok" });
+  });
+
+  it("the json replacer setting is applied before validation", async () => {
+    const r = await fetch(`${baseUrl}/things?kind=replacer`);
+    expect(r.status).toBe(200);
+    expect((await r.json()) as unknown).toEqual({ id: "ok" });
+  });
+
+  it("pretty-printed output (json spaces) is still validated", async () => {
+    const r = await fetch(`${baseUrl}/things?kind=bad`);
+    expect(r.status).toBe(500);
+  });
+});
+
 describe("oav-express4 integration: default validateResponses", () => {
   let server: Server;
   let baseUrl: string;
