@@ -62,6 +62,31 @@ describe("router", () => {
     expect(m?.operation.operationId).toBe("mine");
   });
 
+  it("enumerates declared (method, pathPattern) pairs, uppercased, in sort order", () => {
+    const list = r.routes();
+    // Sort: more literal segments first (mine and .../tags/... both have
+    // 2), then longer paths first, then ALL_METHODS order (get before
+    // put/post) within a path.
+    expect(list).toEqual([
+      { method: "GET", pathPattern: "/pets/{id}/tags/{tag}" },
+      { method: "GET", pathPattern: "/pets/mine" },
+      { method: "GET", pathPattern: "/pets/{id}" },
+      { method: "PUT", pathPattern: "/pets/{id}" },
+      { method: "GET", pathPattern: "/pets" },
+      { method: "POST", pathPattern: "/pets" },
+    ]);
+  });
+
+  it("does not synthesize HEAD for a GET-only path", () => {
+    const getOnly = createRouter({ "/ping": { get: op("ping") } });
+    expect(getOnly.routes()).toEqual([{ method: "GET", pathPattern: "/ping" }]);
+  });
+
+  it("returns a frozen, stable array across calls", () => {
+    expect(Object.isFrozen(r.routes())).toBe(true);
+    expect(r.routes()).toBe(r.routes());
+  });
+
   it("matches methods independently on the same path", () => {
     expect(r.match("get", "/pets")?.kind).toBe("match");
     expect(r.match("post", "/pets")?.kind).toBe("match");
