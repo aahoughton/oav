@@ -316,6 +316,59 @@ function widgetSpec(): OpenAPIDocument {
   };
 }
 
+describe("oav-fastify integration: validateResponses serialization fidelity", () => {
+  let app: FastifyInstance;
+
+  beforeAll(async () => {
+    const spec = widgetSpec();
+    const widget = spec.paths!["/widgets/{id}"] as {
+      get: { responses: Record<string, { content: Record<string, { schema: unknown }> }> };
+    };
+    widget.get.responses["200"]!.content["application/json"]!.schema = {
+      type: "object",
+      required: ["id"],
+      properties: { id: { type: "string" }, createdAt: { type: "string" } },
+      additionalProperties: false,
+    };
+    const validator = createValidator(spec);
+    app = Fastify();
+    app.addHook("onSend", validateResponses(validator));
+    app.get("/widgets/:id", async (request) => {
+      const { id } = request.params as { id: string };
+      if (id === "date") return { id: "ok", createdAt: new Date() };
+      if (id === "tojson") {
+        class Thing {
+          id = "ok";
+          internal = "not in spec";
+          toJSON() {
+            return { id: this.id };
+          }
+        }
+        return new Thing();
+      }
+      return { id };
+    });
+    await app.ready();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it("a Date serializing to a declared string field is valid", async () => {
+    const r = await app.inject({ method: "GET", url: "/widgets/date" });
+    expect(r.statusCode).toBe(200);
+    const body = r.json() as { createdAt: string };
+    expect(typeof body.createdAt).toBe("string");
+  });
+
+  it("toJSON output is what gets validated, not the live instance", async () => {
+    const r = await app.inject({ method: "GET", url: "/widgets/tojson" });
+    expect(r.statusCode).toBe(200);
+    expect(r.json()).toEqual({ id: "ok" });
+  });
+});
+
 describe("oav-fastify integration: default validateResponses", () => {
   let app: FastifyInstance;
 

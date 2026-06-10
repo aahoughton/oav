@@ -296,6 +296,97 @@ function widgetSpec(): OpenAPIDocument {
   };
 }
 
+function thingSpec(): OpenAPIDocument {
+  return {
+    openapi: "3.1.0",
+    info: { title: "t", version: "1" },
+    paths: {
+      "/things": {
+        get: {
+          responses: {
+            "200": {
+              description: "ok",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["id"],
+                    properties: { id: { type: "string" }, createdAt: { type: "string" } },
+                    additionalProperties: false,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  };
+}
+
+describe("oav-express5 integration: validateResponses serialization fidelity", () => {
+  let server: Server;
+  let baseUrl: string;
+
+  beforeAll(async () => {
+    const validator = createValidator(thingSpec());
+    const app = express();
+    // Settings real apps use; both change the wire body relative to the
+    // object handed to res.json.
+    app.set("json spaces", 2);
+    app.set("json replacer", (key: string, value: unknown) =>
+      key === "secret" ? undefined : value,
+    );
+    app.use(validateResponses(validator));
+    app.get("/things", (req, res) => {
+      const kind = String(req.query.kind ?? "");
+      if (kind === "date") return res.json({ id: "ok", createdAt: new Date() });
+      if (kind === "tojson") {
+        class Thing {
+          id = "ok";
+          internal = "not in spec";
+          toJSON() {
+            return { id: this.id };
+          }
+        }
+        return res.json(new Thing());
+      }
+      if (kind === "replacer") return res.json({ id: "ok", secret: "stripped on the wire" });
+      if (kind === "bad") return res.json({ id: 123 });
+      return res.json({ id: "ok" });
+    });
+    ({ server, baseUrl } = await listenOnZero(app));
+  });
+
+  afterAll(async () => {
+    await closeServer(server);
+  });
+
+  it("a Date serializing to a declared string field is valid", async () => {
+    const r = await fetch(`${baseUrl}/things?kind=date`);
+    expect(r.status).toBe(200);
+    const body = (await r.json()) as { id: string; createdAt: string };
+    expect(typeof body.createdAt).toBe("string");
+  });
+
+  it("toJSON output is what gets validated, not the live instance", async () => {
+    const r = await fetch(`${baseUrl}/things?kind=tojson`);
+    expect(r.status).toBe(200);
+    expect((await r.json()) as unknown).toEqual({ id: "ok" });
+  });
+
+  it("the json replacer setting is applied before validation", async () => {
+    const r = await fetch(`${baseUrl}/things?kind=replacer`);
+    expect(r.status).toBe(200);
+    expect((await r.json()) as unknown).toEqual({ id: "ok" });
+  });
+
+  it("pretty-printed output (json spaces) is still validated", async () => {
+    const r = await fetch(`${baseUrl}/things?kind=bad`);
+    expect(r.status).toBe(500);
+  });
+});
+
 describe("oav-express5 integration: default validateResponses", () => {
   let server: Server;
   let baseUrl: string;
@@ -374,6 +465,183 @@ describe("oav-express5 integration: validateResponses log-and-continue", () => {
     expect((await r.json()) as unknown).toEqual({ id: 123 });
     expect(logged.length).toBe(1);
     expect(logged[0]).toBeGreaterThan(0);
+  });
+});
+
+describe("oav-express5 integration: validateResponses send variants", () => {
+  let server: Server;
+  let baseUrl: string;
+
+  beforeAll(async () => {
+    const validator = createValidator(widgetSpec());
+    const app = express();
+    app.use(validateResponses(validator));
+    app.get("/widgets/:id", (req, res) => {
+      switch (req.params.id) {
+        case "obj-send":
+          return res.send({ id: "ok" });
+        case "obj-send-bad":
+          return res.send({ id: 123 });
+        case "buffer":
+          return res.type("json").send(Buffer.from(JSON.stringify({ id: 123 })));
+        case "malformed":
+          return res.type("json").send("{not json");
+        case "sendstatus":
+          return res.sendStatus(418);
+        case "stream": {
+          res.setHeader("content-type", "application/json");
+          res.write('{"id":');
+          return res.end("123}");
+        }
+        case "redirect":
+          return res.redirect(302, "/widgets/ok");
+        case "jsonp":
+          return res.jsonp({ id: 123 });
+        default:
+          return res.json({ id: req.params.id });
+      }
+    });
+    ({ server, baseUrl } = await listenOnZero(app));
+  });
+
+  afterAll(async () => {
+    await closeServer(server);
+  });
+
+  it("an object through res.send is validated (valid passes)", async () => {
+    const r = await fetch(`${baseUrl}/widgets/obj-send`);
+    expect(r.status).toBe(200);
+    expect((await r.json()) as unknown).toEqual({ id: "ok" });
+  });
+
+  it("an object through res.send is validated (invalid is a 500)", async () => {
+    const r = await fetch(`${baseUrl}/widgets/obj-send-bad`);
+    expect(r.status).toBe(500);
+  });
+
+  it("a Buffer body passes through unvalidated even with a JSON content type", async () => {
+    const r = await fetch(`${baseUrl}/widgets/buffer`);
+    expect(r.status).toBe(200);
+    expect((await r.json()) as unknown).toEqual({ id: 123 });
+  });
+
+  it("a malformed JSON string passes through untouched", async () => {
+    const r = await fetch(`${baseUrl}/widgets/malformed`);
+    expect(r.status).toBe(200);
+    expect(await r.text()).toBe("{not json");
+  });
+
+  it("res.sendStatus is non-JSON and passes through, undeclared status included", async () => {
+    const r = await fetch(`${baseUrl}/widgets/sendstatus`);
+    expect(r.status).toBe(418);
+  });
+
+  it("a streamed response (res.write / res.end) bypasses validation", async () => {
+    const r = await fetch(`${baseUrl}/widgets/stream`);
+    expect(r.status).toBe(200);
+    expect((await r.json()) as unknown).toEqual({ id: 123 });
+  });
+
+  it("a redirect passes through untouched", async () => {
+    const r = await fetch(`${baseUrl}/widgets/redirect`, { redirect: "manual" });
+    expect(r.status).toBe(302);
+  });
+
+  it("res.jsonp with a callback goes out as JavaScript, unvalidated", async () => {
+    const r = await fetch(`${baseUrl}/widgets/jsonp?callback=cb`);
+    expect(r.status).toBe(200);
+    expect(r.headers.get("content-type")).toMatch(/javascript/);
+  });
+
+  it("res.jsonp without a callback is plain JSON and is validated", async () => {
+    const r = await fetch(`${baseUrl}/widgets/jsonp`);
+    expect(r.status).toBe(500);
+  });
+});
+
+describe("oav-express5 integration: validateResponses real-world flows", () => {
+  let server: Server;
+  let baseUrl: string;
+
+  beforeAll(async () => {
+    const spec = widgetSpec();
+    const widget = spec.paths!["/widgets/{id}"] as {
+      get: { responses: Record<string, unknown> };
+    };
+    widget.get.responses["500"] = {
+      description: "error",
+      content: {
+        "application/json": {
+          schema: {
+            type: "object",
+            required: ["error"],
+            properties: { error: { type: "string" } },
+            additionalProperties: false,
+          },
+        },
+      },
+    };
+    const validator = createValidator(spec);
+    const app = express();
+    app.use(validateResponses(validator));
+    app.get("/widgets/:id", (req, res) => {
+      switch (req.params.id) {
+        case "null-body":
+          return res.json(null);
+        case "throws":
+          throw new Error("boom");
+        case "double-send":
+          res.json({ id: "first" });
+          return res.json({ id: "second" });
+        default:
+          return res.json({ id: req.params.id });
+      }
+    });
+    app.use(((err: Error, _req, res, next) => {
+      if (res.headersSent) return next(err);
+      res.status(500).json({ error: err.message });
+    }) as express.ErrorRequestHandler);
+    ({ server, baseUrl } = await listenOnZero(app));
+  });
+
+  afterAll(async () => {
+    await closeServer(server);
+  });
+
+  it("res.json(null) is a finding, rendered through the declared 500", async () => {
+    const r = await fetch(`${baseUrl}/widgets/null-body`);
+    expect(r.status).toBe(500);
+    const body = (await r.json()) as { error: string };
+    expect(body.error).toMatch(/failed validation/);
+  });
+
+  it("an error middleware response matching the declared 500 passes validation", async () => {
+    const r = await fetch(`${baseUrl}/widgets/throws`);
+    expect(r.status).toBe(500);
+    expect((await r.json()) as unknown).toEqual({ error: "boom" });
+  });
+
+  it("the double-send handler bug behaves as without the middleware", async () => {
+    const r = await fetch(`${baseUrl}/widgets/double-send`);
+    expect(r.status).toBe(200);
+    expect((await r.json()) as unknown).toEqual({ id: "first" });
+  });
+
+  it("a conditional GET with a matching ETag still gets its 304", async () => {
+    const first = await fetch(`${baseUrl}/widgets/ok`);
+    const etag = first.headers.get("etag");
+    expect(etag).toBeTruthy();
+    // The empty cache-control stops undici from suppressing freshness.
+    const second = await fetch(`${baseUrl}/widgets/ok`, {
+      headers: { "if-none-match": etag!, "cache-control": "" },
+    });
+    expect(second.status).toBe(304);
+  });
+
+  it("a HEAD request validates against the GET operation (RFC 9110 fallback)", async () => {
+    const r = await fetch(`${baseUrl}/widgets/ok`, { method: "HEAD" });
+    expect(r.status).toBe(200);
+    expect(await r.text()).toBe("");
   });
 });
 
