@@ -85,6 +85,34 @@ Returns an Express 5 promise-returning `RequestHandler`.
 
 > **Validation failures don't traverse Express's error chain by default.** The default `onError` (`renderProblemDetails`) writes the response directly. If you're migrating from `express-openapi-validator` (which emits validation failures as `HttpError` through `next(err)`), your existing error middleware won't see oav's failures unless you forward them; see [Forward to Express's error middleware](#forward-to-expresss-error-middleware) below. Same goes for observability: see [Add observability without changing the response](#add-observability-without-changing-the-response).
 
+### `validateResponses(validator, options?)`
+
+Opt-in middleware that validates outgoing JSON responses (`res.json`, `res.send`) against the spec. Mount it where you want response checking, conventionally on in development and off in production:
+
+```ts
+import { validateResponses } from "@aahoughton/oav-express5";
+
+if (process.env.NODE_ENV !== "production") {
+  app.use(validateResponses(validator));
+}
+```
+
+Mount it after `validateRequests`. Mounted before, it also validates the 400 problem-details bodies the request validator renders; unless the spec declares those responses, every request-validation 400 becomes a 500 finding.
+
+| option          | type                                                        | default                         |
+| --------------- | ----------------------------------------------------------- | ------------------------------- |
+| `toHttpRequest` | `(req: Request) => HttpRequest`                             | `httpRequestFromExpress`        |
+| `statuses`      | `(status: number) => boolean`                               | validate every status           |
+| `onError`       | `(errors: ValidationError[], ctx) => void \| Promise<void>` | throw `ResponseValidationError` |
+
+The default `onError` throws a `ResponseValidationError` (propagated to your error middleware, since a non-conforming response is a server bug). Return normally from a custom `onError` to log-and-continue: the original body is sent unchanged. Every declared status is checked by default (4xx / 5xx too); an undeclared status is itself a finding. Only the core `validateResponse` stays pure; this is the one place the adapter wraps `res`, and only where you mount it.
+
+**What is validated: the serialized wire body.** The middleware wraps `res.send`, the one point every JSON response passes through as a serialized string (`res.json` stringifies and re-dispatches through it), parses that string, and validates the result. Serialization runs first, so `toJSON` methods (ORM documents, `Date` fields), the app's `json replacer` / `json spaces` settings, and dropped `undefined` keys are all reflected in what is checked: validation sees exactly what the client receives. Cost is one `JSON.parse` per JSON response while mounted; mount it dev-only and that cost never reaches production.
+
+Covered: `res.json(obj)`, `res.send(obj)`, `res.send(jsonString)` with a JSON content type, `res.jsonp` without a callback parameter, and the bodies Express computes for HEAD requests (a HEAD request validates against the GET operation when the spec declares no HEAD). Passed through untouched: non-JSON content types, Buffers, streamed bodies (`res.write` / `res.end`), `res.sendFile`, `res.sendStatus`, redirects, `res.jsonp` with a callback, and malformed JSON strings. An empty JSON-typed body (`res.json()` with no argument) has its status and declared headers checked, but the missing body itself is not a finding: OpenAPI declares response content without a required flag.
+
+**Error-middleware responses are responses too.** A body your error middleware renders for an ordinary thrown error is validated like any other, so declare your error statuses in the spec or scope them out with `statuses`. The exception is the reply to a response-validation failure itself, which is never re-validated (no loop). Mounting the middleware twice on one chain fails every request with a clear error instead of validating twice.
+
 ### `httpRequestFromExpress(req)`
 
 Convert an Express 5 `Request` to oav's framework-agnostic `HttpRequest` shape. Read what's already on `req`; body parsing is the host app's responsibility.

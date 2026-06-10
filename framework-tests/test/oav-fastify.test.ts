@@ -1,5 +1,11 @@
 import { type OpenAPIDocument } from "@oav/core";
-import { httpRequestFromFastify, renderProblemDetails, validateRequests } from "@oav/oav-fastify";
+import {
+  httpRequestFromFastify,
+  renderProblemDetails,
+  ResponseValidationError,
+  validateRequests,
+  validateResponses,
+} from "@oav/oav-fastify";
 import { createValidator } from "@oav/validator";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -278,5 +284,187 @@ describe("oav-fastify integration: Fastify specifics", () => {
     expect(body.error).toBe("extractor exploded");
     expect(captured).toHaveLength(1);
     expect(captured[0]?.message).toBe("extractor exploded");
+  });
+});
+
+function widgetSpec(): OpenAPIDocument {
+  return {
+    openapi: "3.1.0",
+    info: { title: "t", version: "1" },
+    paths: {
+      "/widgets/{id}": {
+        get: {
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+          responses: {
+            "200": {
+              description: "ok",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["id"],
+                    properties: { id: { type: "string" } },
+                    additionalProperties: false,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  };
+}
+
+describe("oav-fastify integration: validateResponses serialization fidelity", () => {
+  let app: FastifyInstance;
+
+  beforeAll(async () => {
+    const spec = widgetSpec();
+    const widget = spec.paths!["/widgets/{id}"] as {
+      get: { responses: Record<string, { content: Record<string, { schema: unknown }> }> };
+    };
+    widget.get.responses["200"]!.content["application/json"]!.schema = {
+      type: "object",
+      required: ["id"],
+      properties: { id: { type: "string" }, createdAt: { type: "string" } },
+      additionalProperties: false,
+    };
+    const validator = createValidator(spec);
+    app = Fastify();
+    app.addHook("onSend", validateResponses(validator));
+    app.get("/widgets/:id", async (request) => {
+      const { id } = request.params as { id: string };
+      if (id === "date") return { id: "ok", createdAt: new Date() };
+      if (id === "tojson") {
+        class Thing {
+          id = "ok";
+          internal = "not in spec";
+          toJSON() {
+            return { id: this.id };
+          }
+        }
+        return new Thing();
+      }
+      return { id };
+    });
+    await app.ready();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it("a Date serializing to a declared string field is valid", async () => {
+    const r = await app.inject({ method: "GET", url: "/widgets/date" });
+    expect(r.statusCode).toBe(200);
+    const body = r.json() as { createdAt: string };
+    expect(typeof body.createdAt).toBe("string");
+  });
+
+  it("toJSON output is what gets validated, not the live instance", async () => {
+    const r = await app.inject({ method: "GET", url: "/widgets/tojson" });
+    expect(r.statusCode).toBe(200);
+    expect(r.json()).toEqual({ id: "ok" });
+  });
+});
+
+describe("oav-fastify integration: default validateResponses", () => {
+  let app: FastifyInstance;
+
+  beforeAll(async () => {
+    const validator = createValidator(widgetSpec());
+    app = Fastify();
+    app.addHook("onSend", validateResponses(validator));
+    app.setErrorHandler((err: Error, _request, reply) => {
+      if (err instanceof ResponseValidationError) {
+        reply.code(err.statusCode).send({ responseInvalid: true, count: err.errors.length });
+        return;
+      }
+      reply.code(500).send({ error: err.message });
+    });
+    app.get("/widgets/:id", async (request, reply) => {
+      const { id } = request.params as { id: string };
+      if (id === "bad") return { id: 123 }; // id must be a string
+      if (id === "teapot") {
+        reply.code(418); // undeclared status
+        return { id: "ok" };
+      }
+      if (id === "empty") {
+        return reply.header("content-type", "application/json").send();
+      }
+      if (id === "empty-undeclared") {
+        return reply.code(202).header("content-type", "application/json").send();
+      }
+      return { id };
+    });
+    await app.ready();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it("a valid response body passes through unchanged", async () => {
+    const r = await app.inject({ method: "GET", url: "/widgets/ok" });
+    expect(r.statusCode).toBe(200);
+    expect(r.json()).toEqual({ id: "ok" });
+  });
+
+  it("an invalid response body forwards a 500 to the error handler", async () => {
+    const r = await app.inject({ method: "GET", url: "/widgets/bad" });
+    expect(r.statusCode).toBe(500);
+    const body = r.json() as { responseInvalid: boolean; count: number };
+    expect(body.responseInvalid).toBe(true);
+    expect(body.count).toBeGreaterThan(0);
+  });
+
+  it("an undeclared response status is a finding (500)", async () => {
+    const r = await app.inject({ method: "GET", url: "/widgets/teapot" });
+    expect(r.statusCode).toBe(500);
+  });
+
+  it("an empty JSON-typed response with a declared status passes", async () => {
+    const r = await app.inject({ method: "GET", url: "/widgets/empty" });
+    expect(r.statusCode).toBe(200);
+    expect(r.body).toBe("");
+  });
+
+  it("an empty JSON-typed response with an undeclared status is a finding", async () => {
+    const r = await app.inject({ method: "GET", url: "/widgets/empty-undeclared" });
+    expect(r.statusCode).toBe(500);
+  });
+});
+
+describe("oav-fastify integration: validateResponses log-and-continue", () => {
+  let app: FastifyInstance;
+  const logged: number[] = [];
+
+  beforeAll(async () => {
+    const validator = createValidator(widgetSpec());
+    app = Fastify();
+    app.addHook(
+      "onSend",
+      validateResponses(validator, {
+        // Log the finding but let the (invalid) payload go out unchanged.
+        onError: (errors) => {
+          logged.push(errors.length);
+        },
+      }),
+    );
+    app.get("/widgets/:id", async () => ({ id: 123 }));
+    await app.ready();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it("custom onError records the finding and still sends the body", async () => {
+    const r = await app.inject({ method: "GET", url: "/widgets/anything" });
+    expect(r.statusCode).toBe(200);
+    expect(r.json()).toEqual({ id: 123 });
+    expect(logged.length).toBe(1);
+    expect(logged[0]).toBeGreaterThan(0);
   });
 });

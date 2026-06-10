@@ -1,12 +1,16 @@
 /**
- * The public `oav-express5` surface: three exports plus the type
- * shape every adapter in the family shares.
+ * The public `oav-express5` surface plus the type shape every adapter
+ * in the family shares.
  *
- * - {@link validateRequests}: middleware factory; the 80% case.
+ * - {@link validateRequests}: request-validation middleware; the 80% case.
+ * - {@link validateResponses}: opt-in response-validation middleware
+ *   (wraps `res.json` / `res.send`); off in production by convention.
  * - {@link httpRequestFromExpress}: standalone extractor; for
  *   callers composing their own middleware.
  * - {@link renderProblemDetails}: the default error renderer;
  *   reusable from any custom middleware.
+ * - {@link ResponseValidationError}: thrown by the default
+ *   `validateResponses` failure path.
  *
  * Naming and option shapes are deliberately consistent with the
  * sibling `oav-express4` / `oav-fastify` adapters.
@@ -21,6 +25,8 @@
 export { httpRequestFromExpress } from "./extract.js";
 export { renderProblemDetails } from "./render.js";
 export { validateRequests, type ValidateRequestsOptions } from "./middleware.js";
+export { validateResponses, type ValidateResponsesOptions } from "./validate-responses.js";
+export { ResponseValidationError } from "./response-error.js";
 export type { ErrorHandler, ExpressContext } from "./types.js";
 
 // Re-export the types that appear in our own option signatures. Strictly

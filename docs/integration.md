@@ -31,7 +31,7 @@ frameworks:
 - [File uploads with multer](#file-uploads-with-multer)
 - [Deriving middleware config from the spec](#deriving-middleware-config-from-the-spec)
 - [Streaming bodies, large uploads, and the `readBody` override](#streaming-bodies-large-uploads-and-the-readbody-override)
-- [Response validation (no monkey-patching)](#response-validation-no-monkey-patching)
+- [Response validation](#response-validation)
 - [Security / authentication](#security--authentication)
 - [Type coercion on body fields](#type-coercion-on-body-fields)
 - [Ignoring paths not in the spec](#ignoring-paths-not-in-the-spec)
@@ -1026,11 +1026,93 @@ let the opaque-body bypass accept whatever the HTTP layer decoded.
 picking one forces every user onto that pick. `readBody` is the plug
 point; bring whichever parser fits your stack.
 
-### Response validation (no monkey-patching)
+### Response validation
 
-oav doesn't wrap `res.json` / `res.send`. Two patterns:
+The adapters ship a `validateResponses` middleware (sibling to
+`validateRequests`). Mount it where you want response checking,
+conventionally on in development and off in production:
 
-**Per-route explicit.** Validate before sending:
+```ts
+import { validateRequests, validateResponses } from "@aahoughton/oav-express5";
+
+app.use(validateRequests(validator));
+if (process.env.NODE_ENV !== "production") {
+  app.use(validateResponses(validator));
+}
+```
+
+Keep that order. Mounted above `validateRequests`, response checking
+also sees the 400 problem-details bodies the request validator
+renders, and unless the spec declares those responses every
+request-validation 400 becomes a 500 finding.
+
+It validates every JSON response (`res.json(obj)`, `res.send(obj)`,
+and a JSON `res.send(string)`) against the response declared for its
+status. Validation runs on the serialized wire body, after `toJSON`
+methods, the `json replacer` setting, and `Date` serialization have
+been applied, so what is checked is exactly what the client receives;
+the per-adapter coverage list is in each package README. On failure
+the default throws a `ResponseValidationError`, which the adapter
+forwards to your error middleware (a response that doesn't match the
+contract is a server bug, so it surfaces as a 500).
+
+Fastify is the same shape with no monkey-patching: it registers an
+`onSend` hook instead of wrapping response methods.
+
+```ts
+if (process.env.NODE_ENV !== "production") {
+  app.addHook("onSend", validateResponses(validator));
+}
+```
+
+By default every declared status is checked (4xx / 5xx response shapes
+too, not just 2xx), and a status the spec doesn't declare is itself a
+finding. Scope it with `statuses`:
+
+```ts
+validateResponses(validator, { statuses: (s) => s < 300 }); // success responses only
+```
+
+See `ValidateResponsesOptions` for the full contract.
+
+#### Failure mode: throw in dev, don't fail-hard in prod
+
+The default throws so a contract violation surfaces loudly. Mount it
+dev-only (above) so production never rewrites a legitimate response
+into a 500.
+
+**Why this matters.** Validation runs on _every_ response that passes
+the status predicate, including the 4xx bodies your handlers emit. If a
+handler sends `{ error: "...", code: "..." }` for a 400 but the spec's
+error schema requires `title` (or sets `additionalProperties: false`),
+a fail-hard policy in production rewrites that 400 into a 500. That's
+worse than the gap it closes: the client sees a server error for a
+request that was their fault, and your error budget burns for free.
+
+If you want response validation always on, pass a log-and-continue
+`onError`. Returning normally (rather than throwing) lets the original
+body go out unchanged:
+
+```ts
+app.use(
+  validateResponses(validator, {
+    onError: (errors, ctx) => {
+      log.warn("response validation failed", { path: ctx.req.path, errors });
+      // returning without throwing sends the original body anyway
+    },
+  }),
+);
+```
+
+The recommended progression: ship log-only, read the logs (real handler
+bugs to the tracker, spec-vs-error-shape mismatches to the spec), then
+flip to the throwing default once the log is quiet, gated on
+`NODE_ENV !== "production"`.
+
+#### Per-route, without the middleware
+
+For a single route or bespoke interception, call `validateResponse`
+directly. The core never wraps `res`, so this stays explicit:
 
 ```ts
 app.get("/pets/:id", async (req, res) => {
@@ -1048,69 +1130,6 @@ app.get("/pets/:id", async (req, res) => {
   res.status(status).json(body);
 });
 ```
-
-**Per-app wrapper.** Wrap `res.json` yourself if you want
-auto-interception behavior for every response:
-
-```ts
-app.use((req, res, next) => {
-  const json = res.json.bind(res);
-  res.json = (body) => {
-    const result = validator.validateResponse(
-      { method: req.method, path: req.path },
-      { status: res.statusCode, contentType: "application/json", body },
-    );
-    if (!result.valid) {
-      // Default: log + send anyway. See "Failure mode" below.
-      res.setHeader("X-Response-Validation", "failed");
-      log.warn("response validation failed", { path: req.path, errors: result.errors });
-    }
-    return json(body);
-  };
-  next();
-});
-```
-
-The `res.json` wrapper is ~15 lines.
-
-#### Failure mode: log, don't fail-hard (by default)
-
-The previous snippets log + send-anyway because that's the right
-default. The instinct to flip the failure into a 500: don't, at
-least not without warning.
-
-**Why.** The strict-mode failure path runs on _every_ response,
-including the ones your error handler emits. If your error handler
-sends `{ error: "...", code: "..." }` for 4xx responses but the
-spec's `ErrorResponse` schema requires `title` (or sets
-`additionalProperties: false`, or expects different field names),
-fail-hard mode rewrites legitimate 4xx responses as 500s. That's
-worse than the original validation gap: the client now sees a
-server error for a request that was their fault, and your error
-budget burns for free.
-
-**The recommended progression:**
-
-1. **Ship with log-only.** You'll get coverage of every response
-   shape your handlers actually emit, including the error paths.
-2. **Read the logs.** Triage the failures: real bugs in handler
-   output go to the issue tracker; spec-vs-error-handler shape
-   mismatches go to the spec (or to a tighter error envelope).
-3. **Tighten gradually.** Once the log is quiet for a sustained
-   period, you can flip the policy in your `res.json` wrapper:
-
-   ```ts
-   if (!result.valid) {
-     log.error("response validation failed (hard)", { path: req.path, errors: result.errors });
-     res.statusCode = 500;
-     return json(toProblemDetails(result.errors, { instance: req.originalUrl }));
-   }
-   ```
-
-   Even then, consider gating the hard-fail on `process.env.NODE_ENV
-!== "production"` so dev sees the failure loudly while prod
-   stays log-only; error responses in prod are exactly when you
-   least want a 500-on-top-of-a-400.
 
 ### Security / authentication
 
