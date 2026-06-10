@@ -22,6 +22,7 @@ export {
   type ValidatorOptions,
   type ValidatorStats,
 } from "./validator.js";
+export { combineValidators, type CombineOptions } from "./combine.js";
 // Re-exported from `@oav/router` so consumers of the validator surface
 // get the `Validator.routes` element type without reaching across into
 // the router package.

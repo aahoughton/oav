@@ -102,6 +102,29 @@ the upstream test suites live in
 | `ignorePaths`           | `(path: string) => boolean` predicate that short-circuits validation when it returns `true` (runs before routing).               |
 | `onUnknownVersion`      | `"fallback31"` \| `"warn"` \| `"throw"` when `openapi` is missing or unsupported. Default `"fallback31"`.                        |
 
+## Combining multiple specs
+
+`combineValidators([v1, v2, ...])` stacks several validators into one
+that dispatches each request to the member owning its route. The result
+is a `Validator`, so the framework adapters consume it unchanged.
+
+```ts
+import { createValidator, combineValidators } from "@aahoughton/oav";
+
+const validator = combineValidators(
+  [createValidator(specV1), createValidator(specV2)],
+  { onOverlap: "error" }, // assert the specs are route-disjoint at construction
+);
+```
+
+Each member keeps its own dialect and components, so specs that reuse a
+component name don't clobber each other (a literal document merge
+would). Dispatch keys on route ownership and delegates to the owner, so
+the owner's own `ignorePaths` still applies. `onOverlap` picks
+first-match (default) vs error-on-clash; `ignoreUndocumented` governs
+routes no member owns. All members must share an `output` mode. See
+`CombineOptions` and [docs/integration.md](../../docs/integration.md#validating-multiple-specs-with-one-validator).
+
 ## Custom keywords
 
 ```ts
