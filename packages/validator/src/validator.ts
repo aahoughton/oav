@@ -114,7 +114,9 @@ export interface Validator {
    *
    * Each error's `path` is prefixed with its HTTP location: `["body",
    * …]`, `["query", name]`, `["header", name]`, `["cookie", name]`,
-   * `["path-param", name]`, or `["security"]`. Route and method
+   * `["path", name]`, or `["security"]`. (The matching error `code` is
+   * `query-param` / `header-param` / `cookie-param` / `path-param`; the
+   * path segment drops the `-param` suffix.) Route and method
    * mismatches surface as `route` / `method` leaves; see
    * {@link httpStatusFor} for the canonical status mapping.
    *

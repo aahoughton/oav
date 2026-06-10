@@ -71,6 +71,15 @@ describe("countErrors", () => {
   it("counts branches and leaves", () => {
     expect(countErrors(sampleTree())).toBe(6);
   });
+
+  it("sums node counts across a flat list (default output)", () => {
+    const flat = [
+      createLeafError("type", ["body", "age"], "must be number"),
+      createLeafError("required", ["body"], "missing name"),
+    ];
+    expect(countErrors(flat)).toBe(2);
+    expect(countErrors([])).toBe(0);
+  });
 });
 
 describe("toJsonObject", () => {
@@ -89,6 +98,17 @@ describe("toJsonObject", () => {
     if (firstChild === undefined) throw new Error("unreachable");
     firstChild.message = "mutated";
     expect(tree.children[0]?.message).not.toBe("mutated");
+  });
+
+  it("round-trips a flat list to a list (default output)", () => {
+    const flat = [
+      createLeafError("type", ["body", "age"], "must be number"),
+      createLeafError("required", ["body"], "missing name"),
+    ];
+    const cloned = toJsonObject(flat);
+    expect(Array.isArray(cloned)).toBe(true);
+    expect(JSON.parse(JSON.stringify(cloned))).toEqual(flat);
+    expect(cloned).not.toBe(flat);
   });
 });
 
@@ -171,6 +191,24 @@ describe("formatSummary", () => {
   it("renders a path-less leaf as just the message", () => {
     const tree = createLeafError("route", [], "no matching route");
     expect(formatSummary(tree)).toBe("no matching route");
+  });
+
+  it("accepts a flat list (default output) and treats elements as leaves", () => {
+    const flat = [
+      createLeafError("type", ["body", "age"], "must be number"),
+      createLeafError("required", ["body"], "missing name"),
+    ];
+    expect(formatSummary(flat)).toBe("body.age must be number");
+    expect(formatSummary(flat, { select: "deepest" })).toBe("body.age must be number");
+    expect(formatSummary(flat, { select: "all" })).toBe(
+      "body.age must be number [type]\nbody missing name [required]",
+    );
+    expect(formatSummary(flat, { select: { byCode: ["required"] } })).toBe("body missing name");
+  });
+
+  it("returns an empty string for an empty list", () => {
+    expect(formatSummary([])).toBe("");
+    expect(formatSummary([], { select: "all" })).toBe("");
   });
 });
 
