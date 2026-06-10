@@ -1,4 +1,4 @@
-import type { FastifyRequest, onSendHookHandler } from "fastify";
+import type { FastifyReply, FastifyRequest, onSendHookHandler } from "fastify";
 import {
   collectLeaves,
   type HttpRequest,
@@ -52,6 +52,18 @@ export interface ValidateResponsesOptions {
 const defaultOnError: ErrorHandler<FastifyContext> = (errors) => {
   throw new ResponseValidationError(errors);
 };
+
+// reply.getHeaders() reports numeric values (Content-Length, or any
+// reply.header(name, number)) as numbers; the validator's header
+// deserializer expects strings.
+function responseHeaders(reply: FastifyReply): Record<string, string | string[]> {
+  const headers: Record<string, string | string[]> = {};
+  for (const [key, value] of Object.entries(reply.getHeaders())) {
+    if (value === undefined) continue;
+    headers[key] = Array.isArray(value) ? value : String(value);
+  }
+  return headers;
+}
 
 // Marks a request whose response has already been validated, so the
 // error reply Fastify renders after a throwing onError is not itself
@@ -124,7 +136,7 @@ export function validateResponses(
     const httpRes: HttpResponse = {
       status: reply.statusCode,
       contentType,
-      headers: reply.getHeaders() as Record<string, string | string[]>,
+      headers: responseHeaders(reply),
       body,
     };
     const result = validator.validateResponse(httpReq, httpRes);

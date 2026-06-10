@@ -127,6 +127,31 @@ describe("validateResponses (Fastify)", () => {
     await expect(run(hook, request, fakeReply(500), errorPayload)).resolves.toBe(errorPayload);
   });
 
+  it("stringifies numeric header values before validating declared response headers", async () => {
+    const spec = widgetSpec();
+    const get = spec.paths!["/widgets/{id}"]!.get as unknown as {
+      responses: Record<string, { headers?: unknown }>;
+    };
+    get.responses["200"]!.headers = {
+      "X-Request-Id": { required: true, schema: { type: "string" } },
+    };
+    const hv = createValidator(spec);
+    // Node allows numeric header values (reply.header("X-Request-Id",
+    // 42)) and getHeaders() reports them as numbers; the hook must hand
+    // the validator strings or a string-typed header misfires.
+    const headers: Record<string, unknown> = {
+      "content-type": "application/json",
+      "x-request-id": 42,
+    };
+    const reply = {
+      statusCode: 200,
+      getHeader: (n: string) => headers[n.toLowerCase()],
+      getHeaders: () => headers,
+    } as unknown as FastifyReply;
+    const payload = JSON.stringify({ id: "ok" });
+    await expect(run(validateResponses(hv), fakeRequest(), reply, payload)).resolves.toBe(payload);
+  });
+
   it("invokes a custom onError with the failing leaves and context", async () => {
     const onError = vi.fn();
     const reply = fakeReply();

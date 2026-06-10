@@ -201,6 +201,38 @@ describe("validateResponses (Express 5)", () => {
     expect(erroredWith(next)).toBeUndefined();
   });
 
+  it("stringifies numeric header values before validating declared response headers", () => {
+    const spec = widgetSpec();
+    const get = spec.paths!["/widgets/{id}"]!.get as unknown as {
+      responses: Record<string, { headers?: unknown }>;
+    };
+    get.responses["200"]!.headers = {
+      "X-Request-Id": { required: true, schema: { type: "string" } },
+    };
+    const hv = createValidator(spec);
+    const sentJson = vi.fn();
+    const res = {
+      statusCode: 200,
+      getHeader: () => undefined,
+      // Node allows numeric header values (res.setHeader("X-Request-Id",
+      // 42)) and getHeaders() reports them as numbers; the wrapper must
+      // hand the validator strings or a string-typed header misfires.
+      getHeaders: () => ({ "x-request-id": 42 }),
+      json(body: unknown) {
+        sentJson(body);
+        return this;
+      },
+      send() {
+        return this;
+      },
+    };
+    const next = vi.fn();
+    validateResponses(hv)(fakeReq(), res as unknown as Response, next as unknown as NextFunction);
+    (res as unknown as Response).json({ id: "ok" });
+    expect(sentJson).toHaveBeenCalledWith({ id: "ok" });
+    expect(erroredWith(next)).toBeUndefined();
+  });
+
   it("log-and-continue: an onError that returns normally lets the body go out", () => {
     const onError = vi.fn(); // returns undefined -> normal completion
     const { res, sentJson } = fakeRes();

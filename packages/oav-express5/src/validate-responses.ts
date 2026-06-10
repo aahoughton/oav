@@ -60,6 +60,18 @@ const defaultOnError: ErrorHandler<ExpressContext> = (errors) => {
   throw new ResponseValidationError(errors);
 };
 
+// res.getHeaders() reports numeric values (Content-Length, or any
+// res.setHeader(name, number)) as numbers; the validator's header
+// deserializer expects strings.
+function responseHeaders(res: Response): Record<string, string | string[]> {
+  const headers: Record<string, string | string[]> = {};
+  for (const [key, value] of Object.entries(res.getHeaders())) {
+    if (value === undefined) continue;
+    headers[key] = Array.isArray(value) ? value : String(value);
+  }
+  return headers;
+}
+
 /**
  * Build an Express 5 middleware that validates every outgoing response
  * against the spec. It wraps `res.json` / `res.send` so that when a
@@ -130,7 +142,7 @@ export function validateResponses(
       const httpRes: HttpResponse = {
         status: res.statusCode,
         contentType,
-        headers: res.getHeaders() as Record<string, string | string[]>,
+        headers: responseHeaders(res),
         body,
       };
       const result = validator.validateResponse(httpReq, httpRes);
