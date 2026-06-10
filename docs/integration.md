@@ -35,6 +35,7 @@ frameworks:
 - [Security / authentication](#security--authentication)
 - [Type coercion on body fields](#type-coercion-on-body-fields)
 - [Ignoring paths not in the spec](#ignoring-paths-not-in-the-spec)
+- [Validating multiple specs with one validator](#validating-multiple-specs-with-one-validator)
 
 ## What the validator expects
 
@@ -1266,6 +1267,50 @@ app.use(async (req, res, next) => {
   // ... 4xx response as usual
 });
 ```
+
+### Validating multiple specs with one validator
+
+When an app serves several OpenAPI documents (a versioned split, or
+separately-owned surfaces mounted under one server), build a validator
+per spec and stack them with `combineValidators`. The result is a
+single `Validator`, so the framework adapters consume it unchanged: one
+`validateRequests` mount instead of one per spec.
+
+```ts
+import { createValidator, combineValidators } from "@aahoughton/oav";
+
+const validator = combineValidators([createValidator(specV1), createValidator(specV2)], {
+  onOverlap: "error",
+});
+
+app.use(validateRequests(validator));
+```
+
+Each member keeps its own dialect, components, and compiled plans, so
+two specs that reuse a component name (`Error`, `Journey`) never clobber
+each other; a literal document merge would. The composite dispatches
+each request to the member that owns its route, then delegates to that
+member's `validateRequest` / `validateResponse` in full, so the owning
+member's own `ignorePaths` and content-type handling still apply.
+
+Two policies to know:
+
+- **`onOverlap`** (`"first-match"` default, or `"error"`). With
+  `"first-match"`, the earliest member in the array that owns a route
+  wins. With `"error"`, `combineValidators` asserts the members are
+  route-disjoint at construction and throws on any clash (structural, so
+  `/x/{id}` and `/x/{slug}` count as the same route). Use `"error"` when
+  the specs are supposed to be disjoint and a collision would be a bug.
+- **`ignoreUndocumented`** governs routes that _no_ member owns,
+  mirroring the single-validator option: `false` (default) yields a
+  `route` error, `true` passes. A member's own `ignoreUndocumented`
+  governs only the routes that member owns, reached through delegation.
+  So a path declared in no spec (an upload route bypassed entirely)
+  passes only when the composite is built with `ignoreUndocumented:
+true`.
+
+All members must share an `output` mode; mixing flat and tree throws at
+construction. See `CombineOptions` for the option contracts.
 
 ## Migration paths
 

@@ -1,6 +1,7 @@
 export {
   createRouter,
   parseTemplate,
+  routeSignature,
   type MethodNotAllowed,
   type RouteInfo,
   type RouteMatch,

@@ -255,6 +255,28 @@ function segmentSignature(s: Segment): string {
 }
 
 /**
+ * Structural signature of a path template: two templates share a
+ * signature iff they would match the same set of request paths for any
+ * choice of parameter names (`/items/{id}` and `/items/{slug}` both
+ * yield `items/\0{}`). Raw string comparison would call those two
+ * distinct; their signatures are equal.
+ *
+ * `createRouter` uses this internally to reject parameter-name-only
+ * collisions within one document. It is exported so cross-router checks
+ * (notably `@oav/validator`'s `combineValidators` route-disjointness
+ * guard) can detect the same overlap between separately-built routers,
+ * using the identical structural rule the matcher itself applies.
+ *
+ * @param pathPattern - A path template (e.g. `"/items/{id}"`).
+ * @returns A signature string; equal signatures denote overlapping routes.
+ *
+ * @public
+ */
+export function routeSignature(pathPattern: string): string {
+  return parseTemplate(pathPattern).map(segmentSignature).join("/");
+}
+
+/**
  * Build a router from a map of `pathTemplate → PathItem`. Paths with more
  * literal (non-template) segments win over more template-heavy siblings;
  * the route list is sorted once at construction, then each `match` call is

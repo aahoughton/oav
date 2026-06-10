@@ -1,0 +1,284 @@
+import {
+  createLeafError,
+  type HttpRequest,
+  type HttpResponse,
+  type OpenAPIVersion,
+  type OperationObject,
+  type PathItem,
+} from "@oav/core";
+import { routeSignature, type RouteInfo } from "@oav/router";
+import type { SpecHygieneIssue } from "@oav/spec";
+import type { TreeValidationResult, ValidationResult } from "@oav/schema";
+import {
+  httpRequestFromFetch,
+  httpResponseFromFetch,
+  type FetchRequestOptions,
+} from "./from-fetch.js";
+import { reshapeResult, toFetchResult } from "./reshape.js";
+import type { PredicateValidator, TreeValidator, Validator, ValidatorStats } from "./validator.js";
+
+/**
+ * Options for {@link combineValidators}.
+ *
+ * The composite is itself a {@link Validator}, so its skip vocabulary
+ * mirrors {@link ValidatorOptions}: `ignoreUndocumented` and
+ * `ignorePaths` here govern routes that NO member owns (undocumented
+ * with respect to the whole composite). A route a member does own is
+ * delegated to that member, whose own `ignoreUndocumented` / `ignorePaths`
+ * still apply.
+ *
+ * @public
+ */
+export interface CombineOptions {
+  /**
+   * Policy when more than one member declares the same route (same
+   * method and structurally-equal path, so `/x/{id}` and `/x/{slug}`
+   * count as the same route).
+   *
+   * - `"first-match"` (default): the earliest member in array order
+   *   wins; later members never see the request. Mirrors the matcher's
+   *   specificity-ordered scan, lifted to the member level.
+   * - `"error"`: assert disjointness at construction. `combineValidators`
+   *   throws if any route is owned by two members, surfacing the clash
+   *   at assembly time instead of letting first-match silently shadow.
+   */
+  onOverlap?: "first-match" | "error";
+  /**
+   * No-owner skip policy. A request whose route no member owns is
+   * undocumented with respect to the composite. `false` (default,
+   * matching a single validator) produces a `route` error; `true`
+   * passes (`{ valid: true }`). Members' own
+   * {@link ValidatorOptions.ignoreUndocumented} governs only their owned
+   * routes, reached via delegation, not this no-owner case.
+   */
+  ignoreUndocumented?: boolean;
+  /**
+   * Validate-time predicate, mirroring {@link ValidatorOptions.ignorePaths}.
+   * Runs before dispatch; when it returns `true` the composite
+   * short-circuits to a valid result without consulting any member.
+   */
+  ignorePaths?: (path: string) => boolean;
+}
+
+/**
+ * The subset of the {@link Validator} surface `combineValidators` reads
+ * from its members. `Validator`, {@link TreeValidator}, and
+ * {@link PredicateValidator} are all structurally assignable to it (their
+ * narrower `validate*` returns widen into the union here), so the public
+ * overloads accept each concrete kind while the implementation works
+ * against this one shape. The Fetch wrappers are omitted deliberately:
+ * the composite rebuilds them from `validateRequest` / `validateResponse`
+ * rather than delegating, so it never calls a member's Fetch methods.
+ */
+interface CombinableValidator {
+  validateRequest(req: HttpRequest): ValidationResult | TreeValidationResult | boolean;
+  validateResponse(
+    req: HttpRequest,
+    res: HttpResponse,
+  ): ValidationResult | TreeValidationResult | boolean;
+  getOperation(req: { method: string; path: string }): {
+    pathPattern: string;
+    pathItem: PathItem;
+    operation: OperationObject;
+  } | null;
+  readonly routes: readonly RouteInfo[];
+  readonly output: "flat" | "tree" | "predicate";
+  readonly warnings: readonly string[];
+  readonly specHygieneIssues: readonly SpecHygieneIssue[];
+  readonly detectedVersion: OpenAPIVersion | undefined;
+  readonly stats: ValidatorStats;
+}
+
+/**
+ * Stack several validators into one that dispatches each request to the
+ * member that owns its route, so multiple OpenAPI documents validate
+ * through a single {@link Validator}.
+ *
+ * Built for multi-document deployments: load each spec into its own
+ * validator (each keeps its own dialect, components, and compiled
+ * plans, so cross-spec component-name clashes can't occur), then
+ * `combineValidators([a, b, c])` to get one validator the framework
+ * adapters consume unchanged. `validateRequests(combineValidators([...]))`
+ * replaces a stack of per-spec middlewares; a future `validateResponses`
+ * takes the same composite.
+ *
+ * Dispatch keys on route ownership ({@link Validator.getOperation}), not
+ * on a member's validation verdict, so a member configured with
+ * `ignoreUndocumented` can't pre-empt the member that actually owns the
+ * route. The owning member's `validateRequest` / `validateResponse` is
+ * then called in full, so its own `ignorePaths` / content-type / schema
+ * logic runs exactly as it would standalone. With no owner, the request
+ * is undocumented with respect to the composite and handled per
+ * {@link CombineOptions.ignoreUndocumented}.
+ *
+ * All members must share an `output` mode; mixing throws at construction
+ * (the composite presents one result shape). An empty array throws.
+ *
+ * @param members - Validators to combine, in first-match priority order.
+ * @param options - Overlap policy and no-owner skip policy.
+ * @returns A validator of the members' shared output kind.
+ *
+ * @example
+ * ```ts
+ * const v1 = createValidator(specV1);
+ * const v2 = createValidator(specV2);
+ * const validator = combineValidators([v1, v2], { onOverlap: "error" });
+ * app.use(validateRequests(validator));
+ * ```
+ *
+ * @public
+ */
+export function combineValidators(
+  members: TreeValidator[],
+  options?: CombineOptions,
+): TreeValidator;
+export function combineValidators(
+  members: PredicateValidator[],
+  options?: CombineOptions,
+): PredicateValidator;
+export function combineValidators(members: Validator[], options?: CombineOptions): Validator;
+export function combineValidators(
+  members: CombinableValidator[],
+  options: CombineOptions = {},
+): Validator | TreeValidator | PredicateValidator {
+  if (members.length === 0) {
+    throw new Error(
+      "combineValidators: at least one validator is required (received an empty array).",
+    );
+  }
+
+  // One output mode across all members: the composite presents a single
+  // result shape, and the typed overloads resolve to it. Mixing is a
+  // construction mistake, so fail at the seam rather than reshape per
+  // request.
+  const outputMode = members[0]!.output;
+  for (let i = 1; i < members.length; i += 1) {
+    if (members[i]!.output !== outputMode) {
+      throw new Error(
+        `combineValidators: all members must share an output mode; validators[0] is "${outputMode}" ` +
+          `but validators[${i}] is "${members[i]!.output}". Build each validator with the same \`output\` option.`,
+      );
+    }
+  }
+
+  // Optional startup assertion that the members are route-disjoint.
+  // Structural (parameter-name-insensitive), so /x/{id} and /x/{slug}
+  // count as the same routing cell, matching the matcher's own
+  // intra-document ambiguity rule.
+  if (options.onOverlap === "error") {
+    const seen = new Map<string, { index: number; pathPattern: string }>();
+    members.forEach((member, index) => {
+      for (const { method, pathPattern } of member.routes) {
+        const key = `${method}\t${routeSignature(pathPattern)}`;
+        const prior = seen.get(key);
+        if (prior !== undefined) {
+          throw new Error(
+            `combineValidators: route overlap with onOverlap: "error" — validators[${prior.index}] ` +
+              `(${method} ${prior.pathPattern}) and validators[${index}] (${method} ${pathPattern}) ` +
+              "own the same route. Make the specs path-disjoint, or drop onOverlap to let first-match win.",
+          );
+        }
+        seen.set(key, { index, pathPattern });
+      }
+    });
+  }
+
+  const ignoreUndocumented = options.ignoreUndocumented === true;
+
+  // First member that owns the route (first-match-wins by array order).
+  // Keys on getOperation (route ownership), never on a validate verdict,
+  // so a non-owning member's ignoreUndocumented / ignorePaths can't
+  // shadow the real owner.
+  const ownerFor = (req: { method: string; path: string }): CombinableValidator | undefined => {
+    for (const member of members) {
+      if (member.getOperation(req) !== null) return member;
+    }
+    return undefined;
+  };
+
+  // The composite's own no-owner result, mirroring a single validator's
+  // undocumented-route handling. A single `route` leaf, so the per-call
+  // error budget is irrelevant; Infinity keeps `truncated` false (there
+  // is nothing more to find).
+  const noOwnerResult = (req: HttpRequest): ValidationResult | TreeValidationResult | boolean => {
+    if (ignoreUndocumented) return reshapeResult(null, outputMode, Number.POSITIVE_INFINITY);
+    const error = createLeafError(
+      "route",
+      [],
+      `no route matches ${req.method.toUpperCase()} ${req.path}`,
+      { method: req.method, path: req.path },
+    );
+    return reshapeResult(error, outputMode, Number.POSITIVE_INFINITY);
+  };
+
+  const validateRequest = (req: HttpRequest): ValidationResult | TreeValidationResult | boolean => {
+    if (options.ignorePaths?.(req.path) === true) {
+      return reshapeResult(null, outputMode, Number.POSITIVE_INFINITY);
+    }
+    const owner = ownerFor(req);
+    return owner !== undefined ? owner.validateRequest(req) : noOwnerResult(req);
+  };
+
+  const validateResponse = (
+    req: HttpRequest,
+    res: HttpResponse,
+  ): ValidationResult | TreeValidationResult | boolean => {
+    if (options.ignorePaths?.(req.path) === true) {
+      return reshapeResult(null, outputMode, Number.POSITIVE_INFINITY);
+    }
+    const owner = ownerFor(req);
+    return owner !== undefined ? owner.validateResponse(req, res) : noOwnerResult(req);
+  };
+
+  const validateFetchRequest = async <T>(request: Request, fetchOptions?: FetchRequestOptions) => {
+    const { httpRequest, body } = await httpRequestFromFetch(request, fetchOptions);
+    return toFetchResult<T>(validateRequest(httpRequest), body);
+  };
+
+  const validateFetchResponse = async <T>(request: Request, response: Response) => {
+    const url = new URL(request.url);
+    const method = request.method.toUpperCase();
+    const httpRequest: HttpRequest = { method, path: url.pathname };
+    const { httpResponse, body } = await httpResponseFromFetch(response);
+    return toFetchResult<T>(validateResponse(httpRequest, httpResponse), body);
+  };
+
+  const getOperation = (req: { method: string; path: string }) => {
+    for (const member of members) {
+      const op = member.getOperation(req);
+      if (op !== null) return op;
+    }
+    return null;
+  };
+
+  // Static introspection is concatenated once (members freeze these at
+  // their own construction); `detectedVersion` collapses to the shared
+  // value or `undefined` when members disagree.
+  const firstVersion = members[0]!.detectedVersion;
+  const detectedVersion = members.every((m) => m.detectedVersion === firstVersion)
+    ? firstVersion
+    : undefined;
+
+  const combined = {
+    validateRequest,
+    validateResponse,
+    validateFetchRequest,
+    validateFetchResponse,
+    getOperation,
+    routes: Object.freeze(members.flatMap((m) => [...m.routes])),
+    detectedVersion,
+    output: outputMode,
+    warnings: Object.freeze(members.flatMap((m) => [...m.warnings])),
+    specHygieneIssues: Object.freeze(members.flatMap((m) => [...m.specHygieneIssues])),
+    // Live: response bodies compile lazily, so read members' counters on
+    // each access rather than snapshotting at construction.
+    get stats(): ValidatorStats {
+      return {
+        responseBodiesCompiled: members.reduce((n, m) => n + m.stats.responseBodiesCompiled, 0),
+        strictIssues: members.flatMap((m) => [...m.stats.strictIssues]),
+      };
+    },
+  };
+
+  return combined as unknown as Validator | TreeValidator | PredicateValidator;
+}
