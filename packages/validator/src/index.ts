@@ -17,6 +17,7 @@
 export {
   createValidator,
   type PredicateValidator,
+  type RouteMatchResult,
   type TreeValidator,
   type Validator,
   type ValidatorOptions,
