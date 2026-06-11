@@ -255,6 +255,62 @@ describe("combineValidators overlap detection", () => {
     ).not.toThrow();
   });
 
+  it("catches an implicit HEAD (from GET) colliding with another member's explicit HEAD", () => {
+    // RFC 9110 §9.3.2: a GET resource also answers HEAD. The matcher
+    // honours this at match time, so a member declaring GET /x/{id}
+    // reserves the HEAD cell; a sibling declaring explicit HEAD /x/{slug}
+    // is a real overlap that first-match would silently shadow.
+    const getter: OpenAPIDocument = {
+      openapi: "3.0.3",
+      info: { title: "getter", version: "1" },
+      paths: { "/x/{id}": { get: { responses: { "200": { description: "ok" } } } } },
+    };
+    const header: OpenAPIDocument = {
+      openapi: "3.0.3",
+      info: { title: "header", version: "1" },
+      paths: { "/x/{slug}": { head: { responses: { "200": { description: "ok" } } } } },
+    };
+    expect(() =>
+      combineValidators([createValidator(getter), createValidator(header)], { onOverlap: "error" }),
+    ).toThrow(/route overlap/);
+  });
+
+  it("does not false-positive when a member declares both GET and explicit HEAD on a path", () => {
+    // The synthetic HEAD must not be added when an explicit HEAD already
+    // exists, or a single member would appear to overlap itself.
+    const both: OpenAPIDocument = {
+      openapi: "3.0.3",
+      info: { title: "both", version: "1" },
+      paths: {
+        "/x/{id}": {
+          get: { responses: { "200": { description: "ok" } } },
+          head: { responses: { "200": { description: "ok" } } },
+        },
+      },
+    };
+    expect(() =>
+      combineValidators([createValidator(both), createValidator(specB())], { onOverlap: "error" }),
+    ).not.toThrow();
+  });
+
+  it("does not treat an implicit HEAD as colliding with a disjoint path's HEAD", () => {
+    const getter: OpenAPIDocument = {
+      openapi: "3.0.3",
+      info: { title: "getter", version: "1" },
+      paths: { "/x/{id}": { get: { responses: { "200": { description: "ok" } } } } },
+    };
+    const otherHead: OpenAPIDocument = {
+      openapi: "3.0.3",
+      info: { title: "otherHead", version: "1" },
+      paths: { "/y/{id}": { head: { responses: { "200": { description: "ok" } } } } },
+    };
+    expect(() =>
+      combineValidators([createValidator(getter), createValidator(otherHead)], {
+        onOverlap: "error",
+      }),
+    ).not.toThrow();
+  });
+
   it("disjoint methods on the same path structure do not overlap", () => {
     const getter: OpenAPIDocument = {
       openapi: "3.0.3",

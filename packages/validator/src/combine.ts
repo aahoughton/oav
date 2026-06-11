@@ -47,6 +47,9 @@ export interface CombineOptions {
    * - `"error"`: assert disjointness at construction. `combineValidators`
    *   throws if any route is owned by two members, surfacing the clash
    *   at assembly time instead of letting first-match silently shadow.
+   *   A GET route also reserves the HEAD cell (RFC 9110 §9.3.2), so a
+   *   member's GET and another member's explicit HEAD on a
+   *   structurally-equal path count as an overlap.
    */
   onOverlap?: "first-match" | "error";
   /**
@@ -94,6 +97,28 @@ interface CombinableValidator {
   readonly specHygieneIssues: readonly SpecHygieneIssue[];
   readonly detectedVersion: OpenAPIVersion | undefined;
   readonly stats: ValidatorStats;
+}
+
+// A GET resource also answers HEAD (RFC 9110 §9.3.2): the matcher honours
+// this at match time, and its intra-document ambiguity check reserves the
+// HEAD cell for a GET-only path. `routes` reports only declared operations
+// (no implicit HEAD), so the cross-member overlap scan expands a GET
+// without an explicit HEAD sibling into a synthetic HEAD entry, matching
+// the matcher's rule. Without it, a GET in one member and an explicit HEAD
+// on a structurally-equal path in another slip past the check and let
+// first-match silently shadow the explicit HEAD.
+function effectiveRoutes(routes: readonly RouteInfo[]): RouteInfo[] {
+  const explicitHead = new Set<string>();
+  for (const r of routes) {
+    if (r.method === "HEAD") explicitHead.add(routeSignature(r.pathPattern));
+  }
+  const expanded: RouteInfo[] = [...routes];
+  for (const r of routes) {
+    if (r.method === "GET" && !explicitHead.has(routeSignature(r.pathPattern))) {
+      expanded.push({ method: "HEAD", pathPattern: r.pathPattern });
+    }
+  }
+  return expanded;
 }
 
 /**
@@ -179,7 +204,7 @@ export function combineValidators(
   if (options.onOverlap === "error") {
     const seen = new Map<string, { index: number; pathPattern: string }>();
     members.forEach((member, index) => {
-      for (const { method, pathPattern } of member.routes) {
+      for (const { method, pathPattern } of effectiveRoutes(member.routes)) {
         const key = `${method}\t${routeSignature(pathPattern)}`;
         const prior = seen.get(key);
         if (prior !== undefined) {
