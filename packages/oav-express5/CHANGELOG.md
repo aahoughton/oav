@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.2.0](https://github.com/aahoughton/oav/compare/oav-express5-v3.1.0...oav-express5-v3.2.0) (2026-06-11)
+
+
+### Features
+
+* **adapters:** validateResponses for response validation ([#357](https://github.com/aahoughton/oav/issues/357)) ([#370](https://github.com/aahoughton/oav/issues/370)) ([554d810](https://github.com/aahoughton/oav/commit/554d8109d3c7c9dc8611285bfc10b76c0e339aa0))
+
+
+### Bug Fixes
+
+* preserve 405 and implicit-HEAD overlap in combineValidators; split-phase response validation ([#378](https://github.com/aahoughton/oav/issues/378)) ([abcacde](https://github.com/aahoughton/oav/commit/abcacdedd063e940e6b9a3088093aa136561b0ce))
+
 ## [3.1.0](https://github.com/aahoughton/oav/compare/oav-express5-v3.0.0...oav-express5-v3.1.0) (2026-06-09)
 
 
