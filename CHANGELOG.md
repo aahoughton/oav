@@ -1,5 +1,25 @@
 # Changelog
 
+## [3.2.0](https://github.com/aahoughton/oav/compare/oav-core-v3.1.0...oav-core-v3.2.0) (2026-06-11)
+
+
+### Features
+
+* **adapters:** validateResponses for response validation ([#357](https://github.com/aahoughton/oav/issues/357)) ([#370](https://github.com/aahoughton/oav/issues/370)) ([554d810](https://github.com/aahoughton/oav/commit/554d8109d3c7c9dc8611285bfc10b76c0e339aa0))
+* **validator:** combineValidators for multi-spec validation ([#369](https://github.com/aahoughton/oav/issues/369)) ([564aed0](https://github.com/aahoughton/oav/commit/564aed05156f3f09613389989e43d88b7459154a))
+* **validator:** routes accessor for spec introspection ([#368](https://github.com/aahoughton/oav/issues/368)) ([477a5bf](https://github.com/aahoughton/oav/commit/477a5bfeefe4dacf78a8748a72a217d917fdc62b))
+
+
+### Bug Fixes
+
+* **core:** accept flat lists in formatSummary/countErrors/toJsonObject; fix stale docs ([#373](https://github.com/aahoughton/oav/issues/373)) ([04b86af](https://github.com/aahoughton/oav/commit/04b86afaec82359ffe0bb5e870f6c6a8f1e7e4ef))
+* preserve 405 and implicit-HEAD overlap in combineValidators; split-phase response validation ([#378](https://github.com/aahoughton/oav/issues/378)) ([abcacde](https://github.com/aahoughton/oav/commit/abcacdedd063e940e6b9a3088093aa136561b0ce))
+
+
+### Documentation
+
+* **core:** document formatError's tree-only contract and the flat-list recipe ([#377](https://github.com/aahoughton/oav/issues/377)) ([8fb86f5](https://github.com/aahoughton/oav/commit/8fb86f5242589dcc7d8ad016fab65c603ef27594))
+
 ## [3.1.0](https://github.com/aahoughton/oav/compare/oav-core-v3.0.0...oav-core-v3.1.0) (2026-06-09)
 
 
