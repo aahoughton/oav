@@ -6,11 +6,12 @@ import { createValidator } from "../src/validator.js";
 /**
  * `combineValidators` stacks several validators into one that dispatches
  * each request to the member owning its route. Dispatch keys on route
- * ownership (`getOperation`), then delegates to the owner's
+ * ownership (`matchRoute`), then delegates to the owner's
  * `validateRequest` / `validateResponse`, so a member's own
- * `ignoreUndocumented` / `ignorePaths` still fire after dispatch. Routes
- * no member owns are undocumented w.r.t. the composite, governed by
- * `CombineOptions.ignoreUndocumented`.
+ * `ignoreUndocumented` / `ignorePaths` still fire after dispatch. A wrong
+ * method on an owned path stays a 405 (delegated to the path's owner);
+ * only a path no member owns is undocumented w.r.t. the composite,
+ * governed by `CombineOptions.ignoreUndocumented`.
  */
 
 function specA(): OpenAPIDocument {
@@ -126,6 +127,71 @@ describe("combineValidators dispatch", () => {
     expect(
       flat(v.validateRequest({ method: "GET", path: "/a/items/skipme", query: {} })).valid,
     ).toBe(true);
+  });
+});
+
+describe("combineValidators method-not-allowed (405)", () => {
+  // A wrong method on a path a member DOES own is a 405, not a 404, and
+  // must reproduce single-validator semantics through the composite. The
+  // dispatch keys on getOperation, which returns null for both 404 and
+  // 405, so the composite has to distinguish "no member owns the path"
+  // from "a member owns the path but not this method".
+  function deleterSpec(): OpenAPIDocument {
+    return {
+      openapi: "3.0.3",
+      info: { title: "deleter", version: "1" },
+      paths: {
+        "/a/items/{id}": {
+          delete: { operationId: "deleteItem", responses: { "204": { description: "gone" } } },
+        },
+      },
+    };
+  }
+
+  it("anchor: a standalone validator reports a method error for a wrong method", () => {
+    const r = flat(
+      createValidator(specA()).validateRequest({ method: "DELETE", path: "/a/items/1" }),
+    );
+    expect(r.valid).toBe(false);
+    expect(r.errors?.[0]?.code).toBe("method");
+  });
+
+  it("preserves the 405 (method error, not a route/404) for a wrong method on an owned path", () => {
+    const v = combineValidators([createValidator(specA()), createValidator(specB())]);
+    const r = flat(v.validateRequest({ method: "DELETE", path: "/a/items/1" }));
+    expect(r.valid).toBe(false);
+    expect(r.errors?.[0]?.code).toBe("method");
+  });
+
+  it("ignoreUndocumented does NOT suppress a 405 on a path a member owns", () => {
+    // ignoreUndocumented governs paths no member owns. A wrong method on
+    // an owned path is not undocumented; it must still fail, exactly as a
+    // single validator does (whose method error is ungated).
+    const v = combineValidators([createValidator(specA()), createValidator(specB())], {
+      ignoreUndocumented: true,
+    });
+    const r = flat(v.validateRequest({ method: "DELETE", path: "/a/items/1" }));
+    expect(r.valid).toBe(false);
+    expect(r.errors?.[0]?.code).toBe("method");
+  });
+
+  it("a real match in a later member still beats an earlier member's 405", () => {
+    // specA owns GET /a/items/{id} (405s on DELETE); the deleter owns
+    // DELETE on the same path structure. DELETE must reach the deleter.
+    const v = combineValidators([createValidator(specA()), createValidator(deleterSpec())]);
+    expect(flat(v.validateRequest({ method: "DELETE", path: "/a/items/1" })).valid).toBe(true);
+  });
+
+  it("preserves the 405 on the response side too", () => {
+    const v = combineValidators([createValidator(specA()), createValidator(specB())]);
+    const r = flat(
+      v.validateResponse(
+        { method: "DELETE", path: "/a/items/1" },
+        { status: 204, contentType: "", body: undefined },
+      ),
+    );
+    expect(r.valid).toBe(false);
+    expect(r.errors?.[0]?.code).toBe("method");
   });
 });
 
