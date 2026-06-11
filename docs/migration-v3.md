@@ -155,10 +155,29 @@ Use `output: "flat"` (default) or `"tree"`.
 
 ## 7. Problem-details and formatters accept a leaf list
 
-`httpStatusFor`, `allowHeaderFor`, `toProblemDetails`, `collectIssues`, and
-`formatText` now accept either a single `ValidationError` (tree) or a
-`ValidationError[]` (flat). Existing tree calls are unchanged; the new flat
-overload lets the same wiring serve either `output`.
+`httpStatusFor`, `allowHeaderFor`, `toProblemDetails`, `collectIssues`,
+`formatText`, `formatSummary`, `countErrors`, and `toJsonObject` accept
+either a single `ValidationError` (tree) or a `ValidationError[]` (flat).
+Existing tree calls are unchanged; the flat form lets the same wiring serve
+either `output`.
+
+`formatError` is the one exception: it renders a single tree. It backs the
+CLI `--format` flag and a custom `ErrorRenderer`, which is typed
+`(err: ValidationError) => string`; widening that parameter would break
+existing renderers, so the function stays tree-only. For the default flat
+output, call `formatText`, `formatSummary`, or `toJsonObject` on the list
+directly. If you specifically need `formatError` (a named built-in format or
+a custom renderer), wrap the list in a root first:
+
+```ts
+import { createBranchError, formatError } from "@aahoughton/oav";
+
+const result = validator.validateRequest(httpRequest);
+if (!result.valid) {
+  const root = createBranchError("request", [], "request validation failed", result.errors);
+  console.error(formatError(root, "text"));
+}
+```
 
 ## 8. `undefined`-valued properties count as absent
 

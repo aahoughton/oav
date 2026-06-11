@@ -44,6 +44,16 @@ export type ErrorRenderer = (err: ValidationError) => string;
  * library consumers plug in SARIF / RFC 7807 / JUnit renderers without
  * forking the dispatch switch.
  *
+ * @remarks
+ * Takes a single error tree, unlike {@link formatText},
+ * {@link formatSummary}, and {@link toJsonObject}, which also accept the
+ * flat `ValidationError[]` the default validator returns. `formatError`
+ * stays tree-only because a custom {@link ErrorRenderer} is typed
+ * `(err: ValidationError) => string`, and widening that would break
+ * existing renderers. For the default flat output, call those helpers
+ * directly, or wrap the list with {@link createBranchError} before passing
+ * it here.
+ *
  * @param err - The error tree.
  * @param renderer - A built-in format name or a custom render function.
  * @param depth - Optional max depth (applies to `"text"` format only).
