@@ -171,6 +171,92 @@ describe("validateResponses (Fastify)", () => {
     await expect(run(validateResponses(hv), fakeRequest(), reply, payload)).resolves.toBe(payload);
   });
 
+  // Status and header validation are independent of the body's media
+  // type: a 204, a redirect, or a text error page still has a status the
+  // spec may not declare and headers it may require. The adapter must
+  // not skip those checks just because the body isn't parseable JSON.
+  it("flags an undeclared status on a non-JSON response", async () => {
+    await expect(
+      run(validateResponses(v), fakeRequest(), fakeReply(418, "text/html"), "<html>teapot</html>"),
+    ).rejects.toBeInstanceOf(ResponseValidationError);
+  });
+
+  it("flags an undeclared status on an empty (no-content) response", async () => {
+    await expect(
+      run(validateResponses(v), fakeRequest(), fakeReply(204, ""), null),
+    ).rejects.toBeInstanceOf(ResponseValidationError);
+  });
+
+  it("flags a missing required header on a non-JSON response", async () => {
+    const spec: OpenAPIDocument = {
+      openapi: "3.1.0",
+      info: { title: "t", version: "1" },
+      paths: {
+        "/widgets/{id}": {
+          get: {
+            parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+            responses: {
+              "302": {
+                description: "redirect",
+                headers: { Location: { required: true, schema: { type: "string" } } },
+              },
+            },
+          },
+        },
+      },
+    };
+    const hv = createValidator(spec);
+    // 302, text/html body, no Location header set.
+    await expect(
+      run(
+        validateResponses(hv),
+        fakeRequest(),
+        fakeReply(302, "text/html"),
+        "<html>see other</html>",
+      ),
+    ).rejects.toBeInstanceOf(ResponseValidationError);
+  });
+
+  function fakeReplyWith(statusCode: number, headers: Record<string, string>): FastifyReply {
+    const lower: Record<string, string> = {};
+    for (const [k, v] of Object.entries(headers)) lower[k.toLowerCase()] = v;
+    return {
+      statusCode,
+      getHeader: (n: string) => lower[n.toLowerCase()],
+      getHeaders: () => lower,
+    } as unknown as FastifyReply;
+  }
+
+  it("passes a non-JSON response whose status is declared and headers satisfied", async () => {
+    const spec: OpenAPIDocument = {
+      openapi: "3.1.0",
+      info: { title: "t", version: "1" },
+      paths: {
+        "/widgets/{id}": {
+          get: {
+            parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+            responses: {
+              "302": {
+                description: "redirect",
+                headers: { Location: { required: true, schema: { type: "string" } } },
+              },
+            },
+          },
+        },
+      },
+    };
+    const hv = createValidator(spec);
+    const payload = "<html>see other</html>";
+    await expect(
+      run(
+        validateResponses(hv),
+        fakeRequest(),
+        fakeReplyWith(302, { "content-type": "text/html", location: "/elsewhere" }),
+        payload,
+      ),
+    ).resolves.toBe(payload);
+  });
+
   it("invokes a custom onError with the failing leaves and context", async () => {
     const onError = vi.fn();
     const reply = fakeReply();

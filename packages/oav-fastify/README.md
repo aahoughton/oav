@@ -83,7 +83,7 @@ Returns a Fastify `preValidationHookHandler`.
 
 ### `validateResponses(validator, options?)`
 
-Opt-in `onSend` hook that validates outgoing JSON responses against the spec. No monkey-patching: Fastify's `onSend` receives the serialized payload natively. Register it where you want response checking, conventionally on in development and off in production:
+Opt-in `onSend` hook that validates outgoing responses against the spec. No monkey-patching: Fastify's `onSend` receives the serialized payload natively. Register it where you want response checking, conventionally on in development and off in production:
 
 ```ts
 import { validateResponses } from "@aahoughton/oav-fastify";
@@ -101,7 +101,7 @@ if (process.env.NODE_ENV !== "production") {
 
 The default `onError` throws a `ResponseValidationError` (routed to `setErrorHandler`, since a non-conforming response is a server bug). Return normally from a custom `onError` to log-and-continue: the original payload is sent unchanged. Every declared status is checked by default (4xx / 5xx too); an undeclared status is itself a finding.
 
-String payloads with a JSON content type are parsed and validated in full. An empty reply with a JSON content type has its status and declared headers checked, but the missing body itself is not a finding: OpenAPI declares response content without a required flag. Buffers, streams, non-JSON content types, and malformed JSON pass through untouched.
+Status and declared headers are checked for every reply, regardless of media type: a 204, a redirect, or a text error page still has a status the spec may not declare and headers it may require, and those checks don't depend on the body. The body is validated only when the payload is a parseable JSON string. Buffers, streams, non-JSON content types, and malformed JSON pass their bodies through untouched (status and headers still checked); a missing body is never itself a finding, since OpenAPI declares response content without a required flag.
 
 ### `httpRequestFromFastify(request)`
 

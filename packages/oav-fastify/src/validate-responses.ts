@@ -82,11 +82,14 @@ const VALIDATED = Symbol("oav.responseValidated");
  * the configured `onError` runs (default: throw a
  * {@link ResponseValidationError} to Fastify's error handler as a 500).
  *
- * Only JSON payloads are validated; non-JSON payloads pass through
- * untouched, and an empty JSON-typed reply still has its status and
- * declared headers checked. A per-request guard means the error
- * handler's own response (rendered in reaction to a failure) is not
- * re-validated, so there is no loop.
+ * Response status and declared headers are checked for every reply,
+ * regardless of media type: a 204, a redirect, or a text error page
+ * still has a status the spec may not declare and headers it may
+ * require. The body is validated only when the payload is a parseable
+ * JSON string; non-JSON, unparseable, buffer, and stream payloads pass
+ * their bodies through untouched (status and headers still checked). A
+ * per-request guard means the error handler's own response (rendered in
+ * reaction to a failure) is not re-validated, so there is no loop.
  *
  * @example
  * ```ts
@@ -122,20 +125,22 @@ export function validateResponses(
     if (!shouldValidate(reply.statusCode)) return payload;
 
     const contentType = String(reply.getHeader("content-type") ?? "");
-    if (!/\bjson\b/i.test(contentType)) return payload;
-    // Fastify's default serializer hands us a string; parse and validate
-    // it in full. An absent payload still gets its status and declared
-    // headers checked (the core validator skips body validation when the
-    // body is absent). Buffers, streams, and malformed JSON pass through.
+    // Split-phase. Status and declared headers are checked for every
+    // response: a 204, a redirect, or a text error page still has a status
+    // the spec may not declare and headers it may require, none of which
+    // depend on the body's media type. The body is parsed and validated
+    // only when it is a parseable JSON string; for non-JSON, unparseable,
+    // buffer, or stream payloads `body` stays undefined and the core
+    // validator skips body validation (and the response Content-Type
+    // check, which is gated on a present body).
     let body: unknown;
-    if (typeof payload === "string") {
+    if (typeof payload === "string" && /\bjson\b/i.test(contentType)) {
       try {
         body = JSON.parse(payload);
       } catch {
-        return payload;
+        // Unparseable JSON: leave body undefined; status/headers still get
+        // checked, and the malformed body is sent through unchanged.
       }
-    } else if (payload !== null && payload !== undefined) {
-      return payload;
     }
 
     const httpReq = toHttpRequest(request);

@@ -77,14 +77,17 @@ function responseHeaders(res: Response): Record<string, string | string[]> {
 }
 
 /**
- * Build an Express 5 middleware that validates outgoing JSON responses
- * against the spec. It wraps `res.send`, the single point every JSON
- * response passes through as a serialized string (`res.json` stringifies
- * and re-dispatches through it), parses that string, and validates the
- * exact wire body: `toJSON` methods, the app's `json replacer` / `json
- * spaces` settings, and `Date` serialization are all applied before
- * validation. On failure the configured `onError` runs (default: throw,
- * forwarded to the host error handler as a 500).
+ * Build an Express 5 middleware that validates outgoing responses against
+ * the spec. It wraps `res.send`, the point most responses pass through
+ * (`res.json` stringifies and re-dispatches through it; `res.sendStatus`
+ * sends its status text through it too). Response status and declared
+ * headers are checked for every wrapped send, regardless of media type;
+ * the body is parsed and validated only when it is a parseable JSON string
+ * (the exact wire body, with `toJSON` methods, the app's `json replacer` /
+ * `json spaces` settings, and `Date` serialization applied first). A pure
+ * `res.end()` (and `res.redirect`, which uses it) bypasses `res.send` and
+ * is not covered. On failure the configured `onError` runs (default:
+ * throw, forwarded to the host error handler as a 500).
  *
  * Opt-in and explicit: mount it only where you want response checking
  * (typically on in development, off in production), and after
@@ -183,28 +186,29 @@ export function validateResponses(
       // unvalidated keeps this wrapper identical to oav-express4's.
       if (args.length > 1) return originalSend(...args);
       const body = args[0];
-      // An undefined body (res.json() with no argument) still gets its
-      // status and declared headers checked; the core validator skips
-      // body validation when the body is absent.
+      // Split-phase. Status and declared headers are checked for every
+      // string / empty send (a text error page, a redirect's HTML body, or
+      // res.sendStatus all flow through res.send as a string), independent
+      // of the body's media type. The body is parsed and validated only
+      // when it is a parseable JSON string; otherwise `parsed` stays
+      // undefined and the core validator skips body validation (and the
+      // response Content-Type check, gated on a present body). A pure
+      // res.end() bypasses res.send and is not covered; see the README.
       if (!handled && (typeof body === "string" || body === undefined)) {
         const contentType = String(res.getHeader("content-type") ?? "");
-        if (/\bjson\b/i.test(contentType)) {
-          let parsed: unknown;
-          let parseable = true;
-          if (typeof body === "string") {
-            try {
-              parsed = JSON.parse(body);
-            } catch {
-              parseable = false;
-            }
+        let parsed: unknown;
+        if (typeof body === "string" && /\bjson\b/i.test(contentType)) {
+          try {
+            parsed = JSON.parse(body);
+          } catch {
+            // Unparseable JSON: leave parsed undefined; status/headers
+            // still get checked, and the malformed body is sent unchanged.
           }
-          if (parseable) {
-            const errors = check(parsed, contentType);
-            if (errors !== null) {
-              handleFailure(errors, () => originalSend(...args));
-              return res;
-            }
-          }
+        }
+        const errors = check(parsed, contentType);
+        if (errors !== null) {
+          handleFailure(errors, () => originalSend(...args));
+          return res;
         }
       }
       return originalSend(...args);
