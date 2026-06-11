@@ -104,6 +104,31 @@ function dialectFor(version: OpenAPIVersion): Dialect {
  *
  * @public
  */
+/**
+ * The routing verdict for a method + path, with nothing compiled or
+ * validated. Pairs with {@link Validator.getOperation}: `getOperation`
+ * hands back the resolved operation on a clean match, while `matchRoute`
+ * reports the verdict and keeps the 404-vs-405 distinction that
+ * `getOperation` collapses to `null`.
+ *
+ * - `"match"`: the path matched and the method is declared (counting the
+ *   implicit HEAD a GET resource answers, RFC 9110 §9.3.2).
+ * - `"method-not-allowed"`: the path matched but the method isn't
+ *   declared on it; `allowed` is the union of declared methods, uppercased,
+ *   suitable for an RFC 9110 `Allow` header.
+ * - `"no-match"`: no path template matched at all.
+ *
+ * @public
+ */
+export type RouteMatchResult =
+  | { readonly kind: "match"; readonly pathPattern: string }
+  | {
+      readonly kind: "method-not-allowed";
+      readonly pathPattern: string;
+      readonly allowed: readonly string[];
+    }
+  | { readonly kind: "no-match" };
+
 export interface Validator {
   /**
    * Validate one HTTP request against the spec. Returns `{ valid: true }`
@@ -254,6 +279,24 @@ export interface Validator {
     pathItem: PathItem;
     operation: OperationObject;
   } | null;
+  /**
+   * Resolve a method + path to its routing verdict without compiling or
+   * validating. Returns a {@link RouteMatchResult}: `"match"`,
+   * `"method-not-allowed"` (with the `allowed` method set), or
+   * `"no-match"`.
+   *
+   * Pairs with {@link Validator.getOperation}, which returns `null` for
+   * both the 405 and 404 cases; `matchRoute` keeps them distinct, so a
+   * caller can map a wrong-method hit to HTTP 405 rather than 404.
+   * {@link combineValidators} uses it to dispatch across members while
+   * preserving method-not-allowed semantics that `getOperation` alone
+   * can't express.
+   *
+   * Startup-cheap: a single route-table scan, no schema compilation.
+   *
+   * @see {@link Validator.getOperation} for the operation object on a match.
+   */
+  matchRoute(req: { method: string; path: string }): RouteMatchResult;
   /**
    * Every operation the spec declares, as `{ method, pathPattern }`
    * pairs in route-specificity order (more literal segments first).
@@ -1141,6 +1184,15 @@ export function createValidator(
     };
   };
 
+  const matchRoute = (req: { method: string; path: string }): RouteMatchResult => {
+    const match = router.match(req.method, req.path);
+    if (match === undefined) return { kind: "no-match" };
+    if (match.kind === "method-not-allowed") {
+      return { kind: "method-not-allowed", pathPattern: match.pathPattern, allowed: match.allowed };
+    }
+    return { kind: "match", pathPattern: match.pathPattern };
+  };
+
   const specHygieneIssues: readonly SpecHygieneIssue[] = options.lint
     ? Object.freeze(lintResolvedSpec(spec))
     : [];
@@ -1155,6 +1207,7 @@ export function createValidator(
     validateFetchRequest,
     validateFetchResponse,
     getOperation,
+    matchRoute,
     routes: router.routes(),
     detectedVersion,
     output: outputMode,

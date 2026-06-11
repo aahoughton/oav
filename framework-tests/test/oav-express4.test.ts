@@ -546,9 +546,13 @@ describe("oav-express4 integration: validateResponses send variants", () => {
     expect(await r.text()).toBe("{not json");
   });
 
-  it("res.sendStatus is non-JSON and passes through, undeclared status included", async () => {
+  it("res.sendStatus with an undeclared status is a finding (status checked even for non-JSON)", async () => {
+    // sendStatus routes through res.send with a text body. The body
+    // itself isn't validated (non-JSON), but the status is: 418 isn't
+    // declared, so it surfaces as a 500. (res.redirect, by contrast, uses
+    // res.end and bypasses the wrapper; see the redirect test below.)
     const r = await fetch(`${baseUrl}/widgets/sendstatus`);
-    expect(r.status).toBe(418);
+    expect(r.status).toBe(500);
   });
 
   it("a streamed response (res.write / res.end) bypasses validation", async () => {

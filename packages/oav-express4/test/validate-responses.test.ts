@@ -218,6 +218,54 @@ describe("validateResponses (Express 4)", () => {
     expect(erroredWith(next)).toBeInstanceOf(ResponseValidationError);
   });
 
+  // Status and header validation are independent of the body's media
+  // type. A text error page, a redirect, or an empty body still has a
+  // status the spec may not declare and headers it may require.
+  it("flags an undeclared status on a non-JSON send", () => {
+    const { res, sent } = fakeRes(418, { "content-type": "text/html" });
+    const next = vi.fn();
+    mount(res, next);
+    res.send("<html>teapot</html>");
+    expect(sent).not.toHaveBeenCalled();
+    expect(erroredWith(next)).toBeInstanceOf(ResponseValidationError);
+  });
+
+  it("flags a missing required header on a non-JSON send", () => {
+    const spec = widgetSpec();
+    const get = spec.paths!["/widgets/{id}"]!.get as unknown as {
+      responses: Record<string, unknown>;
+    };
+    get.responses["302"] = {
+      description: "redirect",
+      headers: { Location: { required: true, schema: { type: "string" } } },
+    };
+    const hv = createValidator(spec);
+    const { res, sent } = fakeRes(302, { "content-type": "text/html" }); // no Location
+    const next = vi.fn();
+    validateResponses(hv)(fakeReq(), res, next as unknown as NextFunction);
+    res.send("<html>see other</html>");
+    expect(sent).not.toHaveBeenCalled();
+    expect(erroredWith(next)).toBeInstanceOf(ResponseValidationError);
+  });
+
+  it("passes a non-JSON send whose status is declared and headers satisfied", () => {
+    const spec = widgetSpec();
+    const get = spec.paths!["/widgets/{id}"]!.get as unknown as {
+      responses: Record<string, unknown>;
+    };
+    get.responses["302"] = {
+      description: "redirect",
+      headers: { Location: { required: true, schema: { type: "string" } } },
+    };
+    const hv = createValidator(spec);
+    const { res, sent } = fakeRes(302, { "content-type": "text/html", location: "/elsewhere" });
+    const next = vi.fn();
+    validateResponses(hv)(fakeReq(), res, next as unknown as NextFunction);
+    res.send("<html>see other</html>");
+    expect(sent).toHaveBeenCalledWith("<html>see other</html>");
+    expect(erroredWith(next)).toBeUndefined();
+  });
+
   it("forwards multi-arg send calls to Express untouched", () => {
     const { res, sent } = fakeRes(200, { "content-type": "application/json" });
     const next = vi.fn();

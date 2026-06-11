@@ -6,11 +6,12 @@ import { createValidator } from "../src/validator.js";
 /**
  * `combineValidators` stacks several validators into one that dispatches
  * each request to the member owning its route. Dispatch keys on route
- * ownership (`getOperation`), then delegates to the owner's
+ * ownership (`matchRoute`), then delegates to the owner's
  * `validateRequest` / `validateResponse`, so a member's own
- * `ignoreUndocumented` / `ignorePaths` still fire after dispatch. Routes
- * no member owns are undocumented w.r.t. the composite, governed by
- * `CombineOptions.ignoreUndocumented`.
+ * `ignoreUndocumented` / `ignorePaths` still fire after dispatch. A wrong
+ * method on an owned path stays a 405 (delegated to the path's owner);
+ * only a path no member owns is undocumented w.r.t. the composite,
+ * governed by `CombineOptions.ignoreUndocumented`.
  */
 
 function specA(): OpenAPIDocument {
@@ -129,6 +130,71 @@ describe("combineValidators dispatch", () => {
   });
 });
 
+describe("combineValidators method-not-allowed (405)", () => {
+  // A wrong method on a path a member DOES own is a 405, not a 404, and
+  // must reproduce single-validator semantics through the composite. The
+  // dispatch keys on getOperation, which returns null for both 404 and
+  // 405, so the composite has to distinguish "no member owns the path"
+  // from "a member owns the path but not this method".
+  function deleterSpec(): OpenAPIDocument {
+    return {
+      openapi: "3.0.3",
+      info: { title: "deleter", version: "1" },
+      paths: {
+        "/a/items/{id}": {
+          delete: { operationId: "deleteItem", responses: { "204": { description: "gone" } } },
+        },
+      },
+    };
+  }
+
+  it("anchor: a standalone validator reports a method error for a wrong method", () => {
+    const r = flat(
+      createValidator(specA()).validateRequest({ method: "DELETE", path: "/a/items/1" }),
+    );
+    expect(r.valid).toBe(false);
+    expect(r.errors?.[0]?.code).toBe("method");
+  });
+
+  it("preserves the 405 (method error, not a route/404) for a wrong method on an owned path", () => {
+    const v = combineValidators([createValidator(specA()), createValidator(specB())]);
+    const r = flat(v.validateRequest({ method: "DELETE", path: "/a/items/1" }));
+    expect(r.valid).toBe(false);
+    expect(r.errors?.[0]?.code).toBe("method");
+  });
+
+  it("ignoreUndocumented does NOT suppress a 405 on a path a member owns", () => {
+    // ignoreUndocumented governs paths no member owns. A wrong method on
+    // an owned path is not undocumented; it must still fail, exactly as a
+    // single validator does (whose method error is ungated).
+    const v = combineValidators([createValidator(specA()), createValidator(specB())], {
+      ignoreUndocumented: true,
+    });
+    const r = flat(v.validateRequest({ method: "DELETE", path: "/a/items/1" }));
+    expect(r.valid).toBe(false);
+    expect(r.errors?.[0]?.code).toBe("method");
+  });
+
+  it("a real match in a later member still beats an earlier member's 405", () => {
+    // specA owns GET /a/items/{id} (405s on DELETE); the deleter owns
+    // DELETE on the same path structure. DELETE must reach the deleter.
+    const v = combineValidators([createValidator(specA()), createValidator(deleterSpec())]);
+    expect(flat(v.validateRequest({ method: "DELETE", path: "/a/items/1" })).valid).toBe(true);
+  });
+
+  it("preserves the 405 on the response side too", () => {
+    const v = combineValidators([createValidator(specA()), createValidator(specB())]);
+    const r = flat(
+      v.validateResponse(
+        { method: "DELETE", path: "/a/items/1" },
+        { status: 204, contentType: "", body: undefined },
+      ),
+    );
+    expect(r.valid).toBe(false);
+    expect(r.errors?.[0]?.code).toBe("method");
+  });
+});
+
 describe("combineValidators no-owner policy", () => {
   it("defaults to a route error for a path no member owns", () => {
     const v = combineValidators([createValidator(specA()), createValidator(specB())]);
@@ -184,6 +250,62 @@ describe("combineValidators overlap detection", () => {
   it("onOverlap: error accepts disjoint members", () => {
     expect(() =>
       combineValidators([createValidator(specA()), createValidator(specB())], {
+        onOverlap: "error",
+      }),
+    ).not.toThrow();
+  });
+
+  it("catches an implicit HEAD (from GET) colliding with another member's explicit HEAD", () => {
+    // RFC 9110 §9.3.2: a GET resource also answers HEAD. The matcher
+    // honours this at match time, so a member declaring GET /x/{id}
+    // reserves the HEAD cell; a sibling declaring explicit HEAD /x/{slug}
+    // is a real overlap that first-match would silently shadow.
+    const getter: OpenAPIDocument = {
+      openapi: "3.0.3",
+      info: { title: "getter", version: "1" },
+      paths: { "/x/{id}": { get: { responses: { "200": { description: "ok" } } } } },
+    };
+    const header: OpenAPIDocument = {
+      openapi: "3.0.3",
+      info: { title: "header", version: "1" },
+      paths: { "/x/{slug}": { head: { responses: { "200": { description: "ok" } } } } },
+    };
+    expect(() =>
+      combineValidators([createValidator(getter), createValidator(header)], { onOverlap: "error" }),
+    ).toThrow(/route overlap/);
+  });
+
+  it("does not false-positive when a member declares both GET and explicit HEAD on a path", () => {
+    // The synthetic HEAD must not be added when an explicit HEAD already
+    // exists, or a single member would appear to overlap itself.
+    const both: OpenAPIDocument = {
+      openapi: "3.0.3",
+      info: { title: "both", version: "1" },
+      paths: {
+        "/x/{id}": {
+          get: { responses: { "200": { description: "ok" } } },
+          head: { responses: { "200": { description: "ok" } } },
+        },
+      },
+    };
+    expect(() =>
+      combineValidators([createValidator(both), createValidator(specB())], { onOverlap: "error" }),
+    ).not.toThrow();
+  });
+
+  it("does not treat an implicit HEAD as colliding with a disjoint path's HEAD", () => {
+    const getter: OpenAPIDocument = {
+      openapi: "3.0.3",
+      info: { title: "getter", version: "1" },
+      paths: { "/x/{id}": { get: { responses: { "200": { description: "ok" } } } } },
+    };
+    const otherHead: OpenAPIDocument = {
+      openapi: "3.0.3",
+      info: { title: "otherHead", version: "1" },
+      paths: { "/y/{id}": { head: { responses: { "200": { description: "ok" } } } } },
+    };
+    expect(() =>
+      combineValidators([createValidator(getter), createValidator(otherHead)], {
         onOverlap: "error",
       }),
     ).not.toThrow();

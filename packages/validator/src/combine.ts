@@ -15,7 +15,13 @@ import {
   type FetchRequestOptions,
 } from "./from-fetch.js";
 import { reshapeResult, toFetchResult } from "./reshape.js";
-import type { PredicateValidator, TreeValidator, Validator, ValidatorStats } from "./validator.js";
+import type {
+  PredicateValidator,
+  RouteMatchResult,
+  TreeValidator,
+  Validator,
+  ValidatorStats,
+} from "./validator.js";
 
 /**
  * Options for {@link combineValidators}.
@@ -41,6 +47,9 @@ export interface CombineOptions {
    * - `"error"`: assert disjointness at construction. `combineValidators`
    *   throws if any route is owned by two members, surfacing the clash
    *   at assembly time instead of letting first-match silently shadow.
+   *   A GET route also reserves the HEAD cell (RFC 9110 §9.3.2), so a
+   *   member's GET and another member's explicit HEAD on a
+   *   structurally-equal path count as an overlap.
    */
   onOverlap?: "first-match" | "error";
   /**
@@ -81,12 +90,35 @@ interface CombinableValidator {
     pathItem: PathItem;
     operation: OperationObject;
   } | null;
+  matchRoute(req: { method: string; path: string }): RouteMatchResult;
   readonly routes: readonly RouteInfo[];
   readonly output: "flat" | "tree" | "predicate";
   readonly warnings: readonly string[];
   readonly specHygieneIssues: readonly SpecHygieneIssue[];
   readonly detectedVersion: OpenAPIVersion | undefined;
   readonly stats: ValidatorStats;
+}
+
+// A GET resource also answers HEAD (RFC 9110 §9.3.2): the matcher honours
+// this at match time, and its intra-document ambiguity check reserves the
+// HEAD cell for a GET-only path. `routes` reports only declared operations
+// (no implicit HEAD), so the cross-member overlap scan expands a GET
+// without an explicit HEAD sibling into a synthetic HEAD entry, matching
+// the matcher's rule. Without it, a GET in one member and an explicit HEAD
+// on a structurally-equal path in another slip past the check and let
+// first-match silently shadow the explicit HEAD.
+function effectiveRoutes(routes: readonly RouteInfo[]): RouteInfo[] {
+  const explicitHead = new Set<string>();
+  for (const r of routes) {
+    if (r.method === "HEAD") explicitHead.add(routeSignature(r.pathPattern));
+  }
+  const expanded: RouteInfo[] = [...routes];
+  for (const r of routes) {
+    if (r.method === "GET" && !explicitHead.has(routeSignature(r.pathPattern))) {
+      expanded.push({ method: "HEAD", pathPattern: r.pathPattern });
+    }
+  }
+  return expanded;
 }
 
 /**
@@ -102,13 +134,17 @@ interface CombinableValidator {
  * replaces a stack of per-spec middlewares; a future `validateResponses`
  * takes the same composite.
  *
- * Dispatch keys on route ownership ({@link Validator.getOperation}), not
- * on a member's validation verdict, so a member configured with
+ * Dispatch keys on route ownership ({@link Validator.matchRoute}), not on
+ * a member's validation verdict, so a member configured with
  * `ignoreUndocumented` can't pre-empt the member that actually owns the
- * route. The owning member's `validateRequest` / `validateResponse` is
- * then called in full, so its own `ignorePaths` / content-type / schema
- * logic runs exactly as it would standalone. With no owner, the request
- * is undocumented with respect to the composite and handled per
+ * route. A real match wins; failing that, a member whose path matched but
+ * whose method isn't declared (405) still owns the path, so the request is
+ * delegated to it and surfaces as a method error rather than being
+ * laundered into the undocumented-route bypass. The owning member's
+ * `validateRequest` / `validateResponse` is then called in full, so its
+ * own `ignorePaths` / content-type / schema logic runs exactly as it would
+ * standalone. Only a true no-match (no member's path matched) is
+ * undocumented with respect to the composite and handled per
  * {@link CombineOptions.ignoreUndocumented}.
  *
  * All members must share an `output` mode; mixing throws at construction
@@ -168,7 +204,7 @@ export function combineValidators(
   if (options.onOverlap === "error") {
     const seen = new Map<string, { index: number; pathPattern: string }>();
     members.forEach((member, index) => {
-      for (const { method, pathPattern } of member.routes) {
+      for (const { method, pathPattern } of effectiveRoutes(member.routes)) {
         const key = `${method}\t${routeSignature(pathPattern)}`;
         const prior = seen.get(key);
         if (prior !== undefined) {
@@ -186,14 +222,28 @@ export function combineValidators(
   const ignoreUndocumented = options.ignoreUndocumented === true;
 
   // First member that owns the route (first-match-wins by array order).
-  // Keys on getOperation (route ownership), never on a validate verdict,
+  // Keys on matchRoute (route ownership), never on a validate verdict,
   // so a non-owning member's ignoreUndocumented / ignorePaths can't
   // shadow the real owner.
+  //
+  // A real match wins outright. With no real match, a member whose path
+  // matched but whose method isn't declared (405) still owns the path:
+  // delegate to the first such member so its own validateRequest emits
+  // the method error, reproducing single-validator semantics. Only a
+  // true no-match (no member's path matched) falls through to
+  // `noOwnerResult`, where `ignoreUndocumented` applies. This keeps a
+  // wrong-method hit on an owned path a 405 rather than laundering it
+  // into the undocumented-route bypass.
   const ownerFor = (req: { method: string; path: string }): CombinableValidator | undefined => {
+    let methodNotAllowed: CombinableValidator | undefined;
     for (const member of members) {
-      if (member.getOperation(req) !== null) return member;
+      const m = member.matchRoute(req);
+      if (m.kind === "match") return member;
+      if (m.kind === "method-not-allowed" && methodNotAllowed === undefined) {
+        methodNotAllowed = member;
+      }
     }
-    return undefined;
+    return methodNotAllowed;
   };
 
   // The composite's own no-owner result, mirroring a single validator's
@@ -251,6 +301,31 @@ export function combineValidators(
     return null;
   };
 
+  // Composite routing verdict: a real match in any member wins; failing
+  // that, a member whose path matched (405) makes the composite a 405
+  // too, unioning the allowed methods across every such member; only a
+  // total miss is `no-match`. Mirrors `ownerFor`'s precedence.
+  const matchRoute = (req: { method: string; path: string }): RouteMatchResult => {
+    let methodNotAllowed: { pathPattern: string } | undefined;
+    const allowed = new Set<string>();
+    for (const member of members) {
+      const m = member.matchRoute(req);
+      if (m.kind === "match") return m;
+      if (m.kind === "method-not-allowed") {
+        if (methodNotAllowed === undefined) methodNotAllowed = { pathPattern: m.pathPattern };
+        for (const a of m.allowed) allowed.add(a);
+      }
+    }
+    if (methodNotAllowed !== undefined) {
+      return {
+        kind: "method-not-allowed",
+        pathPattern: methodNotAllowed.pathPattern,
+        allowed: [...allowed],
+      };
+    }
+    return { kind: "no-match" };
+  };
+
   // Static introspection is concatenated once (members freeze these at
   // their own construction); `detectedVersion` collapses to the shared
   // value or `undefined` when members disagree.
@@ -265,6 +340,7 @@ export function combineValidators(
     validateFetchRequest,
     validateFetchResponse,
     getOperation,
+    matchRoute,
     routes: Object.freeze(members.flatMap((m) => [...m.routes])),
     detectedVersion,
     output: outputMode,
