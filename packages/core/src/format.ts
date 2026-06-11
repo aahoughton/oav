@@ -66,23 +66,33 @@ export function formatText(
  * constructed (deep-cloned `children`, `path`, and `params`), so it
  * round-trips losslessly through `JSON.stringify` / `JSON.parse`.
  *
- * @param error - Root of the error tree.
- * @returns The same tree, safe to hand to `JSON.stringify`.
+ * Accepts either a single tree root or the flat leaf list the default
+ * (flat-output) validator returns; a list round-trips to a list.
+ *
+ * @param error - Root of the error tree, or a flat list of errors.
+ * @returns The same tree (or list), safe to hand to `JSON.stringify`.
  *
  * @example
  * ```ts
  * JSON.stringify(toJsonObject(rootError), null, 2);
+ * JSON.stringify(toJsonObject(result.errors), null, 2); // flat output
  * ```
  *
  * @public
  */
-export function toJsonObject(error: ValidationError): ValidationError {
+export function toJsonObject(error: ValidationError): ValidationError;
+export function toJsonObject(error: readonly ValidationError[]): ValidationError[];
+export function toJsonObject(
+  error: ValidationError | readonly ValidationError[],
+): ValidationError | ValidationError[] {
+  if (Array.isArray(error)) return error.map((e) => toJsonObject(e));
+  const e = error as ValidationError;
   return {
-    code: error.code,
-    path: [...error.path],
-    message: error.message,
-    params: { ...error.params },
-    children: error.children.map(toJsonObject),
+    code: e.code,
+    path: [...e.path],
+    message: e.message,
+    params: { ...e.params },
+    children: e.children.map((c) => toJsonObject(c)),
   };
 }
 
@@ -129,9 +139,11 @@ export interface FormatSummaryOptions {
 }
 
 /**
- * Render a {@link ValidationError} tree as a string. The workhorse for
+ * Render validation errors as a one-line string. The workhorse for
  * HTTP response-body `message` fields, log lines, error-monitoring
- * titles, and `Error.message`.
+ * titles, and `Error.message`. Accepts either a nested error tree
+ * (`output: "tree"`) or the flat leaf list the default validator
+ * returns.
  *
  * Two output shapes depending on {@link FormatSummaryOptions.select}:
  *
@@ -172,11 +184,18 @@ export interface FormatSummaryOptions {
  *
  * @public
  */
-export function formatSummary(error: ValidationError, options: FormatSummaryOptions = {}): string {
+export function formatSummary(
+  error: ValidationError | readonly ValidationError[],
+  options: FormatSummaryOptions = {},
+): string {
   const select = options.select ?? "first";
-  // collectLeaves defines a leaf as any node with no children, so even
-  // a single-leaf root yields one entry; leaves[0] is always present.
-  const leaves = collectLeaves(error);
+  // Accept either a single tree root or the flat leaf list the default
+  // (flat-output) validator returns. collectLeaves defines a leaf as any
+  // node with no children, so a single-leaf root yields one entry; an
+  // empty list yields none, hence the guard below before `leaves[0]`.
+  const leaves = Array.isArray(error) ? error : collectLeaves(error as ValidationError);
+
+  if (leaves.length === 0) return "";
 
   if (select === "all") {
     const separator = options.separator ?? "\n";
@@ -212,21 +231,27 @@ export function formatSummary(error: ValidationError, options: FormatSummaryOpti
 
 /**
  * Count the nodes in a {@link ValidationError} tree (branches + leaves).
+ * Accepts a flat list too, in which case it sums the node count of each
+ * root.
  *
- * @param error - Root of the error tree.
+ * @param error - Root of the error tree, or a flat list of errors.
  * @returns The total node count.
  *
  * @example
  * ```ts
  * countErrors(rootError); // 7
+ * countErrors(result.errors); // flat output: one node per leaf
  * ```
  *
  * @public
  */
-export function countErrors(error: ValidationError): number {
+export function countErrors(error: ValidationError | readonly ValidationError[]): number {
   let n = 0;
-  walkErrors(error, () => {
-    n += 1;
-  });
+  const roots = Array.isArray(error) ? error : [error as ValidationError];
+  for (const root of roots) {
+    walkErrors(root, () => {
+      n += 1;
+    });
+  }
   return n;
 }

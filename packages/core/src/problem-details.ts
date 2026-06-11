@@ -136,11 +136,11 @@ export function collectIssues(
  * @example
  * ```ts
  * // Express 5
- * const err = validator.validateRequest(httpRequest);
- * if (err !== null) {
+ * const result = validator.validateRequest(httpRequest);
+ * if (!result.valid) {
  *   res.status(400)
  *      .type("application/problem+json")
- *      .json(toProblemDetails(err, { instance: req.originalUrl }));
+ *      .json(toProblemDetails(result.errors, { instance: req.originalUrl }));
  * }
  * ```
  *

@@ -55,9 +55,9 @@ export const DEFAULT_HTTP_STATUS_MAP: HttpStatusMap = {
  * ```ts
  * import { httpStatusFor } from "@aahoughton/oav";
  *
- * const err = validator.validateRequest(httpRequest);
- * if (err !== null) {
- *   res.status(httpStatusFor(err)).json(toProblemDetails(err));
+ * const result = validator.validateRequest(httpRequest);
+ * if (!result.valid) {
+ *   res.status(httpStatusFor(result.errors)).json(toProblemDetails(result.errors));
  * }
  * ```
  *
