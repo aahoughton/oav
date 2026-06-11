@@ -30,6 +30,19 @@ describe("formatError", () => {
     const out = formatError(sample, (err) => `custom:${err.code}:${err.children.length}`);
     expect(out).toBe("custom:request:1");
   });
+
+  // The documented recipe for rendering the default flat output through
+  // formatError (which is tree-only): wrap the leaf list in a root. See
+  // docs/migration-v3.md section 7.
+  it("renders a wrapped flat list via the createBranchError recipe", () => {
+    const flat = [
+      createLeafError("type", ["body", "age"], "must be number"),
+      createLeafError("required", ["body"], "missing name"),
+    ];
+    const root = createBranchError("request", [], "request validation failed", flat);
+    expect(formatError(root, "flat").split("\n")).toHaveLength(2);
+    expect(JSON.parse(formatError(root, "json")).children).toHaveLength(2);
+  });
 });
 
 describe("isOutputFormat", () => {
