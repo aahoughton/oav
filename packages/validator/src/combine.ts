@@ -209,7 +209,7 @@ export function combineValidators(
         const prior = seen.get(key);
         if (prior !== undefined) {
           throw new Error(
-            `combineValidators: route overlap with onOverlap: "error" — validators[${prior.index}] ` +
+            `combineValidators: route overlap with onOverlap: "error": validators[${prior.index}] ` +
               `(${method} ${prior.pathPattern}) and validators[${index}] (${method} ${pathPattern}) ` +
               "own the same route. Make the specs path-disjoint, or drop onOverlap to let first-match win.",
           );
