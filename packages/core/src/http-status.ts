@@ -64,13 +64,13 @@ export const DEFAULT_HTTP_STATUS_MAP: HttpStatusMap = {
  * Override any slot, e.g. APIs that use 422 for schema errors:
  *
  * ```ts
- * httpStatusFor(err, { default: 422 });
+ * httpStatusFor(error, { default: 422 });
  * ```
  *
  * @public
  */
 export function httpStatusFor(
-  err: ValidationError | readonly ValidationError[],
+  error: ValidationError | readonly ValidationError[],
   overrides?: Partial<HttpStatusMap>,
 ): number {
   const map =
@@ -81,7 +81,7 @@ export function httpStatusFor(
   // (flat) validator returns. Scan leaves in HTTP-gate priority order
   // (404 -> 405 -> 415 -> 401 -> 500 -> 400); `route` / `method` fire as
   // standalone leaves, the rest as leaves anywhere in the report.
-  const leaves = Array.isArray(err) ? err : collectLeaves(err as ValidationError);
+  const leaves = Array.isArray(error) ? error : collectLeaves(error as ValidationError);
   if (leaves.some((l) => l.code === "route")) return map.route;
   if (leaves.some((l) => l.code === "method")) return map.method;
   if (leaves.some((l) => l.code === "security")) return map.security;
@@ -96,17 +96,17 @@ export function httpStatusFor(
  * `undefined` otherwise.
  *
  * ```ts
- * const allow = allowHeaderFor(err);
+ * const allow = allowHeaderFor(error);
  * if (allow !== undefined) res.setHeader("Allow", allow);
- * res.status(httpStatusFor(err)).json(toProblemDetails(err));
+ * res.status(httpStatusFor(error)).json(toProblemDetails(error));
  * ```
  *
  * @public
  */
 export function allowHeaderFor(
-  err: ValidationError | readonly ValidationError[],
+  error: ValidationError | readonly ValidationError[],
 ): string | undefined {
-  const leaves = Array.isArray(err) ? err : collectLeaves(err as ValidationError);
+  const leaves = Array.isArray(error) ? error : collectLeaves(error as ValidationError);
   const method = leaves.find((l) => l.code === "method");
   if (method === undefined) return undefined;
   const allowed = (method.params as { allowed?: unknown }).allowed;

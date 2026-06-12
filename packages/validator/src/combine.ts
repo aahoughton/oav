@@ -42,10 +42,10 @@ export interface CombineOptions {
    * count as the same route).
    *
    * - `"first-match"` (default): the earliest member in array order
-   *   wins; later members never see the request. Mirrors the matcher's
+   *   wins; later validators never see the request. Mirrors the matcher's
    *   specificity-ordered scan, lifted to the member level.
    * - `"error"`: assert disjointness at construction. `combineValidators`
-   *   throws if any route is owned by two members, surfacing the clash
+   *   throws if any route is owned by two validators, surfacing the clash
    *   at assembly time instead of letting first-match silently shadow.
    *   A GET route also reserves the HEAD cell (RFC 9110 §9.3.2), so a
    *   member's GET and another member's explicit HEAD on a
@@ -71,7 +71,7 @@ export interface CombineOptions {
 
 /**
  * The subset of the {@link Validator} surface `combineValidators` reads
- * from its members. `Validator`, {@link TreeValidator}, and
+ * from its validators. `Validator`, {@link TreeValidator}, and
  * {@link PredicateValidator} are all structurally assignable to it (their
  * narrower `validate*` returns widen into the union here), so the public
  * overloads accept each concrete kind while the implementation works
@@ -147,12 +147,12 @@ function effectiveRoutes(routes: readonly RouteInfo[]): RouteInfo[] {
  * undocumented with respect to the composite and handled per
  * {@link CombineOptions.ignoreUndocumented}.
  *
- * All members must share an `output` mode; mixing throws at construction
+ * All validators must share an `output` mode; mixing throws at construction
  * (the composite presents one result shape). An empty array throws.
  *
- * @param members - Validators to combine, in first-match priority order.
+ * @param validators - Validators to combine, in first-match priority order.
  * @param options - Overlap policy and no-owner skip policy.
- * @returns A validator of the members' shared output kind.
+ * @returns A validator of the validators' shared output kind.
  *
  * @example
  * ```ts
@@ -165,51 +165,51 @@ function effectiveRoutes(routes: readonly RouteInfo[]): RouteInfo[] {
  * @public
  */
 export function combineValidators(
-  members: TreeValidator[],
+  validators: TreeValidator[],
   options?: CombineOptions,
 ): TreeValidator;
 export function combineValidators(
-  members: PredicateValidator[],
+  validators: PredicateValidator[],
   options?: CombineOptions,
 ): PredicateValidator;
-export function combineValidators(members: Validator[], options?: CombineOptions): Validator;
+export function combineValidators(validators: Validator[], options?: CombineOptions): Validator;
 export function combineValidators(
-  members: CombinableValidator[],
+  validators: CombinableValidator[],
   options: CombineOptions = {},
 ): Validator | TreeValidator | PredicateValidator {
-  if (members.length === 0) {
+  if (validators.length === 0) {
     throw new Error(
       "combineValidators: at least one validator is required (received an empty array).",
     );
   }
 
-  // One output mode across all members: the composite presents a single
+  // One output mode across all validators: the composite presents a single
   // result shape, and the typed overloads resolve to it. Mixing is a
   // construction mistake, so fail at the seam rather than reshape per
   // request.
-  const outputMode = members[0]!.output;
-  for (let i = 1; i < members.length; i += 1) {
-    if (members[i]!.output !== outputMode) {
+  const outputMode = validators[0]!.output;
+  for (let i = 1; i < validators.length; i += 1) {
+    if (validators[i]!.output !== outputMode) {
       throw new Error(
-        `combineValidators: all members must share an output mode; validators[0] is "${outputMode}" ` +
-          `but validators[${i}] is "${members[i]!.output}". Build each validator with the same \`output\` option.`,
+        `combineValidators: all validators must share an output mode; validators[0] is "${outputMode}" ` +
+          `but validators[${i}] is "${validators[i]!.output}". Build each validator with the same \`output\` option.`,
       );
     }
   }
 
-  // Optional startup assertion that the members are route-disjoint.
+  // Optional startup assertion that the validators are route-disjoint.
   // Structural (parameter-name-insensitive), so /x/{id} and /x/{slug}
   // count as the same routing cell, matching the matcher's own
   // intra-document ambiguity rule.
   if (options.onOverlap === "error") {
     const seen = new Map<string, { index: number; pathPattern: string }>();
-    members.forEach((member, index) => {
+    validators.forEach((member, index) => {
       for (const { method, pathPattern } of effectiveRoutes(member.routes)) {
         const key = `${method}\t${routeSignature(pathPattern)}`;
         const prior = seen.get(key);
         if (prior !== undefined) {
           throw new Error(
-            `combineValidators: route overlap with onOverlap: "error" — validators[${prior.index}] ` +
+            `combineValidators: route overlap with onOverlap: "error": validators[${prior.index}] ` +
               `(${method} ${prior.pathPattern}) and validators[${index}] (${method} ${pathPattern}) ` +
               "own the same route. Make the specs path-disjoint, or drop onOverlap to let first-match win.",
           );
@@ -236,7 +236,7 @@ export function combineValidators(
   // into the undocumented-route bypass.
   const ownerFor = (req: { method: string; path: string }): CombinableValidator | undefined => {
     let methodNotAllowed: CombinableValidator | undefined;
-    for (const member of members) {
+    for (const member of validators) {
       const m = member.matchRoute(req);
       if (m.kind === "match") return member;
       if (m.kind === "method-not-allowed" && methodNotAllowed === undefined) {
@@ -294,7 +294,7 @@ export function combineValidators(
   };
 
   const getOperation = (req: { method: string; path: string }) => {
-    for (const member of members) {
+    for (const member of validators) {
       const op = member.getOperation(req);
       if (op !== null) return op;
     }
@@ -308,7 +308,7 @@ export function combineValidators(
   const matchRoute = (req: { method: string; path: string }): RouteMatchResult => {
     let methodNotAllowed: { pathPattern: string } | undefined;
     const allowed = new Set<string>();
-    for (const member of members) {
+    for (const member of validators) {
       const m = member.matchRoute(req);
       if (m.kind === "match") return m;
       if (m.kind === "method-not-allowed") {
@@ -326,11 +326,11 @@ export function combineValidators(
     return { kind: "no-match" };
   };
 
-  // Static introspection is concatenated once (members freeze these at
+  // Static introspection is concatenated once (validators freeze these at
   // their own construction); `detectedVersion` collapses to the shared
-  // value or `undefined` when members disagree.
-  const firstVersion = members[0]!.detectedVersion;
-  const detectedVersion = members.every((m) => m.detectedVersion === firstVersion)
+  // value or `undefined` when validators disagree.
+  const firstVersion = validators[0]!.detectedVersion;
+  const detectedVersion = validators.every((m) => m.detectedVersion === firstVersion)
     ? firstVersion
     : undefined;
 
@@ -341,17 +341,17 @@ export function combineValidators(
     validateFetchResponse,
     getOperation,
     matchRoute,
-    routes: Object.freeze(members.flatMap((m) => [...m.routes])),
+    routes: Object.freeze(validators.flatMap((m) => [...m.routes])),
     detectedVersion,
     output: outputMode,
-    warnings: Object.freeze(members.flatMap((m) => [...m.warnings])),
-    specHygieneIssues: Object.freeze(members.flatMap((m) => [...m.specHygieneIssues])),
-    // Live: response bodies compile lazily, so read members' counters on
+    warnings: Object.freeze(validators.flatMap((m) => [...m.warnings])),
+    specHygieneIssues: Object.freeze(validators.flatMap((m) => [...m.specHygieneIssues])),
+    // Live: response bodies compile lazily, so read validators' counters on
     // each access rather than snapshotting at construction.
     get stats(): ValidatorStats {
       return {
-        responseBodiesCompiled: members.reduce((n, m) => n + m.stats.responseBodiesCompiled, 0),
-        strictIssues: members.flatMap((m) => [...m.stats.strictIssues]),
+        responseBodiesCompiled: validators.reduce((n, m) => n + m.stats.responseBodiesCompiled, 0),
+        strictIssues: validators.flatMap((m) => [...m.stats.strictIssues]),
       };
     },
   };

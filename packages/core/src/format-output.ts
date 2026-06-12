@@ -71,27 +71,27 @@ export type ErrorRenderer = (err: ValidationError) => string;
  * directly, or wrap the list with {@link createBranchError} before passing
  * it here.
  *
- * @param err - The error tree.
+ * @param error - The error tree.
  * @param renderer - A built-in format name or a custom render function.
- * @param depth - Optional max depth (applies to `"text"` format only).
+ * @param maxDepth - Optional max depth (applies to `"text"` format only).
  * @returns The rendered string.
  *
  * @public
  */
 export function formatError(
-  err: ValidationError,
+  error: ValidationError,
   renderer: OutputFormat | ErrorRenderer,
-  depth?: number,
+  maxDepth?: number,
 ): string {
-  if (typeof renderer === "function") return renderer(err);
+  if (typeof renderer === "function") return renderer(error);
   switch (renderer) {
     case "json":
-      return JSON.stringify(toJsonObject(err), null, 2);
+      return JSON.stringify(toJsonObject(error), null, 2);
     case "summary":
     case "flat": // deprecated alias of "summary"
-      return formatSummary(err, { select: "all" });
+      return formatSummary(error, { select: "all" });
     case "text":
     default:
-      return formatText(err, depth !== undefined ? { maxDepth: depth } : {});
+      return formatText(error, maxDepth !== undefined ? { maxDepth } : {});
   }
 }
