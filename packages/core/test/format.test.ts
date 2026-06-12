@@ -167,6 +167,56 @@ describe("formatSummary", () => {
     );
   });
 
+  it('path: "auto" drops the prefix for self-locating HTTP-level leaves', () => {
+    const missingParam = createLeafError(
+      "query-param",
+      ["query", "persona"],
+      'missing required query parameter "persona"',
+      { name: "persona", in: "query" },
+    );
+    const missingBody = createLeafError("body", ["body"], "missing required request body");
+    expect(formatSummary([missingParam], { path: "auto" })).toBe(
+      'missing required query parameter "persona"',
+    );
+    expect(formatSummary([missingBody], { path: "auto" })).toBe("missing required request body");
+    // Default and explicit "always" keep the (stuttering) prefix.
+    expect(formatSummary([missingParam])).toBe(
+      'query.persona missing required query parameter "persona"',
+    );
+    expect(formatSummary([missingParam], { path: "always" })).toBe(
+      'query.persona missing required query parameter "persona"',
+    );
+  });
+
+  it('path: "auto" keeps the prefix on schema-keyword leaves', () => {
+    const typeLeaf = createLeafError("type", ["body", "outer", "inner"], "must be string");
+    expect(formatSummary([typeLeaf], { path: "auto" })).toBe("body.outer.inner must be string");
+    // The format/"email" trap: a field named like its format must keep
+    // its path; this is why "auto" keys on the code, not the message.
+    const emailLeaf = createLeafError("format", ["body", "email"], 'must match format "email"');
+    expect(formatSummary([emailLeaf], { path: "auto" })).toBe(
+      'body.email must match format "email"',
+    );
+  });
+
+  it('path: "auto" applies per leaf under select: "all"', () => {
+    const leaves = [
+      createLeafError(
+        "query-param",
+        ["query", "persona"],
+        'missing required query parameter "persona"',
+        {
+          name: "persona",
+          in: "query",
+        },
+      ),
+      createLeafError("type", ["body", "age"], "must be number"),
+    ];
+    expect(formatSummary(leaves, { select: "all", path: "auto" })).toBe(
+      'missing required query parameter "persona" [query-param]\nbody.age must be number [type]',
+    );
+  });
+
   it("byCode returns the first leaf matching the highest-priority listed code", () => {
     const tree = createBranchError("request", [], "request invalid", [
       createLeafError("type", ["body", "age"], "must be number"),

@@ -1,4 +1,12 @@
-import { collectLeaves, joinPath, walkErrors, type ValidationError } from "./errors.js";
+import {
+  SELF_LOCATING_ERROR_CODES,
+  collectLeaves,
+  joinPath,
+  walkErrors,
+  type ValidationError,
+} from "./errors.js";
+
+const SELF_LOCATING = new Set<string>(SELF_LOCATING_ERROR_CODES);
 
 /**
  * Options accepted by the text/flat formatters.
@@ -136,6 +144,18 @@ export interface FormatSummaryOptions {
    * on single-leaf modes (which never include the code).
    */
   includeCode?: boolean;
+  /**
+   * Path-prefix policy. `"always"` (the default) prefixes every leaf
+   * with its dotted path. `"auto"` drops the prefix for leaves whose
+   * code is in {@link SELF_LOCATING_ERROR_CODES}, the HTTP-level codes
+   * whose message already names the failing parameter / body / check,
+   * so `query.persona missing required query parameter "persona"`
+   * renders as `missing required query parameter "persona"`.
+   * Schema-keyword leaves (`type`, `enum`, ...) keep the prefix; their
+   * generic messages need it. Applies to single-leaf modes and to each
+   * line under `select: "all"`.
+   */
+  path?: "always" | "auto";
 }
 
 /**
@@ -155,6 +175,11 @@ export interface FormatSummaryOptions {
  *   each rendered as `<dotted-path> <message> [<code>]`. The trailing
  *   ` [<code>]` is suppressed when {@link FormatSummaryOptions.includeCode}
  *   is `false`. Tune both for `eov`-style flat output.
+ *
+ * In both shapes, {@link FormatSummaryOptions.path} `: "auto"` drops the
+ * dotted-path prefix on leaves whose message already names its location
+ * (the {@link SELF_LOCATING_ERROR_CODES} family), avoiding renderings
+ * like `query.persona missing required query parameter "persona"`.
  *
  * For the indented full-tree view, use {@link formatText}; for the raw
  * JSON-safe object, use {@link toJsonObject}.
@@ -180,6 +205,11 @@ export interface FormatSummaryOptions {
  * formatSummary(rootError, { select: { byCode: ["content-type", "required"] } });
  * // The first content-type leaf if any, else the first required leaf,
  * // else the first leaf overall.
+ *
+ * formatSummary(missingParamError, { path: "auto" });
+ * // "missing required query parameter \"persona\"" (no `query.persona`
+ * // prefix; the message locates itself). Value errors keep the prefix:
+ * // "body.users[0].email must match format \"email\"".
  * ```
  *
  * @public
@@ -189,6 +219,9 @@ export function formatSummary(
   options: FormatSummaryOptions = {},
 ): string {
   const select = options.select ?? "first";
+  const path = options.path ?? "always";
+  const locationOf = (leaf: ValidationError): string =>
+    path === "auto" && SELF_LOCATING.has(leaf.code) ? "" : joinPath(leaf.path);
   // Accept either a single tree root or the flat leaf list the default
   // (flat-output) validator returns. collectLeaves defines a leaf as any
   // node with no children, so a single-leaf root yields one entry; an
@@ -202,7 +235,7 @@ export function formatSummary(
     const includeCode = options.includeCode ?? true;
     const lines: string[] = [];
     for (const leaf of leaves) {
-      const location = joinPath(leaf.path);
+      const location = locationOf(leaf);
       const pathPart = location.length > 0 ? `${location} ` : "";
       const codePart = includeCode ? ` [${leaf.code}]` : "";
       lines.push(`${pathPart}${leaf.message}${codePart}`);
@@ -225,7 +258,7 @@ export function formatSummary(
     }
   }
 
-  const location = joinPath(chosen.path);
+  const location = locationOf(chosen);
   return location.length > 0 ? `${location} ${chosen.message}` : chosen.message;
 }
 

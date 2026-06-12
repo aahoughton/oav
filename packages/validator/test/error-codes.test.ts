@@ -1,11 +1,12 @@
 import {
   BUILT_IN_ERROR_CODES,
+  SELF_LOCATING_ERROR_CODES,
   walkErrors,
   type OpenAPIDocument,
   type ValidationError,
 } from "@oav/core";
 import { describe, expect, it } from "vitest";
-import { createValidator } from "./fixtures.js";
+import { createValidator, leafCodes } from "./fixtures.js";
 
 /**
  * Cross-check between actual emitted error codes and the documented
@@ -328,5 +329,201 @@ describe("BuiltInErrorParams registry cross-check", () => {
       ),
       "header-param",
     );
+  });
+});
+
+describe("self-locating message contract (SELF_LOCATING_ERROR_CODES)", () => {
+  // The contract documented on SELF_LOCATING_ERROR_CODES: every leaf
+  // emitted under one of these codes locates the error in its message
+  // alone, so formatSummary's `path: "auto"` drops no information. A
+  // message-wording change that stops naming the location must fail
+  // here, not regress downstream renderers silently. The corpus drives
+  // every code in the set, including the rarer *-param modes (cookie
+  // missing, path-param content-parse).
+
+  function contractSpec(): OpenAPIDocument {
+    return {
+      openapi: "3.1.0",
+      info: { title: "contract", version: "1" },
+      components: {
+        securitySchemes: {
+          ApiKey: { type: "apiKey", name: "X-Api-Key", in: "header" },
+        },
+      },
+      paths: {
+        "/items/{id}": {
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "integer" } }],
+          get: {
+            parameters: [
+              { name: "fields", in: "query", required: true, schema: { type: "string" } },
+              { name: "X-Tenant", in: "header", required: true, schema: { type: "string" } },
+              { name: "session", in: "cookie", required: true, schema: { type: "string" } },
+            ],
+            responses: {
+              "200": {
+                description: "ok",
+                headers: { "X-Rate": { required: true, schema: { type: "string" } } },
+                content: { "application/json": { schema: { type: "object" } } },
+              },
+            },
+          },
+          post: {
+            requestBody: {
+              required: true,
+              content: { "application/json": { schema: { type: "object" } } },
+            },
+            responses: { "200": { description: "ok" } },
+          },
+        },
+        "/blob/{data}": {
+          get: {
+            parameters: [
+              {
+                name: "data",
+                in: "path",
+                required: true,
+                content: { "application/json": { schema: { type: "object" } } },
+              },
+            ],
+            responses: { "200": { description: "ok" } },
+          },
+        },
+        "/secure": {
+          get: { security: [{ ApiKey: [] }], responses: { "200": { description: "ok" } } },
+        },
+      },
+    };
+  }
+
+  function namesItsLocation(leaf: ValidationError): boolean {
+    switch (leaf.code) {
+      // Empty-path codes: there is no prefix to drop.
+      case "route":
+      case "method":
+      case "status":
+        return leaf.path.length === 0;
+      case "body":
+        return leaf.message.includes("body");
+      case "content-type":
+        return leaf.message.includes("Content-Type");
+      case "security":
+        return leaf.message.includes("security");
+      // *-param: the message quotes the parameter name.
+      default:
+        return leaf.message.includes(`"${String((leaf.params as { name?: unknown }).name)}"`);
+    }
+  }
+
+  it("every emitted self-locating leaf names its location in its message", () => {
+    const selfLocating = new Set<string>(SELF_LOCATING_ERROR_CODES);
+    const v = createValidator(contractSpec(), {
+      strictQueryParameters: true,
+      validateSecurity: "shape",
+    });
+    const trees: (ValidationError | null)[] = [
+      v.validateRequest({ method: "GET", path: "/nope" }), // route
+      v.validateRequest({ method: "DELETE", path: "/items/1" }), // method
+      // query-param / header-param / cookie-param, all missing-required.
+      v.validateRequest({ method: "GET", path: "/items/1" }),
+      // query-param, unknown-key mode under strictQueryParameters.
+      v.validateRequest({
+        method: "GET",
+        path: "/items/1",
+        query: { fields: "id", bogus: "x" },
+        headers: { "x-tenant": "t" },
+        cookies: { session: "s" },
+      }),
+      v.validateRequest({ method: "POST", path: "/items/1", contentType: "application/json" }), // body
+      v.validateRequest({
+        method: "POST",
+        path: "/items/1",
+        contentType: "text/plain",
+        body: "x",
+      }), // content-type (request)
+      v.validateRequest({ method: "GET", path: "/blob/not-json" }), // path-param (content-parse)
+      v.validateRequest({ method: "GET", path: "/secure" }), // security
+      v.validateResponse({ method: "GET", path: "/items/1" }, { status: 500 }), // status
+      v.validateResponse(
+        { method: "GET", path: "/items/1" },
+        { status: 200, contentType: "text/plain", body: "x", headers: { "x-rate": "1" } },
+      ), // content-type (response)
+      v.validateResponse(
+        { method: "GET", path: "/items/1" },
+        { status: 200, contentType: "application/json", body: {}, headers: {} },
+      ), // header-param (response, missing required header)
+    ];
+
+    const observed = new Set<string>();
+    for (const tree of trees) {
+      if (tree === null) continue;
+      walkErrors(tree, (node) => {
+        if (!selfLocating.has(node.code)) return;
+        observed.add(node.code);
+        expect(node.children, `code=${node.code} must only appear as a leaf`).toEqual([]);
+        expect(
+          namesItsLocation(node),
+          `code=${node.code} message '${node.message}' does not name its location`,
+        ).toBe(true);
+      });
+    }
+
+    // Bidirectional: the corpus must actually surface every code in the
+    // set, so a new entry added without a reachable emission (or a
+    // fixture gone stale) fails loudly.
+    for (const code of SELF_LOCATING_ERROR_CODES) {
+      expect([...observed], `fixture corpus did not surface code=${code}`).toContain(code);
+    }
+  });
+
+  it("parameter value failures surface as schema-keyword codes, never *-param", () => {
+    // The other half of the contract: a *-param code never carries a
+    // generic value-error message. format / pattern / type failures on
+    // a parameter, including deserialized deepObject members, keep
+    // their keyword codes (where the path prefix is load-bearing).
+    const spec: OpenAPIDocument = {
+      openapi: "3.1.0",
+      info: { title: "v", version: "1" },
+      paths: {
+        "/search": {
+          get: {
+            parameters: [
+              { name: "limit", in: "query", required: true, schema: { type: "integer" } },
+              {
+                name: "tag",
+                in: "query",
+                required: true,
+                schema: { type: "string", pattern: "^[a-z]+$" },
+              },
+              {
+                name: "filter",
+                in: "query",
+                required: true,
+                style: "deepObject",
+                explode: true,
+                schema: {
+                  type: "object",
+                  required: ["depth"],
+                  properties: { depth: { type: "integer" } },
+                },
+              },
+            ],
+            responses: { "200": { description: "ok" } },
+          },
+        },
+      },
+    };
+    const v = createValidator(spec);
+    const err = v.validateRequest({
+      method: "GET",
+      path: "/search",
+      query: { limit: "abc", tag: "UPPER", "filter[depth]": "xyz" },
+    });
+    expect(err).not.toBeNull();
+    const codes = leafCodes(err);
+    expect(codes).toContain("type"); // limit=abc, filter[depth]=xyz
+    expect(codes).toContain("pattern"); // tag=UPPER
+    for (const code of codes) {
+      expect(SELF_LOCATING_ERROR_CODES).not.toContain(code);
+    }
   });
 });

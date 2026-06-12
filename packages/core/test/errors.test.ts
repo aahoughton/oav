@@ -1,5 +1,7 @@
 import { describe, expect, it, expectTypeOf } from "vitest";
 import {
+  BUILT_IN_ERROR_CODES,
+  SELF_LOCATING_ERROR_CODES,
   collectLeaves,
   createBranchError,
   createError,
@@ -169,6 +171,26 @@ describe("BuiltInErrorParams", () => {
     if (err.code === "required") {
       const p = err.params as ErrorParamsFor<"required">;
       expect(p.missing).toBe("name");
+    }
+  });
+});
+
+describe("SELF_LOCATING_ERROR_CODES", () => {
+  it("is a subset of BUILT_IN_ERROR_CODES", () => {
+    const documented = new Set<string>(BUILT_IN_ERROR_CODES);
+    for (const code of SELF_LOCATING_ERROR_CODES) {
+      expect(documented).toContain(code);
+    }
+  });
+
+  it("excludes the branch-only and schema-keyword codes", () => {
+    const set = new Set<string>(SELF_LOCATING_ERROR_CODES);
+    // Branches never reach a leaf renderer.
+    expect(set).not.toContain("request");
+    expect(set).not.toContain("response");
+    // Keyword leaves carry generic messages; the path is load-bearing.
+    for (const code of ["type", "enum", "format", "required", "pattern"]) {
+      expect(set).not.toContain(code);
     }
   });
 });

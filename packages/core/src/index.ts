@@ -1,5 +1,6 @@
 export {
   BUILT_IN_ERROR_CODES,
+  SELF_LOCATING_ERROR_CODES,
   collectLeaves,
   createBranchError,
   createError,

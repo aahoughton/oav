@@ -81,7 +81,7 @@ Detail:
 - **`formatText(err, { maxDepth?, indent? })`**: indented
   human-readable tree. One line per node.
 
-- **`formatSummary(err, { select? })`**: render the tree as a
+- **`formatSummary(err, { select?, path? })`**: render the tree as a
   string. Default picks one leaf and renders it as
   `<dotted-path> <message>` (e.g. `"body.users[0].email must match
 format \"email\""`). Selection options:
@@ -98,6 +98,14 @@ format \"email\""`). Selection options:
     highest-priority listed code; falls back to `"first"` if no
     match. Useful when the wire format wants to surface specific
     failure categories first.
+
+  `path: "auto"` drops the dotted-path prefix on leaves whose message
+  already names its location (the `SELF_LOCATING_ERROR_CODES` family:
+  missing parameter / body, unknown query key, content-type,
+  security), turning `query.persona missing required query parameter
+  "persona"` into `missing required query parameter "persona"` while
+  value errors keep their path. Default `"always"` keeps the prefix
+  everywhere.
 
 - **`toJsonObject(err)`**: deep copy that round-trips losslessly
   through `JSON.stringify` / `JSON.parse`.
