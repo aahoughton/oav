@@ -243,6 +243,47 @@ export const BUILT_IN_ERROR_CODES = [
 ] as const satisfies ReadonlyArray<keyof BuiltInErrorParams>;
 
 /**
+ * The subset of {@link BUILT_IN_ERROR_CODES} whose leaves carry
+ * self-locating messages: the message alone names what failed and
+ * where (`missing required query parameter "persona"`, `missing
+ * required request body`), so prefixing the leaf's path restates it.
+ * {@link formatSummary} consults this set under `path: "auto"`.
+ *
+ * The contract renderers may rely on: a leaf with one of these codes
+ * always locates the error in its message. In particular, parameter
+ * VALUE failures (a query param failing `format` or `pattern`, a
+ * mis-serialized deepObject) are never reported under a `*-param`
+ * code; they surface as schema-keyword leaves (`type`, `format`, ...)
+ * whose generic message needs the path prefix. The `*-param` codes
+ * cover only the validator-emitted modes: missing-required, unknown
+ * key under `strictQueryParameters`, and `content` media-type parse
+ * failures, all of which quote the parameter name. `route`, `method`,
+ * and `status` belong here trivially (their paths are empty).
+ *
+ * The branch codes `request` and `response` are excluded: they never
+ * appear as leaves, so summary renderers never see them.
+ *
+ * Guarded by tests on both sides: this package asserts the subset
+ * relation, and `@oav/validator`'s error-codes suite asserts every
+ * emitted leaf with one of these codes names its location in the
+ * message.
+ *
+ * @public
+ */
+export const SELF_LOCATING_ERROR_CODES = [
+  "route",
+  "method",
+  "body",
+  "content-type",
+  "status",
+  "path-param",
+  "query-param",
+  "header-param",
+  "cookie-param",
+  "security",
+] as const satisfies ReadonlyArray<keyof BuiltInErrorParams>;
+
+/**
  * Type helper that narrows `ValidationError.params` for a specific
  * `code`. The generic parameter must be a key of
  * {@link BuiltInErrorParams}.

@@ -222,6 +222,35 @@ the trailing ` [<code>]`. Both are ignored under single-leaf modes
 (`first` / `deepest` / `byCode`). See
 [`FormatSummaryOptions`](../packages/core/src/format.ts) for the type.
 
+### Avoiding the path/message stutter on missing-parameter errors
+
+The leaves `oav`'s validator emits for HTTP-level failures (missing
+required parameter or body, unknown query key, content-type mismatch,
+security) name their location in the message itself, so the default
+`<path> <message>` rendering repeats the field name:
+
+```
+query.persona missing required query parameter "persona"
+```
+
+`eov`/ajv never stutter here because they point the path at the
+parent. `oav` keeps the leaf path on the field (it's the
+machine-stable handle; `params.name` carries the name too) and fixes
+the rendering instead. `path: "auto"` drops the prefix for exactly
+those self-locating leaves and keeps it for value errors, where the
+path is load-bearing:
+
+```ts
+formatSummary(err, { path: "auto" });
+// missing required query parameter "persona"     (was: query.persona missing ...)
+// body.users[0].email must match format "email"  (unchanged)
+```
+
+The affected code set is published as `SELF_LOCATING_ERROR_CODES`;
+its TSDoc states the contract (a leaf with one of these codes always
+locates the error in its message; parameter value failures always
+carry schema-keyword codes instead).
+
 One delta from `eov` remains. `oav` uses dotted paths
 (`body.users[0].email`) where `eov` uses slash-separated
 (`request/body/users/0/email`). If your client pattern-matches on the
