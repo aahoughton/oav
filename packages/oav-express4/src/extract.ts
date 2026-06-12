@@ -18,7 +18,10 @@ import type { HttpRequest } from "@oav/core";
  *
  * Pairs with sibling `httpRequestFromExpress` in `oav-express5` and
  * `httpRequestFromFastify` in `oav-fastify`: same name pattern as
- * oav's existing {@link httpRequestFromFetch}.
+ * oav's existing {@link httpRequestFromFetch}. The Fetch variant
+ * alone is async and returns `{ httpRequest, body }` (it has to read
+ * the body stream); the framework variants, this one included, are
+ * sync and return a bare `HttpRequest`.
  *
  * @public
  */

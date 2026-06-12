@@ -67,6 +67,13 @@ export interface FetchRequestOptions {
  * `request.body` is exhausted. Callers that need to re-read the body
  * should use `request.clone()` before calling.
  *
+ * Shape note: this is the one `httpRequestFrom*` extractor that is
+ * async and returns `{ httpRequest, body }` (reading the stream is
+ * async, and the parsed body is surfaced for the caller to consume).
+ * The framework siblings (`httpRequestFromExpress`,
+ * `httpRequestFromFastify`) read an already-parsed body and so are
+ * sync, returning a bare `HttpRequest`.
+ *
  * @public
  */
 export async function httpRequestFromFetch(
@@ -121,6 +128,12 @@ export async function readBodyFromFetch(request: Request): Promise<unknown> {
  * framework-agnostic {@link HttpResponse} shape, plus the parsed
  * body. Mirrors {@link httpRequestFromFetch}; same content-type
  * dispatch rules, same one-shot-stream warning.
+ *
+ * The only `httpResponseFrom*` extractor, by design: the framework
+ * adapters intercept responses inside `validateResponses` (a
+ * `res.send` wrap on Express, an `onSend` hook on Fastify), so a
+ * standalone response extractor exists only where responses arrive
+ * as first-class values, the Fetch world.
  *
  * @public
  */
