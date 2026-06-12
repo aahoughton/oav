@@ -47,3 +47,14 @@ For Next.js, Hono, Bun, and Deno, use the Web Standards adapter
 (`httpRequestFromFetch`, `validateFetchRequest`) directly; no
 framework-specific package. See
 [`docs/integration.md`](./integration.md).
+
+The `httpRequestFrom*` family is not shape-uniform across the
+boundary: the Fetch variant is async and returns
+`{ httpRequest, body }` (it reads the body stream), while the
+framework variants (`httpRequestFromExpress`,
+`httpRequestFromFastify`) are sync and return a bare `HttpRequest`.
+`httpResponseFromFetch` has no framework sibling by design: the
+Express and Fastify adapters intercept responses inside
+`validateResponses` (a `res.send` wrap / `onSend` hook), so a
+standalone response extractor exists only for the Fetch world,
+where responses are first-class values.
