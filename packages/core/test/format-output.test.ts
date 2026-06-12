@@ -17,8 +17,12 @@ describe("formatError", () => {
     expect(JSON.parse(out).code).toBe("request");
   });
 
-  it("renders as flat one-line-per-leaf", () => {
-    expect(formatError(sample, "flat").split("\n")).toHaveLength(1);
+  it("renders as summary one-line-per-leaf", () => {
+    expect(formatError(sample, "summary").split("\n")).toHaveLength(1);
+  });
+
+  it('accepts "flat" as a deprecated alias of "summary"', () => {
+    expect(formatError(sample, "flat")).toBe(formatError(sample, "summary"));
   });
 
   it("respects depth truncation in text mode", () => {
@@ -40,7 +44,7 @@ describe("formatError", () => {
       createLeafError("required", ["body"], "missing name"),
     ];
     const root = createBranchError("request", [], "request validation failed", flat);
-    expect(formatError(root, "flat").split("\n")).toHaveLength(2);
+    expect(formatError(root, "summary").split("\n")).toHaveLength(2);
     expect(JSON.parse(formatError(root, "json")).children).toHaveLength(2);
   });
 });
@@ -49,6 +53,10 @@ describe("isOutputFormat", () => {
   it("narrows valid names", () => {
     expect(isOutputFormat("text")).toBe(true);
     expect(isOutputFormat("json")).toBe(true);
+    expect(isOutputFormat("summary")).toBe(true);
+  });
+
+  it("accepts the deprecated flat alias", () => {
     expect(isOutputFormat("flat")).toBe(true);
   });
 

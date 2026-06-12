@@ -56,7 +56,7 @@ below for the expected shape.
 
 | Flag                                          | Command                           | Meaning                                                                                              |
 | --------------------------------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `--format text\|json\|flat`                   | validate                          | Error rendering. Default `text`.                                                                     |
+| `--format text\|json\|summary`                | validate                          | Error rendering. Default `text`. `summary` is one line per leaf; `flat` is its deprecated alias.     |
 | `--depth <n>`                                 | validate                          | Truncate error tree depth (text format).                                                             |
 | `--overlay <file>`                            | resolve / validate / compile-spec | Repeatable; applies overlays in order.                                                               |
 | `--lint`                                      | resolve                           | Run spec-hygiene checks; findings to stderr (or JSON envelope with `--envelope json`).               |

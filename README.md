@@ -256,7 +256,7 @@ oav compile-schema schema.json -o validator.mjs             # JSON Schema -> sta
 oav compile-spec openapi.yaml  -o validator.mjs             # OpenAPI   -> standalone HTTP validator (edge / Lambda)
 ```
 
-Flags: `--format text|json|flat`, `--depth n`, `--overlay file`
+Flags: `--format text|json|summary`, `--depth n`, `--overlay file`
 (repeatable), `-o file`, `--quiet`, `--dialect` (compile-schema /
 compile-spec), `--requests-only` (compile-spec), `--only METHOD PATH`
 (compile-spec, repeatable). See

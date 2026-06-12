@@ -269,17 +269,36 @@ describe("buildProgram: argv-level", () => {
     expect(parsed.code).toBeDefined();
   });
 
-  it("validate --format flat on the error path emits one error per line", async () => {
+  it("validate --format summary on the error path emits one error per line", async () => {
+    const mem = memoryIo([["spec.json", spec]], [["body.json", JSON.stringify({})]]);
+    const out = await runCli(
+      [
+        "validate",
+        "spec.json",
+        "--path",
+        "POST /pets",
+        "--body",
+        "body.json",
+        "--format",
+        "summary",
+      ],
+      mem,
+    );
+    expect(out.exitCode).toBe(1);
+    const lines = out.stdout.split("\n").filter((l) => l.length > 0);
+    expect(lines.length).toBeGreaterThan(0);
+    // Summary format puts each leaf on its own line; no nested indentation.
+    for (const line of lines) expect(line.startsWith(" ")).toBe(false);
+  });
+
+  it("validate --format flat still parses as a deprecated alias of summary", async () => {
     const mem = memoryIo([["spec.json", spec]], [["body.json", JSON.stringify({})]]);
     const out = await runCli(
       ["validate", "spec.json", "--path", "POST /pets", "--body", "body.json", "--format", "flat"],
       mem,
     );
     expect(out.exitCode).toBe(1);
-    const lines = out.stdout.split("\n").filter((l) => l.length > 0);
-    expect(lines.length).toBeGreaterThan(0);
-    // Flat format puts each leaf on its own line; no nested indentation.
-    for (const line of lines) expect(line.startsWith(" ")).toBe(false);
+    expect(out.stdout.length).toBeGreaterThan(0);
   });
 });
 

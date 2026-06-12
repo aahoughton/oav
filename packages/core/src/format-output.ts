@@ -5,27 +5,44 @@ import type { ValidationError } from "./errors.js";
  * Single source of truth for the CLI's `--format` flag. The
  * {@link OutputFormat} union and the Commander parser validator both
  * derive from this tuple; add a new name here and extend
- * {@link formatError} to wire it up end-to-end.
+ * {@link formatError} to wire it up end-to-end. Deprecated aliases
+ * (accepted but not advertised in help text) live in
+ * `DEPRECATED_OUTPUT_FORMATS` instead.
  *
  * @public
  */
-export const KNOWN_OUTPUT_FORMATS = ["text", "json", "flat"] as const;
+export const KNOWN_OUTPUT_FORMATS = ["text", "json", "summary"] as const;
+
+// Accepted by isOutputFormat / formatError but kept out of
+// KNOWN_OUTPUT_FORMATS so CLI help text stops advertising them.
+const DEPRECATED_OUTPUT_FORMATS = ["flat"] as const;
 
 /**
  * Supported built-in output formats.
  *
+ * `"flat"` is a deprecated alias of `"summary"`, kept for one major.
+ * It named a rendering style (one line per leaf) with the same word
+ * that `ValidatorOptions.output: "flat"` uses for an unrelated result
+ * shape (the errors-list shape vs a tree); `"summary"` pairs the
+ * format name with {@link formatSummary}, the renderer behind it.
+ *
  * @public
  */
-export type OutputFormat = (typeof KNOWN_OUTPUT_FORMATS)[number];
+export type OutputFormat =
+  | (typeof KNOWN_OUTPUT_FORMATS)[number]
+  | (typeof DEPRECATED_OUTPUT_FORMATS)[number];
 
 /**
  * Type guard: narrows an arbitrary string to {@link OutputFormat} iff
- * it appears in {@link KNOWN_OUTPUT_FORMATS}.
+ * it appears in {@link KNOWN_OUTPUT_FORMATS} or is a deprecated alias.
  *
  * @public
  */
 export function isOutputFormat(value: string): value is OutputFormat {
-  return (KNOWN_OUTPUT_FORMATS as readonly string[]).includes(value);
+  return (
+    (KNOWN_OUTPUT_FORMATS as readonly string[]).includes(value) ||
+    (DEPRECATED_OUTPUT_FORMATS as readonly string[]).includes(value)
+  );
 }
 
 /**
@@ -70,7 +87,8 @@ export function formatError(
   switch (renderer) {
     case "json":
       return JSON.stringify(toJsonObject(err), null, 2);
-    case "flat":
+    case "summary":
+    case "flat": // deprecated alias of "summary"
       return formatSummary(err, { select: "all" });
     case "text":
     default:
