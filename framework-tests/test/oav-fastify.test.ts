@@ -468,3 +468,49 @@ describe("oav-fastify integration: validateResponses log-and-continue", () => {
     expect(logged[0]).toBeGreaterThan(0);
   });
 });
+
+describe("oav-fastify integration: validateResponses with requireResponseBody", () => {
+  let app: FastifyInstance;
+
+  beforeAll(async () => {
+    const validator = createValidator(widgetSpec(), { requireResponseBody: true });
+    app = Fastify();
+    app.addHook("onSend", validateResponses(validator));
+    app.setErrorHandler((err: Error, _request, reply) => {
+      if (err instanceof ResponseValidationError) {
+        reply.code(err.statusCode).send({ responseInvalid: true });
+        return;
+      }
+      reply.code(500).send({ error: err.message });
+    });
+    app.get("/widgets/:id", async (request, reply) => {
+      const { id } = request.params as { id: string };
+      if (id === "empty") {
+        return reply.header("content-type", "application/json").send(); // 200 declares content; body absent
+      }
+      return { id };
+    });
+    await app.ready();
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it("an empty body on a content-declaring status is a finding (500)", async () => {
+    const r = await app.inject({ method: "GET", url: "/widgets/empty" });
+    expect(r.statusCode).toBe(500);
+    expect((r.json() as { responseInvalid: boolean }).responseInvalid).toBe(true);
+  });
+
+  it("a present body still passes", async () => {
+    const r = await app.inject({ method: "GET", url: "/widgets/ok" });
+    expect(r.statusCode).toBe(200);
+    expect(r.json()).toEqual({ id: "ok" });
+  });
+
+  it("HEAD against the GET operation stays exempt even with an absent body", async () => {
+    const r = await app.inject({ method: "HEAD", url: "/widgets/empty" });
+    expect(r.statusCode).toBe(200);
+  });
+});

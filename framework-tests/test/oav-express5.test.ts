@@ -743,3 +743,48 @@ describe("oav-express5 integration: Express 5 specifics", () => {
     expect(captured[0]?.message).toBe("extractor exploded");
   });
 });
+
+describe("oav-express5 integration: validateResponses with requireResponseBody", () => {
+  let server: Server;
+  let baseUrl: string;
+
+  beforeAll(async () => {
+    const validator = createValidator(widgetSpec(), { requireResponseBody: true });
+    const app = express();
+    app.use(validateResponses(validator));
+    app.get("/widgets/:id", (req, res) => {
+      if (req.params.id === "empty") return res.json(); // 200 declares content; body absent
+      return res.json({ id: req.params.id });
+    });
+    app.use(((err: Error, _req, res, next) => {
+      if (err instanceof ResponseValidationError) {
+        res.status(err.statusCode).json({ responseInvalid: true });
+        return;
+      }
+      void next;
+    }) as express.ErrorRequestHandler);
+    ({ server, baseUrl } = await listenOnZero(app));
+  });
+
+  afterAll(async () => {
+    await closeServer(server);
+  });
+
+  it("an empty body on a content-declaring status is a finding (500)", async () => {
+    const r = await fetch(`${baseUrl}/widgets/empty`);
+    expect(r.status).toBe(500);
+    const body = (await r.json()) as { responseInvalid: boolean };
+    expect(body.responseInvalid).toBe(true);
+  });
+
+  it("a present body still passes", async () => {
+    const r = await fetch(`${baseUrl}/widgets/ok`);
+    expect(r.status).toBe(200);
+    expect((await r.json()) as unknown).toEqual({ id: "ok" });
+  });
+
+  it("HEAD against the GET operation stays exempt even with an absent body", async () => {
+    const r = await fetch(`${baseUrl}/widgets/empty`, { method: "HEAD" });
+    expect(r.status).toBe(200);
+  });
+});

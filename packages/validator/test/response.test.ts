@@ -194,3 +194,85 @@ describe("validateResponse", () => {
     expect(leafAt(err, "body.password")).toBeDefined();
   });
 });
+
+describe("requireResponseBody", () => {
+  const spec: OpenAPIDocument = {
+    openapi: "3.1.0",
+    info: { title: "t", version: "1" },
+    paths: {
+      "/users/{id}": {
+        get: {
+          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+          responses: {
+            "200": {
+              description: "ok",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["id"],
+                    properties: { id: { type: "string" } },
+                  },
+                },
+              },
+            },
+            "201": { description: "no declared content" },
+            "204": {
+              description: "bodyless status that still declares content",
+              content: { "application/json": { schema: { type: "object" } } },
+            },
+            "304": {
+              description: "not modified, content declared",
+              content: { "application/json": { schema: { type: "object" } } },
+            },
+          },
+        },
+      },
+    },
+  };
+  const req = { method: "GET", path: "/users/u1" };
+
+  it("is off by default: declared content with an absent body passes", () => {
+    const v = createValidator(spec);
+    expect(v.validateResponse(req, { status: 200, contentType: "application/json" })).toBeNull();
+  });
+
+  it("emits a body leaf when declared content has no body", () => {
+    const v = createValidator(spec, { requireResponseBody: true });
+    const err = v.validateResponse(req, { status: 200, contentType: "application/json" });
+    expect(leafCodes(err)).toContain("body");
+    expect(leafAt(err, "body")?.message).toContain("declares content but no body was sent");
+  });
+
+  it("a present, valid body still passes", () => {
+    const v = createValidator(spec, { requireResponseBody: true });
+    expect(
+      v.validateResponse(req, {
+        status: 200,
+        contentType: "application/json",
+        body: { id: "u1" },
+      }),
+    ).toBeNull();
+  });
+
+  it("does not fire when the matched response declares no content", () => {
+    const v = createValidator(spec, { requireResponseBody: true });
+    expect(v.validateResponse(req, { status: 201 })).toBeNull();
+  });
+
+  it("exempts HEAD answered by the GET operation", () => {
+    const v = createValidator(spec, { requireResponseBody: true });
+    expect(
+      v.validateResponse(
+        { method: "HEAD", path: "/users/u1" },
+        { status: 200, contentType: "application/json" },
+      ),
+    ).toBeNull();
+  });
+
+  it("exempts bodyless statuses (204, 304) even with declared content", () => {
+    const v = createValidator(spec, { requireResponseBody: true });
+    expect(v.validateResponse(req, { status: 204 })).toBeNull();
+    expect(v.validateResponse(req, { status: 304 })).toBeNull();
+  });
+});
