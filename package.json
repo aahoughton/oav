@@ -146,11 +146,11 @@
     "prepublishOnly": "pnpm test"
   },
   "devDependencies": {
-    "@types/node": "25.9.2",
+    "@types/node": "25.9.3",
     "commander": "15.0.0",
-    "esbuild": "0.28.0",
-    "oxfmt": "0.53.0",
-    "oxlint": "1.68.0",
+    "esbuild": "0.28.1",
+    "oxfmt": "0.54.0",
+    "oxlint": "1.69.0",
     "tsup": "8.5.1",
     "typescript": "5.9.3",
     "vitest": "4.1.8",
