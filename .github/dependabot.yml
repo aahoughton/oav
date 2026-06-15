@@ -67,6 +67,32 @@ updates:
           - minor
           - patch
 
+  # performance/mem-bench is its own isolated pnpm root (own
+  # pnpm-lock.yaml), nested under performance/ but not part of its
+  # install. Dependabot scans each declared directory's lockfile
+  # independently and does not recurse, so the nested root needs its
+  # own entry or its advisories never get auto-PRs.
+  - package-ecosystem: npm
+    directory: "/performance/mem-bench"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+      prefix-development: chore
+      include: scope
+    ignore:
+      # TypeScript majors cross every file in the tree at once and
+      # routinely land breaking type-narrowing changes. Opt out of
+      # auto-PRs; bump it deliberately when the time is right.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+    groups:
+      dev-minor-and-patch:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+
   - package-ecosystem: npm
     directory: "/conformance"
     schedule:
