@@ -13,7 +13,7 @@
     "bench:anatomy": "node --expose-gc --import tsx error-tree-anatomy.ts"
   },
   "devDependencies": {
-    "@apidevtools/json-schema-ref-parser": "^15.3.5",
+    "@apidevtools/json-schema-ref-parser": "^15.3.6",
     "ajv": "^8.20.0",
     "tinybench": "^6.0.2",
     "tsx": "^4.22.4",
