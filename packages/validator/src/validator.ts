@@ -455,6 +455,7 @@ export interface ValidatorStats {
  * - **Path filtering**: {@link ValidatorOptions.ignoreUndocumented},
  *   {@link ValidatorOptions.ignorePaths}.
  * - **Query strictness**: {@link ValidatorOptions.strictQueryParameters}.
+ * - **Response strictness**: {@link ValidatorOptions.requireResponseBody}.
  * - **Version mismatch**: {@link ValidatorOptions.onUnknownVersion}.
  * - **Warn sink**: {@link ValidatorOptions.warn}.
  *
@@ -628,6 +629,25 @@ export interface ValidatorOptions {
   validateSecurity?: "off" | "shape" | "strict";
   /** When `true`, reject unknown query parameters (default: `false`). */
   strictQueryParameters?: boolean;
+  /**
+   * When `true`, `validateResponse` emits a `body` finding when the
+   * matched response declares content but the response carries no body
+   * (`res.body === undefined`). Catches the common bug where a handler
+   * sends a 200 with `Content-Type: application/json` and an empty
+   * body (`res.json(user)` after a lookup returned `undefined`); the
+   * client then fails at parse time instead of the server failing
+   * during development.
+   *
+   * Opt-in because OpenAPI takes no position: request bodies have a
+   * `required` flag, response content does not, so an absent-body rule
+   * is the validator's opinion, not the spec's. Default: `false`.
+   *
+   * Exemptions (never a finding even when set): HEAD requests (the
+   * router answers HEAD with the GET operation, whose declared content
+   * is correctly absent per RFC 9110 9.3.2), and statuses 204, 205,
+   * and 304, which are bodyless by status semantics.
+   */
+  requireResponseBody?: boolean;
   /**
    * When `true`, an unmatched path no longer produces a `route` error;
    * `validateRequest` / `validateResponse` report the request as valid
@@ -1097,6 +1117,29 @@ export function createValidator(
             if (!r.valid && r.error !== undefined) {
               children.push(r.error);
             }
+          }
+        }
+
+        if (responseCompiled.bodySchemas.size > 0 && res.body === undefined) {
+          // Opt-in absent-body finding. HEAD answers against the GET
+          // operation, whose declared content is correctly absent
+          // (RFC 9110 9.3.2); 204 / 205 / 304 are bodyless by status
+          // semantics regardless of declared content.
+          if (
+            options.requireResponseBody === true &&
+            req.method.toUpperCase() !== "HEAD" &&
+            res.status !== 204 &&
+            res.status !== 205 &&
+            res.status !== 304
+          ) {
+            children.push(
+              createLeafError(
+                "body",
+                ["body"],
+                `response for status ${statusKey} declares content but no body was sent`,
+                {},
+              ),
+            );
           }
         }
 
