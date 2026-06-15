@@ -15,7 +15,8 @@
   },
   "pnpm": {
     "overrides": {
-      "@aahoughton/oav-core": "file:../.."
+      "@aahoughton/oav-core": "file:../..",
+      "esbuild": ">=0.28.1"
     }
   }
 }
