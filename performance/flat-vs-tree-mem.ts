@@ -2,6 +2,13 @@
  * Quick retained-memory comparison of tree mode vs flat mode (#314) on
  * a broadly-invalid large array. Run:
  *   node --expose-gc --import tsx flat-vs-tree-mem.ts
+ *
+ * Both modes collect every error (maxErrors: Infinity); the cap is the
+ * real memory lever, this isolates the per-error cost of the two shapes.
+ *
+ * Headline finding (N=200000, 1.2M errors): tree retains ~505MB vs flat
+ * ~396MB, so the tree shape is ~28% heavier per error. Both retain
+ * hundreds of MB at this scale; neither is free.
  */
 import { compileSchema, jsonSchemaDialect } from "../packages/schema/src/index.ts";
 import type { SchemaOrBoolean } from "../packages/core/src/index.ts";
