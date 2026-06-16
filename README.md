@@ -275,6 +275,10 @@ and picks the matching dialect. No per-request branching.
 | 3.1.x | JSON Schema 2020-12   | Assertive `format`                                          |
 | 3.2.x | JSON Schema 2020-12   | Same as 3.1 + the `QUERY` HTTP method                       |
 
+3.2 coverage is the Schema Object (unchanged from 3.1) plus `QUERY`.
+Other 3.2 document-level additions (`additionalOperations`,
+`in: querystring`, streaming media types) aren't recognized yet.
+
 Override via `createValidator(spec, { dialect })` to force or customize
 one of the built-in dialects (`jsonSchemaDialect`, `openapi31Dialect`,
 `oas30Dialect`). Unknown / missing `openapi` strings fall back to the
