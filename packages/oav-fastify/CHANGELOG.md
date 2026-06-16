@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.3.0](https://github.com/aahoughton/oav/compare/oav-fastify-v3.2.0...oav-fastify-v3.3.0) (2026-06-16)
+
+
+### Features
+
+* **validator:** opt-in requireResponseBody finding for absent declared response bodies ([#386](https://github.com/aahoughton/oav/issues/386)) ([475e87a](https://github.com/aahoughton/oav/commit/475e87a51647faa8b5ac1bbe6d32a004bdbc4d5f)), closes [#371](https://github.com/aahoughton/oav/issues/371)
+
+
+### Documentation
+
+* validateResponses bypass coverage + Fetch extractor shape notes ([#383](https://github.com/aahoughton/oav/issues/383)) ([9aecc1e](https://github.com/aahoughton/oav/commit/9aecc1eab594cd01991d297210aa8fe21e941420)), closes [#375](https://github.com/aahoughton/oav/issues/375)
+
 ## [3.2.0](https://github.com/aahoughton/oav/compare/oav-fastify-v3.1.0...oav-fastify-v3.2.0) (2026-06-11)
 
 
