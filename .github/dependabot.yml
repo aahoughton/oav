@@ -86,6 +86,13 @@ updates:
       # auto-PRs; bump it deliberately when the time is right.
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
+      # mem-bench deliberately benchmarks the eov server on Express 4
+      # (server-eov.mjs), pinned to express ^4 with express-openapi-validator.
+      # A 4 -> 5 major is a breaking change that would silently alter what
+      # the benchmark measures, and nothing under performance/ runs in CI to
+      # catch it. Keep 4.x patches flowing; bump the major by hand if ever.
+      - dependency-name: "express"
+        update-types: ["version-update:semver-major"]
     groups:
       dev-minor-and-patch:
         dependency-type: development
