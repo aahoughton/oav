@@ -55,10 +55,13 @@ updates:
       prefix-development: chore
       include: scope
     ignore:
-      # TypeScript majors cross every file in the tree at once and
-      # routinely land breaking type-narrowing changes. Opt out of
-      # auto-PRs; bump it deliberately when the time is right.
-      - dependency-name: "typescript"
+      # performance/ has no CI job (not type-checked or run), so a major
+      # bump of a benchmark dep (ajv, tinybench, ref-parser, tsx) lands
+      # unverified and could silently break or skew the benchmarks. Opt
+      # out of major auto-PRs entirely; minor/patch still flow. Bump a
+      # major by hand when revisiting the benchmark. Subsumes the
+      # TypeScript-major opt-out used elsewhere.
+      - dependency-name: "*"
         update-types: ["version-update:semver-major"]
     groups:
       dev-minor-and-patch:
@@ -81,17 +84,13 @@ updates:
       prefix-development: chore
       include: scope
     ignore:
-      # TypeScript majors cross every file in the tree at once and
-      # routinely land breaking type-narrowing changes. Opt out of
-      # auto-PRs; bump it deliberately when the time is right.
-      - dependency-name: "typescript"
-        update-types: ["version-update:semver-major"]
-      # mem-bench deliberately benchmarks the eov server on Express 4
-      # (server-eov.mjs), pinned to express ^4 with express-openapi-validator.
-      # A 4 -> 5 major is a breaking change that would silently alter what
-      # the benchmark measures, and nothing under performance/ runs in CI to
-      # catch it. Keep 4.x patches flowing; bump the major by hand if ever.
-      - dependency-name: "express"
+      # Like performance/ above, mem-bench has no CI job, so a major bump
+      # lands unverified. It also deliberately benchmarks the eov server on
+      # Express 4 (server-eov.mjs, express ^4 + express-openapi-validator):
+      # a 4 -> 5 major would silently change what the benchmark measures.
+      # Opt out of major auto-PRs entirely; minor/patch still flow. Bump a
+      # major by hand when revisiting the benchmark.
+      - dependency-name: "*"
         update-types: ["version-update:semver-major"]
     groups:
       dev-minor-and-patch:
