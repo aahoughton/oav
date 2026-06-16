@@ -37,10 +37,11 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import Ajv from "ajv/dist/2020.js";
 import { compileSchema, jsonSchemaDialect } from "../packages/schema/src/index.ts";
+import type { SchemaOrBoolean } from "../packages/core/src/index.ts";
 
 // ----- shared shape -----
 
-const SCHEMA = {
+const SCHEMA: SchemaOrBoolean = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
   type: "array",
   items: {
@@ -53,7 +54,7 @@ const SCHEMA = {
     },
     additionalProperties: false,
   },
-} as const;
+};
 
 type Engine = "oav-default" | "oav-maxErrors1" | "oav-predicate" | "ajv-default" | "ajv-allErrors";
 type Validity = "valid" | "invalid";
@@ -144,7 +145,7 @@ function runCell(engine: Engine, validity: Validity): CellResult {
         : engine === "oav-maxErrors1"
           ? ({ dialect: jsonSchemaDialect, maxErrors: 1 } as const)
           : ({ dialect: jsonSchemaDialect } as const);
-    const compiled = compileSchema(SCHEMA as Record<string, unknown>, opts);
+    const compiled = compileSchema(SCHEMA, opts);
     const res = compiled.validate(parsed) as boolean | { valid: boolean; truncated?: boolean };
     if (typeof res === "boolean") {
       valid = res;

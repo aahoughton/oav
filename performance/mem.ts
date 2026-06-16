@@ -30,7 +30,8 @@
  *   WARMUP (default 500)
  */
 
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, type ChildProcessByStdio } from "node:child_process";
+import type { Readable } from "node:stream";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -254,7 +255,7 @@ async function batchRun(
 // ----- server lifecycle -----
 
 interface ServerHandle {
-  proc: ChildProcessWithoutNullStreams;
+  proc: ChildProcessByStdio<null, Readable, Readable>;
   base: string;
 }
 

@@ -23,7 +23,7 @@
  */
 
 import { compileSchema, jsonSchemaDialect } from "../packages/schema/src/index.ts";
-import type { ValidationError } from "../packages/core/src/index.ts";
+import type { SchemaOrBoolean, ValidationError } from "../packages/core/src/index.ts";
 
 const SCHEMA = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
@@ -65,7 +65,11 @@ function main(): void {
   }
 
   const data = buildInvalid(N);
-  const v = compileSchema(SCHEMA as Record<string, unknown>, { dialect: jsonSchemaDialect });
+  const v = compileSchema(SCHEMA as SchemaOrBoolean, {
+    dialect: jsonSchemaDialect,
+    output: "tree",
+    maxErrors: Number.POSITIVE_INFINITY,
+  });
   const res = v.validate(data) as { valid: boolean; error?: ValidationError };
   const root = res.error;
   if (root === undefined) throw new Error("expected the payload to be invalid");
