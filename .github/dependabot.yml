@@ -55,10 +55,13 @@ updates:
       prefix-development: chore
       include: scope
     ignore:
-      # TypeScript majors cross every file in the tree at once and
-      # routinely land breaking type-narrowing changes. Opt out of
-      # auto-PRs; bump it deliberately when the time is right.
-      - dependency-name: "typescript"
+      # performance/ has no CI job (not type-checked or run), so a major
+      # bump of a benchmark dep (ajv, tinybench, ref-parser, tsx) lands
+      # unverified and could silently break or skew the benchmarks. Opt
+      # out of major auto-PRs entirely; minor/patch still flow. Bump a
+      # major by hand when revisiting the benchmark. Subsumes the
+      # TypeScript-major opt-out used elsewhere.
+      - dependency-name: "*"
         update-types: ["version-update:semver-major"]
     groups:
       dev-minor-and-patch:
