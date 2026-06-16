@@ -4,6 +4,7 @@
  *   node --expose-gc --import tsx flat-vs-tree-mem.ts
  */
 import { compileSchema, jsonSchemaDialect } from "../packages/schema/src/index.ts";
+import type { SchemaOrBoolean } from "../packages/core/src/index.ts";
 
 const SCHEMA = {
   type: "array",
@@ -55,10 +56,19 @@ function main(): void {
   }
   const mode = process.env.MODE ?? "tree";
   const data = buildInvalid(N);
-  const v = compileSchema(SCHEMA as Record<string, unknown>, {
-    dialect: jsonSchemaDialect,
-    ...(mode === "flat" ? { flat: true } : {}),
-  });
+  const schema = SCHEMA as SchemaOrBoolean;
+  const v =
+    mode === "flat"
+      ? compileSchema(schema, {
+          dialect: jsonSchemaDialect,
+          output: "flat",
+          maxErrors: Number.POSITIVE_INFINITY,
+        })
+      : compileSchema(schema, {
+          dialect: jsonSchemaDialect,
+          output: "tree",
+          maxErrors: Number.POSITIVE_INFINITY,
+        });
   const baseline = heapMB(); // data held, no result
   const res = v.validate(data) as {
     valid: boolean;

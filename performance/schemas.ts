@@ -9,10 +9,12 @@
  * don't just measure a hot no-op loop.
  */
 
+import type { SchemaOrBoolean } from "../packages/core/src/index.ts";
+
 export interface PerfSchema {
   name: string;
   description: string;
-  schema: Record<string, unknown>;
+  schema: SchemaOrBoolean;
   validInputs: unknown[];
   invalidInputs: unknown[];
 }

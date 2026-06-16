@@ -10,7 +10,8 @@
     "bench:render": "tsx render.ts",
     "bench:mem": "tsx mem.ts",
     "bench:large": "tsx large-payload.ts",
-    "bench:anatomy": "node --expose-gc --import tsx error-tree-anatomy.ts"
+    "bench:anatomy": "node --expose-gc --import tsx error-tree-anatomy.ts",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@apidevtools/json-schema-ref-parser": "^15.3.6",
