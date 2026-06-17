@@ -1,0 +1,315 @@
+/**
+ * The compile-time classifier. Walks a resolved schema (and its `$ref`
+ * graph), assigns each subschema node a {@link Strategy}, and fails fast
+ * on anything it cannot soundly stream.
+ *
+ * Two correctness properties from the design (docs/stream-validator.md
+ * "Classifier"):
+ *
+ *   - **`$ref` is a graph problem, not a tree walk.** A node's strategy
+ *     is the join of its own keywords and the strategies it reaches
+ *     through composition branches, the `contains` predicate, and `$ref`
+ *     targets. Because `$ref` can form cycles, the strategies are a
+ *     least fixed point over that join graph: every node in a ref cycle
+ *     ends up with the cycle's joined strategy (a recursive schema that
+ *     is STREAM throughout stays STREAM; one whose cycle reaches a BUFFER
+ *     node is BUFFER everywhere in the cycle).
+ *   - **Fast-fail.** `unevaluated*`, an unknown keyword, or an
+ *     unresolvable `$ref` throws {@link ClassifierError} naming the
+ *     keyword and JSON path, before any byte is read. Never a
+ *     half-working validator.
+ *
+ * Per-member / per-item applicators (`properties`, `items`, ...) do not
+ * propagate their child strategies up: a BUFFER property value
+ * materializes just that subtree, leaving the enclosing scope on the
+ * spine. Composition (`allOf` / `anyOf` / `oneOf` / `not` / `if`), the
+ * `contains` predicate, and `$ref` do propagate.
+ *
+ * @packageDocumentation
+ */
+
+import type { SchemaObject, SchemaOrBoolean } from "@oav/core";
+import { type Dialect, jsonSchemaDialect, keywordDefinitions, walkSubschemas } from "@oav/schema";
+import { KEYWORD_CATEGORY } from "./keyword-table.js";
+import { joinStrategy, type Strategy } from "./strategy.js";
+
+/**
+ * A compile-time classification failure: a keyword or `$ref` the engine
+ * cannot soundly stream. `path` is the JSON path to the offending node;
+ * `keyword` names the keyword when the failure is keyword-specific.
+ *
+ * @public
+ */
+export class ClassifierError extends Error {
+  readonly path: string;
+  readonly keyword: string | undefined;
+  constructor(message: string, path: string, keyword?: string) {
+    super(`${message} (at ${path === "" ? "<root>" : path})`);
+    this.name = "ClassifierError";
+    this.path = path;
+    this.keyword = keyword;
+  }
+}
+
+/** A sound-but-unbounded dimension the caller may want to cap. */
+export interface ClassifierWarning {
+  path: string;
+  kind: "unbounded-string" | "unbounded-unique-items";
+  message: string;
+}
+
+/** Options for {@link classify}. */
+export interface ClassifyOptions {
+  /** Dialect whose keyword set the classifier reads. Default `jsonSchemaDialect`. */
+  dialect?: Dialect;
+  /** Names of custom keywords registered with the in-memory compiler (delegable -> BUFFER). */
+  customKeywords?: Iterable<string>;
+  /** Force `anyOf` / `oneOf` to BUFFER (exact in-memory message parity). */
+  parity?: boolean;
+  /** Turn unbounded-* warnings into a thrown {@link ClassifierError}. */
+  strict?: boolean;
+}
+
+/** The result of classifying a schema. */
+export interface Classification {
+  /** Strategy for a node. Boolean schemas and unknown nodes are `stream`. */
+  strategyOf(node: SchemaOrBoolean): Strategy;
+  /** Strategy of the root schema. */
+  readonly root: Strategy;
+  /** Sound-but-unbounded dimensions (empty under `strict`, which throws instead). */
+  readonly warnings: readonly ClassifierWarning[];
+  /** Number of distinct object nodes classified. */
+  readonly nodeCount: number;
+}
+
+function isObjectSchema(s: unknown): s is SchemaObject {
+  return typeof s === "object" && s !== null && !Array.isArray(s);
+}
+
+function joinPath(base: string, rel: string): string {
+  if (rel === "") return base;
+  return base === "" ? rel : `${base}.${rel}`;
+}
+
+/**
+ * Resolve a `$ref` against the document root. Supports the root pointer
+ * (`#`), JSON-pointer fragments (`#/$defs/Foo`), and plain `$anchor`
+ * lookups (`#name`). Throws {@link ClassifierError} on anything it cannot
+ * resolve locally (an external ref should have been inlined by
+ * `resolveSpec()` before classification).
+ */
+function resolveRef(root: SchemaObject, ref: string, path: string): SchemaOrBoolean {
+  if (ref === "#" || ref === "") return root;
+  if (ref.startsWith("#/")) {
+    const segments = ref
+      .slice(2)
+      .split("/")
+      .map((s) => s.replace(/~1/g, "/").replace(/~0/g, "~"));
+    let cur: unknown = root;
+    for (const seg of segments) {
+      if (Array.isArray(cur)) {
+        cur = cur[Number(seg)];
+      } else if (isObjectSchema(cur)) {
+        cur = (cur as Record<string, unknown>)[seg];
+      } else {
+        throw new ClassifierError(`unresolvable $ref "${ref}"`, path, "$ref");
+      }
+    }
+    if (cur === undefined) throw new ClassifierError(`unresolvable $ref "${ref}"`, path, "$ref");
+    return cur as SchemaOrBoolean;
+  }
+  if (ref.startsWith("#")) {
+    const anchor = ref.slice(1);
+    let found: SchemaOrBoolean | undefined;
+    walkSubschemas(root, (s) => {
+      if (found !== undefined) return false;
+      if (isObjectSchema(s) && (s.$anchor === anchor || s.$dynamicAnchor === anchor)) {
+        found = s;
+        return false;
+      }
+      return undefined;
+    });
+    if (found === undefined) throw new ClassifierError(`unresolvable $ref "${ref}"`, path, "$ref");
+    return found;
+  }
+  throw new ClassifierError(`unsupported external $ref "${ref}"`, path, "$ref");
+}
+
+function compositionBranches(node: SchemaObject, key: string): SchemaOrBoolean[] {
+  if (key === "not") return node.not === undefined ? [] : [node.not];
+  if (key === "if") {
+    return [node.if, node.then, node.else].filter((s): s is SchemaOrBoolean => s !== undefined);
+  }
+  const arr = (node as Record<string, unknown>)[key];
+  return Array.isArray(arr) ? (arr as SchemaOrBoolean[]) : [];
+}
+
+function hasComplexCandidate(node: SchemaObject, key: string): boolean {
+  const complex = (v: unknown): boolean => typeof v === "object" && v !== null;
+  if (key === "enum") return Array.isArray(node.enum) && node.enum.some(complex);
+  return complex(node.const);
+}
+
+/**
+ * Classify a resolved schema. Throws {@link ClassifierError} on an
+ * unstreamable keyword, an unknown keyword, or an unresolvable `$ref`.
+ *
+ * @public
+ */
+export function classify(root: SchemaOrBoolean, options: ClassifyOptions = {}): Classification {
+  const dialect = options.dialect ?? jsonSchemaDialect;
+  const parity = options.parity ?? false;
+  const customKeywords = new Set(options.customKeywords ?? []);
+
+  // The keywords this dialect dispatches, plus the ones folded into them
+  // via `implements` (then/else into if; minContains/maxContains into
+  // contains): all "known" so the unknown-keyword check doesn't flag a
+  // folded partner.
+  const known = new Set<string>();
+  for (const def of keywordDefinitions(dialect).values()) {
+    known.add(def.keyword);
+    for (const impl of def.implements ?? []) known.add(impl);
+  }
+
+  if (!isObjectSchema(root)) {
+    // A boolean root schema streams trivially.
+    return { strategyOf: () => "stream", root: "stream", warnings: [], nodeCount: 0 };
+  }
+
+  // Collect every reachable object node (containment via walkSubschemas,
+  // plus $ref targets that may sit outside the walked positions, e.g.
+  // under an OpenAPI `components`). Record a path per node for errors.
+  const pathOf = new Map<SchemaObject, string>();
+  const refTargets: Array<{ ref: string; from: string }> = [];
+
+  const addTree = (subroot: SchemaOrBoolean, base: string): void => {
+    walkSubschemas(subroot, (s, rel) => {
+      if (!isObjectSchema(s)) return undefined;
+      if (pathOf.has(s)) return false; // already collected; prune the re-walk
+      const p = joinPath(base, rel);
+      pathOf.set(s, p);
+      if (typeof s.$ref === "string") refTargets.push({ ref: s.$ref, from: p });
+      return undefined;
+    });
+  };
+  addTree(root, "");
+  // Follow refs to pull in out-of-containment targets (and validate them).
+  for (let i = 0; i < refTargets.length; i++) {
+    const { ref, from } = refTargets[i] as { ref: string; from: string };
+    const target = resolveRef(root, ref, from);
+    if (isObjectSchema(target) && !pathOf.has(target)) addTree(target, `${from}->$ref`);
+  }
+
+  const nodes = [...pathOf.keys()];
+  const warnings: ClassifierWarning[] = [];
+
+  // Per-node base strategy + join-successors (composition branches,
+  // contains predicate, $ref target).
+  const base = new Map<SchemaObject, Strategy>();
+  const successors = new Map<SchemaObject, SchemaObject[]>();
+
+  for (const node of nodes) {
+    const path = pathOf.get(node) as string;
+    let b: Strategy = "stream";
+    const succ: SchemaObject[] = [];
+    const pushSucc = (s: SchemaOrBoolean | undefined): void => {
+      if (isObjectSchema(s)) succ.push(s);
+    };
+
+    for (const key of Object.keys(node)) {
+      const cat = KEYWORD_CATEGORY[key];
+      if (cat === undefined) {
+        if (known.has(key)) continue; // folded keyword (then/else/min|maxContains)
+        if (customKeywords.has(key)) {
+          b = joinStrategy(b, "buffer");
+          continue;
+        }
+        if (key.startsWith("x-")) continue; // OpenAPI specification extension: ignored
+        throw new ClassifierError(`unsupported keyword "${key}"`, path, key);
+      }
+      switch (cat) {
+        case "reject":
+          throw new ClassifierError(`"${key}" cannot be streamed`, path, key);
+        case "scalar":
+        case "annotation":
+        case "member":
+          break; // no base contribution; member children classified at their own node
+        case "value-equality":
+          if (hasComplexCandidate(node, key)) b = joinStrategy(b, "buffer");
+          break;
+        case "contains":
+          pushSucc(node.contains);
+          break;
+        case "composition": {
+          const compBase: Strategy =
+            parity && (key === "anyOf" || key === "oneOf") ? "buffer" : "tee";
+          b = joinStrategy(b, compBase);
+          for (const branch of compositionBranches(node, key)) pushSucc(branch);
+          break;
+        }
+        case "buffer":
+          b = joinStrategy(b, "buffer");
+          break;
+        case "dependencies": {
+          const deps = (node as Record<string, unknown>).dependencies;
+          if (isObjectSchema(deps)) {
+            for (const entry of Object.values(deps)) {
+              if (!Array.isArray(entry)) b = joinStrategy(b, "buffer"); // schema-form entry
+            }
+          }
+          break;
+        }
+        case "ref":
+          pushSucc(resolveRef(root, (node as Record<string, unknown>)[key] as string, path));
+          break;
+      }
+    }
+
+    // Unbounded-dimension warnings.
+    if ((node.pattern !== undefined || node.format !== undefined) && node.maxLength === undefined) {
+      warnings.push({
+        path,
+        kind: "unbounded-string",
+        message: `string at ${path || "<root>"} has pattern/format but no maxLength (unbounded buffered scalar)`,
+      });
+    }
+    if (node.uniqueItems === true && node.maxItems === undefined) {
+      warnings.push({
+        path,
+        kind: "unbounded-unique-items",
+        message: `uniqueItems at ${path || "<root>"} has no maxItems (seen-hash set is O(array length))`,
+      });
+    }
+
+    base.set(node, b);
+    successors.set(node, succ);
+  }
+
+  if (options.strict && warnings.length > 0) {
+    const first = warnings[0] as ClassifierWarning;
+    throw new ClassifierError(`strict: ${first.message}`, first.path);
+  }
+
+  // Least fixed point of strategy(n) = base(n) ⊔ ⊔ strategy(succ(n)).
+  const strat = new Map<SchemaObject, Strategy>(base);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const node of nodes) {
+      let s = base.get(node) as Strategy;
+      for (const c of successors.get(node) as SchemaObject[])
+        s = joinStrategy(s, strat.get(c) as Strategy);
+      if (s !== strat.get(node)) {
+        strat.set(node, s);
+        changed = true;
+      }
+    }
+  }
+
+  return {
+    strategyOf: (n: SchemaOrBoolean) => (isObjectSchema(n) ? (strat.get(n) ?? "stream") : "stream"),
+    root: strat.get(root) ?? "stream",
+    warnings,
+    nodeCount: nodes.length,
+  };
+}
