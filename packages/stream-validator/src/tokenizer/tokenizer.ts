@@ -124,17 +124,83 @@ export class JsonTokenizer {
     this.handler = handler;
   }
 
-  /** Feed the next chunk of input bytes. */
+  /**
+   * Feed the next chunk of input bytes. The per-byte state dispatch is
+   * inlined here (rather than a per-byte method call) because it is the
+   * hot loop; the string body, numbers, and escapes batch in their own
+   * scanners.
+   */
   write(chunk: Uint8Array): void {
     if (this.ended) throw new JsonParseError("write after end", this.baseOffset);
     let i = 0;
     const n = chunk.length;
     while (i < n) {
-      if (this.state === ST_IN_STRING) {
+      const state = this.state;
+      if (state === ST_IN_STRING) {
         i = this.scanStringBody(chunk, i);
         continue;
       }
-      i = this.step(chunk, i);
+      const b = chunk[i] as number;
+      switch (state) {
+        case ST_VALUE:
+        case ST_VALUE_OR_END_ARRAY:
+          if (isWhitespace(b)) i += 1;
+          else if (b === 0x5d /* ] */ && state === ST_VALUE_OR_END_ARRAY) i = this.closeArray(i);
+          else i = this.beginValue(chunk, i);
+          break;
+        case ST_KEY_OR_END_OBJECT:
+          if (isWhitespace(b)) i += 1;
+          else if (b === 0x7d /* } */) i = this.closeObject(i);
+          else if (b === CH_QUOTE) i = this.beginString(i, true);
+          else this.fail("expected object key or '}'", i);
+          break;
+        case ST_KEY:
+          if (isWhitespace(b)) i += 1;
+          else if (b === CH_QUOTE) i = this.beginString(i, true);
+          else this.fail("expected object key", i);
+          break;
+        case ST_COLON:
+          if (isWhitespace(b)) i += 1;
+          else if (b === 0x3a /* : */) {
+            this.state = ST_VALUE;
+            i += 1;
+          } else this.fail("expected ':'", i);
+          break;
+        case ST_COMMA_OR_END_ARRAY:
+          if (isWhitespace(b)) i += 1;
+          else if (b === 0x2c /* , */) {
+            this.state = ST_VALUE;
+            i += 1;
+          } else if (b === 0x5d /* ] */) i = this.closeArray(i);
+          else this.fail("expected ',' or ']'", i);
+          break;
+        case ST_COMMA_OR_END_OBJECT:
+          if (isWhitespace(b)) i += 1;
+          else if (b === 0x2c /* , */) {
+            this.state = ST_KEY;
+            i += 1;
+          } else if (b === 0x7d /* } */) i = this.closeObject(i);
+          else this.fail("expected ',' or '}'", i);
+          break;
+        case ST_END:
+          if (isWhitespace(b)) i += 1;
+          else this.fail("unexpected trailing content after JSON value", i);
+          break;
+        case ST_IN_STRING_ESCAPE:
+          i = this.stepStringEscape(chunk, i);
+          break;
+        case ST_IN_STRING_UNICODE:
+          i = this.stepStringUnicode(chunk, i);
+          break;
+        case ST_IN_NUMBER:
+          i = this.stepNumber(chunk, i);
+          break;
+        case ST_IN_LITERAL:
+          i = this.stepLiteral(chunk, i);
+          break;
+        default:
+          this.fail("internal: bad state", i);
+      }
     }
     this.baseOffset += n;
   }
@@ -174,77 +240,6 @@ export class JsonTokenizer {
 
   private fail(message: string, i: number): never {
     throw new JsonParseError(message, this.pos(i));
-  }
-
-  // Process one structural / token-start byte at index i. Returns the
-  // next index to process.
-  private step(chunk: Uint8Array, i: number): number {
-    const b = chunk[i] as number;
-    switch (this.state) {
-      case ST_VALUE:
-      case ST_VALUE_OR_END_ARRAY:
-        if (isWhitespace(b)) return i + 1;
-        if (b === 0x5d /* ] */ && this.state === ST_VALUE_OR_END_ARRAY) {
-          return this.closeArray(i);
-        }
-        return this.beginValue(chunk, i);
-
-      case ST_KEY_OR_END_OBJECT:
-        if (isWhitespace(b)) return i + 1;
-        if (b === 0x7d /* } */) return this.closeObject(i);
-        if (b === CH_QUOTE) return this.beginString(i, true);
-        return this.fail("expected object key or '}'", i);
-
-      case ST_KEY:
-        if (isWhitespace(b)) return i + 1;
-        if (b === CH_QUOTE) return this.beginString(i, true);
-        return this.fail("expected object key", i);
-
-      case ST_COLON:
-        if (isWhitespace(b)) return i + 1;
-        if (b === 0x3a /* : */) {
-          this.state = ST_VALUE;
-          return i + 1;
-        }
-        return this.fail("expected ':'", i);
-
-      case ST_COMMA_OR_END_ARRAY:
-        if (isWhitespace(b)) return i + 1;
-        if (b === 0x2c /* , */) {
-          this.state = ST_VALUE;
-          return i + 1;
-        }
-        if (b === 0x5d /* ] */) return this.closeArray(i);
-        return this.fail("expected ',' or ']'", i);
-
-      case ST_COMMA_OR_END_OBJECT:
-        if (isWhitespace(b)) return i + 1;
-        if (b === 0x2c /* , */) {
-          this.state = ST_KEY;
-          return i + 1;
-        }
-        if (b === 0x7d /* } */) return this.closeObject(i);
-        return this.fail("expected ',' or '}'", i);
-
-      case ST_END:
-        if (isWhitespace(b)) return i + 1;
-        return this.fail("unexpected trailing content after JSON value", i);
-
-      case ST_IN_STRING_ESCAPE:
-        return this.stepStringEscape(chunk, i);
-
-      case ST_IN_STRING_UNICODE:
-        return this.stepStringUnicode(chunk, i);
-
-      case ST_IN_NUMBER:
-        return this.stepNumber(chunk, i);
-
-      case ST_IN_LITERAL:
-        return this.stepLiteral(chunk, i);
-
-      default:
-        return this.fail("internal: bad state", i);
-    }
   }
 
   private beginValue(chunk: Uint8Array, i: number): number {
