@@ -75,10 +75,16 @@ export type IslandDelegate = (
   value: unknown,
   startPath: PathSegment[],
   byteOffset: number,
-) => Violation[];
+) => SchemaViolation[];
 
-/** A schema violation. Codes are coarse for now; the channel layer refines them. */
-export interface Violation {
+/**
+ * A non-fatal schema violation: a well-formed value that failed the
+ * schema, reported on the `violation` side channel (distinct from the
+ * fatal `error` channel). Shares `code` and `path` with `@oav/core`'s
+ * `ValidationError`; adds `byteOffset`. Codes are coarse for now; the
+ * channel layer refines them.
+ */
+export interface SchemaViolation {
   code: string;
   path: PathSegment[];
   /** Byte offset in the input stream nearest the violation (for re-sync). */
@@ -88,7 +94,7 @@ export interface Violation {
 /** Options for {@link SpineValidator}. */
 export interface SpineOptions {
   /** Called as each violation is recorded (lets a driver enforce a budget / terminate). */
-  onViolation?: (violation: Violation) => void;
+  onViolation?: (violation: SchemaViolation) => void;
   /** Per-node strategy from the classifier. Absent: every node is treated as `stream`. */
   strategyOf?: (node: SchemaOrBoolean) => Strategy;
   /**
@@ -141,7 +147,7 @@ export interface SpineOptions {
 /** The verdict of a streaming validation. */
 export interface StreamVerdict {
   valid: boolean;
-  violations: Violation[];
+  violations: SchemaViolation[];
 }
 
 type JsonType = "object" | "array" | "string" | "number" | "integer" | "boolean" | "null";
@@ -219,13 +225,13 @@ const STREAM_COMPOSITION = ["allOf", "anyOf", "oneOf", "not", "if"];
 export class SpineValidator implements JsonEventHandler {
   private readonly root: SchemaOrBoolean;
   private readonly refRoot: SchemaObject;
-  private readonly violations: Violation[] = [];
+  private readonly violations: SchemaViolation[] = [];
   private readonly path: PathSegment[] = [];
   private readonly frames: Frame[] = [];
   private readonly regexCache = new Map<string, { test(s: string): boolean }>();
   // Memoized per-node stream/tee/buffer decision (see nodeKind).
   private readonly kindCache = new Map<SchemaObject, "stream" | "tee" | "buffer">();
-  private readonly onViolation: ((violation: Violation) => void) | undefined;
+  private readonly onViolation: ((violation: SchemaViolation) => void) | undefined;
   private readonly strategyOf: (node: SchemaOrBoolean) => Strategy;
   private readonly delegate: IslandDelegate | undefined;
   private readonly maxErrors: number;
@@ -308,7 +314,7 @@ export class SpineValidator implements JsonEventHandler {
   // reached, throw {@link BudgetReached} so the spine stops feeding the
   // tokenizer (the verdict carries exactly `maxErrors` violations, and no
   // further work runs this chunk).
-  private record(violation: Violation): void {
+  private record(violation: SchemaViolation): void {
     if (this.verdictOnly) {
       // A TEE branch: an invalid result is data the combinator needs, not
       // a parent violation. Flag and keep going (no retention, no throw).

@@ -28,5 +28,5 @@ export {
   type ScopeEditor,
   type ScopeObserver,
 } from "./engine/index.js";
-export type { StreamVerdict, Violation } from "./spine/index.js";
+export type { StreamVerdict, SchemaViolation } from "./spine/index.js";
 export { normalizeOas30 } from "./openapi/index.js";

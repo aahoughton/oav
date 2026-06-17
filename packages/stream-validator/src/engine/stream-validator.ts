@@ -47,7 +47,7 @@ import {
   type ScopeClose,
   SpineValidator,
   type StreamVerdict,
-  type Violation,
+  type SchemaViolation,
 } from "../spine/index.js";
 import { JsonTokenizer } from "../tokenizer/index.js";
 import type { JsonPath, PathFilter, StreamValidatorOptions } from "../options.js";
@@ -144,7 +144,7 @@ function buildDelegate(
   };
 
   return (schemas, value, startPath, byteOffset) => {
-    const out: Violation[] = [];
+    const out: SchemaViolation[] = [];
     for (const schema of schemas) {
       const result = compile(schema)(value, startPath);
       if (!result.valid) {
@@ -252,7 +252,7 @@ export class StreamValidator extends Transform {
     this.result.catch(() => {});
   }
 
-  private handleViolation(violation: Violation): void {
+  private handleViolation(violation: SchemaViolation): void {
     this.errorCount += 1;
     this.emit("violation", violation);
   }

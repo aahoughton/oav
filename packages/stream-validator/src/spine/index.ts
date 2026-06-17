@@ -7,6 +7,6 @@ export {
   type ScopeClose,
   type SpineOptions,
   type StreamVerdict,
-  type Violation,
+  type SchemaViolation,
 } from "./spine.js";
 export { ValueBuilder } from "./value-builder.js";
