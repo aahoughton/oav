@@ -1,5 +1,31 @@
 # Changelog
 
+## [3.3.0](https://github.com/aahoughton/oav/compare/oav-core-v3.2.0...oav-core-v3.3.0) (2026-06-16)
+
+
+### Features
+
+* **core:** formatSummary path option for self-locating leaves ([#381](https://github.com/aahoughton/oav/issues/381)) ([4f4e31c](https://github.com/aahoughton/oav/commit/4f4e31c3a84b1945ed33ee7a12d2602bf4ce2675)), closes [#380](https://github.com/aahoughton/oav/issues/380)
+* **validator:** opt-in requireResponseBody finding for absent declared response bodies ([#386](https://github.com/aahoughton/oav/issues/386)) ([475e87a](https://github.com/aahoughton/oav/commit/475e87a51647faa8b5ac1bbe6d32a004bdbc4d5f)), closes [#371](https://github.com/aahoughton/oav/issues/371)
+
+
+### Bug Fixes
+
+* **core, cli:** rename the flat output format to summary, keep flat as a deprecated alias ([#384](https://github.com/aahoughton/oav/issues/384)) ([db42e48](https://github.com/aahoughton/oav/commit/db42e48c2dc995272886964730b628bb68facde1)), closes [#374](https://github.com/aahoughton/oav/issues/374)
+* **performance:** make the benchmarks type-clean and restore collect-all ([#402](https://github.com/aahoughton/oav/issues/402)) ([3487df8](https://github.com/aahoughton/oav/commit/3487df8a3599510dda4945066ddda9c1899997da))
+
+
+### Documentation
+
+* **performance:** record the flat-vs-tree-mem baseline ([#403](https://github.com/aahoughton/oav/issues/403)) ([31f2db2](https://github.com/aahoughton/oav/commit/31f2db270c5913f072284d2b1ab8ff67dcfe4558))
+* scope the 3.2 support claim to Schema Object + QUERY ([#400](https://github.com/aahoughton/oav/issues/400)) ([dca52f1](https://github.com/aahoughton/oav/commit/dca52f10e1777b459b23b93571a474a2d5854875))
+* validateResponses bypass coverage + Fetch extractor shape notes ([#383](https://github.com/aahoughton/oav/issues/383)) ([9aecc1e](https://github.com/aahoughton/oav/commit/9aecc1eab594cd01991d297210aa8fe21e941420)), closes [#375](https://github.com/aahoughton/oav/issues/375)
+
+
+### Refactoring
+
+* **core, validator:** align param names in the error-helper layer ([#385](https://github.com/aahoughton/oav/issues/385)) ([5cae3f2](https://github.com/aahoughton/oav/commit/5cae3f256905e2130e0ce653e77670690bdbb8ab))
+
 ## [3.2.0](https://github.com/aahoughton/oav/compare/oav-core-v3.1.0...oav-core-v3.2.0) (2026-06-11)
 
 
