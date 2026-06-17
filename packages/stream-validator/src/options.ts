@@ -89,8 +89,11 @@ export interface StreamValidatorOptions {
 
   /**
    * Custom string-format validators, shape-compatible with
-   * `@oav/schema`'s `formats` option. Used by the spine's scalar
-   * validation and threaded into BUFFER-island delegation.
+   * `@oav/schema`'s `formats` option. Threaded into the BUFFER-island
+   * delegate's in-memory compile; they take effect only where that engine
+   * asserts `format` (an OpenAPI dialect, or the 2020-12 format-assertion
+   * vocabulary). The forward STREAM path treats `format` as an annotation
+   * and never runs these.
    */
   formats?: Record<string, (value: string) => boolean>;
 

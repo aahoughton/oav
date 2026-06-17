@@ -93,7 +93,12 @@ export type IslandDelegate = (
 export interface SchemaViolation {
   code: string;
   path: PathSegment[];
-  /** Byte offset in the input stream nearest the violation (for re-sync). */
+  /**
+   * Byte offset in the input stream nearest the violation (for re-sync).
+   * On the BUFFER path every node of one island (a violation and its
+   * `children`) shares the island's start offset; per-child precision is
+   * not tracked.
+   */
   byteOffset: number;
   /** Human-readable message (BUFFER path only; absent on the STREAM path). */
   message?: string;

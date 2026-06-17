@@ -9,7 +9,8 @@
  * This is a second engine, push-based over a token stream, distinct from
  * `@oav/schema`'s pull-based compiler. It reuses `@oav/schema`'s
  * in-memory validator for subtrees a compile-time classifier marks
- * BUFFER, and reuses `@oav/core`'s flat error model and `@oav/formats`.
+ * BUFFER (so format assertion and built-in formats come from that
+ * delegate), and reuses `@oav/core`'s flat error model.
  *
  * The design and build spec live in
  * [docs/stream-validator.md](../../../docs/stream-validator.md). The

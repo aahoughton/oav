@@ -68,7 +68,63 @@ describe("SchemaViolation field shape", () => {
     const [v] = verdict.violations;
     expect(v?.code).toBe("uniqueItems");
     expect(v?.message).toBe("must have unique items");
+    expect(v?.params).toBeDefined();
     expect(typeof v?.byteOffset).toBe("number");
     expect(Array.isArray(v?.children)).toBe(true);
+  });
+});
+
+// formats / keywords are threaded into the BUFFER-island delegate's
+// compileSchema (the only place they take effect: the forward STREAM path
+// does not assert format and does not know custom keywords).
+describe("formats and keywords reach the delegate", () => {
+  it("a custom format runs on a forced-buffer scalar under an asserting dialect", async () => {
+    const schema = { type: "string", format: "even-len" } as SchemaOrBoolean;
+    const formats = { "even-len": (s: string) => s.length % 2 === 0 };
+    const run = (body: string) => {
+      const v = createStreamValidator(schema, {
+        openApiVersion: "3.1",
+        formats,
+        policy: "detach",
+        maxErrors: Number.POSITIVE_INFINITY,
+      });
+      v.on("error", () => {});
+      v.resume();
+      const result = v.result;
+      v.end(Buffer.from(enc.encode(body)));
+      return result;
+    };
+    await expect(run('"abcd"')).resolves.toMatchObject({ valid: true });
+    const bad = await run('"abc"');
+    expect(bad.valid).toBe(false);
+    expect(bad.violations[0]?.code).toBe("format");
+  });
+
+  it("a custom keyword runs through the delegate, carrying its message/params", async () => {
+    const schema = { type: "integer", isEven: true } as unknown as SchemaOrBoolean;
+    const keywords = {
+      isEven: (data: unknown) =>
+        typeof data === "number" && data % 2 === 0
+          ? true
+          : { message: "must be even", params: { parity: "odd" } },
+    };
+    const run = (body: string) => {
+      const v = createStreamValidator(schema, {
+        keywords,
+        policy: "detach",
+        maxErrors: Number.POSITIVE_INFINITY,
+      });
+      v.on("error", () => {});
+      v.resume();
+      const result = v.result;
+      v.end(Buffer.from(enc.encode(body)));
+      return result;
+    };
+    await expect(run("4")).resolves.toMatchObject({ valid: true });
+    const bad = await run("3");
+    expect(bad.valid).toBe(false);
+    expect(bad.violations[0]?.code).toBe("isEven");
+    expect(bad.violations[0]?.message).toBe("must be even");
+    expect(bad.violations[0]?.params).toEqual({ parity: "odd" });
   });
 });
