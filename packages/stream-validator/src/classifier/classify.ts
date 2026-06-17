@@ -30,6 +30,7 @@
 
 import type { SchemaObject, SchemaOrBoolean } from "@oav/core";
 import { type Dialect, jsonSchemaDialect, keywordDefinitions, walkSubschemas } from "@oav/schema";
+import { resolveRef as resolveRefLocal } from "../ref-resolve.js";
 import { KEYWORD_CATEGORY } from "./keyword-table.js";
 import { joinStrategy, type Strategy } from "./strategy.js";
 
@@ -92,47 +93,15 @@ function joinPath(base: string, rel: string): string {
 }
 
 /**
- * Resolve a `$ref` against the document root. Supports the root pointer
- * (`#`), JSON-pointer fragments (`#/$defs/Foo`), and plain `$anchor`
- * lookups (`#name`). Throws {@link ClassifierError} on anything it cannot
- * resolve locally (an external ref should have been inlined by
- * `resolveSpec()` before classification).
+ * Resolve a `$ref` against the document root, throwing
+ * {@link ClassifierError} (with path) on anything unresolvable. Wraps the
+ * shared local resolver so a dangling or external ref fails the compile
+ * rather than silently classifying as STREAM.
  */
 function resolveRef(root: SchemaObject, ref: string, path: string): SchemaOrBoolean {
-  if (ref === "#" || ref === "") return root;
-  if (ref.startsWith("#/")) {
-    const segments = ref
-      .slice(2)
-      .split("/")
-      .map((s) => s.replace(/~1/g, "/").replace(/~0/g, "~"));
-    let cur: unknown = root;
-    for (const seg of segments) {
-      if (Array.isArray(cur)) {
-        cur = cur[Number(seg)];
-      } else if (isObjectSchema(cur)) {
-        cur = (cur as Record<string, unknown>)[seg];
-      } else {
-        throw new ClassifierError(`unresolvable $ref "${ref}"`, path, "$ref");
-      }
-    }
-    if (cur === undefined) throw new ClassifierError(`unresolvable $ref "${ref}"`, path, "$ref");
-    return cur as SchemaOrBoolean;
-  }
-  if (ref.startsWith("#")) {
-    const anchor = ref.slice(1);
-    let found: SchemaOrBoolean | undefined;
-    walkSubschemas(root, (s) => {
-      if (found !== undefined) return false;
-      if (isObjectSchema(s) && (s.$anchor === anchor || s.$dynamicAnchor === anchor)) {
-        found = s;
-        return false;
-      }
-      return undefined;
-    });
-    if (found === undefined) throw new ClassifierError(`unresolvable $ref "${ref}"`, path, "$ref");
-    return found;
-  }
-  throw new ClassifierError(`unsupported external $ref "${ref}"`, path, "$ref");
+  const target = resolveRefLocal(root, ref);
+  if (target === undefined) throw new ClassifierError(`unresolvable $ref "${ref}"`, path, "$ref");
+  return target;
 }
 
 function compositionBranches(node: SchemaObject, key: string): SchemaOrBoolean[] {
