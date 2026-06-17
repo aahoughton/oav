@@ -1,0 +1,88 @@
+/**
+ * OpenAPI 3.0 -> JSON Schema 2020-12 normalization.
+ *
+ * The classifier and spine work on a 2020-12-shaped schema. OpenAPI 3.1
+ * and 3.2 are 2020-12-native and need no rewrite; OpenAPI 3.0 uses a
+ * constrained dialect with three deviations this pass rewrites (mirroring
+ * `@oav/schema`'s `oas30Dialect` semantics, so the streaming verdict
+ * matches the in-memory one):
+ *
+ *   1. `nullable: true` widens `type: "X"` to `type: ["X", "null"]`.
+ *   2. boolean `exclusiveMaximum` / `exclusiveMinimum` fold into the
+ *      2020-12 numeric form (`exclusiveMaximum: <the maximum value>`).
+ *   3. a `$ref` suppresses every sibling keyword (the node is only the
+ *      reference).
+ *
+ * The rewrite is pure (returns a new tree) and recurses every schema-
+ * valued position, including `$defs` / `definitions`, so a self-contained
+ * document normalizes wholesale before classification.
+ *
+ * @packageDocumentation
+ */
+
+import type { SchemaObject, SchemaOrBoolean } from "@oav/core";
+import {
+  SUBSCHEMA_ARRAY_POSITIONS,
+  SUBSCHEMA_MAP_POSITIONS,
+  SUBSCHEMA_SINGLE_POSITIONS,
+} from "@oav/schema/internals";
+
+const SINGLE = new Set<string>(SUBSCHEMA_SINGLE_POSITIONS);
+const ARRAY = new Set<string>(SUBSCHEMA_ARRAY_POSITIONS);
+const MAP = new Set<string>(SUBSCHEMA_MAP_POSITIONS);
+
+function isObjectSchema(s: unknown): s is SchemaObject {
+  return typeof s === "object" && s !== null && !Array.isArray(s);
+}
+
+// Fold a boolean exclusive bound into its 2020-12 numeric form.
+function foldExclusive(out: Record<string, unknown>, bound: "maximum" | "minimum"): void {
+  const exKey = bound === "maximum" ? "exclusiveMaximum" : "exclusiveMinimum";
+  const ex = out[exKey];
+  if (typeof ex !== "boolean") return;
+  if (ex && typeof out[bound] === "number") {
+    out[exKey] = out[bound]; // exclusive bound takes the numeric value
+    delete out[bound];
+  } else {
+    delete out[exKey]; // `false` (or no numeric bound): drop the modifier, keep the inclusive bound
+  }
+}
+
+/**
+ * Normalize an OpenAPI 3.0 schema (tree) into 2020-12 shape. Idempotent
+ * on already-2020-12 schemas (3.1 / 3.2 pass through unchanged: they have
+ * no `nullable`, numeric `exclusive*`, and `$ref` with honored siblings).
+ *
+ * @public
+ */
+export function normalizeOas30(schema: SchemaOrBoolean): SchemaOrBoolean {
+  if (!isObjectSchema(schema)) return schema;
+
+  // A 3.0 `$ref` is the whole schema: drop every sibling.
+  if (typeof schema.$ref === "string") return { $ref: schema.$ref };
+
+  const out: Record<string, unknown> = {};
+  for (const [key, val] of Object.entries(schema)) {
+    if (key === "nullable") continue; // folded into `type` below
+    if (SINGLE.has(key)) out[key] = normalizeOas30(val as SchemaOrBoolean);
+    else if (ARRAY.has(key))
+      out[key] = Array.isArray(val) ? val.map((v) => normalizeOas30(v as SchemaOrBoolean)) : val;
+    else if (MAP.has(key) && isObjectSchema(val)) {
+      const m: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(val)) m[k] = normalizeOas30(v as SchemaOrBoolean);
+      out[key] = m;
+    } else out[key] = val;
+  }
+
+  // nullable: true -> add "null" to the type.
+  if (schema.nullable === true) {
+    const t = out.type;
+    if (typeof t === "string") out.type = [t, "null"];
+    else if (Array.isArray(t) && !t.includes("null")) out.type = [...t, "null"];
+    // nullable with no `type` is a no-op (no type constraint to widen).
+  }
+
+  foldExclusive(out, "maximum");
+  foldExclusive(out, "minimum");
+  return out as SchemaObject;
+}

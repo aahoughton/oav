@@ -1,5 +1,6 @@
 node_modules/
 JSON-Schema-Test-Suite/
+JSONTestSuite/
 Overlay-Specification/
 # json-schema-results.json and overlay-results.json are committed
 # baselines that the respective runners compare against in CI with

@@ -7,9 +7,11 @@
   "scripts": {
     "suite": "tsx run-json-schema-suite.ts",
     "suite:optional": "tsx run-json-schema-suite.ts --optional",
+    "parse": "tsx run-json-parse-suite.ts",
     "openapi": "tsx run-openapi-cases.ts",
     "overlay": "tsx run-overlay-suite.ts",
     "setup": "git clone --depth 1 https://github.com/json-schema-org/JSON-Schema-Test-Suite.git",
+    "setup:json-parse": "git clone --depth 1 https://github.com/nst/JSONTestSuite.git",
     "setup:overlay": "git clone --depth 1 https://github.com/OAI/Overlay-Specification.git"
   },
   "devDependencies": {

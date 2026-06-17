@@ -38,14 +38,18 @@ function tsupRewriteKeys(): string[] {
 }
 
 // The oav bundle re-exports oav-core's surface and bundles the CLI +
-// router; it never imports itself or the framework adapters, so these
-// four keys appear in the resolution tables but not the tsup rewrite
-// map. Update this list when adding or removing a published package.
+// router; it never imports itself or the framework adapters, so those
+// keys appear in the resolution tables but not the tsup rewrite map.
+// `@oav/stream-validator` is incubating and unpublished, so it is wired
+// into the resolution tables (for typecheck / tests) but deliberately
+// not in any publish bundle. Update this list when adding or removing a
+// published package, or when stream-validator graduates.
 const NOT_IN_OAV_BUNDLE = [
   "@oav/oav",
   "@oav/oav-express4",
   "@oav/oav-express5",
   "@oav/oav-fastify",
+  "@oav/stream-validator",
 ].sort();
 
 describe("@oav/* alias parity across resolution tables", () => {
