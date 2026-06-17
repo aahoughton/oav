@@ -22,16 +22,36 @@
  */
 
 import type { PathSegment, SchemaObject, SchemaOrBoolean } from "@oav/core";
+import type { Strategy } from "../classifier/strategy.js";
 import type { JsonEventHandler } from "../tokenizer/index.js";
 import { resolveRef } from "../ref-resolve.js";
+import { ValueBuilder } from "./value-builder.js";
 
-/** A construct the STREAM spine does not handle in this build step. */
+/** A construct the spine cannot handle without a delegate (no classification wired). */
 export class SpineUnsupportedError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "SpineUnsupportedError";
   }
 }
+
+/** A buffered island exceeded the configured `maxBufferedBytes`. Fatal. */
+export class BufferLimitError extends Error {
+  readonly byteOffset: number;
+  constructor(limit: number, byteOffset: number) {
+    super(`buffered island exceeded maxBufferedBytes=${limit} (at byte ${byteOffset})`);
+    this.name = "BufferLimitError";
+    this.byteOffset = byteOffset;
+  }
+}
+
+/** Validates a materialized island value against schemas; returns flat violations. */
+export type IslandDelegate = (
+  schemas: SchemaObject[],
+  value: unknown,
+  startPath: PathSegment[],
+  byteOffset: number,
+) => Violation[];
 
 /** A schema violation. Codes are coarse for now; the channel layer refines them. */
 export interface Violation {
@@ -45,6 +65,16 @@ export interface Violation {
 export interface SpineOptions {
   /** Called as each violation is recorded (lets a driver enforce a budget / terminate). */
   onViolation?: (violation: Violation) => void;
+  /** Per-node strategy from the classifier. Absent: every node is treated as `stream`. */
+  strategyOf?: (node: SchemaOrBoolean) => Strategy;
+  /**
+   * Validates a materialized BUFFER island against its schemas (the
+   * in-memory engine). Required for any non-stream node; absent, such a
+   * node throws {@link SpineUnsupportedError}.
+   */
+  delegate?: IslandDelegate;
+  /** Cap on a single buffered island's UTF-8 source-byte span. Unset: no cap. */
+  maxBufferedBytes?: number;
 }
 
 /** The verdict of a streaming validation. */
@@ -72,8 +102,6 @@ interface ArrayFrame {
   kind: "array";
   schemas: SchemaObject[];
   count: number;
-  unique: Set<string> | null;
-  dupReported: boolean;
 }
 
 type Frame = ObjectFrame | ArrayFrame;
@@ -107,18 +135,39 @@ export class SpineValidator implements JsonEventHandler {
   private readonly frames: Frame[] = [];
   private readonly regexCache = new Map<string, RegExp>();
   private readonly onViolation: ((violation: Violation) => void) | undefined;
+  private readonly strategyOf: (node: SchemaOrBoolean) => Strategy;
+  private readonly delegate: IslandDelegate | undefined;
+  private readonly maxBufferedBytes: number | undefined;
 
   // Byte offset of the event currently being validated; stamped onto
   // violations so a consumer can re-sync against the byte stream.
   private curOffset = 0;
 
   // A value string in progress: its applicable schemas, whether the full
-  // text is needed (pattern / enum / const), and the accumulated text.
-  private str: { app: Applicable; needText: boolean; text: string; offset: number } | null = null;
+  // text is needed (pattern / enum / const, or an island), the accumulated
+  // text, and whether the string position is a BUFFER island.
+  private str: {
+    app: Applicable;
+    needText: boolean;
+    text: string;
+    offset: number;
+    island: boolean;
+  } | null = null;
+
+  // An open BUFFER island being materialized for delegation.
+  private island: {
+    schemas: SchemaObject[];
+    path: PathSegment[];
+    builder: ValueBuilder;
+    byteStart: number;
+  } | null = null;
 
   constructor(root: SchemaOrBoolean, options: SpineOptions = {}) {
     this.root = root;
     this.onViolation = options.onViolation;
+    this.strategyOf = options.strategyOf ?? (() => "stream");
+    this.delegate = options.delegate;
+    this.maxBufferedBytes = options.maxBufferedBytes;
   }
 
   /** The verdict so far (final once `end` has been called on the tokenizer). */
@@ -205,23 +254,92 @@ export class SpineValidator implements JsonEventHandler {
     }
   }
 
-  // Reject constructs this build step does not handle (sound-fail, not
-  // wrong-verdict). The classifier filters most of these out earlier.
-  private guard(schemas: SchemaObject[], valueIsContainer: boolean): void {
-    for (const s of schemas) {
-      for (const k of STREAM_COMPOSITION) {
-        if (k in s)
-          throw new SpineUnsupportedError(
-            `composition keyword "${k}" not handled by the STREAM spine`,
-          );
-      }
-      if ("contains" in s) {
-        throw new SpineUnsupportedError(`"contains" not handled by the STREAM spine`);
-      }
-      if (valueIsContainer && ("enum" in s || "const" in s)) {
-        throw new SpineUnsupportedError(`object/array enum/const requires materialization`);
-      }
+  // Whether a single schema must be handled by materialization rather
+  // than the forward state machines: the classifier marked it non-stream
+  // (composition / object-array equality / dependentSchemas / ...), or it
+  // carries a keyword the spine streams no forward path for yet
+  // (`contains`, or composition keywords when no classification is wired).
+  private isNonStream(s: SchemaObject): boolean {
+    if (this.strategyOf(s) !== "stream") return true;
+    if ("contains" in s) return true;
+    // uniqueItems over container items needs canonical hashing the spine
+    // doesn't do; materialize the whole array (correct for any element).
+    if (s.uniqueItems === true) return true;
+    for (const k of STREAM_COMPOSITION) if (k in s) return true;
+    // enum/const with an object/array candidate needs deep equality.
+    const complex = (v: unknown): boolean => typeof v === "object" && v !== null;
+    if (Array.isArray(s.enum) && s.enum.some(complex)) return true;
+    if ("const" in s && complex((s as { const?: unknown }).const)) return true;
+    return false;
+  }
+
+  // Whether the value about to be parsed must be materialized + delegated.
+  private needsIsland(app: Applicable): boolean {
+    return app.schemas.some((s) => this.isNonStream(s));
+  }
+
+  // No delegate wired (e.g. a bare spine without a classifier): such a
+  // value cannot be validated. Surface it rather than mis-stream.
+  private requireDelegate(): IslandDelegate {
+    if (this.delegate === undefined) {
+      throw new SpineUnsupportedError(
+        "schema requires materialization but no in-memory delegate is configured",
+      );
     }
+    return this.delegate;
+  }
+
+  // Validate an already-materialized scalar / string value in-memory.
+  private delegateScalar(app: Applicable, value: unknown): void {
+    const delegate = this.requireDelegate();
+    this.pushSegment();
+    if (app.hasFalse) this.fail("false");
+    for (const v of delegate(app.schemas, value, [...this.path], this.curOffset)) {
+      this.violations.push(v);
+      this.onViolation?.(v);
+    }
+    this.popSegment();
+    this.advance();
+  }
+
+  // Open a BUFFER island for a container value: materialize it from the
+  // events, then delegate at its close.
+  private beginContainerIsland(app: Applicable): void {
+    this.requireDelegate();
+    this.pushSegment();
+    if (app.hasFalse) this.fail("false");
+    this.island = {
+      schemas: app.schemas,
+      path: [...this.path],
+      builder: new ValueBuilder(),
+      byteStart: this.curOffset,
+    };
+  }
+
+  // Forward an event into the open island, enforcing the buffer cap, and
+  // finalize when the island's value is complete.
+  private forwardIsland(feed: (b: ValueBuilder) => void): void {
+    const island = this.island as NonNullable<typeof this.island>;
+    feed(island.builder);
+    if (
+      this.maxBufferedBytes !== undefined &&
+      this.curOffset - island.byteStart > this.maxBufferedBytes
+    ) {
+      throw new BufferLimitError(this.maxBufferedBytes, this.curOffset);
+    }
+    if (island.builder.complete) this.finalizeIsland();
+  }
+
+  private finalizeIsland(): void {
+    const island = this.island as NonNullable<typeof this.island>;
+    const delegate = this.delegate as IslandDelegate;
+    this.island = null;
+    for (const v of delegate(island.schemas, island.builder.value, island.path, island.byteStart)) {
+      this.violations.push(v);
+      this.onViolation?.(v);
+    }
+    this.popSegment();
+    this.advance();
   }
 
   private pushSegment(): void {
@@ -283,43 +401,33 @@ export class SpineValidator implements JsonEventHandler {
     codePoints: number,
     app: Applicable,
   ): void {
+    if (this.needsIsland(app)) {
+      this.delegateScalar(app, value);
+      return;
+    }
     this.pushSegment();
     if (app.hasFalse) this.fail("false");
     this.checkType(app.schemas, actual);
     this.checkScalar(app.schemas, actual, value, codePoints);
-    this.recordUnique(value);
     this.popSegment();
     this.advance();
   }
 
-  // uniqueItems tracking for a scalar array element.
-  private recordUnique(value: string | number | boolean | null): void {
-    const top = this.frames[this.frames.length - 1];
-    if (top === undefined || top.kind !== "array" || top.unique === null) return;
-    const key = JSON.stringify(value);
-    if (top.unique.has(key)) {
-      if (!top.dupReported) {
-        this.fail("uniqueItems");
-        top.dupReported = true;
-      }
-    } else {
-      top.unique.add(key);
-    }
-  }
-
   onStartObject(offset: number): void {
     this.curOffset = offset;
+    if (this.island !== null) {
+      this.forwardIsland((b) => b.onStartObject());
+      return;
+    }
     const app = this.schemasForValue();
-    this.guard(app.schemas, true);
+    if (this.needsIsland(app)) {
+      this.beginContainerIsland(app);
+      this.forwardIsland((b) => b.onStartObject());
+      return;
+    }
     this.pushSegment();
     if (app.hasFalse) this.fail("false");
     this.checkType(app.schemas, "object");
-    if (
-      this.frames[this.frames.length - 1]?.kind === "array" &&
-      (this.frames[this.frames.length - 1] as ArrayFrame).unique !== null
-    ) {
-      throw new SpineUnsupportedError("uniqueItems over object items requires materialization");
-    }
     this.frames.push({
       kind: "object",
       schemas: app.schemas,
@@ -331,6 +439,10 @@ export class SpineValidator implements JsonEventHandler {
 
   onEndObject(offset: number): void {
     this.curOffset = offset;
+    if (this.island !== null) {
+      this.forwardIsland((b) => b.onEndObject());
+      return;
+    }
     const frame = this.frames.pop() as ObjectFrame;
     for (const s of frame.schemas) {
       if (Array.isArray(s.required)) {
@@ -356,23 +468,28 @@ export class SpineValidator implements JsonEventHandler {
 
   onStartArray(offset: number): void {
     this.curOffset = offset;
+    if (this.island !== null) {
+      this.forwardIsland((b) => b.onStartArray());
+      return;
+    }
     const app = this.schemasForValue();
-    this.guard(app.schemas, true);
+    if (this.needsIsland(app)) {
+      this.beginContainerIsland(app);
+      this.forwardIsland((b) => b.onStartArray());
+      return;
+    }
     this.pushSegment();
     if (app.hasFalse) this.fail("false");
     this.checkType(app.schemas, "array");
-    if (
-      this.frames[this.frames.length - 1]?.kind === "array" &&
-      (this.frames[this.frames.length - 1] as ArrayFrame).unique !== null
-    ) {
-      throw new SpineUnsupportedError("uniqueItems over array items requires materialization");
-    }
-    const unique = app.schemas.some((s) => s.uniqueItems === true) ? new Set<string>() : null;
-    this.frames.push({ kind: "array", schemas: app.schemas, count: 0, unique, dupReported: false });
+    this.frames.push({ kind: "array", schemas: app.schemas, count: 0 });
   }
 
   onEndArray(offset: number): void {
     this.curOffset = offset;
+    if (this.island !== null) {
+      this.forwardIsland((b) => b.onEndArray());
+      return;
+    }
     const frame = this.frames.pop() as ArrayFrame;
     for (const s of frame.schemas) {
       if (s.minItems !== undefined && frame.count < s.minItems) this.fail("minItems");
@@ -384,6 +501,10 @@ export class SpineValidator implements JsonEventHandler {
 
   onKey(value: string, codePoints: number, startOffset: number): void {
     this.curOffset = startOffset;
+    if (this.island !== null) {
+      this.forwardIsland((b) => b.onKey(value));
+      return;
+    }
     const top = this.frames[this.frames.length - 1] as ObjectFrame;
     for (const s of top.schemas) {
       if (s.propertyNames !== undefined) {
@@ -410,37 +531,72 @@ export class SpineValidator implements JsonEventHandler {
 
   onStringStart(offset: number): void {
     this.curOffset = offset;
+    if (this.island !== null) {
+      this.forwardIsland((b) => b.onStringStart());
+      return;
+    }
     const app = this.schemasForValue();
-    this.guard(app.schemas, false);
-    const needText = app.schemas.some(
-      (s) => s.pattern !== undefined || "enum" in s || "const" in s,
-    );
-    this.str = { app, needText, text: "", offset };
+    const island = this.needsIsland(app);
+    // Buffer the text when a forward keyword needs it (pattern / enum /
+    // const) or when the value is a BUFFER island (delegated whole).
+    const needText =
+      island || app.schemas.some((s) => s.pattern !== undefined || "enum" in s || "const" in s);
+    this.str = { app, needText, text: "", offset, island };
   }
 
   onStringChunk(chunk: string): void {
+    if (this.island !== null) {
+      this.forwardIsland((b) => b.onStringChunk(chunk));
+      return;
+    }
     if (this.str !== null && this.str.needText) this.str.text += chunk;
   }
 
   onStringEnd(codePoints: number): void {
-    const s = this.str as { app: Applicable; needText: boolean; text: string; offset: number };
+    if (this.island !== null) {
+      this.forwardIsland((b) => b.onStringEnd());
+      return;
+    }
+    const s = this.str as {
+      app: Applicable;
+      needText: boolean;
+      text: string;
+      offset: number;
+      island: boolean;
+    };
     this.str = null;
     this.curOffset = s.offset;
+    if (s.island) {
+      this.delegateScalar(s.app, s.text);
+      return;
+    }
     this.scalar("string", s.needText ? s.text : "", codePoints, s.app);
   }
 
   onNumber(value: number, _raw: string, startOffset: number): void {
     this.curOffset = startOffset;
+    if (this.island !== null) {
+      this.forwardIsland((b) => b.onNumber(value));
+      return;
+    }
     this.scalar(Number.isInteger(value) ? "integer" : "number", value, 0, this.schemasForValue());
   }
 
   onBoolean(value: boolean, startOffset: number): void {
     this.curOffset = startOffset;
+    if (this.island !== null) {
+      this.forwardIsland((b) => b.onBoolean(value));
+      return;
+    }
     this.scalar("boolean", value, 0, this.schemasForValue());
   }
 
   onNull(startOffset: number): void {
     this.curOffset = startOffset;
+    if (this.island !== null) {
+      this.forwardIsland((b) => b.onNull());
+      return;
+    }
     this.scalar("null", null, 0, this.schemasForValue());
   }
 }

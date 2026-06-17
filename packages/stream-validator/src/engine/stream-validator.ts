@@ -26,11 +26,16 @@
  */
 
 import { Transform, type TransformCallback } from "node:stream";
-import type { SchemaOrBoolean } from "@oav/core";
-import { type Dialect, jsonSchemaDialect } from "@oav/schema";
+import type { PathSegment, SchemaObject, SchemaOrBoolean } from "@oav/core";
+import { compileSchema, type Dialect, jsonSchemaDialect } from "@oav/schema";
 import { classify } from "../classifier/index.js";
-import { SpineValidator, type SpineVerdict, type Violation } from "../spine/index.js";
-import { JsonParseError, JsonTokenizer } from "../tokenizer/index.js";
+import {
+  type IslandDelegate,
+  SpineValidator,
+  type SpineVerdict,
+  type Violation,
+} from "../spine/index.js";
+import { JsonTokenizer } from "../tokenizer/index.js";
 import type { StreamValidatorOptions } from "../options.js";
 
 /**
@@ -53,6 +58,57 @@ export class ValidationFailedError extends Error {
 export interface CreateStreamValidatorOptions extends StreamValidatorOptions {
   /** Dialect whose keyword set drives classification. Default `jsonSchemaDialect`. */
   dialect?: Dialect;
+}
+
+type CompiledValidator = (
+  data: unknown,
+  startPath?: readonly PathSegment[],
+) => { valid: true } | { valid: false; errors: { code: string; path: PathSegment[] }[] };
+
+/**
+ * Build the island delegate: validate a materialized subtree against the
+ * in-memory engine, compiling each schema node once and caching it. Local
+ * `$ref`s are resolved by attaching the document root's `$defs` to the
+ * compiled subschema (so `#/$defs/...` resolves; a self-`#` ref inside an
+ * island is the documented edge case).
+ */
+function buildDelegate(
+  root: SchemaOrBoolean,
+  options: CreateStreamValidatorOptions,
+): IslandDelegate {
+  const rootDefs =
+    typeof root === "object" && root !== null && !Array.isArray(root)
+      ? (root as SchemaObject).$defs
+      : undefined;
+  const dialect = options.dialect ?? jsonSchemaDialect;
+  const cache = new Map<SchemaObject, CompiledValidator>();
+
+  const compile = (schema: SchemaObject): CompiledValidator => {
+    let v = cache.get(schema);
+    if (v === undefined) {
+      const doc: SchemaObject = rootDefs === undefined ? schema : { ...schema, $defs: rootDefs };
+      v = compileSchema(doc as never, {
+        dialect,
+        maxErrors: Number.POSITIVE_INFINITY,
+        ...(options.formats === undefined ? {} : { formats: options.formats }),
+        ...(options.regexCompiler === undefined ? {} : { regexCompiler: options.regexCompiler }),
+        ...(options.keywords === undefined ? {} : { keywords: options.keywords }),
+      }).validate as CompiledValidator;
+      cache.set(schema, v);
+    }
+    return v;
+  };
+
+  return (schemas, value, startPath, byteOffset) => {
+    const out: Violation[] = [];
+    for (const schema of schemas) {
+      const result = compile(schema)(value, startPath);
+      if (!result.valid) {
+        for (const e of result.errors) out.push({ code: e.code, path: e.path, byteOffset });
+      }
+    }
+    return out;
+  };
 }
 
 /**
@@ -82,20 +138,24 @@ export class StreamValidator extends Transform {
     this.maxErrors = options.maxErrors ?? 1;
     this.policy = options.policy ?? "terminate";
 
-    // Compile-time fast-fail (invariant 2): classify before any byte.
+    // Compile-time fast-fail (invariant 2): classify before any byte. A
+    // REJECT keyword (`unevaluated*`), an unknown keyword, or an
+    // unresolvable `$ref` throws here, naming the keyword + path.
     const classification = classify(schema, {
       dialect: options.dialect ?? jsonSchemaDialect,
       customKeywords: options.keywords === undefined ? undefined : Object.keys(options.keywords),
       parity: options.parity,
       strict: options.strict,
     });
-    if (!classification.fullyStreamable) {
-      throw new Error(
-        "stream-validator: schema requires TEE/BUFFER handling, not supported in this build step",
-      );
-    }
 
-    this.spine = new SpineValidator(schema, { onViolation: (v) => this.handleViolation(v) });
+    this.spine = new SpineValidator(schema, {
+      onViolation: (v) => this.handleViolation(v),
+      strategyOf: classification.strategyOf,
+      delegate: buildDelegate(schema, options),
+      ...(options.maxBufferedBytes === undefined
+        ? {}
+        : { maxBufferedBytes: options.maxBufferedBytes }),
+    });
     this.tokenizer = new JsonTokenizer(this.spine);
     this.result = new Promise<SpineVerdict>((resolve, reject) => {
       this.resolveResult = resolve;
@@ -119,12 +179,10 @@ export class StreamValidator extends Transform {
     try {
       this.tokenizer.write(chunk);
     } catch (err) {
-      if (err instanceof JsonParseError) {
-        this.finished = true;
-        this.rejectResult(err);
-        cb(err); // fatal: destroys the stream, emits 'error'
-        return;
-      }
+      // Fatal: a parse error or a buffer-limit overflow. Destroys the
+      // stream, emits 'error', and rejects the result promise.
+      this.finished = true;
+      this.rejectResult(err as Error);
       cb(err as Error);
       return;
     }
@@ -141,12 +199,8 @@ export class StreamValidator extends Transform {
       try {
         this.tokenizer.end();
       } catch (err) {
-        if (err instanceof JsonParseError) {
-          this.finished = true;
-          this.rejectResult(err);
-          cb(err);
-          return;
-        }
+        this.finished = true;
+        this.rejectResult(err as Error);
         cb(err as Error);
         return;
       }
@@ -155,6 +209,12 @@ export class StreamValidator extends Transform {
     this.finished = true;
     this.emit("verdict", verdict);
     this.resolveResult(verdict);
+    // Violations that only surface at close (a top-level scalar, an
+    // under-limit like `required` / `minItems`) reach terminate here.
+    if (this.policy === "terminate" && !verdict.valid) {
+      cb(new ValidationFailedError(verdict));
+      return;
+    }
     cb();
   }
 

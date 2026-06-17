@@ -39,16 +39,23 @@ The default policy is `terminate` with `maxErrors: 1` (the first violation
 destroys the stream and rejects the `pipeline`); `detach` instead seals
 the verdict and raw-copies the tail.
 
-### Supported subset (incubation)
+### Supported schemas (incubation)
 
-The engine currently validates **fully-streamable** schemas (the STREAM
-keyword set: `type`, scalar/string/number constraints, `properties` /
-`items` / `required` / bounds / `propertyNames` / `dependentRequired`,
-`$ref` recursion, scalar `uniqueItems`, boolean schemas). A schema that
-needs TEE (`allOf` / `anyOf` / `oneOf` / `not` / `if`) or BUFFER
-(object/array `enum` / `const`, `dependentSchemas`, `discriminator`,
-`contains`) fails fast at construction; those land in later build steps
-(see the design doc's build sequence).
+The STREAM keyword set (`type`, scalar/string/number constraints,
+`properties` / `items` / `required` / bounds / `propertyNames` /
+`dependentRequired`, `$ref` recursion, boolean schemas) validates on the
+forward spine in one pass. Everything else the classifier marks
+non-streamable (`allOf` / `anyOf` / `oneOf` / `not` / `if`, object/array
+`enum` / `const`, `dependentSchemas`, `discriminator`, `contains`,
+`uniqueItems`) is handled as a **BUFFER island**: the subtree is
+materialized from the token stream and delegated to `@oav/schema`'s
+in-memory validator, bounded by `maxBufferedBytes`. Only a REJECT keyword
+(`unevaluatedProperties` / `unevaluatedItems`), an unknown keyword, or an
+unresolvable `$ref` fails fast at construction.
+
+Still on the build sequence: true TEE streaming (a forward optimization
+over the buffer-the-island fallback), edit hooks / key events, and the
+OpenAPI entry point (`resolveSpec()` + 3.0 dialect normalization).
 
 ## Status
 

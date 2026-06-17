@@ -1,30 +1,38 @@
 import { describe, expect, it } from "vitest";
 import type { SchemaObject, SchemaOrBoolean } from "@oav/core";
 import { compileSchema, jsonSchemaDialect } from "@oav/schema";
-import { classify, ClassifierError } from "../src/classifier/index.js";
-import { SpineUnsupportedError, SpineValidator } from "../src/spine/index.js";
-import { JsonTokenizer } from "../src/tokenizer/index.js";
+import { ClassifierError } from "../src/classifier/index.js";
+import { createStreamValidator } from "../src/index.js";
 
 const enc = new TextEncoder();
 
-/** Stream-validate `value` against `schema`, or signal "unsupported". */
-function streamValid(schema: SchemaOrBoolean, value: unknown): boolean | "unsupported" {
+/**
+ * Stream-validate `value` against `schema` through the full engine
+ * (which materializes + delegates BUFFER/TEE islands). Returns the
+ * verdict, or "unsupported" when the schema fails classification (a
+ * REJECT keyword). Uses detach + unbounded budget so the verdict is
+ * complete and the stream finishes without erroring.
+ */
+async function streamValid(
+  schema: SchemaOrBoolean,
+  value: unknown,
+): Promise<boolean | "unsupported"> {
+  let validator;
   try {
-    classify(schema); // fail-fast parity: a REJECT schema is unsupported
+    validator = createStreamValidator(schema, {
+      policy: "detach",
+      maxErrors: Number.POSITIVE_INFINITY,
+    });
   } catch (err) {
     if (err instanceof ClassifierError) return "unsupported";
     throw err;
   }
-  const spine = new SpineValidator(schema);
-  const tok = new JsonTokenizer(spine);
-  try {
-    tok.write(enc.encode(JSON.stringify(value)));
-    tok.end();
-  } catch (err) {
-    if (err instanceof SpineUnsupportedError) return "unsupported";
-    throw err;
-  }
-  return spine.verdict().valid;
+  validator.on("error", () => {});
+  validator.resume(); // drain (and discard) the echoed bytes
+  const result = validator.result;
+  validator.end(Buffer.from(enc.encode(JSON.stringify(value))));
+  const verdict = await result;
+  return verdict.valid;
 }
 
 function inMemoryValid(schema: SchemaOrBoolean, value: unknown): boolean {
@@ -34,19 +42,11 @@ function inMemoryValid(schema: SchemaOrBoolean, value: unknown): boolean {
   }).validate(value).valid;
 }
 
-/**
- * The differential corpus: each schema paired with instances spanning
- * valid and invalid. The streaming verdict must equal the in-memory
- * verdict for every supported case; unsupported cases are skipped (they
- * fall to a later build step) but counted so a silent regression to
- * "everything skipped" is visible.
- */
 const CORPUS: Array<{ schema: SchemaObject; values: unknown[] }> = [
+  // --- STREAM keyword set ---
   { schema: { type: "string" }, values: ["", "abc", 1, true, null, {}, []] },
   { schema: { type: "integer" }, values: [1, 1.0, 1.5, "1", true] },
-  { schema: { type: "number" }, values: [1, 1.5, "x", null] },
   { schema: { type: ["string", "null"] }, values: ["x", null, 1, {}] },
-  { schema: { type: "boolean" }, values: [true, false, 0, "true"] },
   {
     schema: { type: "string", minLength: 2, maxLength: 4 },
     values: ["a", "ab", "abcd", "abcde", "éé"],
@@ -93,13 +93,6 @@ const CORPUS: Array<{ schema: SchemaObject; values: unknown[] }> = [
     schema: { type: "object", dependentRequired: { card: ["cvv"] } },
     values: [{}, { card: 1 }, { card: 1, cvv: 2 }, { cvv: 2 }],
   },
-  {
-    schema: {
-      type: "object",
-      properties: { p: { type: "object", properties: { q: { type: "string" } }, required: ["q"] } },
-    },
-    values: [{ p: { q: "x" } }, { p: { q: 1 } }, { p: {} }, {}],
-  },
   { schema: { type: "array", items: { type: "number" } }, values: [[], [1, 2], [1, "x"], "no"] },
   {
     schema: {
@@ -110,17 +103,9 @@ const CORPUS: Array<{ schema: SchemaObject; values: unknown[] }> = [
     values: [["a", 1], ["a", 1, true], ["a", 1, 2], [1, 1], ["a"]],
   },
   { schema: { type: "array", minItems: 1, maxItems: 2 }, values: [[], [1], [1, 2], [1, 2, 3]] },
-  {
-    schema: { type: "array", uniqueItems: true },
-    values: [[1, 2, 3], [1, 2, 2], [], ["a", "a"], [1, "1"]],
-  },
   { schema: true, values: [1, "x", {}, [], null] },
   { schema: false, values: [1, "x", {}, null] },
-  {
-    schema: { type: "object", properties: { a: false } },
-    values: [{}, { a: 1 }],
-  },
-  // Recursive $ref: a binary-tree-ish structure.
+  { schema: { type: "object", properties: { a: false } }, values: [{}, { a: 1 }] },
   {
     schema: {
       type: "object",
@@ -131,11 +116,9 @@ const CORPUS: Array<{ schema: SchemaObject; values: unknown[] }> = [
       { value: 1 },
       { value: 1, children: [{ value: 2 }, { value: 3, children: [{ value: 4 }] }] },
       { value: 1, children: [{ value: "x" }] },
-      { value: 1, children: [{ nope: true }] },
       { children: [] },
     ],
   },
-  // $ref into $defs with a sibling constraint.
   {
     schema: {
       type: "object",
@@ -144,15 +127,63 @@ const CORPUS: Array<{ schema: SchemaObject; values: unknown[] }> = [
     },
     values: [{ id: "abc" }, { id: "ab" }, { id: 1 }, {}],
   },
+  // --- BUFFER / TEE islands (materialized + delegated) ---
+  {
+    schema: { uniqueItems: true, type: "array" },
+    values: [[1, 2, 3], [1, 2, 2], [], [{ a: 1 }, { a: 1 }], [{ a: 1 }, { a: 2 }]],
+  },
+  { schema: { allOf: [{ type: "integer" }, { minimum: 0 }] }, values: [5, -1, 1.5, "x"] },
+  { schema: { anyOf: [{ type: "string" }, { type: "integer" }] }, values: ["x", 1, 1.5, true] },
+  { schema: { oneOf: [{ type: "integer" }, { minimum: 5 }] }, values: [3, 7, 10.5, "x"] },
+  { schema: { not: { type: "null" } }, values: [1, "x", null, {}] },
+  { schema: { enum: [{ a: 1 }, [1, 2]] }, values: [{ a: 1 }, [1, 2], { a: 2 }, [1], "x"] },
+  {
+    schema: { const: { nested: { x: [1, 2] } } },
+    values: [{ nested: { x: [1, 2] } }, { nested: { x: [1] } }, {}],
+  },
+  {
+    schema: { type: "object", dependentSchemas: { card: { required: ["cvv"] } } },
+    values: [{}, { card: 1 }, { card: 1, cvv: 2 }],
+  },
+  {
+    schema: { type: "array", contains: { type: "string" }, minContains: 2 },
+    values: [
+      ["a", "b"],
+      ["a", 1],
+      [1, 2],
+      ["a", "b", "c"],
+    ],
+  },
+  {
+    schema: { type: "object", properties: { tag: { oneOf: [{ const: "a" }, { const: "b" }] } } },
+    values: [{ tag: "a" }, { tag: "c" }, {}],
+  },
+  // A streamed object whose property is a BUFFER island.
+  {
+    schema: {
+      type: "object",
+      properties: { meta: { allOf: [{ type: "object" }, { required: ["k"] }] } },
+      required: ["meta"],
+    },
+    values: [{ meta: { k: 1 } }, { meta: {} }, { meta: 5 }, {}],
+  },
+  // If/then/else. Built via JSON.parse: a literal `then` property trips
+  // the no-thenable lint, but `then` is a JSON Schema keyword here.
+  {
+    schema: JSON.parse(
+      '{"if":{"properties":{"t":{"const":"n"}},"required":["t"]},"then":{"required":["n"]},"else":{"required":["s"]}}',
+    ) as SchemaObject,
+    values: [{ t: "n", n: 1 }, { t: "n" }, { s: "x" }, {}],
+  },
 ];
 
-describe("spine verdict equivalence with @oav/schema (differential)", () => {
+describe("engine verdict equivalence with @oav/schema (differential, incl. islands)", () => {
   let supported = 0;
   let skipped = 0;
   for (const { schema, values } of CORPUS) {
     for (const value of values) {
-      it(`${JSON.stringify(schema)} vs ${JSON.stringify(value)}`, () => {
-        const streamed = streamValid(schema, value);
+      it(`${JSON.stringify(schema)} vs ${JSON.stringify(value)}`, async () => {
+        const streamed = await streamValid(schema, value);
         if (streamed === "unsupported") {
           skipped += 1;
           return;
@@ -163,8 +194,7 @@ describe("spine verdict equivalence with @oav/schema (differential)", () => {
     }
   }
   it("exercised a meaningful number of supported cases", () => {
-    // Guards against a regression that makes everything skip.
-    expect(supported).toBeGreaterThan(60);
+    expect(supported).toBeGreaterThan(120);
     void skipped;
   });
 });

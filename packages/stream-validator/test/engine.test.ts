@@ -115,15 +115,65 @@ describe("createStreamValidator: parse errors are fatal", () => {
   });
 });
 
-describe("createStreamValidator: compile-time fast-fail", () => {
-  it("throws at construction for a schema needing TEE/BUFFER", () => {
-    expect(() => createStreamValidator({ allOf: [{ type: "string" }] })).toThrow();
-    expect(() =>
-      createStreamValidator({ oneOf: [{ const: { a: 1 } }, { const: { b: 2 } }] }),
-    ).toThrow();
+describe("createStreamValidator: TEE/BUFFER schemas (island delegation)", () => {
+  it("constructs and validates a composition schema by materializing the island", async () => {
+    const schema: SchemaOrBoolean = { oneOf: [{ type: "integer" }, { minimum: 5 }] };
+    // Valid: an integer below 5 matches exactly one branch.
+    {
+      const validator = createStreamValidator(schema);
+      const { sink, bytes } = collector();
+      await pipeline(chunkedSource("3", 1), validator, sink);
+      expect(bytes().toString("utf8")).toBe("3");
+      await expect(validator.result).resolves.toMatchObject({ valid: true });
+    }
+    // Invalid: 7 matches both branches (integer and >=5) -> oneOf fails.
+    {
+      const validator = createStreamValidator(schema);
+      const { sink } = collector();
+      await expect(pipeline(chunkedSource("7", 1), validator, sink)).rejects.toBeInstanceOf(
+        ValidationFailedError,
+      );
+      await expect(validator.result).resolves.toMatchObject({ valid: false });
+    }
   });
 
-  it("throws at construction for an unknown / unstreamable keyword", () => {
+  it("echoes a buffered island verbatim and streams the rest", async () => {
+    const schema: SchemaOrBoolean = {
+      type: "object",
+      properties: { tag: { oneOf: [{ const: "a" }, { const: "b" }] }, n: { type: "integer" } },
+    };
+    const text = '{"tag":"a","n":5}';
+    const validator = createStreamValidator(schema);
+    const { sink, bytes } = collector();
+    await pipeline(chunkedSource(text, 3), validator, sink);
+    expect(bytes().toString("utf8")).toBe(text);
+    await expect(validator.result).resolves.toMatchObject({ valid: true });
+  });
+});
+
+describe("createStreamValidator: maxBufferedBytes", () => {
+  it("fails fatally when a buffered island exceeds the cap", async () => {
+    const schema: SchemaOrBoolean = { oneOf: [{ type: "object" }, { type: "array" }] };
+    const validator = createStreamValidator(schema, { maxBufferedBytes: 8 });
+    const { sink } = collector();
+    const resultGuard = validator.result.catch((e) => e);
+    await expect(
+      pipeline(chunkedSource('{"a":1,"b":2,"c":3}', 4), validator, sink),
+    ).rejects.toThrow(/maxBufferedBytes/);
+    expect((await resultGuard).message).toMatch(/maxBufferedBytes/);
+  });
+
+  it("accepts an island within the cap", async () => {
+    const schema: SchemaOrBoolean = { oneOf: [{ type: "object" }, { type: "array" }] };
+    const validator = createStreamValidator(schema, { maxBufferedBytes: 1000 });
+    const { sink } = collector();
+    await pipeline(chunkedSource('{"a":1}', 4), validator, sink);
+    await expect(validator.result).resolves.toMatchObject({ valid: true });
+  });
+});
+
+describe("createStreamValidator: compile-time fast-fail", () => {
+  it("throws at construction for a REJECT (unevaluated*) or unknown keyword", () => {
     expect(() => createStreamValidator({ type: "object", unevaluatedProperties: false })).toThrow();
     expect(() => createStreamValidator({ frobnicate: true } as SchemaOrBoolean)).toThrow();
   });
