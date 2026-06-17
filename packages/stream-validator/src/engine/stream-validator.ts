@@ -46,7 +46,7 @@ import {
   type IslandDelegate,
   type ScopeClose,
   SpineValidator,
-  type SpineVerdict,
+  type StreamVerdict,
   type Violation,
 } from "../spine/index.js";
 import { JsonTokenizer } from "../tokenizer/index.js";
@@ -71,30 +71,12 @@ function matchPathFilter(
  * @public
  */
 export class ValidationFailedError extends Error {
-  readonly verdict: SpineVerdict;
-  constructor(verdict: SpineVerdict) {
+  readonly verdict: StreamVerdict;
+  constructor(verdict: StreamVerdict) {
     super(`stream validation failed with ${verdict.violations.length} violation(s)`);
     this.name = "ValidationFailedError";
     this.verdict = verdict;
   }
-}
-
-/** Options for {@link createStreamValidator}, plus the classifier dialect. */
-export interface CreateStreamValidatorOptions extends StreamValidatorOptions {
-  /**
-   * OpenAPI version of the schema. `"3.0"` normalizes the schema to
-   * 2020-12 shape (nullable, boolean `exclusive*`, `$ref` sibling
-   * suppression) before classification; all three select OpenAPI
-   * semantics (`format` asserts). Omit for raw JSON Schema 2020-12.
-   */
-  openApiVersion?: "3.0" | "3.1" | "3.2";
-  /**
-   * Dialect whose keyword set drives classification. Escape hatch that
-   * overrides the dialect implied by `openApiVersion`. Default
-   * `jsonSchemaDialect` (or `openapi31Dialect` when `openApiVersion` is
-   * set).
-   */
-  dialect?: Dialect;
 }
 
 // Containers a local `$ref` may target. Carried onto a delegated island
@@ -119,7 +101,7 @@ type CompiledValidator = (
 function buildDelegate(
   root: SchemaOrBoolean,
   dialect: Dialect,
-  options: CreateStreamValidatorOptions,
+  options: StreamValidatorOptions,
 ): IslandDelegate {
   const rootObj =
     typeof root === "object" && root !== null && !Array.isArray(root)
@@ -199,11 +181,11 @@ export class StreamValidator extends Transform {
   private pendingInjections: Array<{ offset: number; bytes: Buffer }> = [];
 
   /** Resolves with the final verdict (rejects on a fatal parse / I/O error). */
-  readonly result: Promise<SpineVerdict>;
-  private resolveResult!: (v: SpineVerdict) => void;
+  readonly result: Promise<StreamVerdict>;
+  private resolveResult!: (v: StreamVerdict) => void;
   private rejectResult!: (err: Error) => void;
 
-  constructor(schema: SchemaOrBoolean, options: CreateStreamValidatorOptions = {}) {
+  constructor(schema: SchemaOrBoolean, options: StreamValidatorOptions = {}) {
     super();
     this.maxErrors = options.maxErrors ?? 1;
     this.policy = options.policy ?? "terminate";
@@ -228,6 +210,12 @@ export class StreamValidator extends Transform {
       parity: options.parity,
       strict: options.strict,
     });
+    // Surface the sound-but-unbounded warnings the classifier flagged
+    // (strict turns them into a throw above; otherwise they are dropped
+    // unless a `warn` sink is provided).
+    if (options.warn !== undefined) {
+      for (const w of classification.warnings) options.warn(w.message);
+    }
 
     this.spine = new SpineValidator(root, {
       onViolation: (v) => this.handleViolation(v),
@@ -254,7 +242,7 @@ export class StreamValidator extends Transform {
       onScopeClose: (close: ScopeClose) => this.handleScopeClose(close),
     });
     this.tokenizer = new JsonTokenizer(this.spine);
-    this.result = new Promise<SpineVerdict>((resolve, reject) => {
+    this.result = new Promise<StreamVerdict>((resolve, reject) => {
       this.resolveResult = resolve;
       this.rejectResult = reject;
     });
@@ -450,7 +438,7 @@ export class StreamValidator extends Transform {
  */
 export function createStreamValidator(
   schema: SchemaOrBoolean,
-  options?: CreateStreamValidatorOptions,
+  options?: StreamValidatorOptions,
 ): StreamValidator {
   return new StreamValidator(schema, options);
 }

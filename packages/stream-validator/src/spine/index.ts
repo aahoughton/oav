@@ -6,7 +6,7 @@ export {
   type IslandDelegate,
   type ScopeClose,
   type SpineOptions,
-  type SpineVerdict,
+  type StreamVerdict,
   type Violation,
 } from "./spine.js";
 export { ValueBuilder } from "./value-builder.js";

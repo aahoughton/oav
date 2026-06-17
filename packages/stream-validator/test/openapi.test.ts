@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SchemaObject, SchemaOrBoolean } from "@oav/core";
 import { compileSchema, jsonSchemaDialect, oas30Dialect } from "@oav/schema";
-import { createStreamValidator, normalizeOas30, type SpineVerdict } from "../src/index.js";
+import { createStreamValidator, normalizeOas30, type StreamVerdict } from "../src/index.js";
 
 const enc = new TextEncoder();
 
@@ -9,7 +9,7 @@ async function verdictOf(
   schema: SchemaOrBoolean,
   value: unknown,
   opts: Record<string, unknown> = {},
-): Promise<SpineVerdict> {
+): Promise<StreamVerdict> {
   const validator = createStreamValidator(schema, {
     policy: "detach",
     maxErrors: Number.POSITIVE_INFINITY,

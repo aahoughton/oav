@@ -139,7 +139,7 @@ export interface SpineOptions {
 }
 
 /** The verdict of a streaming validation. */
-export interface SpineVerdict {
+export interface StreamVerdict {
   valid: boolean;
   violations: Violation[];
 }
@@ -295,7 +295,7 @@ export class SpineValidator implements JsonEventHandler {
   }
 
   /** The verdict so far (final once `end` has been called on the tokenizer). */
-  verdict(): SpineVerdict {
+  verdict(): StreamVerdict {
     if (this.verdictOnly) return { valid: !this.invalid, violations: this.violations };
     return { valid: this.violations.length === 0, violations: this.violations };
   }

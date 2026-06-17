@@ -5,8 +5,8 @@ import type { RegexCompiler, SchemaOrBoolean } from "@oav/core";
 import { compileSchema, jsonSchemaDialect, openapi31Dialect } from "@oav/schema";
 import {
   createStreamValidator,
-  type CreateStreamValidatorOptions,
-  type SpineVerdict,
+  type StreamValidatorOptions,
+  type StreamVerdict,
 } from "../src/index.js";
 
 const enc = new TextEncoder();
@@ -24,8 +24,8 @@ function source(text: string, chunkSize = 4): Readable {
 async function verdictOf(
   schema: SchemaOrBoolean,
   value: unknown,
-  opts: CreateStreamValidatorOptions = {},
-): Promise<SpineVerdict> {
+  opts: StreamValidatorOptions = {},
+): Promise<StreamVerdict> {
   const validator = createStreamValidator(schema, {
     policy: "detach",
     maxErrors: Number.POSITIVE_INFINITY,

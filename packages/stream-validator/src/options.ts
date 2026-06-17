@@ -6,7 +6,7 @@
  */
 
 import type { PathSegment } from "@oav/core";
-import type { CustomKeywordValidator, RegexCompiler } from "@oav/schema";
+import type { CustomKeywordValidator, Dialect, RegexCompiler } from "@oav/schema";
 
 /**
  * A JSON instance location, as an array of property names and array
@@ -51,6 +51,24 @@ export type PathFilter = JsonPath | ((path: JsonPath, kind: "object" | "array") 
  */
 export interface StreamValidatorOptions {
   /**
+   * OpenAPI version of the schema. `"3.0"` normalizes the schema to
+   * 2020-12 shape before classification; all three select OpenAPI
+   * semantics (`format` asserts). Omit for raw JSON Schema 2020-12. This
+   * is the raw-schema analog of `@oav/validator` reading the version off
+   * the spec; pair it with `dialect` only to override.
+   */
+  openApiVersion?: "3.0" | "3.1" | "3.2";
+
+  /**
+   * Dialect whose keyword set drives classification, matching
+   * `@oav/schema`'s `CompileOptions.dialect` / `@oav/validator`'s
+   * `ValidatorOptions.dialect`. Defaults to `jsonSchemaDialect` (or the
+   * OpenAPI dialect when `openApiVersion` is set); set it only to
+   * override that choice.
+   */
+  dialect?: Dialect;
+
+  /**
    * How many violations to collect before sealing the verdict. Defaults
    * to `1` (Ajv-parity fast-fail), matching `@oav/schema`. `Infinity`
    * collects every violation.
@@ -74,7 +92,7 @@ export interface StreamValidatorOptions {
    * `@oav/schema`'s `formats` option. Used by the spine's scalar
    * validation and threaded into BUFFER-island delegation.
    */
-  formats?: Record<string, (s: string) => boolean>;
+  formats?: Record<string, (value: string) => boolean>;
 
   /**
    * Custom keywords registered with the in-memory compiler. A keyword
@@ -150,4 +168,12 @@ export interface StreamValidatorOptions {
    * `false`.
    */
   strict?: boolean;
+
+  /**
+   * Sink for non-fatal compile-time warnings (the unbounded-* dimensions
+   * the classifier flags). Matches `@oav/validator`'s
+   * `ValidatorOptions.warn`. Absent: warnings are dropped (unless
+   * `strict` escalates them to a thrown error).
+   */
+  warn?: (message: string) => void;
 }
