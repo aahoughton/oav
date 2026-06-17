@@ -8,7 +8,7 @@ further down). `oav-core` mirrors the same paths; substitute
 | Import                         | Surface                                                                         |
 | ------------------------------ | ------------------------------------------------------------------------------- |
 | `@aahoughton/oav`              | `createValidator`, `combineValidators`, error helpers, formatters, types        |
-| `@aahoughton/oav/schema`       | `compileSchema`, dialects, vocabularies, custom keywords                        |
+| `@aahoughton/oav/schema`       | `compileSchema`, dialects, vocabularies, custom keywords, keyword introspection |
 | `@aahoughton/oav/spec`         | `loadSpec`, `loadSpecSync`, `resolveSpec`, `applyOverlays`, readers             |
 | `@aahoughton/oav/overlay-spec` | `translateOverlay`, `applySpecOverlay`: OpenAPI Overlay 1.0 → typed SpecOverlay |
 | `@aahoughton/oav/formats`      | Built-in string format validators                                               |

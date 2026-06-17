@@ -21,6 +21,7 @@
 // Compiler: turning schemas into validators.
 export {
   compileSchema,
+  schemaUsesUnevaluated,
   type CompiledFlatSchema,
   type CompiledPredicate,
   type CompiledRegex,
@@ -178,3 +179,8 @@ export {
 // tooling. For rewriting use cases, the raw `SUBSCHEMA_*_POSITIONS`
 // constants are in `./internals`.
 export { walkSubschemas, type SubschemaVisitor } from "./subschema-positions.js";
+
+// Keyword introspection: enumerate the built-in keyword set (with its
+// classification flags) for a dialect. Reads keyword metadata; pairs
+// with `schemaUsesUnevaluated` (above) and `walkSubschemas`.
+export { keywordDefinitions } from "./introspection.js";
