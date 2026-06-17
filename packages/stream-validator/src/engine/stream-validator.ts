@@ -18,16 +18,26 @@
  * `pipeline` rejects); `detach` instead seals the verdict and raw-copies
  * the tail. A parse error is always terminal.
  *
- * This build step handles fully-STREAM schemas. A schema needing
- * TEE/BUFFER, or an unsupported/unknown keyword, fails fast at
- * construction (invariant 2) rather than partway through a body.
+ * STREAM-classified values validate on the forward spine; non-stream
+ * subtrees (composition, object/array equality, `dependentSchemas`,
+ * `contains`, `uniqueItems`, `format` under an asserting dialect) are
+ * materialized and delegated to `@oav/schema`'s in-memory engine. Only a
+ * REJECT keyword (`unevaluated*`), an unknown keyword, or an unresolvable
+ * `$ref` fails fast at construction (invariant 2). `maxBufferedBytes` /
+ * `maxDepth` / `maxTotalBytes` bound memory; `regexCompiler` hardens
+ * `pattern` against ReDoS.
  *
  * @packageDocumentation
  */
 
 import { Transform, type TransformCallback } from "node:stream";
 import type { PathSegment, SchemaObject, SchemaOrBoolean } from "@oav/core";
-import { compileSchema, type Dialect, jsonSchemaDialect } from "@oav/schema";
+import {
+  compileSchema,
+  type Dialect,
+  FORMAT_ASSERTION_VOCAB,
+  jsonSchemaDialect,
+} from "@oav/schema";
 import { classify } from "../classifier/index.js";
 import {
   type IslandDelegate,
@@ -90,6 +100,9 @@ function buildDelegate(
       v = compileSchema(doc as never, {
         dialect,
         maxErrors: Number.POSITIVE_INFINITY,
+        // Bound the in-memory delegate's native recursion so a deeply
+        // nested island fails as a client error, not a RangeError crash.
+        ...(options.maxDepth === undefined ? {} : { maxDepth: options.maxDepth }),
         ...(options.formats === undefined ? {} : { formats: options.formats }),
         ...(options.regexCompiler === undefined ? {} : { regexCompiler: options.regexCompiler }),
         ...(options.keywords === undefined ? {} : { keywords: options.keywords }),
@@ -123,6 +136,8 @@ export class StreamValidator extends Transform {
   private readonly maxErrors: number;
   private readonly policy: "terminate" | "detach";
 
+  private readonly maxTotalBytes: number | undefined;
+  private totalBytes = 0;
   private errorCount = 0;
   private sealed = false; // detach: validation stopped, echo-only tail
   private finished = false; // verdict settled
@@ -137,12 +152,14 @@ export class StreamValidator extends Transform {
     super();
     this.maxErrors = options.maxErrors ?? 1;
     this.policy = options.policy ?? "terminate";
+    this.maxTotalBytes = options.maxTotalBytes;
+    const dialect = options.dialect ?? jsonSchemaDialect;
 
     // Compile-time fast-fail (invariant 2): classify before any byte. A
     // REJECT keyword (`unevaluated*`), an unknown keyword, or an
     // unresolvable `$ref` throws here, naming the keyword + path.
     const classification = classify(schema, {
-      dialect: options.dialect ?? jsonSchemaDialect,
+      dialect,
       customKeywords: options.keywords === undefined ? undefined : Object.keys(options.keywords),
       parity: options.parity,
       strict: options.strict,
@@ -152,15 +169,24 @@ export class StreamValidator extends Transform {
       onViolation: (v) => this.handleViolation(v),
       strategyOf: classification.strategyOf,
       delegate: buildDelegate(schema, options),
+      // OpenAPI dialects assert `format`; the spine has no format check
+      // of its own, so format-bearing scalars delegate under those.
+      assertsFormat: dialect.vocabularies.some((v) => v.uri === FORMAT_ASSERTION_VOCAB),
       ...(options.maxBufferedBytes === undefined
         ? {}
         : { maxBufferedBytes: options.maxBufferedBytes }),
+      ...(options.maxDepth === undefined ? {} : { maxDepth: options.maxDepth }),
+      ...(options.regexCompiler === undefined ? {} : { regexCompiler: options.regexCompiler }),
     });
     this.tokenizer = new JsonTokenizer(this.spine);
     this.result = new Promise<SpineVerdict>((resolve, reject) => {
       this.resolveResult = resolve;
       this.rejectResult = reject;
     });
+    // A caller may never await `result` (they may rely on `pipeline`
+    // rejecting instead). Mark it handled so a rejection here is not an
+    // unhandled-rejection warning; explicit awaiters still observe it.
+    this.result.catch(() => {});
   }
 
   private handleViolation(violation: Violation): void {
@@ -174,6 +200,15 @@ export class StreamValidator extends Transform {
     this.push(chunk);
     if (this.sealed || this.finished) {
       cb();
+      return;
+    }
+    // Refuse oversize input regardless of validity (policy lever).
+    this.totalBytes += chunk.length;
+    if (this.maxTotalBytes !== undefined && this.totalBytes > this.maxTotalBytes) {
+      const err = new Error(`stream-validator: input exceeded maxTotalBytes=${this.maxTotalBytes}`);
+      this.finished = true;
+      this.rejectResult(err);
+      cb(err);
       return;
     }
     try {
@@ -233,6 +268,17 @@ export class StreamValidator extends Transform {
     // detach: stop validating, keep echoing.
     this.sealed = true;
     cb();
+  }
+
+  // Cleanup on every exit path, including consumer abort (the most
+  // leaked). Settle the result so an awaiter never hangs; engine state is
+  // heap-only and reclaimed once this instance is unreferenced.
+  override _destroy(err: Error | null, cb: (error: Error | null) => void): void {
+    if (!this.finished) {
+      this.finished = true;
+      this.rejectResult(err ?? new Error("stream-validator: destroyed before completion"));
+    }
+    cb(err);
   }
 }
 

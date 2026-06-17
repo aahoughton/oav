@@ -85,6 +85,8 @@ export const KEYWORD_CATEGORY: Readonly<Record<string, KeywordCategory>> = {
   maxProperties: "scalar",
   required: "scalar",
   dependentRequired: "scalar",
+  // Forward-decidable for classification, but the spine materializes a
+  // uniqueItems array (canonical hashing of items is not yet streamed).
   uniqueItems: "scalar",
   // OAS 3.0 `nullable` is folded into a `type` union by the dialect
   // normalization pass before classification; a forward type modifier.

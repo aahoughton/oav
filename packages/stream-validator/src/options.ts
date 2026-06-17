@@ -134,9 +134,11 @@ export interface StreamValidatorOptions {
   maxTotalBytes?: number;
 
   /**
-   * Cap on `uniqueItems`' seen-hash set, whose memory is O(array length)
-   * and not covered by `maxBufferedBytes` (it retains hashes, not
-   * bytes). `maxItems` on the array also bounds it. Default off.
+   * Cap on `uniqueItems`' seen-hash set (O(array length) memory, not
+   * covered by `maxBufferedBytes`). Reserved: the current build delegates
+   * `uniqueItems` arrays to the in-memory engine as a BUFFER island
+   * (bounded by `maxBufferedBytes`), so this knob is inert until the
+   * streaming canonical-hash mode lands. Default off.
    */
   maxUniqueItems?: number;
 

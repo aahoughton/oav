@@ -3,25 +3,26 @@
  * a streaming JSON value against a resolved schema in one pass, carrying
  * scope on an explicit heap stack, and produces a verdict.
  *
- * This step covers the STREAM keyword set only (verdict, no echo, no
- * channels). A scope holds the AND-list of schemas its value must satisfy
+ * A scope holds the AND-list of schemas its value must satisfy
  * (structural applicator overlap plus `$ref` expansion all combine as
  * "must satisfy every one"); `$ref` is followed by expansion, so deep
  * recursion grows the heap scope stack, never the native call stack.
  *
- * Constructs outside the STREAM set throw {@link SpineUnsupportedError}
- * rather than producing a wrong verdict: explicit composition
- * (`allOf` / `anyOf` / `oneOf` / `not` / `if`, which the classifier marks
- * TEE/BUFFER), object/array `enum` / `const` (BUFFER), `contains`, and
- * `uniqueItems` over non-scalar items. The classifier filters the first
- * three out ahead of the spine; the throws are a backstop. `format` is
- * treated as a non-asserting annotation (its default in JSON Schema
- * 2020-12), so it does not affect the verdict.
+ * STREAM-classified values validate on the forward state machines.
+ * Everything else (composition, object/array `enum` / `const`,
+ * `dependentSchemas`, `discriminator`, `contains`, `uniqueItems`, and
+ * `format` under an asserting dialect) is a BUFFER island: the value is
+ * materialized via {@link ValueBuilder} and handed to the injected
+ * {@link IslandDelegate} (the in-memory engine). With no delegate wired
+ * (a bare spine) such a value throws {@link SpineUnsupportedError} rather
+ * than producing a wrong verdict. `maxBufferedBytes` caps a single island
+ * (and forced-buffer scalar); `maxDepth` records a `depth` violation.
  *
  * @packageDocumentation
  */
 
 import type { PathSegment, SchemaObject, SchemaOrBoolean } from "@oav/core";
+import type { RegexCompiler } from "@oav/schema";
 import type { Strategy } from "../classifier/strategy.js";
 import type { JsonEventHandler } from "../tokenizer/index.js";
 import { resolveRef } from "../ref-resolve.js";
@@ -73,8 +74,18 @@ export interface SpineOptions {
    * node throws {@link SpineUnsupportedError}.
    */
   delegate?: IslandDelegate;
-  /** Cap on a single buffered island's UTF-8 source-byte span. Unset: no cap. */
+  /** Cap on a single buffered island's UTF-8 source-byte span (and forced-buffer scalar). Unset: no cap. */
   maxBufferedBytes?: number;
+  /** Maximum nesting depth. Exceeding it is a `depth` violation. Unset: no cap. */
+  maxDepth?: number;
+  /** Regex engine for `pattern` (e.g. RE2). Hardens the spine's own regex use. */
+  regexCompiler?: RegexCompiler;
+  /**
+   * The active dialect asserts `format` (OpenAPI). When true, a schema
+   * carrying `format` is delegated so the in-memory engine asserts it
+   * (the spine has no format assertion of its own).
+   */
+  assertsFormat?: boolean;
 }
 
 /** The verdict of a streaming validation. */
@@ -133,11 +144,15 @@ export class SpineValidator implements JsonEventHandler {
   private readonly violations: Violation[] = [];
   private readonly path: PathSegment[] = [];
   private readonly frames: Frame[] = [];
-  private readonly regexCache = new Map<string, RegExp>();
+  private readonly regexCache = new Map<string, { test(s: string): boolean }>();
   private readonly onViolation: ((violation: Violation) => void) | undefined;
   private readonly strategyOf: (node: SchemaOrBoolean) => Strategy;
   private readonly delegate: IslandDelegate | undefined;
   private readonly maxBufferedBytes: number | undefined;
+  private readonly maxDepth: number | undefined;
+  private readonly regexCompiler: RegexCompiler | undefined;
+  private readonly assertsFormat: boolean;
+  private depthReported = false;
 
   // Byte offset of the event currently being validated; stamped onto
   // violations so a consumer can re-sync against the byte stream.
@@ -168,6 +183,9 @@ export class SpineValidator implements JsonEventHandler {
     this.strategyOf = options.strategyOf ?? (() => "stream");
     this.delegate = options.delegate;
     this.maxBufferedBytes = options.maxBufferedBytes;
+    this.maxDepth = options.maxDepth;
+    this.regexCompiler = options.regexCompiler;
+    this.assertsFormat = options.assertsFormat ?? false;
   }
 
   /** The verdict so far (final once `end` has been called on the tokenizer). */
@@ -181,10 +199,13 @@ export class SpineValidator implements JsonEventHandler {
     this.onViolation?.(violation);
   }
 
-  private regex(pattern: string): RegExp {
+  private regex(pattern: string): { test(s: string): boolean } {
     let re = this.regexCache.get(pattern);
     if (re === undefined) {
-      re = new RegExp(pattern, "u");
+      // Route through the hardening compiler (e.g. RE2) when provided;
+      // the spine's regex runs against attacker-controlled input bytes.
+      re =
+        this.regexCompiler !== undefined ? this.regexCompiler(pattern) : new RegExp(pattern, "u");
       this.regexCache.set(pattern, re);
     }
     return re;
@@ -262,6 +283,8 @@ export class SpineValidator implements JsonEventHandler {
   private isNonStream(s: SchemaObject): boolean {
     if (this.strategyOf(s) !== "stream") return true;
     if ("contains" in s) return true;
+    // Under an asserting dialect the spine has no format check; delegate.
+    if (this.assertsFormat && "format" in s) return true;
     // uniqueItems over container items needs canonical hashing the spine
     // doesn't do; materialize the whole array (correct for any element).
     if (s.uniqueItems === true) return true;
@@ -352,6 +375,17 @@ export class SpineValidator implements JsonEventHandler {
     if (this.frames.length > 0) this.path.pop();
   }
 
+  // Record a `depth` violation (once) when a new container would exceed
+  // maxDepth. The spine's scope stack is on the heap, so this caps the
+  // verdict as a client error rather than guarding a native overflow
+  // (that is the in-memory island delegate's `maxDepth`).
+  private checkDepth(): void {
+    if (this.maxDepth !== undefined && this.frames.length >= this.maxDepth && !this.depthReported) {
+      this.fail("depth");
+      this.depthReported = true;
+    }
+  }
+
   // After a complete value, advance the enclosing scope.
   private advance(): void {
     const top = this.frames[this.frames.length - 1];
@@ -425,6 +459,7 @@ export class SpineValidator implements JsonEventHandler {
       this.forwardIsland((b) => b.onStartObject());
       return;
     }
+    this.checkDepth();
     this.pushSegment();
     if (app.hasFalse) this.fail("false");
     this.checkType(app.schemas, "object");
@@ -478,6 +513,7 @@ export class SpineValidator implements JsonEventHandler {
       this.forwardIsland((b) => b.onStartArray());
       return;
     }
+    this.checkDepth();
     this.pushSegment();
     if (app.hasFalse) this.fail("false");
     this.checkType(app.schemas, "array");
@@ -507,26 +543,40 @@ export class SpineValidator implements JsonEventHandler {
     }
     const top = this.frames[this.frames.length - 1] as ObjectFrame;
     for (const s of top.schemas) {
-      if (s.propertyNames !== undefined) {
-        const app: Applicable = { schemas: [], hasFalse: false };
-        this.expand(s.propertyNames, app, new Set());
-        const keyPath = [...this.path, value];
-        if (app.hasFalse) this.fail("propertyNames", keyPath);
-        for (const ps of app.schemas) {
-          if (ps.type !== undefined && !typeMatches(ps.type, "string"))
-            this.fail("propertyNames", keyPath);
-          if (ps.minLength !== undefined && codePoints < ps.minLength)
-            this.fail("propertyNames", keyPath);
-          if (ps.maxLength !== undefined && codePoints > ps.maxLength)
-            this.fail("propertyNames", keyPath);
-          if (ps.pattern !== undefined && !this.regex(ps.pattern).test(value))
-            this.fail("propertyNames", keyPath);
-        }
-      }
+      if (s.propertyNames !== undefined) this.checkPropertyName(s.propertyNames, value, codePoints);
     }
     top.seen.add(value);
     top.count += 1;
     top.pendingKey = value;
+  }
+
+  // Validate a key against a `propertyNames` subschema. With a delegate
+  // the key is validated in-memory (sound for any subschema: enum, const,
+  // format, composition, $ref, ...). Without one (a bare spine) it falls
+  // back to the forward string keywords only.
+  private checkPropertyName(propertyNames: SchemaOrBoolean, key: string, codePoints: number): void {
+    const app: Applicable = { schemas: [], hasFalse: false };
+    this.expand(propertyNames, app, new Set());
+    const keyPath = [...this.path, key];
+    if (app.hasFalse) this.fail("propertyNames", keyPath);
+    if (app.schemas.length === 0) return;
+    if (this.delegate !== undefined) {
+      for (const v of this.delegate(app.schemas, key, keyPath, this.curOffset)) {
+        this.violations.push(v);
+        this.onViolation?.(v);
+      }
+      return;
+    }
+    for (const ps of app.schemas) {
+      if (ps.type !== undefined && !typeMatches(ps.type, "string"))
+        this.fail("propertyNames", keyPath);
+      if (ps.minLength !== undefined && codePoints < ps.minLength)
+        this.fail("propertyNames", keyPath);
+      if (ps.maxLength !== undefined && codePoints > ps.maxLength)
+        this.fail("propertyNames", keyPath);
+      if (ps.pattern !== undefined && !this.regex(ps.pattern).test(key))
+        this.fail("propertyNames", keyPath);
+    }
   }
 
   onStringStart(offset: number): void {
@@ -544,12 +594,20 @@ export class SpineValidator implements JsonEventHandler {
     this.str = { app, needText, text: "", offset, island };
   }
 
-  onStringChunk(chunk: string): void {
+  onStringChunk(chunk: string, offset: number): void {
+    this.curOffset = offset;
     if (this.island !== null) {
       this.forwardIsland((b) => b.onStringChunk(chunk));
       return;
     }
-    if (this.str !== null && this.str.needText) this.str.text += chunk;
+    if (this.str !== null && this.str.needText) {
+      this.str.text += chunk;
+      // A forced-buffer scalar (pattern / enum / const) accumulates; cap
+      // its source-byte span so it can't grow unbounded on hostile input.
+      if (this.maxBufferedBytes !== undefined && offset - this.str.offset > this.maxBufferedBytes) {
+        throw new BufferLimitError(this.maxBufferedBytes, offset);
+      }
+    }
   }
 
   onStringEnd(codePoints: number): void {
