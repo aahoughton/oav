@@ -1,0 +1,121 @@
+import { describe, expect, it } from "vitest";
+import type { SchemaObject, SchemaOrBoolean } from "@oav/core";
+import { compileSchema, jsonSchemaDialect } from "@oav/schema";
+import { createStreamValidator } from "../src/index.js";
+import { SpineValidator } from "../src/spine/index.js";
+import { JsonTokenizer } from "../src/tokenizer/index.js";
+
+const enc = new TextEncoder();
+
+async function streamVerdict(schema: SchemaOrBoolean, value: unknown): Promise<boolean> {
+  const v = createStreamValidator(schema, {
+    policy: "detach",
+    maxErrors: Number.POSITIVE_INFINITY,
+  });
+  v.on("error", () => {});
+  v.resume();
+  const r = v.result;
+  v.end(Buffer.from(enc.encode(JSON.stringify(value))));
+  return (await r).valid;
+}
+
+function inMemory(schema: SchemaOrBoolean, value: unknown): boolean {
+  return compileSchema(schema as never, {
+    dialect: jsonSchemaDialect,
+    maxErrors: Number.POSITIVE_INFINITY,
+  }).validate(value).valid;
+}
+
+async function expectParity(schema: SchemaOrBoolean, values: unknown[]): Promise<void> {
+  for (const value of values) {
+    expect(await streamVerdict(schema, value), `${JSON.stringify(value)}`).toBe(
+      inMemory(schema, value),
+    );
+  }
+}
+
+describe("components is a ref container, not an unknown keyword", () => {
+  it("resolves a #/components/schemas ref on the stream path", async () => {
+    const schema: SchemaObject = {
+      $ref: "#/components/schemas/Pet",
+      components: { schemas: { Pet: { type: "object", required: ["name"] } } },
+    };
+    await expectParity(schema, [{ name: "x" }, {}, "not-object"]);
+  });
+
+  it("resolves component refs inside a BUFFER island (oneOf)", async () => {
+    const schema: SchemaObject = {
+      type: "object",
+      properties: {
+        pet: {
+          oneOf: [{ $ref: "#/components/schemas/Cat" }, { $ref: "#/components/schemas/Dog" }],
+        },
+      },
+      components: {
+        schemas: {
+          Cat: { type: "object", required: ["meow"] },
+          Dog: { type: "object", required: ["bark"] },
+        },
+      },
+    };
+    await expectParity(schema, [
+      { pet: { meow: true } },
+      { pet: { bark: true } },
+      { pet: { meow: true, bark: true } },
+      { pet: {} },
+    ]);
+  });
+});
+
+describe("TEE branch sub-spines are O(1) memory (verdict-only)", () => {
+  it("does not retain a violation per failing item", () => {
+    // Verdict-only spine (the mode TEE branches use): every element fails,
+    // but nothing is retained - only the boolean verdict.
+    const spine = new SpineValidator(
+      { type: "array", items: { type: "integer" } },
+      { verdictOnly: true },
+    );
+    const tok = new JsonTokenizer(spine);
+    const big = `[${Array.from({ length: 5000 }, () => '"x"').join(",")}]`;
+    tok.write(enc.encode(big));
+    tok.end();
+    const v = spine.verdict();
+    expect(v.valid).toBe(false);
+    expect(v.violations).toHaveLength(0); // not retained
+  });
+
+  it("a composition over a large all-failing array stays correct", async () => {
+    const schema: SchemaObject = {
+      anyOf: [
+        { type: "array", items: { type: "integer" } },
+        { type: "array", items: { type: "string" } },
+      ],
+    };
+    const booleans = Array.from({ length: 20000 }, (_, i) => i % 2 === 0);
+    expect(await streamVerdict(schema, booleans)).toBe(false); // neither branch matches
+    expect(
+      await streamVerdict(
+        schema,
+        Array.from({ length: 20000 }, (_, i) => i),
+      ),
+    ).toBe(true);
+  });
+});
+
+describe("island ref-container graft: root #/$defs wins over a node-local $defs", () => {
+  it("a buffer island's root-targeting ref resolves against the document root", async () => {
+    // `#/$defs/Strict` inside the island means the DOCUMENT root's $defs
+    // (a string), not the node-local decoy (an integer).
+    const schema: SchemaObject = {
+      type: "object",
+      properties: {
+        p: {
+          oneOf: [{ $ref: "#/$defs/Strict" }, { const: { tag: 1 } }], // const-object -> BUFFER island
+          $defs: { Strict: { type: "integer" } }, // local decoy
+        },
+      },
+      $defs: { Strict: { type: "string" } }, // the real target
+    };
+    await expectParity(schema, [{ p: "hello" }, { p: 5 }, { p: { tag: 1 } }, { p: {} }]);
+  });
+});

@@ -181,7 +181,10 @@ export function classify(root: SchemaOrBoolean, options: ClassifyOptions = {}): 
       if (pathOf.has(s)) return false; // already collected; prune the re-walk
       const p = joinPath(base, rel);
       pathOf.set(s, p);
-      if (typeof s.$ref === "string") refTargets.push({ ref: s.$ref, from: p });
+      // Follow both `$ref` and `$dynamicRef` so a target reachable only
+      // through a non-walked container (e.g. `components`) is classified.
+      const ref = s.$ref ?? s.$dynamicRef;
+      if (typeof ref === "string") refTargets.push({ ref, from: p });
       return undefined;
     });
   };
@@ -214,6 +217,10 @@ export function classify(root: SchemaOrBoolean, options: ClassifyOptions = {}): 
       if (cat === undefined) {
         if (folded.has(key)) continue; // folded keyword (then/else/min|maxContains)
         if (SUBSCHEMA_POSITIONS.has(key)) continue; // structural container (e.g. definitions)
+        // A `$ref`-target container, not a validation keyword. Its
+        // referenced members are pulled in and classified via the
+        // ref-follow pass above; the container itself asserts nothing.
+        if (key === "components") continue;
         if (customKeywords.has(key)) {
           b = joinStrategy(b, "buffer");
           continue;

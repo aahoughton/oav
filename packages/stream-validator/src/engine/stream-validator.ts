@@ -133,7 +133,17 @@ function buildDelegate(
       const doc: Record<string, unknown> = { ...schema };
       if (rootObj !== undefined) {
         for (const c of REF_CONTAINERS) {
-          if (doc[c] === undefined && rootObj[c] !== undefined) doc[c] = rootObj[c];
+          const rootC = rootObj[c];
+          if (rootC === undefined) continue;
+          // `#/$defs/...` (etc.) in an island target the DOCUMENT root's
+          // container, not a node-local one, so the root's entries win on a
+          // name collision; any extra node-local entries are kept (harmless,
+          // unreachable via a root-relative pointer).
+          const local = doc[c];
+          doc[c] =
+            local !== null && typeof local === "object"
+              ? { ...(local as Record<string, unknown>), ...(rootC as Record<string, unknown>) }
+              : rootC;
         }
       }
       v = compileSchema(doc as never, {

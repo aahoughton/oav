@@ -105,6 +105,12 @@ export interface SpineOptions {
   delegate?: IslandDelegate;
   /** Stop recording after this many violations, throwing {@link BudgetReached}. Default unlimited. */
   maxErrors?: number;
+  /**
+   * Track only a boolean verdict, not the violation list (used by TEE
+   * branch sub-spines, which the parent reads as valid/invalid). Keeps a
+   * branch over a large value O(1) in memory. Default false.
+   */
+  verdictOnly?: boolean;
   /** Cap on a single buffered island's UTF-8 source-byte span (and forced-buffer scalar). Unset: no cap. */
   maxBufferedBytes?: number;
   /** Maximum nesting depth. Exceeding it is a `depth` violation. Unset: no cap. */
@@ -231,6 +237,11 @@ export class SpineValidator implements JsonEventHandler {
     | ((scopePath: readonly PathSegment[], key: string, byteOffset: number) => void)
     | undefined;
   private readonly onScopeClose: ((close: ScopeClose) => void) | undefined;
+  // Verdict-only mode (TEE branch sub-spines): track a single invalid flag
+  // instead of retaining a violation per failure, so a branch over a huge
+  // array stays O(1) memory. The parent only reads `verdict().valid`.
+  private readonly verdictOnly: boolean;
+  private invalid = false;
   private depthReported = false;
 
   // Byte offset of the event currently being validated; stamped onto
@@ -274,6 +285,7 @@ export class SpineValidator implements JsonEventHandler {
     this.strategyOf = options.strategyOf ?? (() => "stream");
     this.delegate = options.delegate;
     this.maxErrors = options.maxErrors ?? Number.POSITIVE_INFINITY;
+    this.verdictOnly = options.verdictOnly ?? false;
     this.maxBufferedBytes = options.maxBufferedBytes;
     this.maxDepth = options.maxDepth;
     this.regexCompiler = options.regexCompiler;
@@ -284,6 +296,7 @@ export class SpineValidator implements JsonEventHandler {
 
   /** The verdict so far (final once `end` has been called on the tokenizer). */
   verdict(): SpineVerdict {
+    if (this.verdictOnly) return { valid: !this.invalid, violations: this.violations };
     return { valid: this.violations.length === 0, violations: this.violations };
   }
 
@@ -296,6 +309,12 @@ export class SpineValidator implements JsonEventHandler {
   // tokenizer (the verdict carries exactly `maxErrors` violations, and no
   // further work runs this chunk).
   private record(violation: Violation): void {
+    if (this.verdictOnly) {
+      // A TEE branch: an invalid result is data the combinator needs, not
+      // a parent violation. Flag and keep going (no retention, no throw).
+      this.invalid = true;
+      return;
+    }
     this.violations.push(violation);
     this.onViolation?.(violation);
     if (this.violations.length >= this.maxErrors) throw new BudgetReached();
@@ -506,6 +525,7 @@ export class SpineValidator implements JsonEventHandler {
       strategyOf: this.strategyOf,
       refRoot: this.refRoot,
       assertsFormat: this.assertsFormat,
+      verdictOnly: true, // only the branch's boolean verdict is needed
     };
     if (this.delegate !== undefined) opts.delegate = this.delegate;
     if (this.maxBufferedBytes !== undefined) opts.maxBufferedBytes = this.maxBufferedBytes;
