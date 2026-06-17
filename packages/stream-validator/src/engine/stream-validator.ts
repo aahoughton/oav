@@ -208,10 +208,10 @@ export class StreamValidator extends Transform {
       dialect,
       customKeywords: options.keywords === undefined ? undefined : Object.keys(options.keywords),
       parity: options.parity,
-      strict: options.strict,
+      enforceBounds: options.enforceBounds,
     });
     // Surface the sound-but-unbounded warnings the classifier flagged
-    // (strict turns them into a throw above; otherwise they are dropped
+    // (enforceBounds turns them into a throw above; otherwise they are dropped
     // unless a `warn` sink is provided).
     if (options.warn !== undefined) {
       for (const w of classification.warnings) options.warn(w.message);

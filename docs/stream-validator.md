@@ -6,7 +6,7 @@ bytes through unchanged while reporting violations on a side channel. Memory is
 bounded for forward-decidable schemas with structural bounds (or configured
 caps), not by document size, so multi-GB bodies validate without materializing
 in heap. Schemas with BUFFER islands, forced-buffer scalars, or `uniqueItems`
-can grow with the document; `strict` mode plus caps is the recommended
+can grow with the document; `enforceBounds` plus caps is the recommended
 production setting for untrusted input (see "Resource model"). A new package in
 the OAV monorepo that reuses OAV's error model and formats, and delegates
 ambiguous subtrees to OAV's in-memory compiler.
@@ -73,7 +73,7 @@ of these.
    bounded-memory.
 4. **Correctness and memory are distinct levers.** Unhandleable schemas
    fast-fail at compile (invariant 2). Sound-but-unbounded schemas get a
-   compile-time warning and are capped only via opt-in limits / strict mode. One
+   compile-time warning and are capped only via opt-in limits / `enforceBounds`. One
    is never silently downgraded to the other.
 5. **Provisional bytes.** Emitted bytes are "accepted so far," which a later
    parse error or violation can retract. Consumers do not trust bytes until a
@@ -633,7 +633,7 @@ nesting, a spec-matching document streams in bounded memory and needs no cap. Bu
 a _valid_ document can still be unbounded where the schema leaves a dimension
 open: an unbounded `pattern`/`format` string, an unbounded BUFFER island, or
 `uniqueItems` without `maxItems`. So caps are not always unnecessary; for
-untrusted input, `strict` + caps is the recommended setting (this matches the
+untrusted input, `enforceBounds` + caps is the recommended setting (this matches the
 intro). The knobs that cover the unbounded surface:
 
 - `maxBufferedBytes`: one cap on any single internal buffer (forced-buffer scalar
@@ -657,7 +657,7 @@ For a _sound but unbounded_ schema, the response is warn-by-default +
 opt-in-enforce: the classifier emits a compile-time warning for any
 structurally-unbounded buffer (a `pattern`/`format` string or unbounded key with
 no length bound, an unbounded island), unbounded depth, **or `uniqueItems` on an
-array with no `maxItems`**; a `strict` mode turns those into compile errors or
+array with no `maxItems`**; `enforceBounds` turns those into compile errors or
 enforced caps. Reference workload for sizing caps: body up to 2 GB, ~8.4M array
 elements, 32 KB per string.
 
@@ -672,19 +672,22 @@ call, and `regexCompiler` also hardens the spine's own `pattern`/`format`.
 
 ```ts
 interface StreamValidatorOptions {
+  openApiVersion?: "3.0" | "3.1" | "3.2"; // normalize a raw OpenAPI schema
+  dialect?: Dialect; // explicit dialect override (matches @oav/schema)
   maxErrors?: number; // default 1
   policy?: "terminate" | "detach"; // default "terminate"
-  formats?: Record<string, (s: string) => boolean>;
+  formats?: Record<string, (value: string) => boolean>;
   keywords?: Record<string, CustomKeywordValidator>; // delegable custom keywords (matches @oav/schema)
   regexCompiler?: RegexCompiler; // e.g. RE2, for pattern/format regex hardening
   parity?: boolean; // exact OAV messages (forces oneOf/anyOf to BUFFER); default false
   keyEvents?: boolean | { at: PathFilter };
+  warn?: (message: string) => void; // sink for unbounded-* warnings (matches @oav/validator)
   // resource limits, all off unless set
   maxBufferedBytes?: number;
   maxDepth?: number;
   maxTotalBytes?: number;
   maxUniqueItems?: number; // cap on uniqueItems' seen-hash set (O(array length))
-  strict?: boolean; // unbounded-* warnings become compile errors
+  enforceBounds?: boolean; // unbounded-* warnings become compile errors
 }
 ```
 

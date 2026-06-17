@@ -208,8 +208,8 @@ describe("classify: unbounded warnings", () => {
     expect(c.warnings.some((w) => w.kind === "unbounded-unique-items")).toBe(true);
   });
 
-  it("strict turns a warning into a thrown error", () => {
-    expect(() => classify({ type: "string", format: "email" }, { strict: true })).toThrow(
+  it("enforceBounds turns a warning into a thrown error", () => {
+    expect(() => classify({ type: "string", format: "email" }, { enforceBounds: true })).toThrow(
       ClassifierError,
     );
   });

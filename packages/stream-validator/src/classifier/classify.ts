@@ -82,7 +82,7 @@ export interface ClassifyOptions {
   /** Force `anyOf` / `oneOf` to BUFFER (exact in-memory message parity). */
   parity?: boolean;
   /** Turn unbounded-* warnings into a thrown {@link ClassifierError}. */
-  strict?: boolean;
+  enforceBounds?: boolean;
 }
 
 /** The result of classifying a schema. */
@@ -93,7 +93,7 @@ export interface Classification {
   readonly root: Strategy;
   /** True iff every node classified as `stream` (no TEE / BUFFER anywhere). */
   readonly fullyStreamable: boolean;
-  /** Sound-but-unbounded dimensions (empty under `strict`, which throws instead). */
+  /** Sound-but-unbounded dimensions (empty under `enforceBounds`, which throws instead). */
   readonly warnings: readonly ClassifierWarning[];
   /** Number of distinct object nodes classified. */
   readonly nodeCount: number;
@@ -286,9 +286,9 @@ export function classify(root: SchemaOrBoolean, options: ClassifyOptions = {}): 
     successors.set(node, succ);
   }
 
-  if (options.strict && warnings.length > 0) {
+  if (options.enforceBounds && warnings.length > 0) {
     const first = warnings[0] as ClassifierWarning;
-    throw new ClassifierError(`strict: ${first.message}`, first.path);
+    throw new ClassifierError(`enforceBounds: ${first.message}`, first.path);
   }
 
   // Least fixed point of strategy(n) = base(n) ⊔ ⊔ strategy(succ(n)).

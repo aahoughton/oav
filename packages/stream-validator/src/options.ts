@@ -41,7 +41,7 @@ export type PathFilter = JsonPath | ((path: JsonPath, kind: "object" | "array") 
  *   - **Observability** (`keyEvents`): an opt-in, compile-time-gated key
  *     channel.
  *   - **Resource limits** (`maxBufferedBytes`, `maxDepth`,
- *     `maxTotalBytes`, `maxUniqueItems`, `strict`): all default off
+ *     `maxTotalBytes`, `maxUniqueItems`, `enforceBounds`): all default off
  *     (unset = zero overhead). They bound the dimensions a
  *     forward-decidable schema leaves open. See
  *     [the design doc](../../../docs/stream-validator.md) "Resource
@@ -161,19 +161,20 @@ export interface StreamValidatorOptions {
   maxUniqueItems?: number;
 
   /**
-   * Turn the classifier's unbounded-* warnings into compile errors (or
-   * enforced caps): an unbounded `pattern` / `format` string, an
-   * unbounded BUFFER island, unbounded depth, or `uniqueItems` with no
-   * `maxItems`. The recommended setting for untrusted input. Default
-   * `false`.
+   * Turn the classifier's unbounded-* warnings into compile errors: an
+   * unbounded `pattern` / `format` string, an unbounded BUFFER island,
+   * unbounded depth, or `uniqueItems` with no `maxItems`. The recommended
+   * setting for untrusted input. Named for the resource-bound axis it
+   * governs, distinct from `@oav/validator`'s schema-lint `strict` mode.
+   * Default `false`.
    */
-  strict?: boolean;
+  enforceBounds?: boolean;
 
   /**
    * Sink for non-fatal compile-time warnings (the unbounded-* dimensions
    * the classifier flags). Matches `@oav/validator`'s
    * `ValidatorOptions.warn`. Absent: warnings are dropped (unless
-   * `strict` escalates them to a thrown error).
+   * `enforceBounds` escalates them to a thrown error).
    */
   warn?: (message: string) => void;
 }
