@@ -38,7 +38,7 @@ async function verdictOf(
   return result;
 }
 
-describe("B1: propertyNames beyond type/length/pattern (delegated)", () => {
+describe("propertyNames beyond type/length/pattern (delegated)", () => {
   const cases: Array<{ schema: SchemaOrBoolean; value: unknown }> = [
     { schema: { type: "object", propertyNames: { const: "a" } }, value: { a: 1 } },
     { schema: { type: "object", propertyNames: { const: "a" } }, value: { c: 1 } },
@@ -57,7 +57,7 @@ describe("B1: propertyNames beyond type/length/pattern (delegated)", () => {
   }
 });
 
-describe("B2: format asserts under an OpenAPI dialect", () => {
+describe("format asserts under an OpenAPI dialect", () => {
   const schema: SchemaOrBoolean = { type: "string", format: "email" };
   for (const value of ["a@b.co", "not-an-email"]) {
     it(`format email "${value}" matches in-memory under openapi3.1`, async () => {
@@ -71,7 +71,7 @@ describe("B2: format asserts under an OpenAPI dialect", () => {
   }
 });
 
-describe("B3: forced-buffer scalar is capped by maxBufferedBytes", () => {
+describe("forced-buffer scalar is capped by maxBufferedBytes", () => {
   it("fails fatally when a pattern scalar exceeds the cap", async () => {
     const validator = createStreamValidator(
       { type: "string", pattern: "^a*$" },
@@ -88,7 +88,7 @@ describe("B3: forced-buffer scalar is capped by maxBufferedBytes", () => {
   });
 });
 
-describe("B4: regexCompiler hardens the spine's own pattern check", () => {
+describe("regexCompiler hardens the spine's own pattern check", () => {
   it("routes pattern through the supplied compiler", async () => {
     let called = 0;
     const compiler: RegexCompiler = (pattern) => {
@@ -105,7 +105,7 @@ describe("B4: regexCompiler hardens the spine's own pattern check", () => {
   });
 });
 
-describe("S1: maxTotalBytes / maxDepth", () => {
+describe("maxTotalBytes / maxDepth", () => {
   it("rejects input larger than maxTotalBytes", async () => {
     const validator = createStreamValidator(true, { maxTotalBytes: 4 });
     validator.on("error", () => {});
@@ -136,7 +136,7 @@ describe("S1: maxTotalBytes / maxDepth", () => {
   });
 });
 
-describe("S4: destroy settles the result promise", () => {
+describe("destroy settles the result promise", () => {
   it("rejects result on abort before completion", async () => {
     const validator = createStreamValidator({ type: "object" });
     validator.on("error", () => {});

@@ -41,7 +41,7 @@ async function expectParity(schema: SchemaOrBoolean, values: unknown[]): Promise
   }
 }
 
-describe("B1: draft-07 dependencies (array form)", () => {
+describe("draft-07 dependencies (array form)", () => {
   it("enforces a property-presence dependency", async () => {
     await expectParity({ type: "object", dependencies: { creditCard: ["billingAddress"] } }, [
       {},
@@ -52,7 +52,7 @@ describe("B1: draft-07 dependencies (array form)", () => {
   });
 });
 
-describe("B2: $dynamicRef is followed (static anchor)", () => {
+describe("$dynamicRef is followed (static anchor)", () => {
   it("applies the dynamic-anchor target's constraints", async () => {
     const schema: SchemaObject = {
       $defs: { Thing: { $dynamicAnchor: "T", type: "string" } },
@@ -62,7 +62,7 @@ describe("B2: $dynamicRef is followed (static anchor)", () => {
   });
 });
 
-describe("B3: percent-encoded JSON pointer refs resolve", () => {
+describe("percent-encoded JSON pointer refs resolve", () => {
   it("resolves #/$defs/Record%3Cx%3E like @oav/schema", async () => {
     const schema: SchemaObject = {
       type: "object",
@@ -74,7 +74,7 @@ describe("B3: percent-encoded JSON pointer refs resolve", () => {
   });
 });
 
-describe("B4: maxBufferedBytes is enforced on a single-chunk scalar", () => {
+describe("maxBufferedBytes is enforced on a single-chunk scalar", () => {
   it("rejects a large string delivered in one chunk", async () => {
     const validator = createStreamValidator(
       { type: "string", pattern: "^a*$" },
@@ -97,7 +97,7 @@ describe("B4: maxBufferedBytes is enforced on a single-chunk scalar", () => {
   });
 });
 
-describe("S5: maxErrors short-circuits exactly", () => {
+describe("maxErrors short-circuits exactly", () => {
   it("collects no more than maxErrors violations", async () => {
     const schema: SchemaObject = {
       type: "object",
@@ -109,7 +109,7 @@ describe("S5: maxErrors short-circuits exactly", () => {
   });
 });
 
-describe("S6: runtime backstop for a registered-but-unclassified keyword", () => {
+describe("runtime backstop for a registered-but-unclassified keyword", () => {
   it("REJECTs a dispatched keyword missing from the classification table", () => {
     const fakeDialect = {
       id: "fake",

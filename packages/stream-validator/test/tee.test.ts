@@ -1,10 +1,24 @@
 import { Readable, Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { describe, expect, it } from "vitest";
-import type { SchemaOrBoolean } from "@oav/core";
+import type { SchemaObject, SchemaOrBoolean } from "@oav/core";
 import { createStreamValidator } from "../src/index.js";
+import { SpineValidator } from "../src/spine/index.js";
+import { JsonTokenizer } from "../src/tokenizer/index.js";
 
 const enc = new TextEncoder();
+
+async function streamVerdict(schema: SchemaOrBoolean, value: unknown): Promise<boolean> {
+  const v = createStreamValidator(schema, {
+    policy: "detach",
+    maxErrors: Number.POSITIVE_INFINITY,
+  });
+  v.on("error", () => {});
+  v.resume();
+  const r = v.result;
+  v.end(Buffer.from(enc.encode(JSON.stringify(value))));
+  return (await r).valid;
+}
 
 function collector(): { sink: Writable; bytes: () => Buffer } {
   const out: Buffer[] = [];
@@ -80,5 +94,40 @@ describe("TEE streams forward composition (no materialization)", () => {
     expect(await verdict('{"a":1}')).toBe(true); // one branch
     expect(await verdict('{"a":1,"b":2}')).toBe(false); // both branches
     expect(await verdict('{"c":3}')).toBe(false); // neither
+  });
+});
+
+describe("TEE branch sub-spines are O(1) memory (verdict-only)", () => {
+  it("does not retain a violation per failing item", () => {
+    // Verdict-only spine (the mode TEE branches use): every element fails,
+    // but nothing is retained - only the boolean verdict.
+    const spine = new SpineValidator(
+      { type: "array", items: { type: "integer" } },
+      { verdictOnly: true },
+    );
+    const tok = new JsonTokenizer(spine);
+    const big = `[${Array.from({ length: 5000 }, () => '"x"').join(",")}]`;
+    tok.write(enc.encode(big));
+    tok.end();
+    const v = spine.verdict();
+    expect(v.valid).toBe(false);
+    expect(v.violations).toHaveLength(0); // not retained
+  });
+
+  it("a composition over a large all-failing array stays correct", async () => {
+    const schema: SchemaObject = {
+      anyOf: [
+        { type: "array", items: { type: "integer" } },
+        { type: "array", items: { type: "string" } },
+      ],
+    };
+    const booleans = Array.from({ length: 20000 }, (_, i) => i % 2 === 0);
+    expect(await streamVerdict(schema, booleans)).toBe(false); // neither branch matches
+    expect(
+      await streamVerdict(
+        schema,
+        Array.from({ length: 20000 }, (_, i) => i),
+      ),
+    ).toBe(true);
   });
 });

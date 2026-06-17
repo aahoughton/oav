@@ -2,8 +2,6 @@ import { describe, expect, it } from "vitest";
 import type { SchemaObject, SchemaOrBoolean } from "@oav/core";
 import { compileSchema, jsonSchemaDialect } from "@oav/schema";
 import { createStreamValidator } from "../src/index.js";
-import { SpineValidator } from "../src/spine/index.js";
-import { JsonTokenizer } from "../src/tokenizer/index.js";
 
 const enc = new TextEncoder();
 
@@ -64,41 +62,6 @@ describe("components is a ref container, not an unknown keyword", () => {
       { pet: { meow: true, bark: true } },
       { pet: {} },
     ]);
-  });
-});
-
-describe("TEE branch sub-spines are O(1) memory (verdict-only)", () => {
-  it("does not retain a violation per failing item", () => {
-    // Verdict-only spine (the mode TEE branches use): every element fails,
-    // but nothing is retained - only the boolean verdict.
-    const spine = new SpineValidator(
-      { type: "array", items: { type: "integer" } },
-      { verdictOnly: true },
-    );
-    const tok = new JsonTokenizer(spine);
-    const big = `[${Array.from({ length: 5000 }, () => '"x"').join(",")}]`;
-    tok.write(enc.encode(big));
-    tok.end();
-    const v = spine.verdict();
-    expect(v.valid).toBe(false);
-    expect(v.violations).toHaveLength(0); // not retained
-  });
-
-  it("a composition over a large all-failing array stays correct", async () => {
-    const schema: SchemaObject = {
-      anyOf: [
-        { type: "array", items: { type: "integer" } },
-        { type: "array", items: { type: "string" } },
-      ],
-    };
-    const booleans = Array.from({ length: 20000 }, (_, i) => i % 2 === 0);
-    expect(await streamVerdict(schema, booleans)).toBe(false); // neither branch matches
-    expect(
-      await streamVerdict(
-        schema,
-        Array.from({ length: 20000 }, (_, i) => i),
-      ),
-    ).toBe(true);
   });
 });
 

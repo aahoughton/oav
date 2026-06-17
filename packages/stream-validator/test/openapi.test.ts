@@ -92,7 +92,7 @@ describe("OpenAPI 3.0 verdict parity with @oav/schema oas30Dialect", () => {
   }
 });
 
-describe("S2: island delegation resolves refs into definitions", () => {
+describe("island delegation resolves refs into definitions", () => {
   // The `kind` property is a oneOf island whose branches $ref into
   // `definitions`; the delegate must carry that container (not just
   // `$defs`) for the refs to resolve.
