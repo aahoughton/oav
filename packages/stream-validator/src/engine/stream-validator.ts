@@ -40,6 +40,7 @@ import {
 } from "@oav/schema";
 import { classify } from "../classifier/index.js";
 import {
+  BudgetReached,
   type IslandDelegate,
   SpineValidator,
   type SpineVerdict,
@@ -141,7 +142,6 @@ export class StreamValidator extends Transform {
   private errorCount = 0;
   private sealed = false; // detach: validation stopped, echo-only tail
   private finished = false; // verdict settled
-  private budgetHit = false; // set inside a write; acted on after it returns
 
   /** Resolves with the final verdict (rejects on a fatal parse / I/O error). */
   readonly result: Promise<SpineVerdict>;
@@ -169,6 +169,7 @@ export class StreamValidator extends Transform {
       onViolation: (v) => this.handleViolation(v),
       strategyOf: classification.strategyOf,
       delegate: buildDelegate(schema, options),
+      maxErrors: this.maxErrors,
       // OpenAPI dialects assert `format`; the spine has no format check
       // of its own, so format-bearing scalars delegate under those.
       assertsFormat: dialect.vocabularies.some((v) => v.uri === FORMAT_ASSERTION_VOCAB),
@@ -192,7 +193,6 @@ export class StreamValidator extends Transform {
   private handleViolation(violation: Violation): void {
     this.errorCount += 1;
     this.emit("violation", violation);
-    if (this.errorCount >= this.maxErrors) this.budgetHit = true;
   }
 
   override _transform(chunk: Buffer, _enc: BufferEncoding, cb: TransformCallback): void {
@@ -214,6 +214,11 @@ export class StreamValidator extends Transform {
     try {
       this.tokenizer.write(chunk);
     } catch (err) {
+      if (err instanceof BudgetReached) {
+        // The budget was hit mid-chunk: apply the terminal policy.
+        this.applyBudget(cb);
+        return;
+      }
       // Fatal: a parse error or a buffer-limit overflow. Destroys the
       // stream, emits 'error', and rejects the result promise.
       this.finished = true;
@@ -221,8 +226,7 @@ export class StreamValidator extends Transform {
       cb(err as Error);
       return;
     }
-    if (this.budgetHit) this.applyBudget(cb);
-    else cb();
+    cb();
   }
 
   override _flush(cb: TransformCallback): void {
@@ -234,10 +238,13 @@ export class StreamValidator extends Transform {
       try {
         this.tokenizer.end();
       } catch (err) {
-        this.finished = true;
-        this.rejectResult(err as Error);
-        cb(err as Error);
-        return;
+        // BudgetReached at close just finalizes (below); other throws are fatal.
+        if (!(err instanceof BudgetReached)) {
+          this.finished = true;
+          this.rejectResult(err as Error);
+          cb(err as Error);
+          return;
+        }
       }
     }
     const verdict = this.spine.verdict();

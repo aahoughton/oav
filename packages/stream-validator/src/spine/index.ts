@@ -1,4 +1,5 @@
 export {
+  BudgetReached,
   BufferLimitError,
   SpineUnsupportedError,
   SpineValidator,

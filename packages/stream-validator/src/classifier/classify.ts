@@ -132,14 +132,16 @@ export function classify(root: SchemaOrBoolean, options: ClassifyOptions = {}): 
   const parity = options.parity ?? false;
   const customKeywords = new Set(options.customKeywords ?? []);
 
-  // The keywords this dialect dispatches, plus the ones folded into them
-  // via `implements` (then/else into if; minContains/maxContains into
-  // contains): all "known" so the unknown-keyword check doesn't flag a
-  // folded partner.
-  const known = new Set<string>();
+  // Keywords folded into another via `implements` (then/else into if;
+  // minContains/maxContains into contains). These have no table entry of
+  // their own, so the unknown-keyword check must not flag them. Note: a
+  // dispatching keyword that is registered but missing from
+  // KEYWORD_CATEGORY is deliberately NOT in this set, so it falls through
+  // to REJECT (the runtime backstop for a consumer on a newer
+  // @oav/schema; the drift test catches it in-repo).
+  const folded = new Set<string>();
   for (const def of keywordDefinitions(dialect).values()) {
-    known.add(def.keyword);
-    for (const impl of def.implements ?? []) known.add(impl);
+    for (const impl of def.implements ?? []) folded.add(impl);
   }
 
   if (!isObjectSchema(root)) {
@@ -196,7 +198,7 @@ export function classify(root: SchemaOrBoolean, options: ClassifyOptions = {}): 
     for (const key of Object.keys(node)) {
       const cat = KEYWORD_CATEGORY[key];
       if (cat === undefined) {
-        if (known.has(key)) continue; // folded keyword (then/else/min|maxContains)
+        if (folded.has(key)) continue; // folded keyword (then/else/min|maxContains)
         if (customKeywords.has(key)) {
           b = joinStrategy(b, "buffer");
           continue;

@@ -15,6 +15,17 @@ function isObjectSchema(s: unknown): s is SchemaObject {
   return typeof s === "object" && s !== null && !Array.isArray(s);
 }
 
+// Percent-decode a fragment segment, tolerating a malformed `%` (leave it
+// as-is rather than throwing).
+function percentDecode(s: string): string {
+  if (!s.includes("%")) return s;
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+}
+
 /**
  * Resolve a local `$ref` against `root`. Supports the root pointer
  * (`#` / empty), JSON-pointer fragments (`#/$defs/Foo`), and plain
@@ -27,10 +38,13 @@ function isObjectSchema(s: unknown): s is SchemaObject {
 export function resolveRef(root: SchemaObject, ref: string): SchemaOrBoolean | undefined {
   if (ref === "#" || ref === "") return root;
   if (ref.startsWith("#/")) {
+    // A fragment is a URI: percent-decode each segment, then unescape the
+    // JSON Pointer `~1` / `~0` (parity with @oav/schema, which resolves
+    // e.g. `#/$defs/Record%3Cstring%2CPerson%3E`).
     const segments = ref
       .slice(2)
       .split("/")
-      .map((s) => s.replace(/~1/g, "/").replace(/~0/g, "~"));
+      .map((s) => percentDecode(s).replace(/~1/g, "/").replace(/~0/g, "~"));
     let cur: unknown = root;
     for (const seg of segments) {
       if (Array.isArray(cur)) cur = cur[Number(seg)];

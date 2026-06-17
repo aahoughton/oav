@@ -36,6 +36,18 @@ export class SpineUnsupportedError extends Error {
   }
 }
 
+/**
+ * Internal control-flow signal: the validation budget (`maxErrors`) has
+ * been reached, so the spine stops feeding the tokenizer. The engine
+ * catches it and applies the terminal policy; it is not a parse error.
+ */
+export class BudgetReached extends Error {
+  constructor() {
+    super("validation budget reached");
+    this.name = "BudgetReached";
+  }
+}
+
 /** A buffered island exceeded the configured `maxBufferedBytes`. Fatal. */
 export class BufferLimitError extends Error {
   readonly byteOffset: number;
@@ -74,6 +86,8 @@ export interface SpineOptions {
    * node throws {@link SpineUnsupportedError}.
    */
   delegate?: IslandDelegate;
+  /** Stop recording after this many violations, throwing {@link BudgetReached}. Default unlimited. */
+  maxErrors?: number;
   /** Cap on a single buffered island's UTF-8 source-byte span (and forced-buffer scalar). Unset: no cap. */
   maxBufferedBytes?: number;
   /** Maximum nesting depth. Exceeding it is a `depth` violation. Unset: no cap. */
@@ -148,6 +162,7 @@ export class SpineValidator implements JsonEventHandler {
   private readonly onViolation: ((violation: Violation) => void) | undefined;
   private readonly strategyOf: (node: SchemaOrBoolean) => Strategy;
   private readonly delegate: IslandDelegate | undefined;
+  private readonly maxErrors: number;
   private readonly maxBufferedBytes: number | undefined;
   private readonly maxDepth: number | undefined;
   private readonly regexCompiler: RegexCompiler | undefined;
@@ -182,6 +197,7 @@ export class SpineValidator implements JsonEventHandler {
     this.onViolation = options.onViolation;
     this.strategyOf = options.strategyOf ?? (() => "stream");
     this.delegate = options.delegate;
+    this.maxErrors = options.maxErrors ?? Number.POSITIVE_INFINITY;
     this.maxBufferedBytes = options.maxBufferedBytes;
     this.maxDepth = options.maxDepth;
     this.regexCompiler = options.regexCompiler;
@@ -194,9 +210,17 @@ export class SpineValidator implements JsonEventHandler {
   }
 
   private fail(code: string, path: PathSegment[] = this.path): void {
-    const violation: Violation = { code, path: [...path], byteOffset: this.curOffset };
+    this.record({ code, path: [...path], byteOffset: this.curOffset });
+  }
+
+  // Record a violation and enforce the budget. Once `maxErrors` is
+  // reached, throw {@link BudgetReached} so the spine stops feeding the
+  // tokenizer (the verdict carries exactly `maxErrors` violations, and no
+  // further work runs this chunk).
+  private record(violation: Violation): void {
     this.violations.push(violation);
     this.onViolation?.(violation);
+    if (this.violations.length >= this.maxErrors) throw new BudgetReached();
   }
 
   private regex(pattern: string): { test(s: string): boolean } {
@@ -212,8 +236,8 @@ export class SpineValidator implements JsonEventHandler {
   }
 
   // Expand a schema into the object schemas whose own keywords apply,
-  // following `$ref` (with a cycle guard). A `false` sets hasFalse; a
-  // `true` contributes nothing.
+  // following `$ref` and `$dynamicRef` (with a cycle guard). A `false`
+  // sets hasFalse; a `true` contributes nothing.
   private expand(s: SchemaOrBoolean | undefined, out: Applicable, seen: Set<object>): void {
     if (s === undefined || s === true) return;
     if (s === false) {
@@ -222,9 +246,12 @@ export class SpineValidator implements JsonEventHandler {
     }
     if (!isObjectSchema(s)) return;
     out.schemas.push(s);
-    const ref = (s as Record<string, unknown>).$ref;
+    const root = isObjectSchema(this.root) ? this.root : ({} as SchemaObject);
+    // `$dynamicRef` is resolved statically against the anchor map, the
+    // same limitation @oav/schema documents.
+    const ref = (s as Record<string, unknown>).$ref ?? (s as Record<string, unknown>).$dynamicRef;
     if (typeof ref === "string") {
-      const target = resolveRef(isObjectSchema(this.root) ? this.root : ({} as SchemaObject), ref);
+      const target = resolveRef(root, ref);
       if (target !== undefined && !(isObjectSchema(target) && seen.has(target))) {
         if (isObjectSchema(target)) seen.add(target);
         this.expand(target, out, seen);
@@ -317,10 +344,7 @@ export class SpineValidator implements JsonEventHandler {
     const delegate = this.requireDelegate();
     this.pushSegment();
     if (app.hasFalse) this.fail("false");
-    for (const v of delegate(app.schemas, value, [...this.path], this.curOffset)) {
-      this.violations.push(v);
-      this.onViolation?.(v);
-    }
+    for (const v of delegate(app.schemas, value, [...this.path], this.curOffset)) this.record(v);
     this.popSegment();
     this.advance();
   }
@@ -358,8 +382,7 @@ export class SpineValidator implements JsonEventHandler {
     const delegate = this.delegate as IslandDelegate;
     this.island = null;
     for (const v of delegate(island.schemas, island.builder.value, island.path, island.byteStart)) {
-      this.violations.push(v);
-      this.onViolation?.(v);
+      this.record(v);
     }
     this.popSegment();
     this.advance();
@@ -496,6 +519,19 @@ export class SpineValidator implements JsonEventHandler {
           }
         }
       }
+      // draft-07 `dependencies`, array form (a property-presence
+      // dependency, like dependentRequired). Schema-form entries make the
+      // node BUFFER (handled by the island delegate), so only array
+      // entries reach here.
+      const deps = (s as Record<string, unknown>).dependencies;
+      if (deps !== null && typeof deps === "object" && !Array.isArray(deps)) {
+        for (const [k, entry] of Object.entries(deps as Record<string, unknown>)) {
+          if (Array.isArray(entry) && frame.seen.has(k)) {
+            for (const need of entry as string[])
+              if (!frame.seen.has(need)) this.fail("dependencies");
+          }
+        }
+      }
     }
     this.popSegment();
     this.advance();
@@ -561,10 +597,7 @@ export class SpineValidator implements JsonEventHandler {
     if (app.hasFalse) this.fail("propertyNames", keyPath);
     if (app.schemas.length === 0) return;
     if (this.delegate !== undefined) {
-      for (const v of this.delegate(app.schemas, key, keyPath, this.curOffset)) {
-        this.violations.push(v);
-        this.onViolation?.(v);
-      }
+      for (const v of this.delegate(app.schemas, key, keyPath, this.curOffset)) this.record(v);
       return;
     }
     for (const ps of app.schemas) {
@@ -610,8 +643,11 @@ export class SpineValidator implements JsonEventHandler {
     }
   }
 
-  onStringEnd(codePoints: number): void {
+  onStringEnd(codePoints: number, _startOffset: number, endOffset: number): void {
+    this.curOffset = endOffset;
     if (this.island !== null) {
+      // Enforce the cap on the full span (a large single-chunk island
+      // string never triggered the per-chunk check).
       this.forwardIsland((b) => b.onStringEnd());
       return;
     }
@@ -623,6 +659,15 @@ export class SpineValidator implements JsonEventHandler {
       island: boolean;
     };
     this.str = null;
+    // Close the single-chunk bypass: cap the forced-buffer scalar on its
+    // full source-byte span, known only now.
+    if (
+      s.needText &&
+      this.maxBufferedBytes !== undefined &&
+      endOffset - s.offset > this.maxBufferedBytes
+    ) {
+      throw new BufferLimitError(this.maxBufferedBytes, endOffset);
+    }
     this.curOffset = s.offset;
     if (s.island) {
       this.delegateScalar(s.app, s.text);
