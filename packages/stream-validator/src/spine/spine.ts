@@ -37,6 +37,14 @@ export class SpineUnsupportedError extends Error {
 export interface Violation {
   code: string;
   path: PathSegment[];
+  /** Byte offset in the input stream nearest the violation (for re-sync). */
+  byteOffset: number;
+}
+
+/** Options for {@link SpineValidator}. */
+export interface SpineOptions {
+  /** Called as each violation is recorded (lets a driver enforce a budget / terminate). */
+  onViolation?: (violation: Violation) => void;
 }
 
 /** The verdict of a streaming validation. */
@@ -98,13 +106,19 @@ export class SpineValidator implements JsonEventHandler {
   private readonly path: PathSegment[] = [];
   private readonly frames: Frame[] = [];
   private readonly regexCache = new Map<string, RegExp>();
+  private readonly onViolation: ((violation: Violation) => void) | undefined;
+
+  // Byte offset of the event currently being validated; stamped onto
+  // violations so a consumer can re-sync against the byte stream.
+  private curOffset = 0;
 
   // A value string in progress: its applicable schemas, whether the full
   // text is needed (pattern / enum / const), and the accumulated text.
-  private str: { app: Applicable; needText: boolean; text: string } | null = null;
+  private str: { app: Applicable; needText: boolean; text: string; offset: number } | null = null;
 
-  constructor(root: SchemaOrBoolean) {
+  constructor(root: SchemaOrBoolean, options: SpineOptions = {}) {
     this.root = root;
+    this.onViolation = options.onViolation;
   }
 
   /** The verdict so far (final once `end` has been called on the tokenizer). */
@@ -113,7 +127,9 @@ export class SpineValidator implements JsonEventHandler {
   }
 
   private fail(code: string, path: PathSegment[] = this.path): void {
-    this.violations.push({ code, path: [...path] });
+    const violation: Violation = { code, path: [...path], byteOffset: this.curOffset };
+    this.violations.push(violation);
+    this.onViolation?.(violation);
   }
 
   private regex(pattern: string): RegExp {
@@ -291,7 +307,8 @@ export class SpineValidator implements JsonEventHandler {
     }
   }
 
-  onStartObject(): void {
+  onStartObject(offset: number): void {
+    this.curOffset = offset;
     const app = this.schemasForValue();
     this.guard(app.schemas, true);
     this.pushSegment();
@@ -312,7 +329,8 @@ export class SpineValidator implements JsonEventHandler {
     });
   }
 
-  onEndObject(): void {
+  onEndObject(offset: number): void {
+    this.curOffset = offset;
     const frame = this.frames.pop() as ObjectFrame;
     for (const s of frame.schemas) {
       if (Array.isArray(s.required)) {
@@ -336,7 +354,8 @@ export class SpineValidator implements JsonEventHandler {
     this.advance();
   }
 
-  onStartArray(): void {
+  onStartArray(offset: number): void {
+    this.curOffset = offset;
     const app = this.schemasForValue();
     this.guard(app.schemas, true);
     this.pushSegment();
@@ -352,7 +371,8 @@ export class SpineValidator implements JsonEventHandler {
     this.frames.push({ kind: "array", schemas: app.schemas, count: 0, unique, dupReported: false });
   }
 
-  onEndArray(): void {
+  onEndArray(offset: number): void {
+    this.curOffset = offset;
     const frame = this.frames.pop() as ArrayFrame;
     for (const s of frame.schemas) {
       if (s.minItems !== undefined && frame.count < s.minItems) this.fail("minItems");
@@ -362,7 +382,8 @@ export class SpineValidator implements JsonEventHandler {
     this.advance();
   }
 
-  onKey(value: string, codePoints: number): void {
+  onKey(value: string, codePoints: number, startOffset: number): void {
+    this.curOffset = startOffset;
     const top = this.frames[this.frames.length - 1] as ObjectFrame;
     for (const s of top.schemas) {
       if (s.propertyNames !== undefined) {
@@ -387,13 +408,14 @@ export class SpineValidator implements JsonEventHandler {
     top.pendingKey = value;
   }
 
-  onStringStart(): void {
+  onStringStart(offset: number): void {
+    this.curOffset = offset;
     const app = this.schemasForValue();
     this.guard(app.schemas, false);
     const needText = app.schemas.some(
       (s) => s.pattern !== undefined || "enum" in s || "const" in s,
     );
-    this.str = { app, needText, text: "" };
+    this.str = { app, needText, text: "", offset };
   }
 
   onStringChunk(chunk: string): void {
@@ -401,20 +423,24 @@ export class SpineValidator implements JsonEventHandler {
   }
 
   onStringEnd(codePoints: number): void {
-    const s = this.str as { app: Applicable; needText: boolean; text: string };
+    const s = this.str as { app: Applicable; needText: boolean; text: string; offset: number };
     this.str = null;
+    this.curOffset = s.offset;
     this.scalar("string", s.needText ? s.text : "", codePoints, s.app);
   }
 
-  onNumber(value: number): void {
+  onNumber(value: number, _raw: string, startOffset: number): void {
+    this.curOffset = startOffset;
     this.scalar(Number.isInteger(value) ? "integer" : "number", value, 0, this.schemasForValue());
   }
 
-  onBoolean(value: boolean): void {
+  onBoolean(value: boolean, startOffset: number): void {
+    this.curOffset = startOffset;
     this.scalar("boolean", value, 0, this.schemasForValue());
   }
 
-  onNull(): void {
+  onNull(startOffset: number): void {
+    this.curOffset = startOffset;
     this.scalar("null", null, 0, this.schemasForValue());
   }
 }

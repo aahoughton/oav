@@ -13,6 +13,43 @@ push-based over a token stream. It reuses `@oav/schema`'s in-memory
 validator for the subtrees a compile-time classifier marks BUFFER, and
 reuses `@oav/core`'s flat error model and `@oav/formats`.
 
+## Usage
+
+```ts
+import { pipeline } from "node:stream/promises";
+import { createStreamValidator } from "@oav/stream-validator";
+
+const validator = createStreamValidator(schema); // throws here if the schema can't be streamed
+
+try {
+  await pipeline(request, validator, fs.createWriteStream(tmp));
+  await rename(tmp, final); // reached only on a clean finish = valid
+} catch (err) {
+  // ValidationFailedError (well-formed but invalid) or a parse / I/O error
+  await unlink(tmp).catch(() => {});
+}
+
+// Or observe the side channel directly:
+validator.on("violation", (v) => console.warn(v.code, v.path, v.byteOffset));
+const verdict = await validator.result; // { valid, violations }
+```
+
+Output bytes are the input verbatim (provisional until a clean finish).
+The default policy is `terminate` with `maxErrors: 1` (the first violation
+destroys the stream and rejects the `pipeline`); `detach` instead seals
+the verdict and raw-copies the tail.
+
+### Supported subset (incubation)
+
+The engine currently validates **fully-streamable** schemas (the STREAM
+keyword set: `type`, scalar/string/number constraints, `properties` /
+`items` / `required` / bounds / `propertyNames` / `dependentRequired`,
+`$ref` recursion, scalar `uniqueItems`, boolean schemas). A schema that
+needs TEE (`allOf` / `anyOf` / `oneOf` / `not` / `if`) or BUFFER
+(object/array `enum` / `const`, `dependentSchemas`, `discriminator`,
+`contains`) fails fast at construction; those land in later build steps
+(see the design doc's build sequence).
+
 ## Status
 
 Incubating and **unpublished** (`private`). The package lives in the

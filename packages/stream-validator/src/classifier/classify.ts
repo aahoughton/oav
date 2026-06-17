@@ -77,6 +77,8 @@ export interface Classification {
   strategyOf(node: SchemaOrBoolean): Strategy;
   /** Strategy of the root schema. */
   readonly root: Strategy;
+  /** True iff every node classified as `stream` (no TEE / BUFFER anywhere). */
+  readonly fullyStreamable: boolean;
   /** Sound-but-unbounded dimensions (empty under `strict`, which throws instead). */
   readonly warnings: readonly ClassifierWarning[];
   /** Number of distinct object nodes classified. */
@@ -142,7 +144,13 @@ export function classify(root: SchemaOrBoolean, options: ClassifyOptions = {}): 
 
   if (!isObjectSchema(root)) {
     // A boolean root schema streams trivially.
-    return { strategyOf: () => "stream", root: "stream", warnings: [], nodeCount: 0 };
+    return {
+      strategyOf: () => "stream",
+      root: "stream",
+      fullyStreamable: true,
+      warnings: [],
+      nodeCount: 0,
+    };
   }
 
   // Collect every reachable object node (containment via walkSubschemas,
@@ -278,6 +286,7 @@ export function classify(root: SchemaOrBoolean, options: ClassifyOptions = {}): 
   return {
     strategyOf: (n: SchemaOrBoolean) => (isObjectSchema(n) ? (strat.get(n) ?? "stream") : "stream"),
     root: strat.get(root) ?? "stream",
+    fullyStreamable: nodes.every((n) => strat.get(n) === "stream"),
     warnings,
     nodeCount: nodes.length,
   };

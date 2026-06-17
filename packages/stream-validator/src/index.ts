@@ -19,3 +19,10 @@
  */
 
 export type { JsonPath, PathFilter, StreamValidatorOptions } from "./options.js";
+export {
+  createStreamValidator,
+  StreamValidator,
+  ValidationFailedError,
+  type CreateStreamValidatorOptions,
+} from "./engine/index.js";
+export type { SpineVerdict, Violation } from "./spine/index.js";
