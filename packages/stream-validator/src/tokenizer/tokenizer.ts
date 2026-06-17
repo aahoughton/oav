@@ -68,6 +68,10 @@ const CH_SPACE = 0x20;
 const CH_QUOTE = 0x22;
 const CH_BACKSLASH = 0x5c;
 
+// Shared zero-length buffer for flushing the streaming decoder at a
+// string's end (avoids a per-string allocation).
+const EMPTY = new Uint8Array(0);
+
 function isWhitespace(b: number): boolean {
   return b === CH_SPACE || b === CH_LF || b === CH_TAB || b === CH_CR;
 }
@@ -388,7 +392,7 @@ export class JsonTokenizer {
   private finishString(i: number): number {
     // Flush any UTF-8 partial held by the decoder (valid input leaves
     // none; truncated bytes decode to U+FFFD, matching Buffer#toString).
-    const tail = this.decoder.decode(new Uint8Array(0), { stream: false });
+    const tail = this.decoder.decode(EMPTY, { stream: false });
     if (tail.length > 0) this.emitStringText(tail, this.pos(i));
     const endOffset = this.pos(i) + 1; // past the closing quote
     if (this.stringIsKey) {
@@ -427,22 +431,33 @@ export class JsonTokenizer {
   }
 
   private stepNumber(chunk: Uint8Array, i: number): number {
-    const b = chunk[i] as number;
-    // Number characters: digits, sign, decimal point, exponent markers.
-    if (
-      isDigit(b) ||
-      b === 0x2d /* - */ ||
-      b === 0x2b /* + */ ||
-      b === 0x2e /* . */ ||
-      b === 0x65 /* e */ ||
-      b === 0x45 /* E */
-    ) {
-      this.numBuf += String.fromCharCode(b);
-      return i + 1;
+    // Scan the whole run of number bytes in this chunk and append it in
+    // one decode, rather than concatenating char by char. (latin1 == ASCII
+    // for the number grammar's bytes; a Buffer view avoids a per-char loop
+    // and a spread that a huge literal could overflow.)
+    const n = chunk.length;
+    let j = i;
+    while (j < n) {
+      const b = chunk[j] as number;
+      if (
+        isDigit(b) ||
+        b === 0x2d /* - */ ||
+        b === 0x2b /* + */ ||
+        b === 0x2e /* . */ ||
+        b === 0x65 /* e */ ||
+        b === 0x45 /* E */
+      ) {
+        j += 1;
+      } else break;
     }
-    // A non-number byte ends the literal; re-process it after finishing.
-    this.finishNumber(this.pos(i));
-    return i;
+    if (j > i) {
+      this.numBuf += Buffer.from(chunk.buffer, chunk.byteOffset + i, j - i).toString("latin1");
+    }
+    if (j < n) {
+      // A non-number byte ends the literal; re-process it after finishing.
+      this.finishNumber(this.pos(j));
+    }
+    return j; // chunk exhausted mid-number, or stopped at the delimiter
   }
 
   private finishNumber(end: number): void {

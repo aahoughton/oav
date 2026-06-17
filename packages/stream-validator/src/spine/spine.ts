@@ -312,9 +312,13 @@ export class SpineValidator implements JsonEventHandler {
   }
 
   // Expand a schema into the object schemas whose own keywords apply,
-  // following `$ref` and `$dynamicRef` (with a cycle guard). A `false`
-  // sets hasFalse; a `true` contributes nothing.
-  private expand(s: SchemaOrBoolean | undefined, out: Applicable, seen: Set<object>): void {
+  // following `$ref` and `$dynamicRef`. A `false` sets hasFalse; a `true`
+  // contributes nothing.
+  //
+  // The `seen` cycle guard is allocated lazily, only when a `$ref` is
+  // actually followed: a ref-free schema (the hot path) expands without
+  // allocating a Set at all.
+  private expand(s: SchemaOrBoolean | undefined, out: Applicable, seen?: Set<object>): void {
     if (s === undefined || s === true) return;
     if (s === false) {
       out.hasFalse = true;
@@ -326,13 +330,17 @@ export class SpineValidator implements JsonEventHandler {
     // same limitation @oav/schema documents. Refs resolve against the
     // document root (may differ from the validation root in a sub-spine).
     const ref = (s as Record<string, unknown>).$ref ?? (s as Record<string, unknown>).$dynamicRef;
-    if (typeof ref === "string") {
-      const target = resolveRef(this.refRoot, ref);
-      if (target !== undefined && !(isObjectSchema(target) && seen.has(target))) {
-        if (isObjectSchema(target)) seen.add(target);
-        this.expand(target, out, seen);
-      }
+    if (typeof ref !== "string") return;
+    const target = resolveRef(this.refRoot, ref);
+    if (target === undefined) return;
+    if (!isObjectSchema(target)) {
+      this.expand(target, out, seen); // boolean target
+      return;
     }
+    if (seen?.has(target)) return; // cycle
+    const guard = seen ?? new Set<object>();
+    guard.add(target);
+    this.expand(target, out, guard);
   }
 
   // The AND-list of schemas the value about to be parsed must satisfy.
@@ -340,7 +348,7 @@ export class SpineValidator implements JsonEventHandler {
     const out: Applicable = { schemas: [], hasFalse: false };
     const top = this.frames[this.frames.length - 1];
     if (top === undefined) {
-      this.expand(this.root, out, new Set());
+      this.expand(this.root, out);
     } else if (top.kind === "object") {
       for (const s of top.schemas) this.collectObjectValue(s, top.pendingKey as string, out);
     } else {
@@ -350,31 +358,29 @@ export class SpineValidator implements JsonEventHandler {
   }
 
   private collectObjectValue(s: SchemaObject, key: string, out: Applicable): void {
-    const seen = new Set<object>();
     let matched = false;
     if (s.properties !== undefined && Object.hasOwn(s.properties, key)) {
-      this.expand(s.properties[key], out, seen);
+      this.expand(s.properties[key], out);
       matched = true;
     }
     if (s.patternProperties !== undefined) {
       for (const pat of Object.keys(s.patternProperties)) {
         if (this.regex(pat).test(key)) {
-          this.expand(s.patternProperties[pat], out, seen);
+          this.expand(s.patternProperties[pat], out);
           matched = true;
         }
       }
     }
     if (!matched && s.additionalProperties !== undefined) {
-      this.expand(s.additionalProperties, out, seen);
+      this.expand(s.additionalProperties, out);
     }
   }
 
   private collectArrayElement(s: SchemaObject, index: number, out: Applicable): void {
-    const seen = new Set<object>();
     if (s.prefixItems !== undefined && index < s.prefixItems.length) {
-      this.expand(s.prefixItems[index], out, seen);
+      this.expand(s.prefixItems[index], out);
     } else if (s.items !== undefined) {
-      this.expand(s.items, out, seen);
+      this.expand(s.items, out);
     }
   }
 
@@ -832,7 +838,7 @@ export class SpineValidator implements JsonEventHandler {
   // back to the forward string keywords only.
   private checkPropertyName(propertyNames: SchemaOrBoolean, key: string, codePoints: number): void {
     const app: Applicable = { schemas: [], hasFalse: false };
-    this.expand(propertyNames, app, new Set());
+    this.expand(propertyNames, app);
     const keyPath = [...this.path, key];
     if (app.hasFalse) this.fail("propertyNames", keyPath);
     if (app.schemas.length === 0) return;
