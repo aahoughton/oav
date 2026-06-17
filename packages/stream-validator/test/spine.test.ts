@@ -33,11 +33,10 @@ describe("SpineValidator violation paths", () => {
 });
 
 describe("SpineValidator throws on constructs outside the STREAM set", () => {
+  // Without a delegate, a BUFFER-requiring construct can't be validated.
+  // (Forward composition does NOT throw: it is TEE'd via forward
+  // sub-spines, which need no delegate.)
   const unsupported: Array<[string, SchemaOrBoolean, string]> = [
-    ["allOf", { allOf: [{ type: "string" }] }, '"x"'],
-    ["anyOf", { anyOf: [{ type: "string" }] }, '"x"'],
-    ["oneOf", { oneOf: [{ type: "string" }] }, '"x"'],
-    ["not", { not: { type: "null" } }, '"x"'],
     ["contains", { type: "array", contains: { type: "string" } }, '["x"]'],
     ["object enum", { enum: [{ a: 1 }] }, '{"a":1}'],
     ["uniqueItems over objects", { type: "array", uniqueItems: true }, "[{}]"],
@@ -52,6 +51,21 @@ describe("SpineValidator throws on constructs outside the STREAM set", () => {
       }).toThrow(SpineUnsupportedError);
     });
   }
+
+  it("TEEs forward composition without a delegate (no throw)", () => {
+    for (const [schema, json, valid] of [
+      [{ anyOf: [{ type: "string" }, { type: "integer" }] }, '"x"', true],
+      [{ oneOf: [{ type: "integer" }, { minimum: 5 }] }, "7", false],
+      [{ not: { type: "null" } }, "null", false],
+      [{ allOf: [{ type: "integer" }, { minimum: 0 }] }, "3", true],
+    ] as Array<[SchemaOrBoolean, string, boolean]>) {
+      const spine = new SpineValidator(schema);
+      const tok = new JsonTokenizer(spine);
+      tok.write(enc.encode(json));
+      tok.end();
+      expect(spine.verdict().valid).toBe(valid);
+    }
+  });
 });
 
 describe("SpineValidator recursion is bounded by the heap, not the native stack", () => {

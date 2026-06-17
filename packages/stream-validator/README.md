@@ -44,12 +44,15 @@ the verdict and raw-copies the tail.
 The STREAM keyword set (`type`, scalar/string/number constraints,
 `properties` / `items` / `required` / bounds / `propertyNames` /
 `dependentRequired`, `$ref` recursion, boolean schemas) validates on the
-forward spine in one pass. Everything else the classifier marks
-non-streamable (`allOf` / `anyOf` / `oneOf` / `not` / `if`, object/array
-`enum` / `const`, `dependentSchemas`, `discriminator`, `contains`,
-`uniqueItems`) is handled as a **BUFFER island**: the subtree is
-materialized from the token stream and delegated to `@oav/schema`'s
-in-memory validator, bounded by `maxBufferedBytes`. Only a REJECT keyword
+forward spine in one pass. Forward composition (`allOf` / `anyOf` /
+`oneOf` / `not` / `if`, all branches forward) **TEEs**: the value's events
+fan out to one forward sub-spine per branch, so a composition body still
+streams without materializing. Everything that genuinely needs the whole
+value (object/array `enum` / `const`, `dependentSchemas`, `discriminator`,
+`contains`, `uniqueItems`, a composition with a non-forward branch, or
+`format` under an OpenAPI dialect) is a **BUFFER island**: the subtree is
+materialized and delegated to `@oav/schema`'s in-memory validator,
+bounded by `maxBufferedBytes`. Only a REJECT keyword
 (`unevaluatedProperties` / `unevaluatedItems`), an unknown keyword, or an
 unresolvable `$ref` fails fast at construction.
 
@@ -66,9 +69,6 @@ forward-decidable scope at its close, and `editClose(at, cb)` appends
 bytes before a scope's closing delimiter (append-only; appended bytes are
 not validated). A `ScopeContext` carries the scope path, verdict, member
 count, and a `field(name, value)` helper.
-
-Still on the build sequence: true TEE streaming (a forward optimization
-over the buffer-the-island fallback for composition).
 
 ## Status
 

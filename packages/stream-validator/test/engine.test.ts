@@ -152,8 +152,11 @@ describe("createStreamValidator: TEE/BUFFER schemas (island delegation)", () => 
 });
 
 describe("createStreamValidator: maxBufferedBytes", () => {
+  // A complex `const` is a BUFFER island (deep equality); composition of
+  // forward branches would TEE instead, so it would not exercise the cap.
+  const schema: SchemaOrBoolean = { const: { a: 1 } };
+
   it("fails fatally when a buffered island exceeds the cap", async () => {
-    const schema: SchemaOrBoolean = { oneOf: [{ type: "object" }, { type: "array" }] };
     const validator = createStreamValidator(schema, { maxBufferedBytes: 8 });
     const { sink } = collector();
     const resultGuard = validator.result.catch((e) => e);
@@ -164,7 +167,6 @@ describe("createStreamValidator: maxBufferedBytes", () => {
   });
 
   it("accepts an island within the cap", async () => {
-    const schema: SchemaOrBoolean = { oneOf: [{ type: "object" }, { type: "array" }] };
     const validator = createStreamValidator(schema, { maxBufferedBytes: 1000 });
     const { sink } = collector();
     await pipeline(chunkedSource('{"a":1}', 4), validator, sink);

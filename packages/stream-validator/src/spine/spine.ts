@@ -8,15 +8,26 @@
  * "must satisfy every one"); `$ref` is followed by expansion, so deep
  * recursion grows the heap scope stack, never the native call stack.
  *
- * STREAM-classified values validate on the forward state machines.
- * Everything else (composition, object/array `enum` / `const`,
- * `dependentSchemas`, `discriminator`, `contains`, `uniqueItems`, and
- * `format` under an asserting dialect) is a BUFFER island: the value is
- * materialized via {@link ValueBuilder} and handed to the injected
- * {@link IslandDelegate} (the in-memory engine). With no delegate wired
- * (a bare spine) such a value throws {@link SpineUnsupportedError} rather
- * than producing a wrong verdict. `maxBufferedBytes` caps a single island
- * (and forced-buffer scalar); `maxDepth` records a `depth` violation.
+ * A value is handled by one of three strategies:
+ *
+ *   - **STREAM**: validated on the forward state machines in one pass.
+ *   - **TEE**: forward composition (`allOf` / `anyOf` / `oneOf` / `not` /
+ *     `if`, all branches forward). The value's events are fanned out to
+ *     one forward sub-spine per branch (no materialization) and the
+ *     combinators are evaluated at scope-close; this is what keeps a
+ *     composition body streaming.
+ *   - **BUFFER island**: anything that needs the whole value (object/array
+ *     `enum` / `const`, `dependentSchemas`, `discriminator`, `contains`,
+ *     `uniqueItems`, a composition with a non-forward branch, or `format`
+ *     under an asserting dialect). The value is materialized via
+ *     {@link ValueBuilder} and handed to the injected
+ *     {@link IslandDelegate} (the in-memory engine).
+ *
+ * BUFFER dominates TEE (a value needing both materializes). With no
+ * delegate wired (a bare spine), a BUFFER value throws
+ * {@link SpineUnsupportedError}; forward composition still TEEs.
+ * `maxBufferedBytes` caps a single island (and forced-buffer scalar);
+ * `maxDepth` records a `depth` violation.
  *
  * @packageDocumentation
  */
@@ -81,6 +92,12 @@ export interface SpineOptions {
   /** Per-node strategy from the classifier. Absent: every node is treated as `stream`. */
   strategyOf?: (node: SchemaOrBoolean) => Strategy;
   /**
+   * Document root for `$ref` resolution, when it differs from the
+   * validation root (a TEE sub-spine validates a branch but resolves refs
+   * against the whole document). Defaults to the validation root.
+   */
+  refRoot?: SchemaOrBoolean;
+  /**
    * Validates a materialized BUFFER island against its schemas (the
    * in-memory engine). Required for any non-stream node; absent, such a
    * node throws {@link SpineUnsupportedError}.
@@ -144,6 +161,21 @@ interface ArrayFrame {
   violationsAtOpen: number;
 }
 
+// The combinator obligations a TEE value must satisfy. Each sub-spine
+// validates the same value against one branch; verdicts are read at close.
+interface TeeObligations {
+  required: SpineValidator[]; // all must be valid (own keywords + allOf)
+  anyOf: SpineValidator[][]; // each group: >= 1 valid
+  oneOf: SpineValidator[][]; // each group: exactly 1 valid
+  not: SpineValidator[]; // each must be INVALID
+  ite: Array<{
+    ifSub: SpineValidator;
+    thenSub: SpineValidator | null;
+    elseSub: SpineValidator | null;
+  }>;
+  hasFalse: boolean;
+}
+
 /** A forward-decidable (STREAM) scope closing, reported for edit hooks. */
 export interface ScopeClose {
   path: PathSegment[];
@@ -180,6 +212,7 @@ const STREAM_COMPOSITION = ["allOf", "anyOf", "oneOf", "not", "if"];
  */
 export class SpineValidator implements JsonEventHandler {
   private readonly root: SchemaOrBoolean;
+  private readonly refRoot: SchemaObject;
   private readonly violations: Violation[] = [];
   private readonly path: PathSegment[] = [];
   private readonly frames: Frame[] = [];
@@ -221,8 +254,20 @@ export class SpineValidator implements JsonEventHandler {
     byteStart: number;
   } | null = null;
 
+  // An open TEE: the value's events are forwarded to one forward sub-spine
+  // per composition branch (no materialization); combined at scope-close.
+  private tee: {
+    obligations: TeeObligations;
+    subs: SpineValidator[]; // flat list, for event forwarding
+    depth: number;
+    inString: boolean;
+    started: boolean;
+  } | null = null;
+
   constructor(root: SchemaOrBoolean, options: SpineOptions = {}) {
     this.root = root;
+    const ref = options.refRoot ?? root;
+    this.refRoot = isObjectSchema(ref) ? ref : ({} as SchemaObject);
     this.onViolation = options.onViolation;
     this.strategyOf = options.strategyOf ?? (() => "stream");
     this.delegate = options.delegate;
@@ -277,12 +322,12 @@ export class SpineValidator implements JsonEventHandler {
     }
     if (!isObjectSchema(s)) return;
     out.schemas.push(s);
-    const root = isObjectSchema(this.root) ? this.root : ({} as SchemaObject);
     // `$dynamicRef` is resolved statically against the anchor map, the
-    // same limitation @oav/schema documents.
+    // same limitation @oav/schema documents. Refs resolve against the
+    // document root (may differ from the validation root in a sub-spine).
     const ref = (s as Record<string, unknown>).$ref ?? (s as Record<string, unknown>).$dynamicRef;
     if (typeof ref === "string") {
-      const target = resolveRef(root, ref);
+      const target = resolveRef(this.refRoot, ref);
       if (target !== undefined && !(isObjectSchema(target) && seen.has(target))) {
         if (isObjectSchema(target)) seen.add(target);
         this.expand(target, out, seen);
@@ -333,30 +378,35 @@ export class SpineValidator implements JsonEventHandler {
     }
   }
 
-  // Whether a single schema must be handled by materialization rather
-  // than the forward state machines: the classifier marked it non-stream
-  // (composition / object-array equality / dependentSchemas / ...), or it
-  // carries a keyword the spine streams no forward path for yet
-  // (`contains`, or composition keywords when no classification is wired).
-  private isNonStream(s: SchemaObject): boolean {
-    if (this.strategyOf(s) !== "stream") return true;
-    if ("contains" in s) return true;
-    // Under an asserting dialect the spine has no format check; delegate.
-    if (this.assertsFormat && "format" in s) return true;
-    // uniqueItems over container items needs canonical hashing the spine
-    // doesn't do; materialize the whole array (correct for any element).
-    if (s.uniqueItems === true) return true;
-    for (const k of STREAM_COMPOSITION) if (k in s) return true;
-    // enum/const with an object/array candidate needs deep equality.
+  // Whether a single schema must be materialized + delegated (BUFFER): a
+  // keyword the spine cannot stream forward. Composition is NOT here (it
+  // is handled by TEE unless a branch itself buffers, which the classifier
+  // folds into `strategyOf === "buffer"`).
+  private needsBuffer(s: SchemaObject): boolean {
+    if (this.strategyOf(s) === "buffer") return true;
+    if ("contains" in s) return true; // forward streaming of contains is not implemented
+    if ("dependentSchemas" in s || "discriminator" in s) return true;
+    if (this.assertsFormat && "format" in s) return true; // no spine-side format assertion
+    if (s.uniqueItems === true) return true; // canonical hashing not streamed
     const complex = (v: unknown): boolean => typeof v === "object" && v !== null;
-    if (Array.isArray(s.enum) && s.enum.some(complex)) return true;
+    if (Array.isArray(s.enum) && s.enum.some(complex)) return true; // object/array equality
     if ("const" in s && complex((s as { const?: unknown }).const)) return true;
     return false;
   }
 
-  // Whether the value about to be parsed must be materialized + delegated.
+  private hasComposition(s: SchemaObject): boolean {
+    for (const k of STREAM_COMPOSITION) if (k in s) return true;
+    return false;
+  }
+
+  // BUFFER dominates TEE: if any applicable schema must materialize, the
+  // whole value is an island; otherwise forward composition is TEE'd.
   private needsIsland(app: Applicable): boolean {
-    return app.schemas.some((s) => this.isNonStream(s));
+    return app.schemas.some((s) => this.needsBuffer(s));
+  }
+
+  private needsTee(app: Applicable): boolean {
+    return !this.needsIsland(app) && app.schemas.some((s) => this.hasComposition(s));
   }
 
   // No delegate wired (e.g. a bare spine without a classifier): such a
@@ -419,6 +469,89 @@ export class SpineValidator implements JsonEventHandler {
     this.advance();
   }
 
+  // A sub-spine validating the same value against one composition branch.
+  // It streams (forward), resolves refs against the document root, and
+  // delegates / islands its own non-forward parts; it surfaces nothing
+  // (its verdict is read at the TEE's close).
+  private makeSub(branch: SchemaOrBoolean): SpineValidator {
+    const opts: SpineOptions = {
+      strategyOf: this.strategyOf,
+      refRoot: this.refRoot,
+      assertsFormat: this.assertsFormat,
+    };
+    if (this.delegate !== undefined) opts.delegate = this.delegate;
+    if (this.maxBufferedBytes !== undefined) opts.maxBufferedBytes = this.maxBufferedBytes;
+    if (this.maxDepth !== undefined) opts.maxDepth = this.maxDepth;
+    if (this.regexCompiler !== undefined) opts.regexCompiler = this.regexCompiler;
+    return new SpineValidator(branch, opts);
+  }
+
+  // Decompose the applicable schemas into combinator obligations, each
+  // backed by a sub-spine. A schema's own (non-composition) keywords are a
+  // required obligation alongside its `allOf` members.
+  private beginTee(app: Applicable): void {
+    const obligations: TeeObligations = {
+      required: [],
+      anyOf: [],
+      oneOf: [],
+      not: [],
+      ite: [],
+      hasFalse: app.hasFalse,
+    };
+    for (const s of app.schemas) {
+      obligations.required.push(this.makeSub(stripComposition(s)));
+      if (Array.isArray(s.allOf))
+        for (const b of s.allOf) obligations.required.push(this.makeSub(b));
+      if (Array.isArray(s.anyOf)) obligations.anyOf.push(s.anyOf.map((b) => this.makeSub(b)));
+      if (Array.isArray(s.oneOf)) obligations.oneOf.push(s.oneOf.map((b) => this.makeSub(b)));
+      if (s.not !== undefined) obligations.not.push(this.makeSub(s.not));
+      if (s.if !== undefined) {
+        obligations.ite.push({
+          ifSub: this.makeSub(s.if),
+          thenSub: s.then === undefined ? null : this.makeSub(s.then),
+          elseSub: s.else === undefined ? null : this.makeSub(s.else),
+        });
+      }
+    }
+    const subs = [
+      ...obligations.required,
+      ...obligations.anyOf.flat(),
+      ...obligations.oneOf.flat(),
+      ...obligations.not,
+      ...obligations.ite.flatMap((t) =>
+        [t.ifSub, t.thenSub, t.elseSub].filter((x): x is SpineValidator => x !== null),
+      ),
+    ];
+    this.pushSegment();
+    this.tee = { obligations, subs, depth: 0, inString: false, started: false };
+  }
+
+  private teeFeed(feed: (s: SpineValidator) => void): void {
+    for (const s of (this.tee as NonNullable<typeof this.tee>).subs) feed(s);
+  }
+
+  private teeComplete(): boolean {
+    const t = this.tee as NonNullable<typeof this.tee>;
+    return t.started && t.depth === 0 && !t.inString;
+  }
+
+  private finalizeTee(): void {
+    const o = (this.tee as NonNullable<typeof this.tee>).obligations;
+    this.tee = null;
+    if (!combineTee(o)) this.fail("composition");
+    this.popSegment();
+    this.advance();
+  }
+
+  // A scalar value at a TEE position: feed the single event to every sub
+  // and combine immediately.
+  private teeScalar(app: Applicable, feed: (s: SpineValidator) => void): void {
+    this.beginTee(app);
+    this.teeFeed(feed);
+    this.tee!.started = true;
+    this.finalizeTee();
+  }
+
   private pushSegment(): void {
     const top = this.frames[this.frames.length - 1];
     if (top === undefined) return; // root value: no segment
@@ -451,6 +584,17 @@ export class SpineValidator implements JsonEventHandler {
   private checkType(schemas: SchemaObject[], actual: JsonType): void {
     for (const s of schemas) {
       if (s.type !== undefined && !typeMatches(s.type, actual)) this.fail("type");
+    }
+  }
+
+  // const / enum against an object or array value. A complex candidate
+  // would have made the schema BUFFER (deep equality), so any const / enum
+  // reaching the stream path has only scalar candidates - which a
+  // container can never equal.
+  private checkContainerEquality(schemas: SchemaObject[]): void {
+    for (const s of schemas) {
+      if ("const" in s) this.fail("const");
+      else if (Array.isArray(s.enum)) this.fail("enum");
     }
   }
 
@@ -503,6 +647,12 @@ export class SpineValidator implements JsonEventHandler {
 
   onStartObject(offset: number): void {
     this.curOffset = offset;
+    if (this.tee !== null) {
+      this.teeFeed((s) => s.onStartObject(offset));
+      this.tee.depth += 1;
+      this.tee.started = true;
+      return;
+    }
     if (this.island !== null) {
       this.forwardIsland((b) => b.onStartObject());
       return;
@@ -513,10 +663,18 @@ export class SpineValidator implements JsonEventHandler {
       this.forwardIsland((b) => b.onStartObject());
       return;
     }
+    if (this.needsTee(app)) {
+      this.beginTee(app);
+      this.teeFeed((s) => s.onStartObject(offset));
+      this.tee!.depth = 1;
+      this.tee!.started = true;
+      return;
+    }
     this.checkDepth();
     this.pushSegment();
     if (app.hasFalse) this.fail("false");
     this.checkType(app.schemas, "object");
+    this.checkContainerEquality(app.schemas);
     this.frames.push({
       kind: "object",
       schemas: app.schemas,
@@ -529,6 +687,12 @@ export class SpineValidator implements JsonEventHandler {
 
   onEndObject(offset: number): void {
     this.curOffset = offset;
+    if (this.tee !== null) {
+      this.teeFeed((s) => s.onEndObject(offset));
+      this.tee.depth -= 1;
+      if (this.teeComplete()) this.finalizeTee();
+      return;
+    }
     if (this.island !== null) {
       this.forwardIsland((b) => b.onEndObject());
       return;
@@ -578,6 +742,12 @@ export class SpineValidator implements JsonEventHandler {
 
   onStartArray(offset: number): void {
     this.curOffset = offset;
+    if (this.tee !== null) {
+      this.teeFeed((s) => s.onStartArray(offset));
+      this.tee.depth += 1;
+      this.tee.started = true;
+      return;
+    }
     if (this.island !== null) {
       this.forwardIsland((b) => b.onStartArray());
       return;
@@ -588,10 +758,18 @@ export class SpineValidator implements JsonEventHandler {
       this.forwardIsland((b) => b.onStartArray());
       return;
     }
+    if (this.needsTee(app)) {
+      this.beginTee(app);
+      this.teeFeed((s) => s.onStartArray(offset));
+      this.tee!.depth = 1;
+      this.tee!.started = true;
+      return;
+    }
     this.checkDepth();
     this.pushSegment();
     if (app.hasFalse) this.fail("false");
     this.checkType(app.schemas, "array");
+    this.checkContainerEquality(app.schemas);
     this.frames.push({
       kind: "array",
       schemas: app.schemas,
@@ -602,6 +780,12 @@ export class SpineValidator implements JsonEventHandler {
 
   onEndArray(offset: number): void {
     this.curOffset = offset;
+    if (this.tee !== null) {
+      this.teeFeed((s) => s.onEndArray(offset));
+      this.tee.depth -= 1;
+      if (this.teeComplete()) this.finalizeTee();
+      return;
+    }
     if (this.island !== null) {
       this.forwardIsland((b) => b.onEndArray());
       return;
@@ -624,6 +808,10 @@ export class SpineValidator implements JsonEventHandler {
 
   onKey(value: string, codePoints: number, startOffset: number): void {
     this.curOffset = startOffset;
+    if (this.tee !== null) {
+      this.teeFeed((s) => s.onKey(value, codePoints, startOffset));
+      return;
+    }
     if (this.island !== null) {
       this.forwardIsland((b) => b.onKey(value));
       return;
@@ -666,11 +854,25 @@ export class SpineValidator implements JsonEventHandler {
 
   onStringStart(offset: number): void {
     this.curOffset = offset;
+    if (this.tee !== null) {
+      this.teeFeed((s) => s.onStringStart(offset));
+      this.tee.inString = true;
+      this.tee.started = true;
+      return;
+    }
     if (this.island !== null) {
       this.forwardIsland((b) => b.onStringStart());
       return;
     }
     const app = this.schemasForValue();
+    if (this.needsTee(app)) {
+      this.beginTee(app);
+      this.teeFeed((s) => s.onStringStart(offset));
+      this.tee!.inString = true;
+      this.tee!.started = true;
+      this.str = null;
+      return;
+    }
     const island = this.needsIsland(app);
     // Buffer the text when a forward keyword needs it (pattern / enum /
     // const) or when the value is a BUFFER island (delegated whole).
@@ -681,6 +883,10 @@ export class SpineValidator implements JsonEventHandler {
 
   onStringChunk(chunk: string, offset: number): void {
     this.curOffset = offset;
+    if (this.tee !== null) {
+      this.teeFeed((s) => s.onStringChunk(chunk, offset));
+      return;
+    }
     if (this.island !== null) {
       this.forwardIsland((b) => b.onStringChunk(chunk));
       return;
@@ -695,8 +901,14 @@ export class SpineValidator implements JsonEventHandler {
     }
   }
 
-  onStringEnd(codePoints: number, _startOffset: number, endOffset: number): void {
+  onStringEnd(codePoints: number, startOffset: number, endOffset: number): void {
     this.curOffset = endOffset;
+    if (this.tee !== null) {
+      this.teeFeed((s) => s.onStringEnd(codePoints, startOffset, endOffset));
+      this.tee.inString = false;
+      if (this.teeComplete()) this.finalizeTee();
+      return;
+    }
     if (this.island !== null) {
       // Enforce the cap on the full span (a large single-chunk island
       // string never triggered the per-chunk check).
@@ -728,32 +940,99 @@ export class SpineValidator implements JsonEventHandler {
     this.scalar("string", s.needText ? s.text : "", codePoints, s.app);
   }
 
-  onNumber(value: number, _raw: string, startOffset: number): void {
+  onNumber(value: number, raw: string, startOffset: number): void {
     this.curOffset = startOffset;
+    if (this.tee !== null) {
+      this.teeFeed((s) => s.onNumber(value, raw, startOffset));
+      this.tee.started = true;
+      if (this.teeComplete()) this.finalizeTee();
+      return;
+    }
     if (this.island !== null) {
       this.forwardIsland((b) => b.onNumber(value));
       return;
     }
-    this.scalar(Number.isInteger(value) ? "integer" : "number", value, 0, this.schemasForValue());
+    const app = this.schemasForValue();
+    const type = Number.isInteger(value) ? "integer" : "number";
+    if (this.needsTee(app)) {
+      this.teeScalar(app, (s) => s.onNumber(value, raw, startOffset));
+      return;
+    }
+    this.scalar(type, value, 0, app);
   }
 
   onBoolean(value: boolean, startOffset: number): void {
     this.curOffset = startOffset;
+    if (this.tee !== null) {
+      this.teeFeed((s) => s.onBoolean(value, startOffset));
+      this.tee.started = true;
+      if (this.teeComplete()) this.finalizeTee();
+      return;
+    }
     if (this.island !== null) {
       this.forwardIsland((b) => b.onBoolean(value));
       return;
     }
-    this.scalar("boolean", value, 0, this.schemasForValue());
+    const app = this.schemasForValue();
+    if (this.needsTee(app)) {
+      this.teeScalar(app, (s) => s.onBoolean(value, startOffset));
+      return;
+    }
+    this.scalar("boolean", value, 0, app);
   }
 
   onNull(startOffset: number): void {
     this.curOffset = startOffset;
+    if (this.tee !== null) {
+      this.teeFeed((s) => s.onNull(startOffset));
+      this.tee.started = true;
+      if (this.teeComplete()) this.finalizeTee();
+      return;
+    }
     if (this.island !== null) {
       this.forwardIsland((b) => b.onNull());
       return;
     }
-    this.scalar("null", null, 0, this.schemasForValue());
+    const app = this.schemasForValue();
+    if (this.needsTee(app)) {
+      this.teeScalar(app, (s) => s.onNull(startOffset));
+      return;
+    }
+    this.scalar("null", null, 0, app);
   }
+}
+
+// A shallow copy of a schema with its composition keywords removed: the
+// schema's own (non-composition) obligation for a TEE.
+function stripComposition(s: SchemaObject): SchemaObject {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(s)) {
+    if (k === "allOf" || k === "anyOf" || k === "oneOf" || k === "not" || k === "if") continue;
+    if (k === "then" || k === "else") continue; // partners of `if`
+    out[k] = v;
+  }
+  return out as SchemaObject;
+}
+
+// Combine TEE sub-spine verdicts per the composition combinators.
+function combineTee(o: TeeObligations): boolean {
+  if (o.hasFalse) return false;
+  for (const s of o.required) if (!s.verdict().valid) return false;
+  // An empty anyOf / oneOf is vacuously valid (matches @oav/schema, which
+  // emits no check for an empty composition array).
+  for (const group of o.anyOf) {
+    if (group.length > 0 && !group.some((s) => s.verdict().valid)) return false;
+  }
+  for (const group of o.oneOf) {
+    if (group.length > 0 && group.filter((s) => s.verdict().valid).length !== 1) return false;
+  }
+  for (const s of o.not) if (s.verdict().valid) return false;
+  for (const t of o.ite) {
+    const ifValid = t.ifSub.verdict().valid;
+    if (ifValid && t.thenSub !== null && !t.thenSub.verdict().valid) return false;
+    if (!ifValid && t.elseSub !== null && !t.elseSub.verdict().valid) return false;
+  }
+  return true;
 }
 
 // Mirror @oav/schema's tolerant multipleOf check so verdicts agree on
