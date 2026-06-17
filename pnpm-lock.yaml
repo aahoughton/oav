@@ -209,6 +209,15 @@ importers:
         specifier: workspace:*
         version: link:../core
 
+  packages/stream-validator:
+    dependencies:
+      '@oav/core':
+        specifier: workspace:*
+        version: link:../core
+      '@oav/schema':
+        specifier: workspace:*
+        version: link:../schema
+
   packages/validator:
     dependencies:
       '@oav/core':

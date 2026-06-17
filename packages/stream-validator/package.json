@@ -1,0 +1,22 @@
+{
+  "name": "@oav/stream-validator",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Internal (incubating): streaming JSON Schema validator for @aahoughton/oav. Validates a JSON document against a resolved 2020-12 schema as it streams, echoing bytes through unchanged.",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "dependencies": {
+    "@oav/core": "workspace:*",
+    "@oav/schema": "workspace:*"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

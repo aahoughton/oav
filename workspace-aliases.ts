@@ -13,6 +13,7 @@ const PACKAGES = [
   "overlay-spec",
   "router",
   "validator",
+  "stream-validator",
   "cli",
   "oav",
   "oav-express4",
