@@ -4,6 +4,7 @@ export {
   SpineUnsupportedError,
   SpineValidator,
   type IslandDelegate,
+  type ScopeClose,
   type SpineOptions,
   type SpineVerdict,
   type Violation,

@@ -106,6 +106,13 @@ export interface SpineOptions {
    * pays nothing when they are off); the driver applies any path filter.
    */
   keyEvent?: (scopePath: readonly PathSegment[], key: string, byteOffset: number) => void;
+  /**
+   * Fired when a forward-decidable (STREAM) object/array scope closes,
+   * after its verdict is known and before its delimiter, for edit hooks.
+   * Islands (composition / buffered scopes) are not reported: their
+   * verdict is not final at the streaming close.
+   */
+  onScopeClose?: (close: ScopeClose) => void;
 }
 
 /** The verdict of a streaming validation. */
@@ -127,12 +134,24 @@ interface ObjectFrame {
   seen: Set<string>;
   count: number;
   pendingKey: string | null;
+  violationsAtOpen: number;
 }
 
 interface ArrayFrame {
   kind: "array";
   schemas: SchemaObject[];
   count: number;
+  violationsAtOpen: number;
+}
+
+/** A forward-decidable (STREAM) scope closing, reported for edit hooks. */
+export interface ScopeClose {
+  path: PathSegment[];
+  kind: "object" | "array";
+  valid: boolean;
+  memberCount: number;
+  /** Byte offset of the closing delimiter (`}` / `]`). */
+  delimiterOffset: number;
 }
 
 type Frame = ObjectFrame | ArrayFrame;
@@ -176,6 +195,7 @@ export class SpineValidator implements JsonEventHandler {
   private readonly keyEvent:
     | ((scopePath: readonly PathSegment[], key: string, byteOffset: number) => void)
     | undefined;
+  private readonly onScopeClose: ((close: ScopeClose) => void) | undefined;
   private depthReported = false;
 
   // Byte offset of the event currently being validated; stamped onto
@@ -212,6 +232,7 @@ export class SpineValidator implements JsonEventHandler {
     this.regexCompiler = options.regexCompiler;
     this.assertsFormat = options.assertsFormat ?? false;
     this.keyEvent = options.keyEvent;
+    this.onScopeClose = options.onScopeClose;
   }
 
   /** The verdict so far (final once `end` has been called on the tokenizer). */
@@ -502,6 +523,7 @@ export class SpineValidator implements JsonEventHandler {
       seen: new Set(),
       count: 0,
       pendingKey: null,
+      violationsAtOpen: this.violations.length,
     });
   }
 
@@ -543,6 +565,13 @@ export class SpineValidator implements JsonEventHandler {
         }
       }
     }
+    this.onScopeClose?.({
+      path: [...this.path],
+      kind: "object",
+      valid: this.violations.length === frame.violationsAtOpen,
+      memberCount: frame.count,
+      delimiterOffset: offset,
+    });
     this.popSegment();
     this.advance();
   }
@@ -563,7 +592,12 @@ export class SpineValidator implements JsonEventHandler {
     this.pushSegment();
     if (app.hasFalse) this.fail("false");
     this.checkType(app.schemas, "array");
-    this.frames.push({ kind: "array", schemas: app.schemas, count: 0 });
+    this.frames.push({
+      kind: "array",
+      schemas: app.schemas,
+      count: 0,
+      violationsAtOpen: this.violations.length,
+    });
   }
 
   onEndArray(offset: number): void {
@@ -577,6 +611,13 @@ export class SpineValidator implements JsonEventHandler {
       if (s.minItems !== undefined && frame.count < s.minItems) this.fail("minItems");
       if (s.maxItems !== undefined && frame.count > s.maxItems) this.fail("maxItems");
     }
+    this.onScopeClose?.({
+      path: [...this.path],
+      kind: "array",
+      valid: this.violations.length === frame.violationsAtOpen,
+      memberCount: frame.count,
+      delimiterOffset: offset,
+    });
     this.popSegment();
     this.advance();
   }

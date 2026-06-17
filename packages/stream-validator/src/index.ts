@@ -23,7 +23,11 @@ export {
   createStreamValidator,
   StreamValidator,
   ValidationFailedError,
+  type Bytes,
   type CreateStreamValidatorOptions,
+  type ScopeContext,
+  type ScopeEditor,
+  type ScopeObserver,
 } from "./engine/index.js";
 export type { SpineVerdict, Violation } from "./spine/index.js";
 export { normalizeOas30 } from "./openapi/index.js";

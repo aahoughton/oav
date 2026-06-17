@@ -60,8 +60,15 @@ suppression) before classification; all three select OpenAPI semantics
 `resolveSpec()` and extracting the body schema is the caller's job (the
 HTTP adapter is post-v1).
 
+Observability and edit hooks: `keyEvents` emits a `key` event per object
+key (optionally path-filtered); `onScopeClose(at, cb)` observes a
+forward-decidable scope at its close, and `editClose(at, cb)` appends
+bytes before a scope's closing delimiter (append-only; appended bytes are
+not validated). A `ScopeContext` carries the scope path, verdict, member
+count, and a `field(name, value)` helper.
+
 Still on the build sequence: true TEE streaming (a forward optimization
-over the buffer-the-island fallback) and edit hooks / key events.
+over the buffer-the-island fallback for composition).
 
 ## Status
 

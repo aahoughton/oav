@@ -44,16 +44,22 @@ import { classify } from "../classifier/index.js";
 import {
   BudgetReached,
   type IslandDelegate,
+  type ScopeClose,
   SpineValidator,
   type SpineVerdict,
   type Violation,
 } from "../spine/index.js";
 import { JsonTokenizer } from "../tokenizer/index.js";
 import type { JsonPath, PathFilter, StreamValidatorOptions } from "../options.js";
+import { makeScopeContext, type ScopeEditor, type ScopeObserver, toBuffer } from "./hooks.js";
 
-/** Does a key-event path filter match this scope path (kind is always "object")? */
-function matchPathFilter(filter: PathFilter, path: readonly PathSegment[]): boolean {
-  if (typeof filter === "function") return filter(path as JsonPath, "object");
+/** Does a path filter match this scope path + kind? */
+function matchPathFilter(
+  filter: PathFilter,
+  path: readonly PathSegment[],
+  kind: "object" | "array",
+): boolean {
+  if (typeof filter === "function") return filter(path as JsonPath, kind);
   return filter.length === path.length && filter.every((seg, i) => seg === path[i]);
 }
 
@@ -175,6 +181,13 @@ export class StreamValidator extends Transform {
   private sealed = false; // detach: validation stopped, echo-only tail
   private finished = false; // verdict settled
 
+  // Edit hooks, in registration order; and the byte injections a chunk's
+  // scope closes produced (consumed by the injection-aware echo).
+  private readonly scopeHooks: Array<
+    { at: PathFilter; observe: ScopeObserver } | { at: PathFilter; edit: ScopeEditor }
+  > = [];
+  private pendingInjections: Array<{ offset: number; bytes: Buffer }> = [];
+
   /** Resolves with the final verdict (rejects on a fatal parse / I/O error). */
   readonly result: Promise<SpineVerdict>;
   private resolveResult!: (v: SpineVerdict) => void;
@@ -222,12 +235,13 @@ export class StreamValidator extends Transform {
       ...(keyEvents
         ? {
             keyEvent: (scopePath: readonly PathSegment[], key: string, byteOffset: number) => {
-              if (keyEvents === true || matchPathFilter(keyEvents.at, scopePath)) {
+              if (keyEvents === true || matchPathFilter(keyEvents.at, scopePath, "object")) {
                 this.emit("key", { path: [...scopePath], key, byteOffset });
               }
             },
           }
         : {}),
+      onScopeClose: (close: ScopeClose) => this.handleScopeClose(close),
     });
     this.tokenizer = new JsonTokenizer(this.spine);
     this.result = new Promise<SpineVerdict>((resolve, reject) => {
@@ -245,22 +259,101 @@ export class StreamValidator extends Transform {
     this.emit("violation", violation);
   }
 
+  /**
+   * Observe a forward-decidable (STREAM) scope at its close, after its
+   * verdict is known. Register before piping. Islands (composition /
+   * buffered scopes) are not reported.
+   */
+  onScopeClose(at: PathFilter, observe: ScopeObserver): void {
+    this.scopeHooks.push({ at, observe });
+  }
+
+  /**
+   * Append bytes before a forward-decidable scope's closing delimiter
+   * (append-only; the appended bytes are not validated). Register before
+   * piping. Return `null` for a no-op.
+   */
+  editClose(at: PathFilter, edit: ScopeEditor): void {
+    this.scopeHooks.push({ at, edit });
+  }
+
+  private handleScopeClose(close: ScopeClose): void {
+    if (this.scopeHooks.length === 0) return;
+    const ctx = makeScopeContext(close.path, close.kind, close.valid, close.memberCount);
+    const parts: Buffer[] = [];
+    for (const h of this.scopeHooks) {
+      if (!matchPathFilter(h.at, close.path, close.kind)) continue;
+      if ("observe" in h) h.observe(ctx);
+      else {
+        const b = h.edit(ctx);
+        if (b !== null) parts.push(toBuffer(b));
+      }
+    }
+    if (parts.length > 0) {
+      this.pendingInjections.push({ offset: close.delimiterOffset, bytes: Buffer.concat(parts) });
+    }
+  }
+
+  // Echo a chunk, splicing each scope-close injection in before its
+  // delimiter byte. Injections arrive in ascending offset order (scopes
+  // close child-before-parent).
+  private emitWithInjections(chunk: Buffer, base: number): void {
+    let local = 0;
+    for (const inj of this.pendingInjections) {
+      const cut = inj.offset - base;
+      if (cut < local || cut > chunk.length) continue;
+      if (cut > local) this.push(chunk.subarray(local, cut));
+      this.push(inj.bytes);
+      local = cut;
+    }
+    if (local < chunk.length) this.push(chunk.subarray(local));
+    this.pendingInjections = [];
+  }
+
   override _transform(chunk: Buffer, _enc: BufferEncoding, cb: TransformCallback): void {
-    // Echo first: output is the verbatim input byte stream (invariant 1).
-    this.push(chunk);
     if (this.sealed || this.finished) {
+      this.push(chunk); // echo the detach tail / post-settle bytes verbatim
       cb();
       return;
     }
-    // Refuse oversize input regardless of validity (policy lever).
+    const base = this.totalBytes;
     this.totalBytes += chunk.length;
+    // Refuse oversize input regardless of validity (policy lever).
     if (this.maxTotalBytes !== undefined && this.totalBytes > this.maxTotalBytes) {
+      this.push(chunk);
       const err = new Error(`stream-validator: input exceeded maxTotalBytes=${this.maxTotalBytes}`);
       this.finished = true;
       this.rejectResult(err);
       cb(err);
       return;
     }
+
+    // With edit hooks, tokenize first (collecting injections), then echo
+    // with the injections spliced in. Without hooks, echo verbatim up
+    // front (the fast path).
+    if (this.scopeHooks.length > 0) {
+      this.pendingInjections = [];
+      let err: unknown;
+      try {
+        this.tokenizer.write(chunk);
+      } catch (e) {
+        err = e;
+      }
+      this.emitWithInjections(chunk, base);
+      if (err === undefined) {
+        cb();
+      } else if (err instanceof BudgetReached) {
+        this.applyBudget(cb);
+      } else {
+        this.finished = true;
+        this.rejectResult(err as Error);
+        cb(err as Error);
+      }
+      return;
+    }
+
+    // Echo first: output is the verbatim input byte stream (invariant 1).
+    this.push(chunk);
     try {
       this.tokenizer.write(chunk);
     } catch (err) {
