@@ -49,7 +49,13 @@ import {
   type Violation,
 } from "../spine/index.js";
 import { JsonTokenizer } from "../tokenizer/index.js";
-import type { StreamValidatorOptions } from "../options.js";
+import type { JsonPath, PathFilter, StreamValidatorOptions } from "../options.js";
+
+/** Does a key-event path filter match this scope path (kind is always "object")? */
+function matchPathFilter(filter: PathFilter, path: readonly PathSegment[]): boolean {
+  if (typeof filter === "function") return filter(path as JsonPath, "object");
+  return filter.length === path.length && filter.every((seg, i) => seg === path[i]);
+}
 
 /**
  * A terminal validation failure under `terminate` policy: the input was
@@ -179,6 +185,7 @@ export class StreamValidator extends Transform {
     this.maxErrors = options.maxErrors ?? 1;
     this.policy = options.policy ?? "terminate";
     this.maxTotalBytes = options.maxTotalBytes;
+    const keyEvents = options.keyEvents;
 
     // OpenAPI 3.0 -> 2020-12 normalization (nullable / boolean exclusive*
     // / $ref sibling suppression) before any classification. 3.1 / 3.2
@@ -212,6 +219,15 @@ export class StreamValidator extends Transform {
         : { maxBufferedBytes: options.maxBufferedBytes }),
       ...(options.maxDepth === undefined ? {} : { maxDepth: options.maxDepth }),
       ...(options.regexCompiler === undefined ? {} : { regexCompiler: options.regexCompiler }),
+      ...(keyEvents
+        ? {
+            keyEvent: (scopePath: readonly PathSegment[], key: string, byteOffset: number) => {
+              if (keyEvents === true || matchPathFilter(keyEvents.at, scopePath)) {
+                this.emit("key", { path: [...scopePath], key, byteOffset });
+              }
+            },
+          }
+        : {}),
     });
     this.tokenizer = new JsonTokenizer(this.spine);
     this.result = new Promise<SpineVerdict>((resolve, reject) => {

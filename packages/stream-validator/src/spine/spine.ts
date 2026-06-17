@@ -100,6 +100,12 @@ export interface SpineOptions {
    * (the spine has no format assertion of its own).
    */
   assertsFormat?: boolean;
+  /**
+   * Observability hook fired for every object key, with the enclosing
+   * scope's path. Set only when key events are requested (so the spine
+   * pays nothing when they are off); the driver applies any path filter.
+   */
+  keyEvent?: (scopePath: readonly PathSegment[], key: string, byteOffset: number) => void;
 }
 
 /** The verdict of a streaming validation. */
@@ -167,6 +173,9 @@ export class SpineValidator implements JsonEventHandler {
   private readonly maxDepth: number | undefined;
   private readonly regexCompiler: RegexCompiler | undefined;
   private readonly assertsFormat: boolean;
+  private readonly keyEvent:
+    | ((scopePath: readonly PathSegment[], key: string, byteOffset: number) => void)
+    | undefined;
   private depthReported = false;
 
   // Byte offset of the event currently being validated; stamped onto
@@ -202,6 +211,7 @@ export class SpineValidator implements JsonEventHandler {
     this.maxDepth = options.maxDepth;
     this.regexCompiler = options.regexCompiler;
     this.assertsFormat = options.assertsFormat ?? false;
+    this.keyEvent = options.keyEvent;
   }
 
   /** The verdict so far (final once `end` has been called on the tokenizer). */
@@ -577,6 +587,7 @@ export class SpineValidator implements JsonEventHandler {
       this.forwardIsland((b) => b.onKey(value));
       return;
     }
+    this.keyEvent?.(this.path, value, startOffset);
     const top = this.frames[this.frames.length - 1] as ObjectFrame;
     for (const s of top.schemas) {
       if (s.propertyNames !== undefined) this.checkPropertyName(s.propertyNames, value, codePoints);
