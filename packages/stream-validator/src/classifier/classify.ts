@@ -3,8 +3,7 @@
  * graph), assigns each subschema node a {@link Strategy}, and fails fast
  * on anything it cannot soundly stream.
  *
- * Two correctness properties from the design (docs/stream-validator.md
- * "Classifier"):
+ * Two correctness properties the classifier guarantees:
  *
  *   - **`$ref` is a graph problem, not a tree walk.** A node's strategy
  *     is the join of its own keywords and the strategies it reaches

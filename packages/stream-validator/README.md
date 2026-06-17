@@ -10,8 +10,9 @@ materializing in heap.
 This is a second engine, not a mode of `@oav/schema`. `@oav/schema`'s
 compiler is pull-based over a fully-parsed value; this engine is
 push-based over a token stream. It reuses `@oav/schema`'s in-memory
-validator for the subtrees a compile-time classifier marks BUFFER, and
-reuses `@oav/core`'s flat error model and `@oav/formats`.
+validator for the subtrees a compile-time classifier marks BUFFER (so
+format assertion and built-in formats come from that delegate), and
+reuses `@oav/core`'s flat error model.
 
 ## Usage
 
@@ -77,12 +78,3 @@ monorepo via `workspace:*` so its classifier can co-evolve with
 `@oav/schema`'s keyword set (a CI drift test makes that a build failure
 rather than silent breakage). Maturity gate: `private` -> `experimental`
 dist-tag -> public `latest`.
-
-## Design
-
-The full design and build spec is
-[docs/stream-validator.md](../../docs/stream-validator.md): the
-invariants an implementation must honor, the SAX-spine / classifier /
-BUFFER-island architecture, the keyword support matrix, the resource
-model, and the 11-step build sequence. Read "Invariants" and
-"Architecture" there first.

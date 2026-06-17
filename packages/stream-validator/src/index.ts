@@ -12,9 +12,7 @@
  * BUFFER (so format assertion and built-in formats come from that
  * delegate), and reuses `@oav/core`'s flat error model.
  *
- * The design and build spec live in
- * [docs/stream-validator.md](../../../docs/stream-validator.md). The
- * package is unpublished during incubation (`private`).
+ * The package is unpublished during incubation (`private`).
  *
  * @packageDocumentation
  */

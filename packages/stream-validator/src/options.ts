@@ -43,9 +43,7 @@ export type PathFilter = JsonPath | ((path: JsonPath, kind: "object" | "array") 
  *   - **Resource limits** (`maxBufferedBytes`, `maxDepth`,
  *     `maxTotalBytes`, `maxUniqueItems`, `enforceBounds`): all default off
  *     (unset = zero overhead). They bound the dimensions a
- *     forward-decidable schema leaves open. See
- *     [the design doc](../../../docs/stream-validator.md) "Resource
- *     model".
+ *     forward-decidable schema leaves open.
  *
  * @public
  */

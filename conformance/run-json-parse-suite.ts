@@ -7,7 +7,7 @@
  * by `pnpm setup:json-parse`). This script walks `test_parsing/*.json`,
  * whose filenames are prefixed `y_` (must accept), `n_` (must reject), or
  * `i_` (implementation-defined). The tokenizer's contract is to **match
- * `JSON.parse`** (see docs/stream-validator.md), so the oracle for every
+ * `JSON.parse`**, so the oracle for every
  * case is `JSON.parse(bytes.toString("utf8"))`, not the filename label;
  * the label is reported for context.
  *

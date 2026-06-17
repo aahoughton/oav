@@ -4,7 +4,7 @@
  * {@link JsonTokenizer.end}; it drives a {@link JsonEventHandler} in
  * document order.
  *
- * Correctness anchors (see docs/stream-validator.md "Tokenizer"):
+ * Correctness anchors:
  *
  *   - **Chunk-boundary safe.** A token, a UTF-8 multibyte sequence, or
  *     an escape may be split across `write` calls; the machine carries
