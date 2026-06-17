@@ -217,6 +217,8 @@ export class SpineValidator implements JsonEventHandler {
   private readonly path: PathSegment[] = [];
   private readonly frames: Frame[] = [];
   private readonly regexCache = new Map<string, { test(s: string): boolean }>();
+  // Memoized per-node stream/tee/buffer decision (see nodeKind).
+  private readonly kindCache = new Map<SchemaObject, "stream" | "tee" | "buffer">();
   private readonly onViolation: ((violation: Violation) => void) | undefined;
   private readonly strategyOf: (node: SchemaOrBoolean) => Strategy;
   private readonly delegate: IslandDelegate | undefined;
@@ -388,31 +390,51 @@ export class SpineValidator implements JsonEventHandler {
   // keyword the spine cannot stream forward. Composition is NOT here (it
   // is handled by TEE unless a branch itself buffers, which the classifier
   // folds into `strategyOf === "buffer"`).
-  private needsBuffer(s: SchemaObject): boolean {
-    if (this.strategyOf(s) === "buffer") return true;
-    if ("contains" in s) return true; // forward streaming of contains is not implemented
-    if ("dependentSchemas" in s || "discriminator" in s) return true;
-    if (this.assertsFormat && "format" in s) return true; // no spine-side format assertion
-    if (s.uniqueItems === true) return true; // canonical hashing not streamed
-    const complex = (v: unknown): boolean => typeof v === "object" && v !== null;
-    if (Array.isArray(s.enum) && s.enum.some(complex)) return true; // object/array equality
-    if ("const" in s && complex((s as { const?: unknown }).const)) return true;
-    return false;
+  // The handling a single schema node needs, memoized per node. Computing
+  // it touches a dozen `key in schemaObject` checks across objects of
+  // varying shape (megamorphic, and the dominant cost in profiling); the
+  // same node validates every element of an array, so caching collapses
+  // that to one Map lookup per value. The result is stable per node (it
+  // depends only on the node's keywords, `strategyOf`, and the fixed
+  // `assertsFormat`).
+  private nodeKind(s: SchemaObject): "stream" | "tee" | "buffer" {
+    let k = this.kindCache.get(s);
+    if (k !== undefined) return k;
+    k = this.computeKind(s);
+    this.kindCache.set(s, k);
+    return k;
   }
 
-  private hasComposition(s: SchemaObject): boolean {
-    for (const k of STREAM_COMPOSITION) if (k in s) return true;
-    return false;
+  private computeKind(s: SchemaObject): "stream" | "tee" | "buffer" {
+    // BUFFER: anything the spine cannot stream forward (composition with a
+    // non-forward branch folds into strategyOf === "buffer").
+    if (this.strategyOf(s) === "buffer") return "buffer";
+    if ("contains" in s) return "buffer"; // forward streaming of contains is not implemented
+    if ("dependentSchemas" in s || "discriminator" in s) return "buffer";
+    if (this.assertsFormat && "format" in s) return "buffer"; // no spine-side format assertion
+    if (s.uniqueItems === true) return "buffer"; // canonical hashing not streamed
+    const complex = (v: unknown): boolean => typeof v === "object" && v !== null;
+    if (Array.isArray(s.enum) && s.enum.some(complex)) return "buffer"; // object/array equality
+    if ("const" in s && complex((s as { const?: unknown }).const)) return "buffer";
+    // TEE: forward composition.
+    for (const k of STREAM_COMPOSITION) if (k in s) return "tee";
+    return "stream";
   }
 
   // BUFFER dominates TEE: if any applicable schema must materialize, the
   // whole value is an island; otherwise forward composition is TEE'd.
   private needsIsland(app: Applicable): boolean {
-    return app.schemas.some((s) => this.needsBuffer(s));
+    return app.schemas.some((s) => this.nodeKind(s) === "buffer");
   }
 
   private needsTee(app: Applicable): boolean {
-    return !this.needsIsland(app) && app.schemas.some((s) => this.hasComposition(s));
+    let tee = false;
+    for (const s of app.schemas) {
+      const k = this.nodeKind(s);
+      if (k === "buffer") return false; // island dominates
+      if (k === "tee") tee = true;
+    }
+    return tee;
   }
 
   // No delegate wired (e.g. a bare spine without a classifier): such a
