@@ -81,14 +81,26 @@ export type IslandDelegate = (
  * A non-fatal schema violation: a well-formed value that failed the
  * schema, reported on the `violation` side channel (distinct from the
  * fatal `error` channel). Shares `code` and `path` with `@oav/core`'s
- * `ValidationError`; adds `byteOffset`. Codes are coarse for now; the
- * channel layer refines them.
+ * `ValidationError` and adds `byteOffset`.
+ *
+ * `message` / `params` / `children` are populated on the BUFFER (island)
+ * path, where the in-memory engine produces them; on the forward STREAM
+ * path they are absent (a leaf violation carries `code` + `path` +
+ * `byteOffset`). They are optional so a future stream-path enrichment
+ * lands additively. Codes are coarse for now; the channel layer refines
+ * them.
  */
 export interface SchemaViolation {
   code: string;
   path: PathSegment[];
   /** Byte offset in the input stream nearest the violation (for re-sync). */
   byteOffset: number;
+  /** Human-readable message (BUFFER path only; absent on the STREAM path). */
+  message?: string;
+  /** Keyword-specific machine-readable detail (BUFFER path only). */
+  params?: Record<string, unknown>;
+  /** Child violations, e.g. per-branch composition failures (BUFFER path only). */
+  children?: SchemaViolation[];
 }
 
 /** Options for {@link SpineValidator}. */

@@ -31,7 +31,7 @@
  */
 
 import { Transform, type TransformCallback } from "node:stream";
-import type { PathSegment, SchemaObject, SchemaOrBoolean } from "@oav/core";
+import type { PathSegment, SchemaObject, SchemaOrBoolean, ValidationError } from "@oav/core";
 import {
   compileSchema,
   type Dialect,
@@ -87,7 +87,21 @@ const REF_CONTAINERS = ["$defs", "definitions", "components"] as const;
 type CompiledValidator = (
   data: unknown,
   startPath?: readonly PathSegment[],
-) => { valid: true } | { valid: false; errors: { code: string; path: PathSegment[] }[] };
+) => { valid: true } | { valid: false; errors: ValidationError[] };
+
+// Map an in-memory ValidationError to a SchemaViolation, stamping the
+// island's stream byte offset onto every node (the materialized subtree
+// shares one offset; children have no offset of their own).
+function violationFromError(e: ValidationError, byteOffset: number): SchemaViolation {
+  return {
+    code: e.code,
+    path: e.path,
+    byteOffset,
+    message: e.message,
+    params: e.params,
+    children: e.children.map((c) => violationFromError(c, byteOffset)),
+  };
+}
 
 /**
  * Build the island delegate: validate a materialized subtree against the
@@ -148,7 +162,7 @@ function buildDelegate(
     for (const schema of schemas) {
       const result = compile(schema)(value, startPath);
       if (!result.valid) {
-        for (const e of result.errors) out.push({ code: e.code, path: e.path, byteOffset });
+        for (const e of result.errors) out.push(violationFromError(e, byteOffset));
       }
     }
     return out;

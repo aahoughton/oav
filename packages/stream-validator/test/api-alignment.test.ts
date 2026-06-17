@@ -35,3 +35,40 @@ describe("warn surfaces classifier warnings (matches @oav/validator)", () => {
     await expect(result).resolves.toMatchObject({ valid: true }); // nullable widened
   });
 });
+
+// Run one document, collecting the verdict under detach policy (no throw).
+async function validate(schema: SchemaOrBoolean, body: string) {
+  const validator = createStreamValidator(schema, {
+    policy: "detach",
+    maxErrors: Number.POSITIVE_INFINITY,
+  });
+  validator.on("error", () => {});
+  validator.resume();
+  const result = validator.result;
+  validator.end(Buffer.from(enc.encode(body)));
+  return result;
+}
+
+describe("SchemaViolation field shape", () => {
+  it("STREAM-path leaf violation carries code/path/byteOffset, no message", async () => {
+    const verdict = await validate({ type: "integer", minimum: 5 } as SchemaOrBoolean, "3");
+    expect(verdict.valid).toBe(false);
+    const [v] = verdict.violations;
+    expect(v?.code).toBe("minimum");
+    expect(typeof v?.byteOffset).toBe("number");
+    expect(v?.message).toBeUndefined();
+  });
+
+  it("BUFFER-island violation preserves the in-memory engine's message/params", async () => {
+    const verdict = await validate(
+      { type: "array", uniqueItems: true } as SchemaOrBoolean,
+      "[1,1]",
+    );
+    expect(verdict.valid).toBe(false);
+    const [v] = verdict.violations;
+    expect(v?.code).toBe("uniqueItems");
+    expect(v?.message).toBe("must have unique items");
+    expect(typeof v?.byteOffset).toBe("number");
+    expect(Array.isArray(v?.children)).toBe(true);
+  });
+});
