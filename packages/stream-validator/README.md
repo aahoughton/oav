@@ -14,6 +14,12 @@ validator for the subtrees a compile-time classifier marks BUFFER (so
 format assertion and built-in formats come from that delegate), and
 reuses `@oav/core`'s flat error model.
 
+> **Incubating, unpublished.** This package is `private` and ships
+> TypeScript source, not a build. It is consumed inside the OAV monorepo
+> via `workspace:*`; there is no `@oav/stream-validator` on npm yet. The
+> import below is the eventual published name and resolves to the
+> workspace source today.
+
 ## Usage
 
 ```ts
@@ -60,9 +66,31 @@ unresolvable `$ref` fails fast at construction.
 OpenAPI: pass `openApiVersion: "3.0" | "3.1" | "3.2"`. 3.0 is normalized
 to 2020-12 shape (`nullable`, boolean `exclusive*`, `$ref` sibling
 suppression) before classification; all three select OpenAPI semantics
-(`format` asserts). The engine validates a (resolved) schema; running
-`resolveSpec()` and extracting the body schema is the caller's job (the
-HTTP adapter is post-v1).
+(`format` asserts).
+
+The engine validates one resolved schema and resolves `$ref` against
+**the schema you pass**, not a separate document. An extracted request
+body that is (or contains) an internal ref like
+`#/components/schemas/Pet` must carry the document's ref containers
+(`components` / `$defs` / `definitions`) alongside it, or construction
+throws `unresolvable $ref`. Routing, content negotiation, OpenAPI version
+detection, and body-schema lookup stay the caller's job in v1 (the HTTP
+adapter that bundles them is post-v1); the bridge from a resolved
+document is short:
+
+```ts
+import { resolveSpec } from "@oav/spec";
+import { createStreamValidator } from "@oav/stream-validator";
+
+const doc = await resolveSpec(source); // inlines external refs; internal refs stay
+const op = doc.paths["/pets"].post; // your router selects the operation
+const bodySchema = op.requestBody.content["application/json"].schema;
+
+const validator = createStreamValidator(
+  { ...bodySchema, components: doc.components }, // carry the ref container
+  { openApiVersion: "3.1" },
+);
+```
 
 Observability and edit hooks: `keyEvents` emits a `key` event per object
 key (optionally path-filtered); `onScopeClose(at, cb)` observes a

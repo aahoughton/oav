@@ -4,6 +4,24 @@ import { createStreamValidator, type StreamValidatorOptions } from "../src/index
 
 const enc = new TextEncoder();
 
+describe("numeric options are validated at construction (parity with @oav/schema)", () => {
+  const schema = { type: "string" } as SchemaOrBoolean;
+  for (const name of ["maxErrors", "maxDepth", "maxBufferedBytes", "maxTotalBytes"] as const) {
+    for (const bad of [0, -1, 1.5]) {
+      it(`rejects ${name}: ${bad}`, () => {
+        expect(() => createStreamValidator(schema, { [name]: bad })).toThrow(
+          /must be a positive integer/,
+        );
+      });
+    }
+    it(`accepts ${name}: Infinity (uncapped)`, () => {
+      expect(() =>
+        createStreamValidator(schema, { [name]: Number.POSITIVE_INFINITY }),
+      ).not.toThrow();
+    });
+  }
+});
+
 describe("warn surfaces classifier warnings (matches @oav/validator)", () => {
   it("calls warn for an unbounded pattern string", () => {
     const messages: string[] = [];

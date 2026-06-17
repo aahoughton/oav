@@ -169,6 +169,18 @@ function buildDelegate(
   };
 }
 
+// Reject a numeric option that would silently misconfigure the run (0,
+// negative, or a non-integer). `Infinity` is the explicit "uncapped"
+// value and is accepted. Mirrors compileSchema / createValidator so a
+// migration sees the same contract. Throws at construction, not mid-stream.
+function assertPositiveIntOption(name: string, value: number | undefined, hint: string): void {
+  if (value !== undefined && Number.isFinite(value) && (!Number.isInteger(value) || value < 1)) {
+    throw new Error(
+      `createStreamValidator: \`${name}\` must be a positive integer (got ${String(value)}). ${hint}`,
+    );
+  }
+}
+
 /**
  * A streaming validator. Pipe bytes in, get the same bytes out; observe
  * `violation` / `verdict` events, or await {@link StreamValidator.result}.
@@ -201,6 +213,26 @@ export class StreamValidator extends Transform {
 
   constructor(schema: SchemaOrBoolean, options: StreamValidatorOptions = {}) {
     super();
+    assertPositiveIntOption(
+      "maxErrors",
+      options.maxErrors,
+      "Omit the option for fast-fail (1), or pass `Number.POSITIVE_INFINITY` to collect every violation.",
+    );
+    assertPositiveIntOption(
+      "maxDepth",
+      options.maxDepth,
+      "Omit the option for uncapped recursion depth.",
+    );
+    assertPositiveIntOption(
+      "maxBufferedBytes",
+      options.maxBufferedBytes,
+      "Omit the option for no buffered-island cap.",
+    );
+    assertPositiveIntOption(
+      "maxTotalBytes",
+      options.maxTotalBytes,
+      "Omit the option for no total-size cap.",
+    );
     this.maxErrors = options.maxErrors ?? 1;
     this.policy = options.policy ?? "terminate";
     this.maxTotalBytes = options.maxTotalBytes;
