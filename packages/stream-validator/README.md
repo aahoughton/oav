@@ -53,9 +53,15 @@ in-memory validator, bounded by `maxBufferedBytes`. Only a REJECT keyword
 (`unevaluatedProperties` / `unevaluatedItems`), an unknown keyword, or an
 unresolvable `$ref` fails fast at construction.
 
+OpenAPI: pass `openApiVersion: "3.0" | "3.1" | "3.2"`. 3.0 is normalized
+to 2020-12 shape (`nullable`, boolean `exclusive*`, `$ref` sibling
+suppression) before classification; all three select OpenAPI semantics
+(`format` asserts). The engine validates a (resolved) schema; running
+`resolveSpec()` and extracting the body schema is the caller's job (the
+HTTP adapter is post-v1).
+
 Still on the build sequence: true TEE streaming (a forward optimization
-over the buffer-the-island fallback), edit hooks / key events, and the
-OpenAPI entry point (`resolveSpec()` + 3.0 dialect normalization).
+over the buffer-the-island fallback) and edit hooks / key events.
 
 ## Status
 

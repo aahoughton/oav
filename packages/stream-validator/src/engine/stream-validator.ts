@@ -37,7 +37,9 @@ import {
   type Dialect,
   FORMAT_ASSERTION_VOCAB,
   jsonSchemaDialect,
+  openapi31Dialect,
 } from "@oav/schema";
+import { normalizeOas30 } from "../openapi/index.js";
 import { classify } from "../classifier/index.js";
 import {
   BudgetReached,
@@ -67,9 +69,26 @@ export class ValidationFailedError extends Error {
 
 /** Options for {@link createStreamValidator}, plus the classifier dialect. */
 export interface CreateStreamValidatorOptions extends StreamValidatorOptions {
-  /** Dialect whose keyword set drives classification. Default `jsonSchemaDialect`. */
+  /**
+   * OpenAPI version of the schema. `"3.0"` normalizes the schema to
+   * 2020-12 shape (nullable, boolean `exclusive*`, `$ref` sibling
+   * suppression) before classification; all three select OpenAPI
+   * semantics (`format` asserts). Omit for raw JSON Schema 2020-12.
+   */
+  openApiVersion?: "3.0" | "3.1" | "3.2";
+  /**
+   * Dialect whose keyword set drives classification. Escape hatch that
+   * overrides the dialect implied by `openApiVersion`. Default
+   * `jsonSchemaDialect` (or `openapi31Dialect` when `openApiVersion` is
+   * set).
+   */
   dialect?: Dialect;
 }
+
+// Containers a local `$ref` may target. Carried onto a delegated island
+// subschema so internal refs (`#/$defs/...`, `#/components/schemas/...`,
+// draft-07 `#/definitions/...`) resolve against the in-memory compile.
+const REF_CONTAINERS = ["$defs", "definitions", "components"] as const;
 
 type CompiledValidator = (
   data: unknown,
@@ -79,25 +98,32 @@ type CompiledValidator = (
 /**
  * Build the island delegate: validate a materialized subtree against the
  * in-memory engine, compiling each schema node once and caching it. Local
- * `$ref`s are resolved by attaching the document root's `$defs` to the
- * compiled subschema (so `#/$defs/...` resolves; a self-`#` ref inside an
- * island is the documented edge case).
+ * `$ref`s are resolved by attaching the document root's ref-holder
+ * containers (`$defs` / `definitions` / `components`) to the compiled
+ * subschema, so `#/$defs/...`, `#/components/schemas/...`, etc. resolve.
+ * (A self-`#` ref inside an island still resolves to the island, not the
+ * original document root: the documented edge case.)
  */
 function buildDelegate(
   root: SchemaOrBoolean,
+  dialect: Dialect,
   options: CreateStreamValidatorOptions,
 ): IslandDelegate {
-  const rootDefs =
+  const rootObj =
     typeof root === "object" && root !== null && !Array.isArray(root)
-      ? (root as SchemaObject).$defs
+      ? (root as SchemaObject as Record<string, unknown>)
       : undefined;
-  const dialect = options.dialect ?? jsonSchemaDialect;
   const cache = new Map<SchemaObject, CompiledValidator>();
 
   const compile = (schema: SchemaObject): CompiledValidator => {
     let v = cache.get(schema);
     if (v === undefined) {
-      const doc: SchemaObject = rootDefs === undefined ? schema : { ...schema, $defs: rootDefs };
+      const doc: Record<string, unknown> = { ...schema };
+      if (rootObj !== undefined) {
+        for (const c of REF_CONTAINERS) {
+          if (doc[c] === undefined && rootObj[c] !== undefined) doc[c] = rootObj[c];
+        }
+      }
       v = compileSchema(doc as never, {
         dialect,
         maxErrors: Number.POSITIVE_INFINITY,
@@ -153,22 +179,30 @@ export class StreamValidator extends Transform {
     this.maxErrors = options.maxErrors ?? 1;
     this.policy = options.policy ?? "terminate";
     this.maxTotalBytes = options.maxTotalBytes;
-    const dialect = options.dialect ?? jsonSchemaDialect;
+
+    // OpenAPI 3.0 -> 2020-12 normalization (nullable / boolean exclusive*
+    // / $ref sibling suppression) before any classification. 3.1 / 3.2
+    // are 2020-12-native. Both select the OpenAPI dialect (format
+    // asserts); raw JSON Schema uses jsonSchemaDialect.
+    const root = options.openApiVersion === "3.0" ? normalizeOas30(schema) : schema;
+    const dialect =
+      options.dialect ??
+      (options.openApiVersion !== undefined ? openapi31Dialect : jsonSchemaDialect);
 
     // Compile-time fast-fail (invariant 2): classify before any byte. A
     // REJECT keyword (`unevaluated*`), an unknown keyword, or an
     // unresolvable `$ref` throws here, naming the keyword + path.
-    const classification = classify(schema, {
+    const classification = classify(root, {
       dialect,
       customKeywords: options.keywords === undefined ? undefined : Object.keys(options.keywords),
       parity: options.parity,
       strict: options.strict,
     });
 
-    this.spine = new SpineValidator(schema, {
+    this.spine = new SpineValidator(root, {
       onViolation: (v) => this.handleViolation(v),
       strategyOf: classification.strategyOf,
-      delegate: buildDelegate(schema, options),
+      delegate: buildDelegate(root, dialect, options),
       maxErrors: this.maxErrors,
       // OpenAPI dialects assert `format`; the spine has no format check
       // of its own, so format-bearing scalars delegate under those.

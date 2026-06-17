@@ -30,9 +30,23 @@
 
 import type { SchemaObject, SchemaOrBoolean } from "@oav/core";
 import { type Dialect, jsonSchemaDialect, keywordDefinitions, walkSubschemas } from "@oav/schema";
+import {
+  SUBSCHEMA_ARRAY_POSITIONS,
+  SUBSCHEMA_MAP_POSITIONS,
+  SUBSCHEMA_SINGLE_POSITIONS,
+} from "@oav/schema/internals";
 import { resolveRef as resolveRefLocal } from "../ref-resolve.js";
 import { KEYWORD_CATEGORY } from "./keyword-table.js";
 import { joinStrategy, type Strategy } from "./strategy.js";
+
+// Recognized schema-valued positions are structural containers, not
+// "unknown" keywords, even when not in KEYWORD_CATEGORY (e.g. draft-07
+// `definitions`). Their contents are reached by the walk / `$ref`.
+const SUBSCHEMA_POSITIONS = new Set<string>([
+  ...SUBSCHEMA_SINGLE_POSITIONS,
+  ...SUBSCHEMA_ARRAY_POSITIONS,
+  ...SUBSCHEMA_MAP_POSITIONS,
+]);
 
 /**
  * A compile-time classification failure: a keyword or `$ref` the engine
@@ -199,6 +213,7 @@ export function classify(root: SchemaOrBoolean, options: ClassifyOptions = {}): 
       const cat = KEYWORD_CATEGORY[key];
       if (cat === undefined) {
         if (folded.has(key)) continue; // folded keyword (then/else/min|maxContains)
+        if (SUBSCHEMA_POSITIONS.has(key)) continue; // structural container (e.g. definitions)
         if (customKeywords.has(key)) {
           b = joinStrategy(b, "buffer");
           continue;
