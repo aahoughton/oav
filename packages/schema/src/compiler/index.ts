@@ -1,5 +1,6 @@
 export {
   compileSchema,
+  schemaUsesUnevaluated,
   type CompileOptions,
   type CompileStats,
   type CompiledFlatSchema,

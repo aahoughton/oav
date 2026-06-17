@@ -1,5 +1,6 @@
 import type { PathSegment, SchemaObject, SchemaOrBoolean, ValidationError } from "@oav/core";
 import { CodeGen, NAMES } from "../codegen/index.js";
+import { buildKeywordMap } from "../introspection.js";
 import type { CompileMode, Dialect, KeywordDefinition } from "../keywords/types.js";
 import { createKeywordContext, emitPushStatement } from "../keywords/context.js";
 import { createCustomKeywordDefinition, type CustomKeywordValidator } from "../keywords/custom.js";
@@ -716,8 +717,16 @@ export interface CompileState {
  * `unevaluatedItems` keyword. The detector is the gate for the
  * evaluated-keys-Set machinery: when it's `false`, the compiler emits
  * a form that skips the per-function Set allocation entirely.
+ *
+ * The walk descends the local subschema positions (the same set
+ * {@link walkSubschemas} uses) and is cycle-safe: a `$ref` value is a
+ * string, so the walk never recurses through one. A schema whose only
+ * `unevaluated*` keyword sits behind a `$ref` is therefore not detected
+ * by this predicate; resolve such refs first if that matters.
+ *
+ * @public
  */
-function schemaUsesUnevaluated(schema: SchemaOrBoolean): boolean {
+export function schemaUsesUnevaluated(schema: SchemaOrBoolean): boolean {
   const seen = new WeakSet<object>();
   const walk = (s: unknown): boolean => {
     if (typeof s !== "object" || s === null || Array.isArray(s)) return false;
@@ -813,15 +822,8 @@ export function compileSchema(
   schema: SchemaOrBoolean,
   options: CompileOptions,
 ): CompiledSchema | CompiledTreeSchema | CompiledPredicate {
-  const byKeyword = new Map<string, KeywordDefinition>();
-  const ordered: KeywordDefinition[] = [];
-  for (const vocab of options.dialect.vocabularies) {
-    for (const kw of vocab.keywords) {
-      if (byKeyword.has(kw.keyword)) continue;
-      byKeyword.set(kw.keyword, kw);
-      ordered.push(kw);
-    }
-  }
+  const byKeyword = buildKeywordMap(options.dialect.vocabularies);
+  const ordered: KeywordDefinition[] = [...byKeyword.values()];
   if (options.keywords) {
     for (const name of Object.keys(options.keywords)) {
       if (byKeyword.has(name)) {
