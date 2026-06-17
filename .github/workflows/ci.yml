@@ -136,6 +136,12 @@ jobs:
       - name: OpenAPI Overlay 1.0 suite
         working-directory: conformance
         run: pnpm tsx run-overlay-suite.ts --check-baseline
+      - name: clone JSONTestSuite
+        working-directory: conformance
+        run: git clone --depth 1 https://github.com/nst/JSONTestSuite.git
+      - name: JSON parser-conformance suite (stream-validator tokenizer)
+        working-directory: conformance
+        run: pnpm tsx run-json-parse-suite.ts --check-baseline
 
   json-schema-suite:
     # Full upstream JSON Schema Test Suite. Runs nightly and on
