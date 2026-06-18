@@ -65,6 +65,25 @@ describe("components is a ref container, not an unknown keyword", () => {
   });
 });
 
+describe("anchor refs resolve (and stay correct) across many array elements", () => {
+  // Regression for the per-value anchor-resolution scan: an anchor ref
+  // (`#name`) used as the items schema is followed once per element via
+  // `expand`. The spine memoizes the resolution, so a large array must
+  // not change the verdict (and must not re-walk the schema per element).
+  it("validates each element of a long array against an anchor ref", async () => {
+    const schema: SchemaObject = {
+      type: "array",
+      items: { $ref: "#item" },
+      $defs: {
+        Item: { $anchor: "item", type: "object", required: ["id"] },
+      },
+    };
+    const good = Array.from({ length: 200 }, (_, i) => ({ id: i }));
+    const oneBad = [...good.slice(0, 100), { nope: true }, ...good.slice(100)];
+    await expectParity(schema, [good, oneBad, []]);
+  });
+});
+
 describe("island ref-container graft: root #/$defs wins over a node-local $defs", () => {
   it("a buffer island's root-targeting ref resolves against the document root", async () => {
     // `#/$defs/Strict` inside the island means the DOCUMENT root's $defs

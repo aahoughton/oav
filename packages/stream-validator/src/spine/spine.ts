@@ -246,6 +246,13 @@ export class SpineValidator implements JsonEventHandler {
   private readonly path: PathSegment[] = [];
   private readonly frames: Frame[] = [];
   private readonly regexCache = new Map<string, { test(s: string): boolean }>();
+  // Memoized `$ref` / `$dynamicRef` resolution against the fixed `refRoot`.
+  // `expand` runs per value, so without this an anchor ref (`#name`) would
+  // re-scan the whole document via `walkSubschemas` on every occurrence
+  // (O(N*M) across a large array or broad object). Keyed by ref string,
+  // which is stable because `refRoot` is immutable for the spine's life;
+  // `undefined` (a dangling/external ref) is cached too via `has`.
+  private readonly refCache = new Map<string, SchemaOrBoolean | undefined>();
   // Memoized per-node stream/tee/buffer decision (see nodeKind).
   private readonly kindCache = new Map<SchemaObject, "stream" | "tee" | "buffer">();
   private readonly onViolation: ((violation: SchemaViolation) => void) | undefined;
@@ -375,7 +382,13 @@ export class SpineValidator implements JsonEventHandler {
     // document root (may differ from the validation root in a sub-spine).
     const ref = (s as Record<string, unknown>).$ref ?? (s as Record<string, unknown>).$dynamicRef;
     if (typeof ref !== "string") return;
-    const target = resolveRef(this.refRoot, ref);
+    let target: SchemaOrBoolean | undefined;
+    if (this.refCache.has(ref)) {
+      target = this.refCache.get(ref);
+    } else {
+      target = resolveRef(this.refRoot, ref);
+      this.refCache.set(ref, target);
+    }
     if (target === undefined) return;
     if (!isObjectSchema(target)) {
       this.expand(target, out, seen); // boolean target
