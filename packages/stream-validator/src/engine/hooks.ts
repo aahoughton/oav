@@ -4,6 +4,14 @@
  * or append sibling bytes (append-only, never validated). See the design
  * doc's "Edit hooks".
  *
+ * Scope coverage is STREAM-only: hooks fire for forward-decidable
+ * (STREAM) scopes, not for scopes the classifier routes to a BUFFER
+ * island (e.g. `uniqueItems`, `contains`, an object-valued `const`) or a
+ * TEE composition branch (`oneOf`/`anyOf`/`allOf`). The set of scopes a
+ * hook observes is a function of the schema's classification, so a hook
+ * meant for generic JSON transformation will appear to fire
+ * intermittently if the schema mixes streamable and buffered subtrees.
+ *
  * @packageDocumentation
  */
 

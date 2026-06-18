@@ -99,6 +99,14 @@ bytes before a scope's closing delimiter (append-only; appended bytes are
 not validated). A `ScopeContext` carries the scope path, verdict, member
 count, and a `field(name, value)` helper.
 
+`onScopeClose` / `editClose` fire for STREAM scopes only. A scope the
+classifier routes to a BUFFER island (`uniqueItems`, `contains`, an
+object-valued `const`) or a TEE composition branch
+(`oneOf`/`anyOf`/`allOf`) does not emit a scope-close hook, so which
+scopes a hook sees depends on the schema's classification. Use the hooks
+for observing/editing forward-decidable structure, not as a general JSON
+visitor over an arbitrary schema.
+
 ## Status
 
 Incubating and **unpublished** (`private`). The package lives in the
