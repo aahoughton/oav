@@ -86,9 +86,9 @@ export type IslandDelegate = (
  * `message` / `params` / `children` are populated on the BUFFER (island)
  * path, where the in-memory engine produces them; on the forward STREAM
  * path they are absent (a leaf violation carries `code` + `path` +
- * `byteOffset`). They are optional so a future stream-path enrichment
- * lands additively. Codes are coarse for now; the channel layer refines
- * them.
+ * `byteOffset`). They are optional so stream-path enrichment can land
+ * additively; stream-path codes are coarse and the channel layer
+ * refines them.
  */
 export interface SchemaViolation {
   code: string;

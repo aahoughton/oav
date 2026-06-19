@@ -14,7 +14,7 @@ import {
  * scheme definition. Returns `null` when the request carries the
  * declared credential (presence + structural shape only); returns a
  * short human-readable reason when it doesn't. Credential verification
- * (token validity, API key lookup, password match) is outside scope —
+ * (token validity, API key lookup, password match) is outside scope;
  * that's the app's auth middleware.
  *
  * @internal

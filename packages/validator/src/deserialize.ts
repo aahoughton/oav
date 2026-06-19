@@ -5,7 +5,7 @@ import type { ParameterObject, ParameterStyle, SchemaObject } from "@oav/core";
  * typed value implied by the parameter's schema + style/explode options.
  *
  * @remarks
- * Supported styles (as of v1):
+ * Supported styles:
  * - path: `simple` (default), `label`, `matrix`
  * - query: `form` (default), `deepObject` (limited), `spaceDelimited`, `pipeDelimited`
  * - header: `simple` (default)

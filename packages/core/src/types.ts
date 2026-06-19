@@ -1,6 +1,6 @@
 /**
  * Shared structural types for OpenAPI 3.1 documents, JSON Schema objects, and
- * HTTP request/response envelopes. These types are intentionally permissive —
+ * HTTP request/response envelopes. These types are intentionally permissive:
  * they describe the shape {@link @oav/spec} and {@link @oav/validator}
  * produce/consume, not a fully-checked schema.
  */

@@ -434,7 +434,7 @@ function buildEmittedOp(args: BuildEmittedOpArgs): EmittedOp {
   // runtime.
   const introspectionLiteral = JSON.stringify({ pathItem, operation }, null, 2);
 
-  void document; // currently unused; keep in signature for future overlay resolution
+  void document; // reserved for overlay resolution
   return { pathPattern, method, stateLiteral, introspectionLiteral };
 }
 
