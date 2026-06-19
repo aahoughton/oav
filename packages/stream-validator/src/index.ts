@@ -20,12 +20,14 @@
 export type { JsonPath, PathFilter, StreamValidatorOptions } from "./options.js";
 export {
   createStreamValidator,
+  DEFAULT_MAX_CAPTURE_BYTES,
   StreamValidator,
   ValidationFailedError,
   type Bytes,
   type ScopeContext,
   type ScopeEditor,
   type ScopeObserver,
+  type ValueEvent,
 } from "./engine/index.js";
 export type { StreamVerdict, SchemaViolation } from "./spine/index.js";
 export { normalizeOas30 } from "./openapi/index.js";

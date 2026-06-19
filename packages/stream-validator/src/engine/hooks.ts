@@ -17,6 +17,52 @@
 
 import type { JsonValue, PathSegment } from "@oav/core";
 
+/**
+ * Default cap on a captured scalar's source-byte span, applied when
+ * `valueEvents.capture` is on and `maxCaptureBytes` is unset. Capture is
+ * meant for small scalars (an id, a version, a timestamp); a member whose
+ * value exceeds this is reported with `value` omitted and `truncated`
+ * set, never buffered past the cap.
+ */
+export const DEFAULT_MAX_CAPTURE_BYTES = 65536;
+
+/**
+ * A `value` event: a scalar object-member value completed (validated on
+ * the STREAM path or routed to a scalar BUFFER island, e.g. a
+ * `format`-bearing string). Reports the member location and the value's
+ * absolute input-byte span; carries the decoded value only when capture
+ * is on.
+ *
+ * `valueStart` / `valueEnd` are absolute offsets into the **input** byte
+ * stream, in the pre-injection space `editClose` and violations share. A
+ * consumer slices `[valueStart, valueEnd)` from its own copy of the input
+ * (the bytes include a string's surrounding quotes, so the slice is
+ * itself valid JSON to `JSON.parse`). Slice the input, not the echoed
+ * output: under `editClose` the output is respliced and its offsets no
+ * longer line up.
+ *
+ * @public
+ */
+export interface ValueEvent {
+  /** Path to the enclosing object scope (the root scope is `[]`). */
+  path: PathSegment[];
+  /** The member key. */
+  key: string;
+  /** Byte offset of the value's first byte (a string's opening quote). */
+  valueStart: number;
+  /** Byte offset just past the value's last byte. */
+  valueEnd: number;
+  /** JSON type of the value. */
+  type: "string" | "number" | "boolean" | "null";
+  /**
+   * The decoded value, present only when `valueEvents.capture` is on and
+   * the value fit within `maxCaptureBytes`; otherwise `undefined`.
+   */
+  value?: string | number | boolean | null;
+  /** True when capture was requested but the value exceeded `maxCaptureBytes` (the span is still reported). */
+  truncated: boolean;
+}
+
 /** Bytes an `editClose` hook may append. A string is encoded as UTF-8. */
 export type Bytes = Buffer | Uint8Array | string;
 

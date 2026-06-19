@@ -99,6 +99,40 @@ bytes before a scope's closing delimiter (append-only; appended bytes are
 not validated). A `ScopeContext` carries the scope path, verdict, member
 count, and a `field(name, value)` helper.
 
+Recovering scalar fields: `valueEvents` emits a `value` event when a
+scalar object-member value completes, carrying the member's absolute
+input-byte span (`valueStart` / `valueEnd`). Code that needs a few small
+top-level scalars (an id, a version, a timestamp) recovers them without
+materializing the body or running a second parser: slice
+`[valueStart, valueEnd)` from its own copy of the input (a string span
+includes its quotes, so the slice is valid JSON) and `JSON.parse` it. The
+span is in the same pre-injection input space as `editClose` and
+violations, so slice the **input**, not the echoed output (under
+`editClose` the output is respliced and its offsets shift).
+
+```ts
+const captured = new Map<string, unknown>();
+const validator = createStreamValidator(bodySchema, {
+  // Decode the matched scalars under a byte cap.
+  valueEvents: { at: (path) => path.length === 1, capture: true },
+});
+validator.on("value", (e) => captured.set(e.key, e.value));
+// `e.value` is the decoded scalar (present when within `maxCaptureBytes`);
+// `e.truncated` flags an over-cap value (span still reported). Omit
+// `capture` for span-only events and slice the bytes yourself.
+```
+
+`valueEvents` fires for scalar object members on both the STREAM path and
+scalar BUFFER islands, so a `format`-bearing string (`date-time`, `uri`,
+`uuid`) reports its value even under an asserting OpenAPI dialect that
+delegates it to the in-memory engine. Array elements, the root value,
+container-valued members, and members under a TEE composition branch do
+not fire. `capture` retains a matched member's decoded bytes bounded by
+`maxCaptureBytes` (default 64 KiB); an over-cap value reports
+`truncated: true` rather than buffering unbounded. A delegated scalar is
+already buffered for its own check, so there `maxCaptureBytes` only gates
+delivery (the memory bound is `maxBufferedBytes`).
+
 `onScopeClose` / `editClose` fire for STREAM scopes only. A scope the
 classifier routes to a BUFFER island (`uniqueItems`, `contains`, an
 object-valued `const`) or a TEE composition branch

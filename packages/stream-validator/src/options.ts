@@ -130,6 +130,39 @@ export interface StreamValidatorOptions {
   keyEvents?: boolean | { at: PathFilter };
 
   /**
+   * Emit a `value` event when a scalar object-member value completes,
+   * carrying the member's absolute input-byte span (`valueStart` /
+   * `valueEnd`, the same pre-injection space `editClose` and violations
+   * use) so a consumer can slice and parse it off its own copy of the
+   * input without a second parser. Absent = off: the spine does no
+   * value-event work and emits nothing (one unsubscribed early-return per
+   * scalar, no allocation).
+   *
+   *   - `true`: emit for every scalar member, span only (no decode).
+   *   - `{ at }`: restrict to members whose **full path** (the enclosing
+   *     scope path plus the key) matches the filter. This differs from
+   *     `keyEvents.at`, which matches the enclosing scope path: a value
+   *     filter targets one field (`["meta", "id"]`), not a whole scope.
+   *   - `{ at, capture: true }`: also decode the matched scalar and deliver
+   *     it as `value` on the event, bounded by `maxCaptureBytes` (a value
+   *     larger than the cap is reported with `value` omitted and
+   *     `truncated: true`; its span is still reported). Capture defaults to
+   *     a {@link DEFAULT_MAX_CAPTURE_BYTES}-byte cap when `maxCaptureBytes`
+   *     is unset; pass `Infinity` to disable the cap (retain the whole
+   *     value, the way the other `max*` options read `Infinity`).
+   *
+   * Scope is scalar object members. Every scalar member fires, whether
+   * validated on the STREAM path or routed to a scalar BUFFER island, so a
+   * `format`-bearing string (`date-time`, `uri`, `uuid`) reports its value
+   * even under an asserting OpenAPI dialect, where it would otherwise be
+   * delegated silently. Array elements, the root value, and members routed
+   * to a TEE composition branch (`oneOf`/`anyOf`/...) are not reported; an
+   * object- or array-valued member is a container, not a scalar, and never
+   * fires. See {@link ValueEvent}.
+   */
+  valueEvents?: boolean | { at: PathFilter; capture?: boolean; maxCaptureBytes?: number };
+
+  /**
    * Cap on any single internal buffer (a forced-buffer scalar or a
    * BUFFER island), in **UTF-8 source bytes** spanned by the buffered
    * region. A proportional proxy for heap, not an exact heap bound; size

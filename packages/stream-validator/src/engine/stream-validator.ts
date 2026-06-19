@@ -51,7 +51,14 @@ import {
 } from "../spine/index.js";
 import { JsonTokenizer } from "../tokenizer/index.js";
 import type { JsonPath, PathFilter, StreamValidatorOptions } from "../options.js";
-import { makeScopeContext, type ScopeEditor, type ScopeObserver, toBuffer } from "./hooks.js";
+import {
+  DEFAULT_MAX_CAPTURE_BYTES,
+  makeScopeContext,
+  type ScopeEditor,
+  type ScopeObserver,
+  toBuffer,
+  type ValueEvent,
+} from "./hooks.js";
 
 /** Does a path filter match this scope path + kind? */
 function matchPathFilter(
@@ -61,6 +68,23 @@ function matchPathFilter(
 ): boolean {
   if (typeof filter === "function") return filter(path as JsonPath, kind);
   return filter.length === path.length && filter.every((seg, i) => seg === path[i]);
+}
+
+// Does a value-event filter match this member? The filter is matched
+// against the member's full path (the enclosing scope path plus the key),
+// so a filter targets a specific field rather than every member of a
+// scope. The predicate form receives that full path with kind "object"
+// (a value member is always an object member).
+function matchValueFilter(
+  filter: PathFilter,
+  scopePath: readonly PathSegment[],
+  key: string,
+): boolean {
+  if (typeof filter === "function") return filter([...scopePath, key] as JsonPath, "object");
+  return (
+    filter.length === scopePath.length + 1 &&
+    filter.every((seg, i) => (i < scopePath.length ? seg === scopePath[i] : seg === key))
+  );
 }
 
 /**
@@ -192,6 +216,12 @@ export class StreamValidator extends Transform {
   private readonly tokenizer: JsonTokenizer;
   private readonly maxErrors: number;
   private readonly policy: "terminate" | "detach";
+  private readonly valueEvents: StreamValidatorOptions["valueEvents"];
+  // Capture mode: the spine applies the value-event filter (to gate text
+  // retention) and gates emission on it, so the driver trusts the spine
+  // and does not re-run the filter. Span-only: the spine emits every
+  // scalar and the driver filters here.
+  private readonly valueCaptureConfigured: boolean;
 
   private readonly maxTotalBytes: number | undefined;
   private totalBytes = 0;
@@ -233,10 +263,30 @@ export class StreamValidator extends Transform {
       options.maxTotalBytes,
       "Omit the option for no total-size cap.",
     );
+    if (typeof options.valueEvents === "object") {
+      assertPositiveIntOption(
+        "valueEvents.maxCaptureBytes",
+        options.valueEvents.maxCaptureBytes,
+        "Omit it to use the default capture cap.",
+      );
+    }
     this.maxErrors = options.maxErrors ?? 1;
     this.policy = options.policy ?? "terminate";
     this.maxTotalBytes = options.maxTotalBytes;
     const keyEvents = options.keyEvents;
+    const valueEvents = options.valueEvents;
+    this.valueEvents = valueEvents;
+    // When capture is on, the matched members retain their decoded scalar
+    // (bounded by the cap); an offsets-only subscription leaves this unset
+    // and the spine buffers nothing. Hoisted so the closures below keep a
+    // narrowed type.
+    const captureFilter =
+      typeof valueEvents === "object" && valueEvents.capture ? valueEvents.at : undefined;
+    this.valueCaptureConfigured = captureFilter !== undefined;
+    const captureCap =
+      typeof valueEvents === "object" && valueEvents.maxCaptureBytes !== undefined
+        ? valueEvents.maxCaptureBytes
+        : DEFAULT_MAX_CAPTURE_BYTES;
 
     // OpenAPI 3.0 -> 2020-12 normalization (nullable / boolean exclusive*
     // / $ref sibling suppression) before any classification. 3.1 / 3.2
@@ -285,6 +335,30 @@ export class StreamValidator extends Transform {
             },
           }
         : {}),
+      ...(valueEvents
+        ? {
+            valueEvent: (
+              scopePath: readonly PathSegment[],
+              key: string,
+              valueStart: number,
+              valueEnd: number,
+              type: "string" | "number" | "boolean" | "null",
+              value: string | number | boolean | null | undefined,
+              truncated: boolean,
+            ) => {
+              this.handleValueEvent(scopePath, key, valueStart, valueEnd, type, value, truncated);
+            },
+            // Capture (retaining the decoded scalar) is gated to the
+            // matched members so a huge unmatched value never buffers.
+            ...(captureFilter !== undefined
+              ? {
+                  shouldCapture: (scopePath: readonly PathSegment[], key: string) =>
+                    matchValueFilter(captureFilter, scopePath, key),
+                  maxCaptureBytes: captureCap,
+                }
+              : {}),
+          }
+        : {}),
       onScopeClose: (close: ScopeClose) => this.handleScopeClose(close),
     });
     this.tokenizer = new JsonTokenizer(this.spine);
@@ -301,6 +375,32 @@ export class StreamValidator extends Transform {
   private handleViolation(violation: SchemaViolation): void {
     this.errorCount += 1;
     this.emit("violation", violation);
+  }
+
+  // Emit a `value` event for a scalar member the spine reported. Where the
+  // path filter runs depends on the mode (see below): span-only mode
+  // filters here, mirroring how `keyEvent` filters in the driver; capture
+  // mode filters in the spine.
+  private handleValueEvent(
+    scopePath: readonly PathSegment[],
+    key: string,
+    valueStart: number,
+    valueEnd: number,
+    type: "string" | "number" | "boolean" | "null",
+    value: string | number | boolean | null | undefined,
+    truncated: boolean,
+  ): void {
+    const ve = this.valueEvents;
+    if (ve === undefined || ve === false) return;
+    // Capture mode: the spine already applied the (identical) filter and
+    // only emits matched members, so re-filtering here would run the
+    // predicate twice per value. Span-only mode filters here.
+    if (!this.valueCaptureConfigured && ve !== true && !matchValueFilter(ve.at, scopePath, key)) {
+      return;
+    }
+    const event: ValueEvent = { path: [...scopePath], key, valueStart, valueEnd, type, truncated };
+    if (value !== undefined) event.value = value;
+    this.emit("value", event);
   }
 
   /**

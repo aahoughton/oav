@@ -153,6 +153,38 @@ export interface SpineOptions {
    */
   keyEvent?: (scopePath: readonly PathSegment[], key: string, byteOffset: number) => void;
   /**
+   * Fired when a scalar object-member value completes, with the enclosing
+   * scope path, the member key, the value's absolute input-byte span, its
+   * JSON type, and (when this member is being captured) the decoded value.
+   * Fires for every scalar member, whether validated on the STREAM path or
+   * routed to a scalar BUFFER island (a `format`-bearing string, a
+   * buffered scalar): the value is materialized for the delegate either
+   * way. Array elements, the root value, and TEE composition members are
+   * not reported. Set only when value events are requested (so the spine
+   * pays nothing when they are off); the driver applies any path filter
+   * and routes the event.
+   */
+  valueEvent?: (
+    scopePath: readonly PathSegment[],
+    key: string,
+    valueStart: number,
+    valueEnd: number,
+    type: "string" | "number" | "boolean" | "null",
+    value: string | number | boolean | null | undefined,
+    truncated: boolean,
+  ) => void;
+  /**
+   * Whether a matched member's decoded scalar should be captured (retained
+   * and delivered on {@link SpineOptions.valueEvent}). Consulted at a
+   * STREAM string's first byte to gate text retention, and at completion
+   * for values already in hand. Set only when capture is requested; an
+   * offsets-only value subscription leaves it unset and the spine buffers
+   * nothing.
+   */
+  shouldCapture?: (scopePath: readonly PathSegment[], key: string) => boolean;
+  /** Cap on a captured scalar's source-byte span; past it the value is dropped and `truncated` is set. Unset: no cap. */
+  maxCaptureBytes?: number;
+  /**
    * Fired when a forward-decidable (STREAM) object/array scope closes,
    * after its verdict is known and before its delimiter, for edit hooks.
    * Islands (composition / buffered scopes) are not reported: their
@@ -266,6 +298,21 @@ export class SpineValidator implements JsonEventHandler {
   private readonly keyEvent:
     | ((scopePath: readonly PathSegment[], key: string, byteOffset: number) => void)
     | undefined;
+  private readonly valueEvent:
+    | ((
+        scopePath: readonly PathSegment[],
+        key: string,
+        valueStart: number,
+        valueEnd: number,
+        type: "string" | "number" | "boolean" | "null",
+        value: string | number | boolean | null | undefined,
+        truncated: boolean,
+      ) => void)
+    | undefined;
+  private readonly shouldCapture:
+    | ((scopePath: readonly PathSegment[], key: string) => boolean)
+    | undefined;
+  private readonly maxCaptureBytes: number | undefined;
   private readonly onScopeClose: ((close: ScopeClose) => void) | undefined;
   // Verdict-only mode (TEE branch sub-spines): track a single invalid flag
   // instead of retaining a violation per failure, so a branch over a huge
@@ -287,6 +334,13 @@ export class SpineValidator implements JsonEventHandler {
     text: string;
     offset: number;
     island: boolean;
+    // `capture`: retain the decoded text for a `value` event (decided at
+    // string start from `shouldCapture`). `captureTruncated`: the captured
+    // span passed `maxCaptureBytes`, so the value is dropped (span still
+    // reported). Independent of `needText` / `maxBufferedBytes`, which
+    // govern validation buffering.
+    capture: boolean;
+    captureTruncated: boolean;
   } | null = null;
 
   // An open BUFFER island being materialized for delegation.
@@ -321,7 +375,60 @@ export class SpineValidator implements JsonEventHandler {
     this.regexCompiler = options.regexCompiler;
     this.assertsFormat = options.assertsFormat ?? false;
     this.keyEvent = options.keyEvent;
+    this.valueEvent = options.valueEvent;
+    this.shouldCapture = options.shouldCapture;
+    this.maxCaptureBytes = options.maxCaptureBytes;
     this.onScopeClose = options.onScopeClose;
+  }
+
+  // The enclosing object member's key, when the value about to / just
+  // completed is an object member (not an array element or the root
+  // value). Gates value events to scalar object members.
+  private memberKey(): string | null {
+    const top = this.frames[this.frames.length - 1];
+    if (top === undefined || top.kind !== "object") return null;
+    return top.pendingKey;
+  }
+
+  // Report a completed scalar object-member value through the one emit
+  // path every scalar uses (no per-type drift). Call only when
+  // `valueEvent` is set (the callers guard, matching `keyEvent?.()`).
+  //
+  // Capture mode (`shouldCapture` set): the spine applies the filter here
+  // and the driver trusts it, so the filter runs once per member, not
+  // again in the driver. A non-matching member emits nothing; a matching
+  // one carries `decoded` (or nothing when `truncated`). A STREAM string
+  // decided its match at string start (to gate text retention) and passes
+  // it as `precomputedMatch` so the filter is not re-run; other scalars
+  // have it in hand at completion and let this method evaluate it.
+  //
+  // Span-only mode (`shouldCapture` unset): every scalar member is emitted
+  // with no value, and the driver applies any path filter.
+  private emitScalarMember(
+    valueStart: number,
+    valueEnd: number,
+    type: "string" | "number" | "boolean" | "null",
+    decoded: string | number | boolean | null,
+    truncated: boolean,
+    precomputedMatch?: boolean,
+  ): void {
+    const key = this.memberKey();
+    if (key === null) return;
+    if (this.shouldCapture === undefined) {
+      this.valueEvent!(this.path, key, valueStart, valueEnd, type, undefined, false);
+      return;
+    }
+    const matched = precomputedMatch ?? this.shouldCapture(this.path, key);
+    if (!matched) return;
+    this.valueEvent!(
+      this.path,
+      key,
+      valueStart,
+      valueEnd,
+      type,
+      truncated ? undefined : decoded,
+      truncated,
+    );
   }
 
   /** The verdict so far (final once `end` has been called on the tokenizer). */
@@ -962,7 +1069,14 @@ export class SpineValidator implements JsonEventHandler {
     // const) or when the value is a BUFFER island (delegated whole).
     const needText =
       island || app.schemas.some((s) => s.pattern !== undefined || "enum" in s || "const" in s);
-    this.str = { app, needText, text: "", offset, island };
+    // Capture is STREAM-member-only: an island string is delegated whole
+    // and does not emit a value event, so never retain it for capture.
+    let capture = false;
+    if (!island && this.shouldCapture !== undefined) {
+      const key = this.memberKey();
+      capture = key !== null && this.shouldCapture(this.path, key);
+    }
+    this.str = { app, needText, text: "", offset, island, capture, captureTruncated: false };
   }
 
   onStringChunk(chunk: string, offset: number): void {
@@ -975,12 +1089,39 @@ export class SpineValidator implements JsonEventHandler {
       this.forwardIsland((b) => b.onStringChunk(chunk));
       return;
     }
-    if (this.str !== null && this.str.needText) {
-      this.str.text += chunk;
-      // A forced-buffer scalar (pattern / enum / const) accumulates; cap
-      // its source-byte span so it can't grow unbounded on hostile input.
-      if (this.maxBufferedBytes !== undefined && offset - this.str.offset > this.maxBufferedBytes) {
-        throw new BufferLimitError(this.maxBufferedBytes, offset);
+    if (this.str !== null && (this.str.needText || this.str.capture)) {
+      const span = offset - this.str.offset;
+      if (this.str.needText) {
+        this.str.text += chunk;
+        // A forced-buffer scalar (pattern / enum / const) accumulates; cap
+        // its source-byte span so it can't grow unbounded on hostile input.
+        if (this.maxBufferedBytes !== undefined && span > this.maxBufferedBytes) {
+          throw new BufferLimitError(this.maxBufferedBytes, offset);
+        }
+        // The same text serves capture; drop delivery (not the run) past
+        // the capture cap.
+        if (this.str.capture && this.maxCaptureBytes !== undefined && span > this.maxCaptureBytes) {
+          this.str.captureTruncated = true;
+        }
+      } else if (!this.str.captureTruncated) {
+        // Capture-only accumulation: bound retention by the decoded length
+        // *before* appending, so a single large chunk (a long string in
+        // one input buffer) cannot be retained past the cap. `span` is
+        // measured to this chunk's start, so it would pass for a one-shot
+        // chunk; the held length is the real memory bound. Decoded UTF-16
+        // length <= the source-byte span, so a length over the cap implies
+        // the span is too, and onStringEnd's source-span check sets the
+        // verdict. Soft limit: drop the held text, never fatal, keep
+        // parsing.
+        if (
+          this.maxCaptureBytes !== undefined &&
+          this.str.text.length + chunk.length > this.maxCaptureBytes
+        ) {
+          this.str.captureTruncated = true;
+          this.str.text = "";
+        } else {
+          this.str.text += chunk;
+        }
       }
     }
   }
@@ -999,13 +1140,7 @@ export class SpineValidator implements JsonEventHandler {
       this.forwardIsland((b) => b.onStringEnd());
       return;
     }
-    const s = this.str as {
-      app: Applicable;
-      needText: boolean;
-      text: string;
-      offset: number;
-      island: boolean;
-    };
+    const s = this.str as NonNullable<typeof this.str>;
     this.str = null;
     // Close the single-chunk bypass: cap the forced-buffer scalar on its
     // full source-byte span, known only now.
@@ -1016,18 +1151,46 @@ export class SpineValidator implements JsonEventHandler {
     ) {
       throw new BufferLimitError(this.maxBufferedBytes, endOffset);
     }
+    // Capture cap on the full span (a single-chunk string skipped the
+    // per-chunk check above).
+    let captureTruncated = s.captureTruncated;
+    if (
+      s.capture &&
+      this.maxCaptureBytes !== undefined &&
+      endOffset - s.offset > this.maxCaptureBytes
+    ) {
+      captureTruncated = true;
+    }
     this.curOffset = s.offset;
     if (s.island) {
+      // A scalar string routed to a BUFFER island (e.g. `format` under an
+      // asserting dialect) is still a scalar member with a known span, and
+      // its text is already materialized for the delegate. Report it like
+      // any other scalar member, so the channel is uniform across STREAM
+      // and buffer-delegated scalars. The match is decided at completion
+      // (the text is in hand, not gated at string start); the cap is a
+      // delivery gate, the bytes already bounded by `maxBufferedBytes`.
+      if (this.valueEvent !== undefined) {
+        const truncated =
+          this.maxCaptureBytes !== undefined && endOffset - s.offset > this.maxCaptureBytes;
+        this.emitScalarMember(s.offset, endOffset, "string", s.text, truncated);
+      }
       this.delegateScalar(s.app, s.text);
       return;
     }
+    // STREAM string member: report the span (opening quote .. past closing
+    // quote, so a slice is valid JSON); deliver the decoded text only when
+    // captured and within the cap. The match was decided at string start
+    // (to gate text retention), so reuse it rather than re-run the filter.
+    if (this.valueEvent !== undefined)
+      this.emitScalarMember(s.offset, endOffset, "string", s.text, captureTruncated, s.capture);
     this.scalar("string", s.needText ? s.text : "", codePoints, s.app);
   }
 
-  onNumber(value: number, raw: string, startOffset: number): void {
+  onNumber(value: number, raw: string, startOffset: number, endOffset: number): void {
     this.curOffset = startOffset;
     if (this.tee !== null) {
-      this.teeFeed((s) => s.onNumber(value, raw, startOffset));
+      this.teeFeed((s) => s.onNumber(value, raw, startOffset, endOffset));
       this.tee.started = true;
       if (this.teeComplete()) this.finalizeTee();
       return;
@@ -1039,16 +1202,18 @@ export class SpineValidator implements JsonEventHandler {
     const app = this.schemasForValue();
     const type = Number.isInteger(value) ? "integer" : "number";
     if (this.needsTee(app)) {
-      this.teeScalar(app, (s) => s.onNumber(value, raw, startOffset));
+      this.teeScalar(app, (s) => s.onNumber(value, raw, startOffset, endOffset));
       return;
     }
+    if (this.valueEvent !== undefined)
+      this.emitScalarMember(startOffset, endOffset, "number", value, false);
     this.scalar(type, value, 0, app);
   }
 
-  onBoolean(value: boolean, startOffset: number): void {
+  onBoolean(value: boolean, startOffset: number, endOffset: number): void {
     this.curOffset = startOffset;
     if (this.tee !== null) {
-      this.teeFeed((s) => s.onBoolean(value, startOffset));
+      this.teeFeed((s) => s.onBoolean(value, startOffset, endOffset));
       this.tee.started = true;
       if (this.teeComplete()) this.finalizeTee();
       return;
@@ -1059,16 +1224,18 @@ export class SpineValidator implements JsonEventHandler {
     }
     const app = this.schemasForValue();
     if (this.needsTee(app)) {
-      this.teeScalar(app, (s) => s.onBoolean(value, startOffset));
+      this.teeScalar(app, (s) => s.onBoolean(value, startOffset, endOffset));
       return;
     }
+    if (this.valueEvent !== undefined)
+      this.emitScalarMember(startOffset, endOffset, "boolean", value, false);
     this.scalar("boolean", value, 0, app);
   }
 
-  onNull(startOffset: number): void {
+  onNull(startOffset: number, endOffset: number): void {
     this.curOffset = startOffset;
     if (this.tee !== null) {
-      this.teeFeed((s) => s.onNull(startOffset));
+      this.teeFeed((s) => s.onNull(startOffset, endOffset));
       this.tee.started = true;
       if (this.teeComplete()) this.finalizeTee();
       return;
@@ -1079,9 +1246,11 @@ export class SpineValidator implements JsonEventHandler {
     }
     const app = this.schemasForValue();
     if (this.needsTee(app)) {
-      this.teeScalar(app, (s) => s.onNull(startOffset));
+      this.teeScalar(app, (s) => s.onNull(startOffset, endOffset));
       return;
     }
+    if (this.valueEvent !== undefined)
+      this.emitScalarMember(startOffset, endOffset, "null", null, false);
     this.scalar("null", null, 0, app);
   }
 }
