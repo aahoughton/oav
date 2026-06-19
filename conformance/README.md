@@ -53,10 +53,11 @@ this suite adds the breadth of a real-world corpus.
 
 Output: per-file table on stdout, raw JSON written to
 `json-schema-results.json` / `json-parse-results.json` /
-`overlay-results.json` / `openapi-results.json` (`json-parse-results.json`,
-`overlay-results.json`, and `openapi-results.json` are committed baselines
-that CI compares against with `--check-baseline`; `json-schema-results.json`
-is committed but the `+optional` variant is gitignored as a moving target).
+`overlay-results.json` / `openapi-results.json`. `json-parse-results.json`,
+`json-schema-results.json`, and `overlay-results.json` are committed
+baselines that CI compares against with `--check-baseline`;
+`openapi-results.json` and the `+optional` JSON Schema variant are
+gitignored as moving targets.
 
 ## Where to add new cases
 

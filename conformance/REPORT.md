@@ -1,14 +1,16 @@
 # Conformance report
 
-Generated against three upstream / hand-curated test corpora:
+Generated 2026-06-19 against commit `b8d5dd7`.
 
-- **JSON Schema Test Suite** — the canonical draft-2020-12 cases at
+Run against three upstream / hand-curated test corpora:
+
+- **JSON Schema Test Suite**: the canonical draft-2020-12 cases at
   <https://github.com/json-schema-org/JSON-Schema-Test-Suite>,
   cloned into `conformance/JSON-Schema-Test-Suite/` by `pnpm setup`.
-- **OpenAPI Overlay 1.0 Test Suite** — the envelope-schema fixtures
+- **OpenAPI Overlay 1.0 Test Suite**: the envelope-schema fixtures
   at <https://github.com/OAI/Overlay-Specification>, cloned into
   `conformance/Overlay-Specification/` by `pnpm setup:overlay`.
-- **OpenAPI cases** — hand-curated request/response scenarios under
+- **OpenAPI cases**: hand-curated request/response scenarios under
   `conformance/openapi-cases/<group>/`, covering the petstore shape
   across 3.0, 3.1, and 3.2.
 
@@ -16,10 +18,10 @@ Generated against three upstream / hand-curated test corpora:
 
 | Source                              | Cases | Pass | Mismatch | Error | % pass |
 | ----------------------------------- | ----- | ---- | -------- | ----- | ------ |
-| JSON Schema Test Suite (required)   | 1290  | 1271 | 15       | 4     | 98.5%  |
+| JSON Schema Test Suite (required)   | 1290  | 1270 | 16       | 4     | 98.4%  |
 | JSON Schema Test Suite (+ optional) | 1452  | 1429 | 19       | 4     | 98.4%  |
 | OpenAPI Overlay 1.0 (envelope)      | 32    | 32   | 0        | 0     | 100%   |
-| OpenAPI `petstore` via `oav` CLI    | 14    | 14   | 0        | 0     | 100%   |
+| OpenAPI `petstore` via `oav` CLI    | 32    | 32   | 0        | 0     | 100%   |
 
 "Mismatch" = our verdict differs from upstream; "error" = our compiler
 crashed (we couldn't produce a verdict at all).
@@ -33,63 +35,44 @@ checkable.
 
 ## Where we diverge from the JSON Schema suite
 
-Every remaining divergence falls into a small number of categories,
-documented below.
+The 20 non-passing required-suite cases (16 mismatch + 4 error) fall
+into three groups.
 
-### 1. `$dynamicRef` with runtime dynamic scope (~25 cases)
+### `$dynamicRef` with runtime dynamic scope (12 cases)
 
 Partial implementation. Our `$dynamicRef` resolves statically against
-the anchor map. Tests that rely on a `$dynamicRef` rebinding at the
-outermost `$dynamicAnchor` encountered during validation fail.
-Documented in `CLAUDE.md`.
+the anchor map, so tests that rely on a `$dynamicRef` rebinding at the
+outermost `$dynamicAnchor` encountered during validation fail
+(`dynamicRef.json`). Documented in `CLAUDE.md`.
 
-**Fix path**: maintain a runtime stack of `$dynamicAnchor` scopes during
+Fix path: maintain a runtime stack of `$dynamicAnchor` scopes during
 validation, resolve `$dynamicRef` at call time.
 
-### 2. Fixed so far
+### External / cross-document `$ref` loading (4 errors)
 
-- `format.json` (17 → 0). Flipped `format` to the spec's non-assertive
-  default and put the assertion keyword behind an opt-in vocabulary that
-  `@oav/validator` enables.
-- JSON Pointer percent-decoding (6 → 0 on `ref.json`).
-- `dependencies` (draft-07 compat): 14 → 0 on
-  `optional/dependencies-compatibility.json`. The keyword was split in
-  2020-12 into `dependentRequired` / `dependentSchemas`; older schemas
-  continue to use the combined form, so we added a keyword that
-  dispatches per-entry on value shape.
-- External / cross-document `$ref`: `refRemote.json` 0/31 → 31/31.
-  `compileSchema` now accepts a pre-registered external schema map
-  via the `external` option, and `resolve()` walks every registered
-  schema to collect its `$id` / `$anchor` entries scoped by base URI.
-- `unevaluatedProperties` / `unevaluatedItems` across composition.
-  Generated subvalidators now take out-parameter `Set<string>`s and
-  composition / `$ref` / `if-then-else` / `dependentSchemas` keywords
-  thread them through, merging keys from passing branches only.
-- `if`-branch annotations & nested `unevaluated*: true`: fixed 14
-  cases across `unevaluatedProperties.json` / `unevaluatedItems.json`.
-  `if`'s evaluated-key set is now merged into the outer scope when
-  `if` passes (2020-12 semantics, not 2019-09's drop-on-if), which
-  also threads `contains`-via-`if` annotations into
-  `unevaluatedItems`. A nested `unevaluatedProperties: true` /
-  `unevaluatedItems: true` now marks every iterated key/index as
-  evaluated so outer scopes see them.
+`defs.json` and `ref.json` surface 2 errors each where a referenced
+document is not loaded into the schema map.
+
+### Residual singletons (4 mismatches)
+
+One mismatch each in `multipleOf.json`, `unevaluatedItems.json`,
+`unevaluatedProperties.json`, and `vocabulary.json`.
 
 ## Optional-suite breakdown
 
 Running with `--optional` widens to 1452 cases. The extra 162 cases
-live under `tests/draft2020-12/optional/`. Current state:
+live under `tests/draft2020-12/optional/`. The 23 non-passing optional
+cases (19 mismatch + 4 error):
 
-| File                                                                                                 | Status                                                                                                                |
-| ---------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `anchor.json`, `cross-draft.json`                                                                    | 3 errors, external-ref loading (same as category #1).                                                                 |
-| `dependencies-compatibility.json`                                                                    | **14 → 0** (fixed in commit `79af5a7`).                                                                               |
-| `dynamicRef.json`                                                                                    | 2 failures, subset of category #1.                                                                                    |
-| `float-overflow.json`                                                                                | 1 failure: "optional overflow handling", explicitly flagged as implementation-optional in the test group description. |
-| `format-assertion.json`                                                                              | 2 failures: requires meta-schema loading via `$schema`, tied to category #1.                                          |
-| `bignum.json`, `ecmascript-regex.json`                                                               | pass.                                                                                                                 |
-| `non-bmp-regex.json`, `id.json`, `no-schema.json`, `unknownKeyword.json`, `refOfUnknownKeyword.json` | pass.                                                                                                                 |
+| File                                                                                        | Status                                                    |
+| ------------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| `dynamicRef.json`                                                                           | 12 mismatches, the `$dynamicRef` runtime-scope group.     |
+| `defs.json`, `ref.json`                                                                     | 4 errors, external / cross-document ref loading.          |
+| `cross-draft.json`                                                                          | 1 mismatch, same ref-loading root.                        |
+| `format-assertion.json`                                                                     | 2 mismatches, requires meta-schema loading via `$schema`. |
+| `multipleOf.json`, `unevaluatedItems.json`, `unevaluatedProperties.json`, `vocabulary.json` | 1 mismatch each.                                          |
 
-The per-format subtree (`optional/format/*.json`) isn't traversed by
+All other optional files pass. The per-format subtree (`optional/format/*.json`) isn't traversed by
 our runner. Those tests target strict-format-assertion behavior; by
 spec default and our default, format is annotation-only, so most tests
 there would vacuously pass. Enabling format-assertion and running them
@@ -108,7 +91,7 @@ must match the canonical overlay JSON Schema, every fixture under
 The runner also feeds every pass fixture through
 `@oav/overlay-spec`'s `translateOverlay()` and classifies the result
 as `ok` / `unrecognised-target` / `translator-error`. This is
-informational — upstream does not assert semantic translation — but
+informational (upstream does not assert semantic translation), but
 it surfaces translator-coverage gaps next to the envelope numbers.
 
 Current translator classification on pass fixtures (12 total):
@@ -167,6 +150,7 @@ pnpm openapi                    # CLI-driven OpenAPI scenarios
 
 Detailed per-case output lands in `conformance/json-schema-results.json`,
 `conformance/overlay-results.json`, and `conformance/openapi-results.json`.
-`overlay-results.json` and `openapi-results.json` are committed
-baselines that CI compares against with `--check-baseline`; the
-`+optional` JSON Schema variant remains gitignored.
+`json-schema-results.json` and `overlay-results.json` are committed
+baselines that CI compares against with `--check-baseline`;
+`openapi-results.json` and the `+optional` JSON Schema variant are
+gitignored.
