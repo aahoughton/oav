@@ -59,7 +59,7 @@ present at the package being type-checked. So `fastify` stays in
 `oav-fastify/devDependencies` for type-check purposes, even though the
 integration test runs here. Dependabot noise from fastify transitives
 is therefore not eliminated by this split, only the much larger express
-noise is. (See issue #295 for context.)
+noise is.
 
 ## How tests reach into the main packages
 

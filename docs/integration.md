@@ -1344,7 +1344,3 @@ stay framework-shaped rather than competitor-shaped:
   from `express-openapi-validator`. Behavior-difference reference,
   option map (eov → oav), features not carried over, features
   added.
-
-When other migration paths surface (from-fastify-inline,
-from-zod-first), they get their own focused docs in the same
-shape, linked from here.

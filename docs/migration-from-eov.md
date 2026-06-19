@@ -201,7 +201,7 @@ Keep them in the map if it's simpler; they cost nothing.
 string, use `formatSummary` with `{ select: "all" }`:
 
 ```ts
-import { formatSummary } from "@aahoughton/oav-core";
+import { formatSummary } from "@aahoughton/oav";
 
 // Default: first failing leaf, equivalent to eov's default `message`.
 formatSummary(err);

@@ -6,21 +6,7 @@ Translator from [OpenAPI Overlay 1.0](https://spec.openapis.org/overlay/1.0.0) s
 
 oav's first-party overlay surface is `SpecOverlay` from `@aahoughton/oav/spec`: typed verbs scoped to known OpenAPI shapes, hand-authored against the type. The OpenAPI Overlay 1.0 spec describes overlays as a list of JSONPath-targeted actions instead. This package consumes spec-format input and re-expresses it as typed `SpecOverlay` so callers can apply third-party overlay documents through the same code path.
 
-The translator is not a JSONPath engine. It recognises a closed set of `target` expression shapes and throws on anything outside that set. The shapes cover the conventional patterns the OpenAPI Overlay spec uses to describe typical OAS axes; pathological JSONPath (recursive descent, slices, arbitrary filter expressions) is out of scope by design. See [`docs/configuration.md`](../../docs/configuration.md) and [`docs/overlays.md`](../../docs/overlays.md) for the typed-authoring path.
-
-`@oav/overlay-spec` does not ship a JSONPath engine. It maps a closed
-set of `target` expression shapes (the ones that describe typical
-OAS axes: paths, methods, parameters by name and `in`, component
-buckets by name) onto the typed `SpecOverlay` verbs in `@oav/spec`.
-Targets outside that recognised set throw a translation error naming
-the offending expression; no silent partial application. Against the
-OpenAPI Overlay 1.0 canonical test suite, this covers the cases
-whose targets use the conventional shapes; cases that lean on
-recursive descent (`..`), array slices, filter functions, or
-wildcards across non-OAS axes throw rather than translating. The fix
-when one comes up is either an additive new shape pattern in this
-package, or expressing the same intent through `@oav/spec`'s typed
-surface directly.
+The translator is not a JSONPath engine. It maps a closed set of `target` expression shapes (the ones that describe typical OAS axes: paths, methods, parameters by name and `in`, component buckets by name) onto the typed `SpecOverlay` verbs in `@oav/spec`, and throws a translation error naming the offending expression for anything outside that set (recursive descent `..`, array slices, filter functions, wildcards across non-OAS axes); no silent partial application. Against the OpenAPI Overlay 1.0 canonical test suite this covers the conventional-shape targets; the rest throw. See [`docs/configuration.md`](../../docs/configuration.md) and [`docs/overlays.md`](../../docs/overlays.md) for the typed-authoring path.
 
 ## API
 
