@@ -312,7 +312,7 @@ describe("validator.validateFetchRequest", () => {
     });
 
     it("works with a multer-equivalent multipart streaming pattern", async () => {
-      // The sureify / puddle-rest-proxy shape: a multipart endpoint
+      // A streaming multipart-proxy shape: a multipart endpoint
       // declared in the spec as `{ documents: string, format: binary }`
       // (or an array of same). A user's streaming parser pulls bytes off
       // the request and assembles whatever body the spec expects;
