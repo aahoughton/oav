@@ -105,6 +105,80 @@ describe("regexCompiler hardens the spine's own pattern check", () => {
   });
 });
 
+describe("uniqueItems buffers as an island, bounded by maxUniqueItems / maxBufferedBytes", () => {
+  const bigUnique = (n: number): string => `[${Array.from({ length: n }, (_, i) => i).join(",")}]`;
+
+  it("validates the uniqueItems verdict via the in-memory delegate", async () => {
+    const schema: SchemaOrBoolean = { type: "array", uniqueItems: true };
+    expect((await verdictOf(schema, [1, 2, 3])).valid).toBe(true);
+    expect((await verdictOf(schema, [1, 2, 2])).valid).toBe(false);
+  });
+
+  it("maxUniqueItems refuses an over-count array before it fully buffers", async () => {
+    const validator = createStreamValidator(
+      { type: "array", uniqueItems: true },
+      { maxUniqueItems: 4 },
+    );
+    validator.on("error", () => {});
+    validator.resume();
+    const guard = validator.result.catch((e) => e as Error);
+    await expect(
+      pipeline(source(bigUnique(300), 8), validator, new Writable({ write: (_c, _e, cb) => cb() })),
+    ).rejects.toThrow(/maxUniqueItems/);
+    expect((await guard).message).toMatch(/maxUniqueItems/);
+  });
+
+  it("maxUniqueItems within the cap validates normally", async () => {
+    const verdict = await verdictOf({ type: "array", uniqueItems: true }, [1, 2, 3], {
+      maxUniqueItems: 4,
+    });
+    expect(verdict.valid).toBe(true);
+  });
+
+  it("maxUniqueItems applies to a uniqueItems array under a composition branch", async () => {
+    // The array sits under `allOf`, validated by a TEE sub-spine; the cap is
+    // plumbed into the sub-spine, so the buffered island is still bounded.
+    const validator = createStreamValidator(
+      { allOf: [{ type: "array", uniqueItems: true }] },
+      { maxUniqueItems: 4 },
+    );
+    validator.on("error", () => {});
+    validator.resume();
+    const guard = validator.result.catch((e) => e as Error);
+    await expect(
+      pipeline(source(bigUnique(300), 8), validator, new Writable({ write: (_c, _e, cb) => cb() })),
+    ).rejects.toThrow(/maxUniqueItems/);
+    expect((await guard).message).toMatch(/maxUniqueItems/);
+  });
+
+  it("maxBufferedBytes also caps the uniqueItems island (byte budget)", async () => {
+    const validator = createStreamValidator(
+      { type: "array", uniqueItems: true },
+      { maxBufferedBytes: 32 },
+    );
+    validator.on("error", () => {});
+    validator.resume();
+    const guard = validator.result.catch((e) => e as Error);
+    await expect(
+      pipeline(source(bigUnique(300), 8), validator, new Writable({ write: (_c, _e, cb) => cb() })),
+    ).rejects.toThrow(/maxBufferedBytes/);
+    expect((await guard).message).toMatch(/maxBufferedBytes/);
+  });
+
+  it("enforceBounds rejects uniqueItems without maxItems at construction", () => {
+    expect(() =>
+      createStreamValidator({ type: "array", uniqueItems: true }, { enforceBounds: true }),
+    ).toThrow(/maxItems/);
+    // A structural bound (maxItems) clears the warning.
+    expect(() =>
+      createStreamValidator(
+        { type: "array", uniqueItems: true, maxItems: 10 },
+        { enforceBounds: true },
+      ),
+    ).not.toThrow();
+  });
+});
+
 describe("maxTotalBytes / maxDepth", () => {
   it("rejects input larger than maxTotalBytes", async () => {
     const validator = createStreamValidator(true, { maxTotalBytes: 4 });

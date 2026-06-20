@@ -324,6 +324,7 @@ export class StreamValidator extends Transform {
       ...(options.maxBufferedBytes === undefined
         ? {}
         : { maxBufferedBytes: options.maxBufferedBytes }),
+      ...(options.maxUniqueItems === undefined ? {} : { maxUniqueItems: options.maxUniqueItems }),
       ...(options.maxDepth === undefined ? {} : { maxDepth: options.maxDepth }),
       ...(options.regexCompiler === undefined ? {} : { regexCompiler: options.regexCompiler }),
       ...(keyEvents
