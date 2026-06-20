@@ -3,5 +3,6 @@
   "packages/oav": "3.3.0",
   "packages/oav-express4": "3.3.0",
   "packages/oav-express5": "3.3.0",
-  "packages/oav-fastify": "3.3.0"
+  "packages/oav-fastify": "3.3.0",
+  "packages/stream-validator": "0.0.0"
 }

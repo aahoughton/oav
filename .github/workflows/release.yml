@@ -30,10 +30,13 @@ on:
     inputs:
       tag:
         # release-please creates one tag per package per release
-        # (component prefix from release-please-config.json, linked
-        # versions, so all 5 point at the same commit). Any of them
-        # is fine to pass here; oav-core is the conventional choice.
-        description: "Release tag to (re)publish, e.g. oav-core-v2.1.1"
+        # (component prefix from release-please-config.json). The five
+        # linked packages share a version, so their tags point at the same
+        # commit; oav-stream-validator is unlinked (incubating, 0.x) and
+        # carries its own tag at its own commit. Pass whichever package's
+        # tag you are republishing; oav-core is the conventional choice for
+        # the linked group.
+        description: "Release tag to (re)publish, e.g. oav-core-v2.1.1 or oav-stream-validator-v0.1.0"
         required: true
         type: string
 
@@ -80,7 +83,7 @@ jobs:
         env:
           TAG: ${{ inputs.tag }}
         run: |
-          if [[ ! "$TAG" =~ ^(oav-core|oav|oav-express4|oav-express5|oav-fastify)-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          if [[ ! "$TAG" =~ ^(oav-core|oav|oav-express4|oav-express5|oav-fastify|oav-stream-validator)-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "::error::Invalid tag '$TAG'. Expected <component>-v<MAJOR>.<MINOR>.<PATCH>, e.g. oav-core-v2.1.1"
             exit 1
           fi
@@ -124,7 +127,7 @@ jobs:
       - name: Pack
         run: |
           mkdir -p pkgs
-          for pkg in . packages/oav packages/oav-express4 packages/oav-express5 packages/oav-fastify; do
+          for pkg in . packages/oav packages/oav-express4 packages/oav-express5 packages/oav-fastify packages/stream-validator; do
             (cd "$pkg" && pnpm pack --pack-destination "$GITHUB_WORKSPACE/pkgs")
           done
       # Publish via npm CLI, which performs the OIDC token exchange

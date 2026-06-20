@@ -198,6 +198,7 @@ jobs:
           (cd packages/oav-express4 && pnpm pack --pack-destination "$GITHUB_WORKSPACE/packed")
           (cd packages/oav-express5 && pnpm pack --pack-destination "$GITHUB_WORKSPACE/packed")
           (cd packages/oav-fastify && pnpm pack --pack-destination "$GITHUB_WORKSPACE/packed")
+          (cd packages/stream-validator && pnpm pack --pack-destination "$GITHUB_WORKSPACE/packed")
           ls -1 "$GITHUB_WORKSPACE/packed"
       - name: smoke-import @aahoughton/oav-core
         run: |
@@ -403,5 +404,43 @@ jobs:
           );
           if (typeof hook !== "function") throw new Error("validateRequests did not return a hook");
           console.log("oav-fastify smoke ok");
+          EOF
+          node smoke.mjs
+      - name: smoke-import @aahoughton/oav-stream-validator
+        run: |
+          set -euo pipefail
+          CORE_TGZ="$(ls "$GITHUB_WORKSPACE/packed"/aahoughton-oav-core-*.tgz | head -n1)"
+          SV_TGZ="$(ls "$GITHUB_WORKSPACE/packed"/aahoughton-oav-stream-validator-*.tgz | head -n1)"
+          rm -rf /tmp/smoke-sv && mkdir -p /tmp/smoke-sv && cd /tmp/smoke-sv
+          npm init -y > /dev/null
+          # Install both tarballs together so the stream validator's
+          # dependency on @aahoughton/oav-core resolves against the locally
+          # packed core, not the registry.
+          npm install "$CORE_TGZ" "$SV_TGZ"
+          cat > smoke.mjs <<'EOF'
+          import { pipeline } from "node:stream/promises";
+          import { Readable } from "node:stream";
+          import { createStreamValidator } from "@aahoughton/oav-stream-validator";
+          // Exercise the cross-package boundary: the engine delegates BUFFER
+          // islands and dialect handling to the published core, so this proves
+          // the rewritten `@aahoughton/oav-core/{core,schema,schema/internals}`
+          // imports load. A leaked `@oav/*` import would fail resolution here.
+          const validator = createStreamValidator({
+            type: "object",
+            required: ["a"],
+            properties: { a: { type: "integer" } },
+          });
+          await pipeline(
+            Readable.from([Buffer.from('{"a":1}')]),
+            validator,
+            async function (source) {
+              for await (const _chunk of source) {
+                // drain the echoed bytes so the transform can finish
+              }
+            },
+          );
+          const verdict = await validator.result;
+          if (!verdict.valid) throw new Error("expected a valid verdict");
+          console.log("oav-stream-validator smoke ok");
           EOF
           node smoke.mjs
