@@ -140,9 +140,12 @@ export interface StreamValidatorOptions {
    *
    *   - `true`: emit for every scalar member, span only (no decode).
    *   - `{ at }`: restrict to members whose **full path** (the enclosing
-   *     scope path plus the key) matches the filter. This differs from
-   *     `keyEvents.at`, which matches the enclosing scope path: a value
-   *     filter targets one field (`["meta", "id"]`), not a whole scope.
+   *     scope path plus the key) matches the filter, so a value filter
+   *     targets one field (`["meta", "id"]`), not a whole scope. That full
+   *     path is also the event's {@link ValueEvent.path}, so the filter and
+   *     the event use one coordinate: a top-level member `{version}` is
+   *     `["version"]` (length 1), not `[]`. This differs from `keyEvents.at`,
+   *     which matches (and reports) the enclosing scope path.
    *   - `{ at, capture: true }`: also decode the matched scalar and deliver
    *     it as `value` on the event, bounded by `maxCaptureBytes` (a value
    *     larger than the cap is reported with `value` omitted and

@@ -44,9 +44,14 @@ export const DEFAULT_MAX_CAPTURE_BYTES = 65536;
  * @public
  */
 export interface ValueEvent {
-  /** Path to the enclosing object scope (the root scope is `[]`). */
+  /**
+   * Full path to the value: the enclosing scope path plus the member key.
+   * This is the same coordinate `valueEvents.at` matches, so the filter and
+   * the event speak the same path (a top-level member `{version}` is
+   * `["version"]`, not `[]`). The last segment equals {@link key}.
+   */
   path: PathSegment[];
-  /** The member key. */
+  /** The member key (the last segment of {@link path}). */
   key: string;
   /** Byte offset of the value's first byte (a string's opening quote). */
   valueStart: number;

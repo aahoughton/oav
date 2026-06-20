@@ -398,7 +398,18 @@ export class StreamValidator extends Transform {
     if (!this.valueCaptureConfigured && ve !== true && !matchValueFilter(ve.at, scopePath, key)) {
       return;
     }
-    const event: ValueEvent = { path: [...scopePath], key, valueStart, valueEnd, type, truncated };
+    // `path` is the value's full path (enclosing scope plus key), the same
+    // coordinate `valueEvents.at` matches, so a caller can filter and read
+    // the event in one coordinate system. `key` is the trailing segment,
+    // kept as a convenience.
+    const event: ValueEvent = {
+      path: [...scopePath, key],
+      key,
+      valueStart,
+      valueEnd,
+      type,
+      truncated,
+    };
     if (value !== undefined) event.value = value;
     this.emit("value", event);
   }

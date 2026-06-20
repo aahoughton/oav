@@ -131,6 +131,13 @@ validator.on("value", (e) => captured.set(e.key, e.value));
 // `capture` for span-only events and slice the bytes yourself.
 ```
 
+A `value` event's `path` is the **full path to the value** (the enclosing
+scope plus the member key), the same coordinate `valueEvents.at` matches,
+so the filter and the event speak one path: a top-level member `{version}`
+is `["version"]` (length 1), not `[]`. (`event.key` is that path's last
+segment.) This differs from `keyEvents`, whose `at` and `path` are both
+the enclosing scope.
+
 `valueEvents` fires for scalar object members on both the STREAM path and
 scalar BUFFER islands, so a `format`-bearing string (`date-time`, `uri`,
 `uuid`) reports its value even under an asserting OpenAPI dialect that
