@@ -45,6 +45,16 @@ The default policy is `terminate` with `maxErrors: 1` (the first violation
 destroys the stream and rejects the `pipeline`); `detach` instead seals
 the verdict and raw-copies the tail.
 
+Count and length limits resolve as early as the input allows: an
+**over-limit** (`maxItems`, `maxProperties`, `maxLength`) fails at the
+offending element / key / code point, before the rest of the value
+streams, so under `terminate` an over-count body is rejected without
+echoing its tail downstream. An **under-limit** (`minItems`,
+`minProperties`, `minLength`) can only be known once the scope closes, so
+it reports at the closing delimiter. The verdict is identical either way;
+eager enforcement only moves _when_ the violation surfaces (and its byte
+offset points at the cause rather than the delimiter).
+
 ### Supported schemas (incubation)
 
 The STREAM keyword set (`type`, scalar/string/number constraints,
@@ -120,6 +130,13 @@ validator.on("value", (e) => captured.set(e.key, e.value));
 // `e.truncated` flags an over-cap value (span still reported). Omit
 // `capture` for span-only events and slice the bytes yourself.
 ```
+
+A `value` event's `path` is the **full path to the value** (the enclosing
+scope plus the member key), the same coordinate `valueEvents.at` matches,
+so the filter and the event speak one path: a top-level member `{version}`
+is `["version"]` (length 1), not `[]`. (`event.key` is that path's last
+segment.) This differs from `keyEvents`, whose `at` and `path` are both
+the enclosing scope.
 
 `valueEvents` fires for scalar object members on both the STREAM path and
 scalar BUFFER islands, so a `format`-bearing string (`date-time`, `uri`,

@@ -63,15 +63,17 @@ describe("value events", () => {
     expect(sliceParse(input, e)).toBe("abc");
   });
 
-  it("carries the enclosing scope path and the member key", async () => {
+  it("carries the value's full path and the member key", async () => {
     const { events } = await collectValues(objectSchema, '{"meta":{"id":"x"}}', true);
-    expect(events.map((e) => [e.path, e.key])).toEqual([[["meta"], "id"]]);
+    // `path` is the full path to the value (scope plus key); `key` is its
+    // last segment, the same coordinate the filter matches.
+    expect(events.map((e) => [e.path, e.key])).toEqual([[["meta", "id"], "id"]]);
   });
 
-  it("filters by the member's full path, not just the scope", async () => {
+  it("filters by the member's full path, which the event also reports", async () => {
     const json = '{"a":1,"meta":{"id":"x","ver":2}}';
     const { events } = await collectValues(objectSchema, json, { at: ["meta", "id"] });
-    expect(events.map((e) => [e.path, e.key])).toEqual([[["meta"], "id"]]);
+    expect(events.map((e) => [e.path, e.key])).toEqual([[["meta", "id"], "id"]]);
   });
 
   it("filters by a predicate over the full path", async () => {
@@ -79,7 +81,15 @@ describe("value events", () => {
     const { events } = await collectValues(objectSchema, json, {
       at: (path: PathSegment[]) => path[path.length - 1] === "id",
     });
-    expect(events.map((e) => e.path)).toEqual([[], ["meta"]]);
+    expect(events.map((e) => e.path)).toEqual([["id"], ["meta", "id"]]);
+  });
+
+  it("a top-level scalar member has a length-1 path (filter and event agree)", async () => {
+    const json = '{"version":"1.0","other":2}';
+    const { events } = await collectValues(objectSchema, json, { at: ["version"] });
+    // The trap: filtering on `[]` (the enclosing scope) captures nothing;
+    // the value's path is `["version"]`, which is also what the filter matches.
+    expect(events.map((e) => [e.path, e.key])).toEqual([[["version"], "version"]]);
   });
 
   it("emits nothing when off (the default)", async () => {

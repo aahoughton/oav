@@ -341,6 +341,13 @@ export class SpineValidator implements JsonEventHandler {
     // govern validation buffering.
     capture: boolean;
     captureTruncated: boolean;
+    // Eager `maxLength`: the tightest applicable cap (min across schemas, a
+    // STREAM string only; an island string's length is the delegate's job),
+    // a running code-point count, and a once-fired flag. `undefined` cap =
+    // no `maxLength` applies, so the per-chunk counter is skipped entirely.
+    maxLen: number | undefined;
+    cp: number;
+    lenFailed: boolean;
   } | null = null;
 
   // An open BUFFER island being materialized for delegation.
@@ -388,6 +395,15 @@ export class SpineValidator implements JsonEventHandler {
     const top = this.frames[this.frames.length - 1];
     if (top === undefined || top.kind !== "object") return null;
     return top.pendingKey;
+  }
+
+  // The path to the value currently being read, including its own segment
+  // (mirrors what `pushSegment` would push at value start). Used to report
+  // an eager scalar failure at the same path the close-time check would.
+  private pendingPath(): PathSegment[] {
+    const top = this.frames[this.frames.length - 1];
+    if (top === undefined) return [...this.path]; // root value
+    return [...this.path, top.kind === "object" ? (top.pendingKey as string) : top.count];
   }
 
   // Report a completed scalar object-member value through the one emit
@@ -516,6 +532,13 @@ export class SpineValidator implements JsonEventHandler {
     } else if (top.kind === "object") {
       for (const s of top.schemas) this.collectObjectValue(s, top.pendingKey as string, out);
     } else {
+      // Over-limit is verdict-decided the moment the (max+1)th element
+      // starts, before it streams: fail eagerly (`=== count`, so once) so
+      // `terminate` aborts the tail instead of echoing the whole over-count
+      // body. `minItems` stays at close (you cannot know you are under until
+      // the array ends). See {@link onEndArray}.
+      for (const s of top.schemas)
+        if (s.maxItems !== undefined && top.count === s.maxItems) this.fail("maxItems");
       for (const s of top.schemas) this.collectArrayElement(s, top.count, out);
     }
     return out;
@@ -801,8 +824,9 @@ export class SpineValidator implements JsonEventHandler {
       if ("const" in s && (s as { const?: unknown }).const !== value) this.fail("const");
       if (actual === "string") {
         const str = value as string;
+        // `maxLength` is enforced eagerly during streaming (see
+        // {@link onStringChunk}); only the under-limit closes here.
         if (s.minLength !== undefined && codePoints < s.minLength) this.fail("minLength");
-        if (s.maxLength !== undefined && codePoints > s.maxLength) this.fail("maxLength");
         if (s.pattern !== undefined && !this.regex(s.pattern).test(str)) this.fail("pattern");
       } else if (actual === "number" || actual === "integer") {
         const num = value as number;
@@ -893,10 +917,10 @@ export class SpineValidator implements JsonEventHandler {
       if (Array.isArray(s.required)) {
         for (const r of s.required) if (!frame.seen.has(r)) this.fail("required");
       }
+      // `maxProperties` is enforced eagerly at the offending key (see
+      // {@link onKey}); only the under-limit closes here.
       if (s.minProperties !== undefined && frame.count < s.minProperties)
         this.fail("minProperties");
-      if (s.maxProperties !== undefined && frame.count > s.maxProperties)
-        this.fail("maxProperties");
       const dep = s.dependentRequired;
       if (dep !== undefined) {
         for (const k of Object.keys(dep)) {
@@ -983,8 +1007,9 @@ export class SpineValidator implements JsonEventHandler {
     }
     const frame = this.frames.pop() as ArrayFrame;
     for (const s of frame.schemas) {
+      // `maxItems` is enforced eagerly at the offending element's start
+      // (see {@link schemasForValue}); only the under-limit closes here.
       if (s.minItems !== undefined && frame.count < s.minItems) this.fail("minItems");
-      if (s.maxItems !== undefined && frame.count > s.maxItems) this.fail("maxItems");
     }
     this.onScopeClose?.({
       path: [...this.path],
@@ -1011,6 +1036,11 @@ export class SpineValidator implements JsonEventHandler {
     const top = this.frames[this.frames.length - 1] as ObjectFrame;
     for (const s of top.schemas) {
       if (s.propertyNames !== undefined) this.checkPropertyName(s.propertyNames, value, codePoints);
+      // Over-limit is decided at the (max+1)th key, before its value
+      // streams: fail eagerly (`=== count`, so once). `minProperties` stays
+      // at close. See {@link onEndObject}.
+      if (s.maxProperties !== undefined && top.count === s.maxProperties)
+        this.fail("maxProperties");
     }
     top.seen.add(value);
     top.count += 1;
@@ -1076,7 +1106,27 @@ export class SpineValidator implements JsonEventHandler {
       const key = this.memberKey();
       capture = key !== null && this.shouldCapture(this.path, key);
     }
-    this.str = { app, needText, text: "", offset, island, capture, captureTruncated: false };
+    // The tightest applicable `maxLength` for eager enforcement. An island
+    // string is delegated whole, so its length is the delegate's job; only
+    // a STREAM string is bounded here.
+    let maxLen: number | undefined;
+    if (!island) {
+      for (const s of app.schemas)
+        if (s.maxLength !== undefined)
+          maxLen = maxLen === undefined ? s.maxLength : Math.min(maxLen, s.maxLength);
+    }
+    this.str = {
+      app,
+      needText,
+      text: "",
+      offset,
+      island,
+      capture,
+      captureTruncated: false,
+      maxLen,
+      cp: 0,
+      lenFailed: false,
+    };
   }
 
   onStringChunk(chunk: string, offset: number): void {
@@ -1088,6 +1138,18 @@ export class SpineValidator implements JsonEventHandler {
     if (this.island !== null) {
       this.forwardIsland((b) => b.onStringChunk(chunk));
       return;
+    }
+    // Eager `maxLength`: count code points as they arrive (for..of yields one
+    // per code point, matching the tokenizer's lead-byte count) and fail the
+    // moment the cap is first exceeded, before the rest of the string
+    // streams. Skipped entirely when no `maxLength` applies. `minLength`
+    // necessarily waits for string close (see {@link checkScalar}).
+    if (this.str !== null && this.str.maxLen !== undefined && !this.str.lenFailed) {
+      for (const _ of chunk) this.str.cp += 1;
+      if (this.str.cp > this.str.maxLen) {
+        this.fail("maxLength", this.pendingPath());
+        this.str.lenFailed = true;
+      }
     }
     if (this.str !== null && (this.str.needText || this.str.capture)) {
       const span = offset - this.str.offset;
