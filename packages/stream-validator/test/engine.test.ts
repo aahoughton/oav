@@ -85,6 +85,67 @@ describe("createStreamValidator: terminate policy (default)", () => {
   });
 });
 
+describe("createStreamValidator: eager over-limit aborts before echoing the tail", () => {
+  it("terminates a maxItems-violating array without echoing the whole over-count body", async () => {
+    // 200 elements against maxItems 3. Under `terminate`, the eager
+    // violation at the 4th element destroys the stream, so the long tail is
+    // never forwarded downstream (to e.g. S3). A close-time check would
+    // echo the entire body first.
+    const validator = createStreamValidator({ type: "array", maxItems: 3 });
+    const violations: { code: string; byteOffset: number }[] = [];
+    validator.on("violation", (v) => violations.push(v as { code: string; byteOffset: number }));
+    const text = `[${Array.from({ length: 200 }, (_, i) => i).join(",")}]`;
+    const { sink, bytes } = collector();
+    await expect(pipeline(chunkedSource(text, 8), validator, sink)).rejects.toBeInstanceOf(
+      ValidationFailedError,
+    );
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.code).toBe("maxItems");
+    // The echo stopped well before the closing bracket: the tail is unsent.
+    expect(bytes().length).toBeLessThan(text.length);
+    expect(bytes().toString("utf8")).not.toContain("]");
+  });
+
+  it("counts maxLength code points across chunk boundaries", async () => {
+    // A long string fed two bytes at a time: the eager counter accumulates
+    // across onStringChunk calls and fires once the cap is exceeded, before
+    // the closing quote.
+    const validator = createStreamValidator({
+      type: "object",
+      properties: { s: { type: "string", maxLength: 10 } },
+    });
+    const violations: { code: string; path: unknown[] }[] = [];
+    validator.on("violation", (v) => violations.push(v as { code: string; path: unknown[] }));
+    const text = `{"s":"${"x".repeat(500)}"}`;
+    const { sink, bytes } = collector();
+    await expect(pipeline(chunkedSource(text, 2), validator, sink)).rejects.toBeInstanceOf(
+      ValidationFailedError,
+    );
+    expect(violations).toHaveLength(1);
+    expect(violations[0]?.code).toBe("maxLength");
+    expect(violations[0]?.path).toEqual(["s"]);
+    // Aborted mid-string: the 500-char body was not echoed in full.
+    expect(bytes().length).toBeLessThan(text.length);
+  });
+
+  it("counts astral code points, not UTF-16 units, across chunks", async () => {
+    // 8 astral chars (each a surrogate pair in UTF-16, 4 UTF-8 bytes) under
+    // maxLength 10: 8 code points <= 10, so valid. A UTF-16-unit count would
+    // see 16 and wrongly reject. Chunked at 3 bytes to split multibyte runs.
+    const validator = createStreamValidator({
+      type: "object",
+      properties: { s: { type: "string", maxLength: 10 } },
+    });
+    const violations: unknown[] = [];
+    validator.on("violation", (v) => violations.push(v));
+    const text = `{"s":"${"\u{1F600}".repeat(8)}"}`;
+    const { sink } = collector();
+    await pipeline(chunkedSource(text, 3), validator, sink);
+    expect(violations).toHaveLength(0);
+    expect((await validator.result).valid).toBe(true);
+  });
+});
+
 describe("createStreamValidator: detach policy", () => {
   it("finishes cleanly, echoes all bytes, and reports an invalid verdict", async () => {
     const validator = createStreamValidator(
