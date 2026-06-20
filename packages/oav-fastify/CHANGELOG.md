@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.4.0](https://github.com/aahoughton/oav/compare/oav-fastify-v3.3.0...oav-fastify-v3.4.0) (2026-06-20)
+
+
+### Chore
+
+* **oav-fastify:** Synchronize oav versions
+
 ## [3.3.0](https://github.com/aahoughton/oav/compare/oav-fastify-v3.2.0...oav-fastify-v3.3.0) (2026-06-16)
 
 
