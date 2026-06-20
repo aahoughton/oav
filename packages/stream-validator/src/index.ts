@@ -21,13 +21,17 @@ export type { JsonPath, PathFilter, StreamValidatorOptions } from "./options.js"
 export {
   createStreamValidator,
   DEFAULT_MAX_CAPTURE_BYTES,
-  StreamValidator,
   ValidationFailedError,
   type Bytes,
   type ScopeContext,
   type ScopeEditor,
   type ScopeObserver,
+  // Exported as a type only: construct through `createStreamValidator`.
+  // The factory is the construction contract; a type-only export keeps
+  // `instanceof` and the `new` constructor out of the public surface, so
+  // a later engine refactor (a shared base transform, a different
+  // lifecycle class) does not break consumers.
+  type StreamValidator,
   type ValueEvent,
 } from "./engine/index.js";
 export type { StreamVerdict, SchemaViolation } from "./spine/index.js";
-export { normalizeOas30 } from "./openapi/index.js";

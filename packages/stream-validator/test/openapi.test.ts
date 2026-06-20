@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { SchemaObject, SchemaOrBoolean } from "@oav/core";
 import { compileSchema, jsonSchemaDialect, oas30Dialect } from "@oav/schema";
-import { createStreamValidator, normalizeOas30, type StreamVerdict } from "../src/index.js";
+import { createStreamValidator, type StreamVerdict } from "../src/index.js";
+// `normalizeOas30` is engine-internal (not on the package's public index);
+// the OAS-3.0 normalization it drives is exercised through the public
+// `openApiVersion: "3.0"` path below, and unit-tested here directly.
+import { normalizeOas30 } from "../src/openapi/index.js";
 
 const enc = new TextEncoder();
 
