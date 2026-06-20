@@ -109,6 +109,11 @@ export interface SchemaViolation {
   path: PathSegment[];
   /**
    * Byte offset in the input stream nearest the violation (for re-sync).
+   * Stream-absolute: counted from the first byte fed to the validator,
+   * never reset or rebased. A future per-record (sequence) lifecycle
+   * reports record position additively on its own item channel and does
+   * not redefine this field, so a consumer can treat this offset as a
+   * stable, monotonic coordinate.
    * On the BUFFER path every node of one island (a violation and its
    * `children`) shares the island's start offset; per-child precision is
    * not tracked.

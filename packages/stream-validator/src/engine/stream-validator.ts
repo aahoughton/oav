@@ -592,6 +592,13 @@ export class StreamValidator extends Transform {
  * Create a {@link StreamValidator} for `schema`. Throws at construction
  * (before any byte) if the schema cannot be soundly streamed.
  *
+ * Validates one complete JSON document as it streams. Per-record
+ * validation of a sequence (NDJSON / json-seq under an OpenAPI 3.2
+ * `itemSchema`) is a distinct lifecycle (N item verdicts plus an
+ * aggregate, gate vs pass-through emission, a per-record byte ceiling)
+ * and will arrive as a sibling factory, not a mode of this one. This
+ * factory's contract stays single-document.
+ *
  * @public
  */
 export function createStreamValidator(
