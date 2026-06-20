@@ -2,8 +2,8 @@
 
 Self-contained TypeScript examples that exercise the most common
 `oav` entry points. Each file loads a spec from [`specs/`](./specs)
-and prints what it did to stdout — the same pattern a real application
-uses, so the example code translates 1:1 into production use.
+and prints what it did to stdout, the same pattern a real application
+uses.
 
 ## Running
 

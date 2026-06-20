@@ -291,7 +291,7 @@ export function createKeywordContext(inputs: KeywordContextInputs): KeywordCompi
   // Assemble a `deps.createLeafError(...)` / `createBranchError(...)`
   // call. Up to two trailing segments embed as explicit parameters,
   // matching the runtime signature; three-plus fall back to eagerly
-  // materializing `[...path, ...segs]` at the call site (rare —
+  // materializing `[...path, ...segs]` at the call site (rare:
   // pathologically nested inlined subschemas, capped by
   // MAX_INLINE_DEPTH).
   const assembleErrorExpr = (

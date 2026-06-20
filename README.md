@@ -205,17 +205,15 @@ OpenAPI validator output. See [docs/comparison.md](https://github.com/aahoughton
 for the feature map, and [docs/migration-from-eov.md](https://github.com/aahoughton/oav/blob/main/docs/migration-from-eov.md)
 if you are migrating from `express-openapi-validator`.
 
-On raw speed, oav wins some and loses some against Ajv, and for most
-services the difference is immaterial. oav compiles schemas far faster
-(tens of microseconds against milliseconds), validates competitively on
-typical request bodies, and carries a slightly smaller steady-state
-memory footprint than `express-openapi-validator`. Ajv is faster on
-fast-fail validation of some ordinary object shapes. At normal request
-volumes (a validation or two per request, thousands of requests per
-second) these gaps are nanoseconds per call and vanish into everything
-else a handler does. They only start to matter if you validate at
-extreme volume or against pathological shapes (very large `uniqueItems`
-arrays, very long length-bounded strings).
+On raw speed, oav wins some and loses some against Ajv. oav compiles
+schemas far faster (tens of microseconds against milliseconds),
+validates competitively on typical request bodies, and carries a
+slightly smaller steady-state memory footprint than
+`express-openapi-validator`. Ajv is faster on fast-fail validation of
+some ordinary object shapes. At normal request volumes these gaps are
+nanoseconds per call; they only start to matter at extreme volume or
+against pathological shapes (very large `uniqueItems` arrays, very long
+length-bounded strings).
 
 For the host-stamped per-shape numbers, the memory comparison, and the
 methodology, see [docs/comparison.md](https://github.com/aahoughton/oav/blob/main/docs/comparison.md).

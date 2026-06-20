@@ -48,9 +48,7 @@ benchmark dependencies, isolated from the main workspace:
 Dependabot scans each of those lockfiles. CVEs reported against a
 package that only appears under one of those directories affect that
 sub-root's test or benchmark harness; they do not reach the runtime
-tree that consumers of the npm packages receive. If you are a
-downstream consumer who has seen a CVE under one of these directories
-on the security tab and is unsure whether your install is affected,
-the answer is no: the affected package is not present in any
-published tarball, and your transitive resolution does not pick it
-up via these packages.
+tree that consumers of the npm packages receive. A downstream consumer
+who sees such a CVE on the security tab is not affected: the package is
+not present in any published tarball, so transitive resolution does not
+pick it up.

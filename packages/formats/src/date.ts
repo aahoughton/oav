@@ -44,7 +44,7 @@ export function validateTime(value: string): boolean {
   const second = Number.parseInt(match[3] ?? "0", 10);
   if (hour > 23) return false;
   if (minute > 59) return false;
-  // allow leap second 60 at any minute for v1 simplicity
+  // accept second 60 as a leap second at any minute
   if (second > 60) return false;
   return true;
 }

@@ -256,11 +256,6 @@ export type ValidationResult =
  * fields; a failing result always carries both `error` (the tree root)
  * and `truncated`.
  *
- * Migrating from v2: this nested shape was the v2 default and was named
- * `ValidationResult`. v3 makes flat the default, so the name
- * `ValidationResult` now refers to the flat shape and the tree moved
- * here. (`FlatValidationResult` aliases the new flat default, not this.)
- *
  * @public
  */
 export type TreeValidationResult =
@@ -277,9 +272,8 @@ export type TreeValidationResult =
     };
 
 /**
- * @deprecated Renamed to {@link ValidationResult} now that flat is the
- * default error shape (v3). This alias is kept for one major and will be
- * removed in v4. Update imports to `ValidationResult`.
+ * @deprecated Use {@link ValidationResult}. Kept as an alias for one
+ * major; will be removed in v4.
  *
  * @public
  */
@@ -420,10 +414,9 @@ export type CompiledPredicate = Omit<CompiledSchema, "validate"> & {
 };
 
 /**
- * @deprecated Flat is the default error shape now (v3), so the default
- * {@link CompiledSchema} already returns a flat {@link ValidationResult}.
- * This alias is kept for one major and will be removed in v4. Drop the
- * `flat: true` option and use `CompiledSchema`.
+ * @deprecated Use {@link CompiledSchema}, which returns a flat
+ * {@link ValidationResult} by default. Kept as an alias for one major;
+ * will be removed in v4.
  *
  * @public
  */
@@ -587,11 +580,10 @@ export interface CompileOptions {
    */
   predicate?: boolean;
   /**
-   * @deprecated Flat is the default error shape now (v3), so the bare
-   * `compileSchema(schema)` already returns a flat
-   * {@link ValidationResult}. `flat: true` remains a working alias for
-   * `output: "flat"` for one major and will be removed in v4. Supplying
-   * it together with a conflicting `output` throws.
+   * @deprecated Use `output: "flat"`. The bare `compileSchema(schema)`
+   * already returns a flat {@link ValidationResult}. `flat: true` remains
+   * a working alias for one major and will be removed in v4. Supplying it
+   * together with a conflicting `output` throws.
    */
   flat?: boolean;
   /**
@@ -1086,7 +1078,7 @@ function compileValidator(schema: SchemaOrBoolean, state: CompileState, mode: Co
  * validator directly.
  *
  * Boolean schemas are excluded (not object-valued); schemas with any
- * other validation keyword (even a second applicator) are excluded —
+ * other validation keyword (even a second applicator) are excluded:
  * those need a full compile because the sibling keywords contribute
  * to the result.
  */

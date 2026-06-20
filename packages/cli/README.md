@@ -181,14 +181,12 @@ resolve` or `resolveSpec` before running `compile-spec`.
 
 ### Relationship to ajv's `standaloneCode`
 
-Ajv's `standaloneCode` covers the schema layer: it emits a compiled
-JSON Schema validator as module source. `compile-schema` does the
-same thing. `compile-spec` covers the HTTP layer on top: router
-matching, content-type dispatch, parameter deserialisation
-(style / explode), response status matching, and shape-only
-security checks. Rebuilding that layer on top of ajv's standalone
-output is re-implementing `express-openapi-validator`
-from scratch; `compile-spec` emits it directly.
+Ajv's `standaloneCode` emits a compiled JSON Schema validator as
+module source; `compile-schema` does the same. `compile-spec` adds
+the HTTP layer on top: router matching, content-type dispatch,
+parameter deserialisation (style / explode), response status
+matching, and shape-only security checks, emitted directly rather
+than hand-built over a standalone schema validator.
 
 ## Exit codes
 

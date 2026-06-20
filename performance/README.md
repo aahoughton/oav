@@ -15,7 +15,7 @@ pnpm install
 
 ## Entry points
 
-### `run.ts` — cross-library schema benchmark
+### `run.ts`: cross-library schema benchmark
 
 ```bash
 pnpm bench                                      # default 500ms per task
@@ -46,7 +46,7 @@ between tasks.
 
 Two modes, one script:
 
-- **Default (synthetic).** Iterates the schemas in `./schemas.ts` — a
+- **Default (synthetic).** Iterates the schemas in `./schemas.ts`, a
   curated shape distribution (trivial scalar, flat object, recursive
   `$ref`, `oneOf`+`allOf` composition, large array of small objects,
   `uniqueItems` array, and an object with large length-bounded
@@ -61,14 +61,15 @@ Two modes, one script:
   every unique request- and response-body schema, and times each
   library's compile across the whole set with plain
   `performance.now()`. Validate is skipped in this mode: real-world
-  schemas don't come with paired valid/invalid fixtures, so there's
-  no apples-to-apples way to measure it here. Use the
-  synthetic mode if you need validate throughput numbers.
+  schemas don't come with paired valid/invalid fixtures, and any
+  synthetic input would favor one library's fast path. For validate
+  throughput on real shapes, copy the body schema into `schemas.ts`
+  with hand-authored inputs and run the synthetic mode.
 
 Output lands on stdout and as JSON under `./results/<iso-timestamp>.json`
 (see [Results file](#results-file)).
 
-### `bench-real-world.mjs` — oav end-to-end on one spec
+### `bench-real-world.mjs`: oav end-to-end on one spec
 
 ```bash
 pnpm build                                      # dist/ needs to exist
@@ -88,7 +89,7 @@ more specs and reports:
 Use it to sanity-check a new spec loads end-to-end through oav, or to
 regression-check when you touch `@oav/spec` / `@oav/validator`.
 
-### `mem.ts` — steady-state memory under HTTP load
+### `mem.ts`: steady-state memory under HTTP load
 
 ```bash
 # One-time bootstrap (builds oav, installs both server fixtures):
@@ -100,7 +101,7 @@ pnpm bench:mem                                      # default 100 × 500 = 50,00
 BATCHES=20 PER_BATCH=500 WARMUP=250 pnpm bench:mem  # quick smoke
 ```
 
-Spawns two Express 4 servers — one wraps `oav`, the other
+Spawns two Express 4 servers: one wraps `oav`, the other
 wraps `express-openapi-validator` (which pulls in ajv). Both validate
 a ~40-schema OpenAPI spec with discriminated payment-method unions,
 nested address + amount objects, and array-of-items transfers. The
@@ -184,16 +185,16 @@ batch throughput (avg ms per 500-req batch): oav 75ms, eov 80ms
 
 What to look at:
 
-- **`baseline RSS`** — the library + validator-set footprint at rest,
+- **`baseline RSS`**: the library + validator-set footprint at rest,
   right after `app.listen`. Stable across runs; typically eov+ajv is
   ~30 MB higher than oav on the bench spec.
-- **`steady heapUsed`** — V8 heap after 50k requests with GC forced
+- **`steady heapUsed`**: V8 heap after 50k requests with GC forced
   before each sample. Stable; typically eov+ajv is ~2.5–3 MB higher
   (~15–20%).
-- **`growth` rows** — delta from post-warmup to end-of-run. Both
+- **`growth` rows**: delta from post-warmup to end-of-run. Both
   libraries plateau; if either grows without bound the value here
   diverges and the steady rows keep rising across runs.
-- **`steady RSS`** is noisier than heapUsed — V8 expands the heap in
+- **`steady RSS`** is noisier than heapUsed: V8 expands the heap in
   chunks, and when a chunk boundary falls mid-run the final RSS
   differs by 10–15 MB between runs even though the actual working
   set is stable. The heapUsed number is the cleaner signal for
@@ -206,23 +207,13 @@ What to look at:
 
 Raw per-batch data lands in `results/mem-<timestamp>.json`.
 
-### Note on `validate` under `--spec`
-
-Deliberately omitted. Without paired valid/invalid fixtures per
-schema, any choice of synthetic input (`{}`, an example mined from
-the spec, a type-driven synthesized value) would favor one library's
-fast-path over another in ways that don't reflect real workloads. If
-you need validate throughput numbers on real shapes, copy the
-relevant body schema into `schemas.ts` with hand-authored inputs and
-run the synthetic mode.
-
 ## Methodology
 
 **Compile (synthetic).** Each hot-loop iteration is only the
 library's work:
 
 - **ajv**: `new Ajv({allErrors, strict:false}).compile(schema)`. The
-  instance construction stays in — it's part of the cold-start cost
+  instance construction stays in; it's part of the cold-start cost
   for a consumer that doesn't already have an Ajv around.
 - **oav**: `compileSchema(schema, opts)` with pre-built `opts`.
 
@@ -232,7 +223,7 @@ warnings don't flood stdout.
 
 **Validate (synthetic).** Every library pre-compiles its validator
 once, outside the timed loop. The hot path is literally
-`validator(sample)` — no closures, no cursor math, no per-iteration
+`validator(sample)`: no closures, no cursor math, no per-iteration
 setup; each task validates one fixed payload.
 
 The **valid** path uses one representative sample per shape. The
@@ -247,7 +238,7 @@ fixtures in `schemas.ts` are deliberately authored to cover that spread
 (early / mid / deep / late / many-errors).
 
 Before any timing, a pre-flight pass validates every authored input
-under all five configs and asserts the verdict matches its label —
+under all five configs and asserts the verdict matches its label,
 catching a mislabeled fixture or an ajv/oav disagreement that would
 otherwise silently time the wrong path.
 
@@ -277,7 +268,7 @@ fast path.
     large valid body costs O(1).
 
 - **Predicate mode (`output: "predicate"`).** When consumers only need a
-  yes/no answer — routing, gating, hot-path filtering — `oav-predicate`
+  yes/no answer (routing, gating, hot-path filtering), `oav-predicate`
   brings oav to parity with ajv's fail-fast mode on invalid paths and
   typically edges it out on valid paths. The compiler drops error-tree
   construction entirely: no leaf-allocation, no path snapshot, no params
@@ -300,8 +291,8 @@ fast path.
 ## Results file
 
 Each run writes `./results/<iso-timestamp>.json`. The `results/` directory is
-gitignored — benchmark numbers depend on the host machine, so committing them
-across contributors would be misleading. Compare runs locally instead, or roll
+gitignored (benchmark numbers depend on the host machine, so committing them
+across contributors would be misleading). Compare runs locally instead, or roll
 back to a commit and re-run.
 
 Format:

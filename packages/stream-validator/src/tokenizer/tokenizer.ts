@@ -447,7 +447,7 @@ export class JsonTokenizer {
     }
     if (j > i) {
       // Build the run's ASCII string in one append (no per-char re-entry
-      // into step, and no Buffer view — a typed-array allocation per
+      // into step, and no Buffer view; a typed-array allocation per
       // number showed up hot in profiling).
       let run = "";
       for (let k = i; k < j; k++) run += String.fromCharCode(chunk[k] as number);

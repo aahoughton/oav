@@ -16,9 +16,8 @@ reuses `@oav/core`'s flat error model.
 
 > **Incubating, unpublished.** This package is `private` and ships
 > TypeScript source, not a build. It is consumed inside the OAV monorepo
-> via `workspace:*`; there is no `@oav/stream-validator` on npm yet. The
-> import below is the eventual published name and resolves to the
-> workspace source today.
+> via `workspace:*`; there is no `@oav/stream-validator` on npm. The
+> import path below resolves to the workspace source.
 
 ## Usage
 
@@ -74,9 +73,9 @@ body that is (or contains) an internal ref like
 `#/components/schemas/Pet` must carry the document's ref containers
 (`components` / `$defs` / `definitions`) alongside it, or construction
 throws `unresolvable $ref`. Routing, content negotiation, OpenAPI version
-detection, and body-schema lookup stay the caller's job in v1 (the HTTP
-adapter that bundles them is post-v1); the bridge from a resolved
-document is short:
+detection, and body-schema lookup stay the caller's job; this package
+validates one resolved schema, so those concerns sit above it. The
+bridge from a resolved document is short:
 
 ```ts
 import { resolveSpec } from "@oav/spec";
@@ -146,5 +145,4 @@ visitor over an arbitrary schema.
 Incubating and **unpublished** (`private`). The package lives in the
 monorepo via `workspace:*` so its classifier can co-evolve with
 `@oav/schema`'s keyword set (a CI drift test makes that a build failure
-rather than silent breakage). Maturity gate: `private` -> `experimental`
-dist-tag -> public `latest`.
+rather than silent breakage).
