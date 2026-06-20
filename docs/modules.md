@@ -14,10 +14,11 @@ further down). `oav-core` mirrors the same paths; substitute
 | `@aahoughton/oav/formats`      | Built-in string format validators                                               |
 | `@aahoughton/oav/core`         | Error tree model, shared OpenAPI / HTTP types                                   |
 
-`oav` also exports `createYamlFileReader`, `createSmartHttpReader`
-(HTTP reader that handles both JSON and YAML by inspecting
-`Content-Type`), and `parseYamlString` at the root entry, and ships
-the `oav` CLI as a `bin`.
+`oav` also exports `loadSpecSync` (YAML-defaulting, so a `.yaml`
+spec loads with no reader composition), `createYamlFileReader`,
+`createSmartHttpReader` (HTTP reader that handles both JSON and YAML
+by inspecting `Content-Type`), and `parseYamlString` at the root
+entry, and ships the `oav` CLI as a `bin`.
 
 ## Internal subpaths (not covered by semver)
 
