@@ -1,22 +1,78 @@
 {
-  "name": "@oav/stream-validator",
+  "name": "@aahoughton/oav-stream-validator",
   "version": "0.0.0",
-  "private": true,
-  "description": "Internal (incubating): streaming JSON Schema validator for @aahoughton/oav. Validates a JSON document against a resolved 2020-12 schema as it streams, echoing bytes through unchanged.",
+  "description": "Streaming JSON Schema 2020-12 validator for @aahoughton/oav-core. Validates a JSON document against a resolved schema as it streams, echoing bytes through unchanged while reporting violations on a side channel; memory stays bounded for forward-decidable schemas, so multi-GB bodies validate without materializing in heap.",
+  "keywords": [
+    "json-schema",
+    "json-schema-2020-12",
+    "openapi",
+    "openapi-3.0",
+    "openapi-3.1",
+    "openapi-3.2",
+    "sax",
+    "stream",
+    "streaming",
+    "validation",
+    "validator"
+  ],
+  "homepage": "https://github.com/aahoughton/oav#readme",
+  "bugs": {
+    "url": "https://github.com/aahoughton/oav/issues"
+  },
+  "license": "MIT",
+  "author": "Andrew Houghton <aah@roarmouse.org>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aahoughton/oav.git",
+    "directory": "packages/stream-validator"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "type": "module",
   "sideEffects": false,
-  "main": "./src/index.ts",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
-      "import": "./src/index.ts"
-    }
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "tag": "experimental"
+  },
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "typecheck": "tsc -b",
+    "prepack": "node -e \"if((process.env.npm_config_user_agent||'').startsWith('npm/'))throw Error('Use pnpm pack: npm pack does not rewrite workspace:* deps.')\" && tsup && node ../../scripts/pack-devdeps.mjs strip",
+    "postpack": "node ../../scripts/pack-devdeps.mjs restore"
   },
   "dependencies": {
+    "@aahoughton/oav-core": "workspace:*"
+  },
+  "devDependencies": {
     "@oav/core": "workspace:*",
-    "@oav/schema": "workspace:*"
+    "@oav/schema": "workspace:*",
+    "tsup": "8.5.1",
+    "typescript": "5.9.3",
+    "vitest": "4.1.9"
   },
   "engines": {
-    "node": ">=20"
-  }
+    "node": ">=22"
+  },
+  "//": "Incubating: published to the `experimental` dist-tag (publishConfig.tag), not `latest`, and versioned independently of the lockstep oav-core family. No prepublishOnly: release.yml runs `pnpm test` from root before publish."
 }

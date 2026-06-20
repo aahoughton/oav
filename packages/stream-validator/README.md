@@ -1,29 +1,42 @@
-# @oav/stream-validator (incubating)
+# oav-stream-validator (incubating)
 
-A streaming JSON Schema 2020-12 validator. It validates a JSON document
-against a resolved schema **as it streams**, echoing the input bytes
-through unchanged while reporting violations on a side channel. Memory is
-bounded for forward-decidable schemas with structural bounds (or
-configured caps), so multi-GB request bodies validate without
-materializing in heap.
+A streaming JSON Schema 2020-12 validator for
+[`oav-core`](https://www.npmjs.com/package/@aahoughton/oav-core). It
+validates a JSON document against a resolved schema **as it streams**,
+echoing the input bytes through unchanged while reporting violations on a
+side channel. Memory is bounded for forward-decidable schemas with
+structural bounds (or configured caps), so multi-GB request bodies
+validate without materializing in heap.
 
-This is a second engine, not a mode of `@oav/schema`. `@oav/schema`'s
-compiler is pull-based over a fully-parsed value; this engine is
-push-based over a token stream. It reuses `@oav/schema`'s in-memory
+This is a second engine, not a mode of the in-memory validator.
+`oav-core`'s compiler is pull-based over a fully-parsed value; this engine
+is push-based over a token stream. It reuses `oav-core`'s in-memory
 validator for the subtrees a compile-time classifier marks BUFFER (so
-format assertion and built-in formats come from that delegate), and
-reuses `@oav/core`'s flat error model.
+format assertion and built-in formats come from that delegate), and reuses
+its flat error model.
 
-> **Incubating, unpublished.** This package is `private` and ships
-> TypeScript source, not a build. It is consumed inside the OAV monorepo
-> via `workspace:*`; there is no `@oav/stream-validator` on npm. The
-> import path below resolves to the workspace source.
+Thin: this package bundles nothing from `oav-core`. It declares
+`@aahoughton/oav-core` as a regular dependency, so installing the stream
+validator pulls the engine it delegates to along with it.
+
+> **Incubating, on the `experimental` dist-tag.** Published to
+> `experimental` (not `latest`) and versioned independently of the
+> `oav-core` family while the API settles (`0.x`). Install it by tag:
+>
+> ```bash
+> npm install @aahoughton/oav-stream-validator@experimental
+> ```
+>
+> A plain `npm install @aahoughton/oav-stream-validator` (no tag) will not
+> resolve until it graduates to `latest`. The public surface is small and
+> additive-by-design, but treat `0.x` minor bumps as potentially breaking
+> until then.
 
 ## Usage
 
 ```ts
 import { pipeline } from "node:stream/promises";
-import { createStreamValidator } from "@oav/stream-validator";
+import { createStreamValidator } from "@aahoughton/oav-stream-validator";
 
 const validator = createStreamValidator(schema); // throws here if the schema can't be streamed
 
@@ -88,8 +101,8 @@ validates one resolved schema, so those concerns sit above it. The
 bridge from a resolved document is short:
 
 ```ts
-import { resolveSpec } from "@oav/spec";
-import { createStreamValidator } from "@oav/stream-validator";
+import { resolveSpec } from "@aahoughton/oav-core/spec";
+import { createStreamValidator } from "@aahoughton/oav-stream-validator";
 
 const doc = await resolveSpec(source); // inlines external refs; internal refs stay
 const op = doc.paths["/pets"].post; // your router selects the operation
@@ -159,7 +172,8 @@ visitor over an arbitrary schema.
 
 ## Status
 
-Incubating and **unpublished** (`private`). The package lives in the
-monorepo via `workspace:*` so its classifier can co-evolve with
-`@oav/schema`'s keyword set (a CI drift test makes that a build failure
-rather than silent breakage).
+Incubating: published to the `experimental` dist-tag (not `latest`) and
+versioned independently of the `oav-core` family. The classifier
+co-evolves with `oav-core`'s keyword set inside the monorepo (a CI drift
+test makes a divergence a build failure rather than silent breakage); the
+published bundle pins `@aahoughton/oav-core` so the two move together.

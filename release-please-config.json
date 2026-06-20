@@ -53,6 +53,13 @@
       "package-name": "@aahoughton/oav-fastify",
       "component": "oav-fastify",
       "changelog-path": "CHANGELOG.md"
+    },
+    "packages/stream-validator": {
+      "release-type": "node",
+      "package-name": "@aahoughton/oav-stream-validator",
+      "component": "oav-stream-validator",
+      "changelog-path": "CHANGELOG.md",
+      "bump-minor-pre-major": true
     }
   }
 }
