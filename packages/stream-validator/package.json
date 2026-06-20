@@ -1,6 +1,6 @@
 {
   "name": "@aahoughton/oav-stream-validator",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Streaming JSON Schema 2020-12 validator for @aahoughton/oav-core. Validates a JSON document against a resolved schema as it streams, echoing bytes through unchanged while reporting violations on a side channel; memory stays bounded for forward-decidable schemas, so multi-GB bodies validate without materializing in heap.",
   "keywords": [
     "json-schema",
