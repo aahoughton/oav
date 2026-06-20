@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.4.0](https://github.com/aahoughton/oav/compare/oav-express4-v3.3.0...oav-express4-v3.4.0) (2026-06-20)
+
+
+### Chore
+
+* **oav-express4:** Synchronize oav versions
+
 ## [3.3.0](https://github.com/aahoughton/oav/compare/oav-express4-v3.2.0...oav-express4-v3.3.0) (2026-06-16)
 
 

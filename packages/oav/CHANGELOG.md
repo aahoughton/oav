@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.4.0](https://github.com/aahoughton/oav/compare/oav-v3.3.0...oav-v3.4.0) (2026-06-20)
+
+
+### Documentation
+
+* **oav:** correct the root package's batteries-included loader note ([#416](https://github.com/aahoughton/oav/issues/416)) ([e0767fa](https://github.com/aahoughton/oav/commit/e0767fa291806fd2ea9ae2e0980af278a99e7562))
+
 ## [3.3.0](https://github.com/aahoughton/oav/compare/oav-v3.2.0...oav-v3.3.0) (2026-06-16)
 
 
