@@ -3,6 +3,7 @@ export {
   BufferLimitError,
   SpineUnsupportedError,
   SpineValidator,
+  UniqueItemsLimitError,
   type IslandDelegate,
   type ScopeClose,
   type SpineOptions,

@@ -69,6 +69,20 @@ export class BufferLimitError extends Error {
   }
 }
 
+/**
+ * A `uniqueItems` array buffered for delegation exceeded the configured
+ * `maxUniqueItems` element count. Fatal: the array cannot be validated
+ * within the seen-set budget, so it is refused rather than held unbounded.
+ */
+export class UniqueItemsLimitError extends Error {
+  readonly byteOffset: number;
+  constructor(limit: number, byteOffset: number) {
+    super(`uniqueItems array exceeded maxUniqueItems=${limit} (at byte ${byteOffset})`);
+    this.name = "UniqueItemsLimitError";
+    this.byteOffset = byteOffset;
+  }
+}
+
 /** Validates a materialized island value against schemas; returns flat violations. */
 export type IslandDelegate = (
   schemas: SchemaObject[],
@@ -136,6 +150,8 @@ export interface SpineOptions {
   verdictOnly?: boolean;
   /** Cap on a single buffered island's UTF-8 source-byte span (and forced-buffer scalar). Unset: no cap. */
   maxBufferedBytes?: number;
+  /** Cap on the element count of a buffered `uniqueItems` array (its seen-set is O(that)). Unset: no cap. */
+  maxUniqueItems?: number;
   /** Maximum nesting depth. Exceeding it is a `depth` violation. Unset: no cap. */
   maxDepth?: number;
   /** Regex engine for `pattern` (e.g. RE2). Hardens the spine's own regex use. */
@@ -292,6 +308,7 @@ export class SpineValidator implements JsonEventHandler {
   private readonly delegate: IslandDelegate | undefined;
   private readonly maxErrors: number;
   private readonly maxBufferedBytes: number | undefined;
+  private readonly maxUniqueItems: number | undefined;
   private readonly maxDepth: number | undefined;
   private readonly regexCompiler: RegexCompiler | undefined;
   private readonly assertsFormat: boolean;
@@ -356,6 +373,9 @@ export class SpineValidator implements JsonEventHandler {
     path: PathSegment[];
     builder: ValueBuilder;
     byteStart: number;
+    // Element-count cap when this island is a `uniqueItems` array and
+    // `maxUniqueItems` is set; `undefined` otherwise (no count enforced).
+    uniqueCap: number | undefined;
   } | null = null;
 
   // An open TEE: the value's events are forwarded to one forward sub-spine
@@ -378,6 +398,7 @@ export class SpineValidator implements JsonEventHandler {
     this.maxErrors = options.maxErrors ?? Number.POSITIVE_INFINITY;
     this.verdictOnly = options.verdictOnly ?? false;
     this.maxBufferedBytes = options.maxBufferedBytes;
+    this.maxUniqueItems = options.maxUniqueItems;
     this.maxDepth = options.maxDepth;
     this.regexCompiler = options.regexCompiler;
     this.assertsFormat = options.assertsFormat ?? false;
@@ -649,15 +670,24 @@ export class SpineValidator implements JsonEventHandler {
     this.requireDelegate();
     this.pushSegment();
     if (app.hasFalse) this.fail("false");
+    // A `uniqueItems` array island's seen-set is O(element count); cap it
+    // when `maxUniqueItems` is set so the buffered array cannot grow
+    // unbounded on hostile input. Other islands (object `const`, `contains`,
+    // ...) are bounded by `maxBufferedBytes` only.
+    const uniqueCap =
+      this.maxUniqueItems !== undefined && app.schemas.some((s) => s.uniqueItems === true)
+        ? this.maxUniqueItems
+        : undefined;
     this.island = {
       schemas: app.schemas,
       path: [...this.path],
       builder: new ValueBuilder(),
       byteStart: this.curOffset,
+      uniqueCap,
     };
   }
 
-  // Forward an event into the open island, enforcing the buffer cap, and
+  // Forward an event into the open island, enforcing the buffer caps, and
   // finalize when the island's value is complete.
   private forwardIsland(feed: (b: ValueBuilder) => void): void {
     const island = this.island as NonNullable<typeof this.island>;
@@ -667,6 +697,14 @@ export class SpineValidator implements JsonEventHandler {
       this.curOffset - island.byteStart > this.maxBufferedBytes
     ) {
       throw new BufferLimitError(this.maxBufferedBytes, this.curOffset);
+    }
+    // The island's root array grows one entry per top-level element; refuse
+    // a `uniqueItems` array past its element cap before the rest buffers.
+    if (island.uniqueCap !== undefined) {
+      const v = island.builder.value;
+      if (Array.isArray(v) && v.length > island.uniqueCap) {
+        throw new UniqueItemsLimitError(island.uniqueCap, this.curOffset);
+      }
     }
     if (island.builder.complete) this.finalizeIsland();
   }
@@ -695,6 +733,7 @@ export class SpineValidator implements JsonEventHandler {
     };
     if (this.delegate !== undefined) opts.delegate = this.delegate;
     if (this.maxBufferedBytes !== undefined) opts.maxBufferedBytes = this.maxBufferedBytes;
+    if (this.maxUniqueItems !== undefined) opts.maxUniqueItems = this.maxUniqueItems;
     if (this.maxDepth !== undefined) opts.maxDepth = this.maxDepth;
     if (this.regexCompiler !== undefined) opts.regexCompiler = this.regexCompiler;
     return new SpineValidator(branch, opts);
