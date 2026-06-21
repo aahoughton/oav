@@ -12,7 +12,9 @@
  * BUFFER (so format assertion and built-in formats come from that
  * delegate), and reuses `@oav/core`'s flat error model.
  *
- * The package is unpublished during incubation (`private`).
+ * Published as `@aahoughton/oav-stream-validator` on the `experimental`
+ * dist-tag during incubation, versioned independently of the `oav-core`
+ * family.
  *
  * @packageDocumentation
  */
