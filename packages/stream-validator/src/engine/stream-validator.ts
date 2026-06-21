@@ -103,6 +103,32 @@ export class ValidationFailedError extends Error {
   }
 }
 
+/**
+ * Input exceeded the configured `maxTotalBytes`. Fatal, raised on the
+ * `error` channel regardless of validity (a policy lever, not a schema
+ * verdict).
+ *
+ * The total-size member of the package's resource-limit family
+ * ({@link BufferLimitError}, {@link UniqueItemsLimitError}), so a caller
+ * can `instanceof` any of them to tell "too big" from a
+ * {@link ValidationFailedError} ("well-formed but invalid"), then read
+ * `limit` for which cap tripped.
+ *
+ * @public
+ */
+export class MaxTotalBytesError extends Error {
+  /** The `maxTotalBytes` value that was exceeded. */
+  readonly limit: number;
+  /** Stream-absolute byte count reached when the cap was crossed. */
+  readonly byteOffset: number;
+  constructor(limit: number, byteOffset: number) {
+    super(`stream-validator: input exceeded maxTotalBytes=${limit} (at byte ${byteOffset})`);
+    this.name = "MaxTotalBytesError";
+    this.limit = limit;
+    this.byteOffset = byteOffset;
+  }
+}
+
 // Containers a local `$ref` may target. Carried onto a delegated island
 // subschema so internal refs (`#/$defs/...`, `#/components/schemas/...`,
 // draft-07 `#/definitions/...`) resolve against the in-memory compile.
@@ -477,7 +503,7 @@ export class StreamValidator extends Transform {
     // Refuse oversize input regardless of validity (policy lever).
     if (this.maxTotalBytes !== undefined && this.totalBytes > this.maxTotalBytes) {
       this.push(chunk);
-      const err = new Error(`stream-validator: input exceeded maxTotalBytes=${this.maxTotalBytes}`);
+      const err = new MaxTotalBytesError(this.maxTotalBytes, this.totalBytes);
       this.finished = true;
       this.rejectResult(err);
       cb(err);

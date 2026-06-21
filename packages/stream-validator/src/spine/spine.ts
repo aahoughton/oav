@@ -59,12 +59,24 @@ export class BudgetReached extends Error {
   }
 }
 
-/** A buffered island exceeded the configured `maxBufferedBytes`. Fatal. */
+/**
+ * A buffered island exceeded the configured `maxBufferedBytes`. Fatal.
+ *
+ * One of the package's resource-limit errors (alongside
+ * {@link UniqueItemsLimitError} and `MaxTotalBytesError`): a fatal `error`
+ * channel throw distinct from a {@link SchemaViolation} (a well-formed but
+ * invalid value). Caught with `instanceof` to tell "too big" from
+ * "invalid".
+ */
 export class BufferLimitError extends Error {
+  /** The `maxBufferedBytes` value that was exceeded. */
+  readonly limit: number;
+  /** Stream-absolute byte offset at which the cap was crossed. */
   readonly byteOffset: number;
   constructor(limit: number, byteOffset: number) {
     super(`buffered island exceeded maxBufferedBytes=${limit} (at byte ${byteOffset})`);
     this.name = "BufferLimitError";
+    this.limit = limit;
     this.byteOffset = byteOffset;
   }
 }
@@ -73,12 +85,18 @@ export class BufferLimitError extends Error {
  * A `uniqueItems` array buffered for delegation exceeded the configured
  * `maxUniqueItems` element count. Fatal: the array cannot be validated
  * within the seen-set budget, so it is refused rather than held unbounded.
+ *
+ * A resource-limit error (see {@link BufferLimitError}).
  */
 export class UniqueItemsLimitError extends Error {
+  /** The `maxUniqueItems` value that was exceeded. */
+  readonly limit: number;
+  /** Stream-absolute byte offset at which the cap was crossed. */
   readonly byteOffset: number;
   constructor(limit: number, byteOffset: number) {
     super(`uniqueItems array exceeded maxUniqueItems=${limit} (at byte ${byteOffset})`);
     this.name = "UniqueItemsLimitError";
+    this.limit = limit;
     this.byteOffset = byteOffset;
   }
 }
