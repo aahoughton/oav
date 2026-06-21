@@ -25,10 +25,11 @@
 
 import { Readable, Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import type { SchemaOrBoolean } from "../packages/core/src/index.ts";
+import { formatText, type SchemaOrBoolean } from "../packages/core/src/index.ts";
 import {
   createStreamValidator,
   type SchemaViolation,
+  toValidationError,
   ValidationFailedError,
 } from "../packages/stream-validator/src/index.ts";
 
@@ -70,9 +71,6 @@ function countingSink(): { sink: Writable; bytes: () => number } {
   return { sink, bytes: () => total };
 }
 
-const fmt = (v: SchemaViolation): string =>
-  `${v.path.length ? "/" + v.path.join("/") : "(root)"}  ${v.code}  @byte ${v.byteOffset}`;
-
 // --- A valid 100k-element body streams clean ------------------------------
 {
   const validator = createStreamValidator(schema);
@@ -94,7 +92,12 @@ const fmt = (v: SchemaViolation): string =>
   } catch (err) {
     if (err instanceof ValidationFailedError) {
       console.log("\nbad element       → rejected (as expected)");
-      for (const v of seen) console.log("  " + fmt(v));
+      // Bridge the stream violations to @oav/core's error model, then reuse
+      // its formatter instead of hand-rolling one. The stream-specific
+      // byteOffset rides in params; append it for the "failed early" point.
+      for (const v of seen) {
+        console.log("  " + formatText(toValidationError(v)) + `  @byte ${v.byteOffset}`);
+      }
     } else {
       throw err;
     }

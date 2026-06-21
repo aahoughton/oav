@@ -39,3 +39,4 @@ export {
 } from "./engine/index.js";
 export { BufferLimitError, UniqueItemsLimitError } from "./spine/index.js";
 export type { StreamVerdict, SchemaViolation } from "./spine/index.js";
+export { toValidationError } from "./violation.js";
