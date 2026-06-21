@@ -1,14 +1,22 @@
 {
   "name": "@aahoughton/oav-fastify",
   "version": "3.4.0",
-  "description": "Fastify adapter for @aahoughton/oav-core. preValidation hook factory plus standalone helpers (httpRequestFromFastify, renderProblemDetails) for callers composing their own hooks.",
+  "description": "Fastify preValidation hook for OpenAPI request validation (3.0/3.1/3.2). Checks the request against your spec and returns problem+json errors. Built on @aahoughton/oav-core.",
   "keywords": [
+    "api-validation",
     "fastify",
+    "fastify-openapi",
+    "fastify-plugin",
     "hook",
+    "oas",
     "openapi",
     "openapi-3.0",
     "openapi-3.1",
     "openapi-3.2",
+    "openapi-request-validator",
+    "openapi-validator",
+    "request-validator",
+    "swagger",
     "validation",
     "validator"
   ],
