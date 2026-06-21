@@ -13,7 +13,7 @@
  * body schema is untouched; only the parameter list changes.
  *
  * Run from the repo root:
- *   pnpm tsx examples/overlay-petstore-endpoint.ts
+ *   pnpm dlx tsx examples/overlay-petstore-endpoint.ts
  */
 
 import { fileURLToPath } from "node:url";

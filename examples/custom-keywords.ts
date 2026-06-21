@@ -1,11 +1,11 @@
 /**
  * Custom keywords: register a schema keyword whose behavior depends on
- * runtime state the spec itself can't capture — here, an "active tenant"
- * check backed by an in-memory cache. Good for Luhn checks, tick-size
+ * runtime state the spec can't capture. Here, an "active tenant" check
+ * backed by an in-memory cache. Good for Luhn checks, tick-size
  * multiples, currency-whitelists, etc.
  *
  * Run from the repo root:
- *   pnpm tsx examples/custom-keywords.ts
+ *   pnpm dlx tsx examples/custom-keywords.ts
  */
 
 import { fileURLToPath } from "node:url";

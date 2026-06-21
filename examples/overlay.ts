@@ -5,7 +5,7 @@
  * extra properties, or replacing a response shape in test environments.
  *
  * Run from the repo root:
- *   pnpm tsx examples/overlay.ts
+ *   pnpm dlx tsx examples/overlay.ts
  */
 
 import { fileURLToPath } from "node:url";
@@ -39,12 +39,12 @@ const overlay: SpecOverlay = {
 const merged = applyOverlays(base, [overlay]);
 const v = createValidator(merged);
 
-// Without the header — should fail.
+// Without the header: should fail.
 const missing = v.validateRequest({ method: "GET", path: "/pets" });
 console.log("without X-Request-Id:");
 if (!missing.valid) console.log(formatText(missing.errors));
 
-// With the header — clean.
+// With the header: clean.
 const ok = v.validateRequest({
   method: "GET",
   path: "/pets",

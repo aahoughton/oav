@@ -19,7 +19,17 @@ The examples import from `packages/*/src` directly so they work without
 instead; the logic translates 1:1. Consumers on the lean
 `@aahoughton/oav-core` package can substitute `@aahoughton/oav-core`
 for `@aahoughton/oav` in import specifiers that don't touch
-`createYamlFileReader` (oav-core is JSON-only).
+`createYamlFileReader` (oav-core is JSON-only); `resolveSpec` lives at
+`@aahoughton/oav-core/spec`.
+
+The streaming examples import from `packages/stream-validator/src`, which
+translates to `@aahoughton/oav-stream-validator`. That is a separate
+package (not part of the `oav` / `oav-core` re-export), incubating on the
+`experimental` dist-tag, so install it by tag:
+
+```bash
+npm install @aahoughton/oav-stream-validator@experimental
+```
 
 ## What's in here
 
@@ -39,6 +49,23 @@ for `@aahoughton/oav` in import specifiers that don't touch
 See [`docs/overlays.md`](../docs/overlays.md) for a walk-through of the overlay
 shape and when to use each section (`extendSchemas`, `replaceSchemas`,
 `overrides`, `addPaths`).
+
+### Streaming
+
+The streaming validator (`@aahoughton/oav-stream-validator`, incubating)
+is a second engine: it validates a JSON body as the bytes flow through,
+echoing them out unchanged, without buffering the whole document. These
+examples break the load-a-spec / print-a-verdict mold: they pipe a
+lazily generated body through `createStreamValidator` and read the
+side channel, so each fabricates its body inline rather than loading a
+fixture.
+
+| File                       | Shows                                                                     |
+| -------------------------- | ------------------------------------------------------------------------- |
+| `stream-basic.ts`          | `pipeline` echo-through; the `violation` channel and `result` verdict     |
+| `stream-from-spec.ts`      | Bridge a resolved spec to a body validator; carry `components` for `$ref` |
+| `stream-limits.ts`         | Bound untrusted input: `enforceBounds`, `maxTotalBytes`, eager `maxItems` |
+| `stream-recover-fields.ts` | Recover top-level scalars with `valueEvents` while a large body streams   |
 
 ## Conventions
 

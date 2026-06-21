@@ -14,7 +14,7 @@
  * subschema.
  *
  * Run from the repo root:
- *   pnpm tsx examples/cross-field-validation.ts
+ *   pnpm dlx tsx examples/cross-field-validation.ts
  */
 
 import { fileURLToPath } from "node:url";
@@ -25,7 +25,7 @@ import { createValidator } from "../packages/validator/src/index.ts";
 import type { CustomKeywordValidator } from "../packages/validator/src/index.ts";
 
 /**
- * `x-cross-field: { <field>: { atLeast: <other-field> } }` — the
+ * `x-cross-field: { <field>: { atLeast: <other-field> } }`: the
  * named field must be `>=` the named other field. Walks the rules
  * map, reaches each named sibling directly on the object data.
  */
