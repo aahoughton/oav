@@ -60,12 +60,12 @@ lazily generated body through `createStreamValidator` and read the
 side channel, so each fabricates its body inline rather than loading a
 fixture.
 
-| File                       | Shows                                                                     |
-| -------------------------- | ------------------------------------------------------------------------- |
-| `stream-basic.ts`          | `pipeline` echo-through; the `violation` channel and `result` verdict     |
-| `stream-from-spec.ts`      | Bridge a resolved spec to a body validator; carry `components` for `$ref` |
-| `stream-limits.ts`         | Bound untrusted input: `enforceBounds`, `maxTotalBytes`, eager `maxItems` |
-| `stream-recover-fields.ts` | Recover top-level scalars with `valueEvents` while a large body streams   |
+| File                       | Shows                                                                         |
+| -------------------------- | ----------------------------------------------------------------------------- |
+| `stream-basic.ts`          | `pipeline` echo-through; the `violation` channel and `result` verdict         |
+| `stream-from-spec.ts`      | Bridge a resolved spec to a body validator with `streamValidatorForOperation` |
+| `stream-limits.ts`         | Bound untrusted input: `enforceBounds`, `maxTotalBytes`, eager `maxItems`     |
+| `stream-recover-fields.ts` | Recover top-level scalars with `valueEvents` while a large body streams       |
 
 ## Conventions
 
