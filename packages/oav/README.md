@@ -1,7 +1,21 @@
 # oav
 
-Distribution of `oav-core` with YAML readers and the `oav` CLI added.
-The programmatic validator surface is identical to the lean package.
+[![npm](https://img.shields.io/npm/v/@aahoughton/oav)](https://www.npmjs.com/package/@aahoughton/oav)
+[![CI](https://github.com/aahoughton/oav/actions/workflows/ci.yml/badge.svg)](https://github.com/aahoughton/oav/actions/workflows/ci.yml)
+[![types included](https://img.shields.io/badge/types-included-blue)](https://www.typescriptlang.org/)
+[![license: MIT](https://img.shields.io/npm/l/@aahoughton/oav)](https://github.com/aahoughton/oav/blob/main/LICENSE)
+
+Validate HTTP requests and responses against your OpenAPI spec.
+OpenAPI 3.0, 3.1, and 3.2, for JavaScript and TypeScript services. One
+call checks the whole HTTP frame (method, path, parameters, body,
+content type, status, headers) and hands back structured errors you
+render yourself.
+
+This is the batteries-included package: the full `oav-core` validator
+surface plus YAML spec readers and the `oav` CLI. For a zero-dependency
+install (JSON or pre-parsed specs, for edge / serverless runtimes), use
+[`@aahoughton/oav-core`](https://www.npmjs.com/package/@aahoughton/oav-core)
+directly; the programmatic surface is identical.
 
 ```ts
 import { createValidator, createYamlFileReader } from "@aahoughton/oav";
@@ -12,7 +26,20 @@ const { document } = await loadSpec({
   entry: "openapi.yaml",
 });
 const validator = createValidator(document);
+
+const result = validator.validateRequest({
+  method: "POST",
+  path: "/pets",
+  contentType: "application/json",
+  body: { name: "Fido" },
+});
+// result.valid -> boolean; result.errors -> typed error list
 ```
+
+Tested against the JSON Schema 2020-12 test suite, OpenAPI 3.0 / 3.1 /
+3.2 fixtures, real-world specs, and Express 4 / 5 + Fastify integration.
+Full rationale, install matrix, and the tool comparison live in the
+[project README](https://github.com/aahoughton/oav/blob/main/README.md).
 
 ## When to use which
 
