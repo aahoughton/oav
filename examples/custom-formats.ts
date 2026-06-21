@@ -1,11 +1,11 @@
 /**
  * Custom formats: register a string format (here, E.164 phone numbers)
- * and have it enforced alongside the built-ins. A format is any
- * `(value: string) => boolean`; merged on top of
- * `oav/formats`' defaults at validator-construction time.
+ * and enforce it alongside the built-ins. A format is any
+ * `(value: string) => boolean`, merged onto the `oav/formats` defaults
+ * when you build the validator.
  *
  * Run from the repo root:
- *   pnpm tsx examples/custom-formats.ts
+ *   pnpm dlx tsx examples/custom-formats.ts
  */
 
 import { fileURLToPath } from "node:url";

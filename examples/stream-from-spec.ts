@@ -11,8 +11,8 @@
  * (`#/components/schemas/Pet`). The engine resolves refs against the
  * schema you pass it, not against the original document, so you must
  * carry the document's ref container (`components`) alongside the body
- * schema. Omit it and construction throws `unresolvable $ref`, eagerly,
- * before any byte streams.
+ * schema. Omit it and construction throws `unresolvable $ref` before any
+ * byte streams.
  *
  * Translation to the published packages: `resolveSpec` from
  * `@aahoughton/oav-core/spec`, `createStreamValidator` from

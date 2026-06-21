@@ -7,12 +7,12 @@
  * fork in sync, you overlay an extension onto the `Pet` component.
  *
  * The overlay merges the extension into the original schema via
- * `allOf` — the original shape still applies; the extension adds to it.
+ * `allOf`: the original shape still applies, and the extension adds to it.
  * Consumers that only know about the upstream `Pet` continue to see a
  * compatible shape; the extra constraint is enforced on top.
  *
  * Run from the repo root:
- *   pnpm tsx examples/overlay-petstore-schema.ts
+ *   pnpm dlx tsx examples/overlay-petstore-schema.ts
  */
 
 import { fileURLToPath } from "node:url";

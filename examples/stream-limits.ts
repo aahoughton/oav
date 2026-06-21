@@ -13,10 +13,10 @@
  *     `maxLength`) fails fast at the offending element, before the rest
  *     of the body streams.
  *
- * These examples use inline schemas rather than a spec file: the subject
- * is the raw schema/option surface, the same shape `createStreamValidator`
- * takes. See docs/configuration.md for the in-memory analogs (`maxDepth`,
- * regex hardening) and stream-validator's README for the full limit set.
+ * These examples use inline schemas instead of a spec file, since the
+ * subject is the raw schema and option surface. See docs/configuration.md
+ * for the in-memory analogs (`maxDepth`, regex hardening) and
+ * stream-validator's README for the full limit set.
  *
  * Translation to the published package: import from
  * `@aahoughton/oav-stream-validator`. See ./README.md.

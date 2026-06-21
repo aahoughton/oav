@@ -1,8 +1,8 @@
 /**
- * Recover a few small scalar fields while validating a large body, with
- * no second parser and no materializing the whole document.
+ * Recover a few small scalar fields while validating a large body,
+ * without a second parser or materializing the whole document.
  *
- * A streaming body still often carries a handful of small top-level
+ * A streaming body often carries a handful of small top-level
  * scalars you need eagerly: an id to route on, a schema version, a
  * timestamp to log. `valueEvents` emits a `value` event when a scalar
  * object member completes; with `capture: true` the decoded value rides

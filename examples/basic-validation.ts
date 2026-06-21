@@ -1,9 +1,9 @@
 /**
- * Basic HTTP validation: load a petstore spec from disk, build a
- * validator, and check one valid + one invalid request, then a response.
+ * Basic HTTP validation: load a petstore spec, build a validator, then
+ * check a valid request, an invalid one, and a response.
  *
  * Run from the repo root:
- *   pnpm tsx examples/basic-validation.ts
+ *   pnpm dlx tsx examples/basic-validation.ts
  */
 
 import { fileURLToPath } from "node:url";

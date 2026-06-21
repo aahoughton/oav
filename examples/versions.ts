@@ -1,15 +1,15 @@
 /**
  * Multi-version support: the same conceptual "create a pet" operation,
  * declared three different ways, one per OpenAPI version. The validator
- * reads `openapi` once at construction and picks the right dialect —
- * no per-request branching.
+ * reads `openapi` once at construction and picks the right dialect, so
+ * there's no per-request branching.
  *
  * - 3.0.x: `nullable: true`, boolean `exclusiveMaximum`
  * - 3.1.x: `type: ["string", "null"]`, numeric `exclusiveMaximum`
  * - 3.2.x: like 3.1 but can use the new `QUERY` HTTP method
  *
  * Run from the repo root:
- *   pnpm tsx examples/versions.ts
+ *   pnpm dlx tsx examples/versions.ts
  */
 
 import { fileURLToPath } from "node:url";

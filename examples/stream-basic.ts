@@ -9,11 +9,11 @@
  * with `maxErrors: 1`: the first violation destroys the stream and
  * rejects the `pipeline`.
  *
- * This is a second engine, not a mode of `createValidator`: push-based
- * over a token stream rather than pull-based over a parsed value. It
- * suits large bodies (multi-GB uploads, bulk arrays) you do not want to
- * buffer. For the in-memory validator that takes an already-parsed body,
- * see basic-validation.ts.
+ * A second engine alongside `createValidator`: push-based over a token
+ * stream rather than pull-based over a parsed value. It suits large
+ * bodies (multi-GB uploads, bulk arrays) you don't want to buffer. For
+ * the in-memory validator that takes an already-parsed body, see
+ * basic-validation.ts.
  *
  * Translation to the published packages: import `createStreamValidator`
  * from `@aahoughton/oav-stream-validator` (incubating, install with

@@ -7,15 +7,15 @@
  * types, auth-middleware expectations). One source of truth: the
  * spec; the middleware reads it instead of hardcoding duplicates.
  *
- * This file is **documentation, not library API.** Copy it into your
- * project and adapt the interpretation choices — what `maxLength`
- * means on a binary field, which `x-*` extensions to recognize, how
- * nested `properties` roll up — to match your domain. Keeping those
- * decisions in application code (rather than in oav) avoids baking
- * one team's conventions into every team's startup.
+ * This file is documentation, not library API. Copy it into your
+ * project and adapt the interpretation choices (what `maxLength` means
+ * on a binary field, which `x-*` extensions to recognize, how nested
+ * `properties` roll up) to match your domain. Keeping those decisions
+ * in application code, not in oav, avoids baking one team's conventions
+ * into every team's startup.
  *
  * Run from the repo root:
- *   pnpm tsx examples/spec-digest.ts
+ *   pnpm dlx tsx examples/spec-digest.ts
  */
 
 import { fileURLToPath } from "node:url";
@@ -89,9 +89,9 @@ function bodyLimitsByMediaType(op: OperationObject): Record<string, { maxBytes?:
  * Recursive scan of a schema for a `maxLength` on a binary/byte
  * field. `maxLength` on a `format: binary` field is the OpenAPI
  * convention for byte-count; on a plain string it means code
- * points. This recipe treats only the binary case as a byte ceiling
- * — your domain may want to recognize an `x-max-bytes` extension, a
- * custom annotation keyword, or something else entirely.
+ * points. This recipe treats only the binary case as a byte ceiling.
+ * Your domain may want an `x-max-bytes` extension, a custom annotation
+ * keyword, or something else entirely.
  */
 function declaredMaxBytes(schema: SchemaObject | boolean | undefined): number | undefined {
   if (!schema || typeof schema !== "object") return undefined;

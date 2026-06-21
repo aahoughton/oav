@@ -1,11 +1,11 @@
 /**
- * Bounded error collection: compare the default exhaustive mode with
- * `maxErrors: 1` (classic fast-fail) and `maxErrors: 3` (bounded) on
- * the same invalid payload. Hot loops short-circuit once the budget
- * is exhausted, so a huge invalid array doesn't cost proportional CPU.
+ * Bounded error collection: run the same invalid payload at the default
+ * fast-fail (`maxErrors: 1`), bounded budgets (`maxErrors: 3` and `10`),
+ * and uncapped (`Infinity`). Hot loops short-circuit once the budget is
+ * spent, so a huge invalid array doesn't cost proportional CPU.
  *
  * Run from the repo root:
- *   pnpm tsx examples/max-errors.ts
+ *   pnpm dlx tsx examples/max-errors.ts
  */
 
 import { fileURLToPath } from "node:url";
