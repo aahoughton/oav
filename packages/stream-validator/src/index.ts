@@ -23,6 +23,7 @@ export type { JsonPath, PathFilter, StreamValidatorOptions } from "./options.js"
 export {
   createStreamValidator,
   DEFAULT_MAX_CAPTURE_BYTES,
+  MaxTotalBytesError,
   ValidationFailedError,
   type Bytes,
   type ScopeContext,
@@ -36,4 +37,5 @@ export {
   type StreamValidator,
   type ValueEvent,
 } from "./engine/index.js";
+export { BufferLimitError, UniqueItemsLimitError } from "./spine/index.js";
 export type { StreamVerdict, SchemaViolation } from "./spine/index.js";

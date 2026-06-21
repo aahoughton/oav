@@ -30,6 +30,7 @@ import { pipeline } from "node:stream/promises";
 import type { SchemaOrBoolean } from "../packages/core/src/index.ts";
 import {
   createStreamValidator,
+  MaxTotalBytesError,
   ValidationFailedError,
 } from "../packages/stream-validator/src/index.ts";
 
@@ -64,9 +65,14 @@ const drain = async (src: AsyncIterable<Buffer>): Promise<void> => {
     await pipeline(Readable.from('{"data":"' + "x".repeat(64) + '"}'), validator, drain);
     console.log("\nmaxTotalBytes: 16 → accepted (unexpected!)");
   } catch (err) {
-    // A size-limit overflow is a fatal error (not a schema violation),
-    // so `pipeline` rejects with a plain Error, not ValidationFailedError.
-    console.log("\nmaxTotalBytes: 16 → rejected: " + (err as Error).message);
+    // A size-limit overflow is a fatal error (not a schema violation), so
+    // `pipeline` rejects with a MaxTotalBytesError, not ValidationFailedError.
+    // `instanceof` tells "too big" from "invalid" without matching the message.
+    if (err instanceof MaxTotalBytesError) {
+      console.log(`\nmaxTotalBytes: 16 → rejected: over the ${err.limit}-byte cap`);
+    } else {
+      throw err;
+    }
   }
 }
 

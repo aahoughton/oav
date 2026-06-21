@@ -1,5 +1,6 @@
 export {
   createStreamValidator,
+  MaxTotalBytesError,
   StreamValidator,
   ValidationFailedError,
 } from "./stream-validator.js";

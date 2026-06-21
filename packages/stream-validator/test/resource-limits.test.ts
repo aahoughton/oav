@@ -4,9 +4,12 @@ import { describe, expect, it } from "vitest";
 import type { RegexCompiler, SchemaOrBoolean } from "@oav/core";
 import { compileSchema, jsonSchemaDialect, openapi31Dialect } from "@oav/schema";
 import {
+  BufferLimitError,
   createStreamValidator,
+  MaxTotalBytesError,
   type StreamValidatorOptions,
   type StreamVerdict,
+  UniqueItemsLimitError,
 } from "../src/index.js";
 
 const enc = new TextEncoder();
@@ -84,7 +87,10 @@ describe("forced-buffer scalar is capped by maxBufferedBytes", () => {
     await expect(
       pipeline(source(big, 16), validator, new Writable({ write: (_c, _e, cb) => cb() })),
     ).rejects.toThrow(/maxBufferedBytes/);
-    expect((await guard).message).toMatch(/maxBufferedBytes/);
+    const err = await guard;
+    expect(err).toBeInstanceOf(BufferLimitError);
+    expect((err as BufferLimitError).limit).toBe(8);
+    expect((err as BufferLimitError).byteOffset).toBeGreaterThan(0);
   });
 });
 
@@ -125,7 +131,9 @@ describe("uniqueItems buffers as an island, bounded by maxUniqueItems / maxBuffe
     await expect(
       pipeline(source(bigUnique(300), 8), validator, new Writable({ write: (_c, _e, cb) => cb() })),
     ).rejects.toThrow(/maxUniqueItems/);
-    expect((await guard).message).toMatch(/maxUniqueItems/);
+    const err = await guard;
+    expect(err).toBeInstanceOf(UniqueItemsLimitError);
+    expect((err as UniqueItemsLimitError).limit).toBe(4);
   });
 
   it("maxUniqueItems within the cap validates normally", async () => {
@@ -188,7 +196,9 @@ describe("maxTotalBytes / maxDepth", () => {
     await expect(
       pipeline(source('"abcdefghij"', 3), validator, new Writable({ write: (_c, _e, cb) => cb() })),
     ).rejects.toThrow(/maxTotalBytes/);
-    expect((await guard).message).toMatch(/maxTotalBytes/);
+    const err = await guard;
+    expect(err).toBeInstanceOf(MaxTotalBytesError);
+    expect((err as MaxTotalBytesError).limit).toBe(4);
   });
 
   it("reports a depth violation past maxDepth instead of growing unbounded", async () => {
