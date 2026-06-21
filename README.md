@@ -1,48 +1,78 @@
 # oav
 
-OpenAPI **3.0** / **3.1** / **3.2** HTTP request and response
-validator for JavaScript and TypeScript services. Two primary drivers:
+[![npm](https://img.shields.io/npm/v/@aahoughton/oav)](https://www.npmjs.com/package/@aahoughton/oav)
+[![CI](https://github.com/aahoughton/oav/actions/workflows/ci.yml/badge.svg)](https://github.com/aahoughton/oav/actions/workflows/ci.yml)
+[![types included](https://img.shields.io/badge/types-included-blue)](https://www.typescriptlang.org/)
+[![license: MIT](https://img.shields.io/npm/l/@aahoughton/oav)](https://github.com/aahoughton/oav/blob/main/LICENSE)
 
-- **Tenant overrides over a base spec.** When tenants extend a
-  shared API (adding a required header on one route, refining a
-  schema, requiring auth where the base spec didn't), they need to
-  document those changes in the spec they ship, not as
-  application-side patches. `applyOverlays` rewrites the document
-  at load time. Custom keywords, formats, and dialects plug into
-  the compiler the same way, so per-tenant validation rules don't
-  require forking. See [docs/overlays.md](https://github.com/aahoughton/oav/blob/main/docs/overlays.md).
-- **Validators that fit in microservice runners.** `oav compile-spec
-openapi.yaml` emits a single zero-dependency ES module exposing
-  the full validator surface. Targets Cloudflare Workers, Vercel
-  Edge, Lambda@Edge, Deno Deploy: runtimes where `new Function()`
-  is unavailable, or where dependency footprint matters. `--only
-"POST /pets"` (repeatable) scopes the output to specific
-  operations without touching the source spec.
+Validate HTTP requests and responses against your OpenAPI spec.
+OpenAPI 3.0, 3.1, and 3.2, for JavaScript and TypeScript services.
 
-Errors come back as a flat list of typed leaves (`code`, `path`,
-`message`, `params`) by default, or a nested tree on request. One
-validator call covers the full HTTP frame: method, path, parameters,
-body, content type, status, and headers.
+```ts
+import { createValidator } from "@aahoughton/oav";
 
-If you only need generic JSON Schema validation across many drafts,
-start with Ajv. If you want a one-line Express middleware with file
-upload and auth handler conveniences built in, start with
-`express-openapi-validator`. See
-[docs/comparison.md](https://github.com/aahoughton/oav/blob/main/docs/comparison.md) for the feature map.
+const validator = createValidator(document); // your parsed OpenAPI spec
+
+const result = validator.validateRequest({
+  method: "POST",
+  path: "/pets",
+  contentType: "application/json",
+  body: { name: "Fido" },
+});
+
+if (!result.valid) {
+  console.log(result.errors);
+  // [{ code: "required", path: ["body", "age"], message: "...", params: {} }]
+}
+```
+
+One call covers the whole HTTP frame: method, path, parameters, body,
+content type, status, and headers. Errors come back as a flat list of
+typed leaves (`code`, `path`, `message`, `params`) you render yourself,
+or a nested tree on request. Invalid input is a return value, not a
+thrown exception, and `oav` never mutates your `req` / `res`.
+
+**Reach for oav when you want**
+
+- Structured errors with stable codes and paths, ready for
+  `application/problem+json`, logs, or your own client messages.
+- A spec compiled to a single zero-dependency module that runs where
+  `new Function()` is unavailable: Cloudflare Workers, Vercel Edge,
+  Lambda@Edge, Deno Deploy. (`oav compile-spec openapi.yaml`.)
+- To extend a spec you don't own (a per-tenant required header, an added
+  auth requirement, a tightened schema) with overlays instead of forking.
+
+**At a glance:**
+
+| If you need                                         | Start with                |
+| --------------------------------------------------- | ------------------------- |
+| Generic JSON Schema validation across many drafts   | Ajv                       |
+| Turnkey Express middleware with uploads + auth      | express-openapi-validator |
+| Framework-neutral OpenAPI request/response checking | oav                       |
+| Per-tenant or per-deployment spec overlays          | oav                       |
+| A standalone validator for edge / serverless        | oav                       |
+
+See [docs/comparison.md](https://github.com/aahoughton/oav/blob/main/docs/comparison.md)
+for the full feature map.
+
+Tested against the JSON Schema 2020-12 test suite, OpenAPI 3.0 / 3.1 /
+3.2 fixtures, real-world specs (Stripe, GitHub, Twilio, and more), and
+Express 4 / 5 + Fastify integration. See
+[what works today](#conformance).
 
 ## Install
 
-`oav` is the package shorthand used throughout the docs. Install uses
-the scoped npm package names shown below.
+Pick the package that matches what you need. (`oav` is the shorthand
+used elsewhere in the docs for `@aahoughton/oav`.)
 
-| You need                                         | Package choice                  |
-| ------------------------------------------------ | ------------------------------- |
-| YAML specs, HTTP/YAML readers, and the `oav` CLI | `oav`                           |
-| JSON or pre-parsed specs with zero runtime deps  | `oav-core`                      |
-| Express 4 request middleware                     | `oav` + `oav-express4`          |
-| Express 5 request middleware                     | `oav` + `oav-express5`          |
-| Fastify `preValidation` hook                     | `oav` + `oav-fastify`           |
-| Edge/serverless validator emitted at build time  | `oav` as a dev/build dependency |
+| You need                                         | Install                                        |
+| ------------------------------------------------ | ---------------------------------------------- |
+| YAML specs, HTTP/YAML readers, and the `oav` CLI | `@aahoughton/oav`                              |
+| JSON or pre-parsed specs with zero runtime deps  | `@aahoughton/oav-core`                         |
+| Express 4 request middleware                     | `@aahoughton/oav` + `@aahoughton/oav-express4` |
+| Express 5 request middleware                     | `@aahoughton/oav` + `@aahoughton/oav-express5` |
+| Fastify `preValidation` hook                     | `@aahoughton/oav` + `@aahoughton/oav-fastify`  |
+| Edge/serverless validator emitted at build time  | `@aahoughton/oav` as a dev/build dependency    |
 
 `oav` is a superset of `oav-core`: same programmatic surface plus YAML
 readers and the `oav` CLI. The CLI's `commander` and `esbuild` deps
@@ -56,6 +86,16 @@ npm install @aahoughton/oav-express4   # Express 4 adapter (transitively pulls o
 npm install @aahoughton/oav-express5   # Express 5 adapter
 npm install @aahoughton/oav-fastify    # Fastify adapter
 ```
+
+Want to try it against your own spec before wiring anything in? The CLI
+validates a request from the command line, no code required:
+
+```bash
+npx @aahoughton/oav validate openapi.yaml --path "POST /pets" --body pet.json
+```
+
+A valid request prints nothing and exits `0`; validation errors print to
+stderr and exit non-zero.
 
 `oav` re-exports `oav-core` at five subpath entrypoints (`/schema`,
 `/spec`, `/overlay-spec`, `/formats`, `/core`); on the lean package,
