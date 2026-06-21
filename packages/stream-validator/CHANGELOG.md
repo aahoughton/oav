@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.0](https://github.com/aahoughton/oav/compare/oav-stream-validator-v0.1.0...oav-stream-validator-v0.2.0) (2026-06-21)
+
+
+### Features
+
+* **stream-validator:** public-surface ergonomics ([#423](https://github.com/aahoughton/oav/issues/423)) ([#428](https://github.com/aahoughton/oav/issues/428)) ([6ddb759](https://github.com/aahoughton/oav/commit/6ddb759283b207fd90e8ef316719635a67ef33e8))
+
+
+### Documentation
+
+* **examples:** add streaming examples and refresh existing ones ([#421](https://github.com/aahoughton/oav/issues/421)) ([9318aa4](https://github.com/aahoughton/oav/commit/9318aa474dd40f32f80be306989a6abe05c6ec94))
+* lead with the common case on the front-door READMEs and tune npm metadata ([#429](https://github.com/aahoughton/oav/issues/429)) ([80d2384](https://github.com/aahoughton/oav/commit/80d23847a17fbd7ff9b5576a4c7c0cc1cb3e788f))
+
 ## 0.1.0 (2026-06-20)
 
 

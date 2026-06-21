@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.5.0](https://github.com/aahoughton/oav/compare/oav-express5-v3.4.0...oav-express5-v3.5.0) (2026-06-21)
+
+
+### Documentation
+
+* lead with the common case on the front-door READMEs and tune npm metadata ([#429](https://github.com/aahoughton/oav/issues/429)) ([80d2384](https://github.com/aahoughton/oav/commit/80d23847a17fbd7ff9b5576a4c7c0cc1cb3e788f))
+
 ## [3.4.0](https://github.com/aahoughton/oav/compare/oav-express5-v3.3.0...oav-express5-v3.4.0) (2026-06-20)
 
 
