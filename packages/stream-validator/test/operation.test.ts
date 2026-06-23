@@ -72,6 +72,25 @@ describe("streamValidatorForOperation", () => {
     expect(bad.violations[0]!.code).toBe("required");
   });
 
+  it("resolves a bare top-level $ref body on a 3.0 doc (components survive normalization)", async () => {
+    // Regression: a 3.0 bare-$ref body becomes `{ $ref, components }`, and
+    // 3.0 $ref-sibling suppression then drops `components`, leaving the
+    // internal $ref unresolvable. Dereferencing the top-level $ref before
+    // attaching `components` keeps a non-$ref root the container sits beside.
+    const ok = await run(
+      streamValidatorForOperation(petstore("3.0.3"), { method: "post", path: "/pets" }),
+      { name: "Fido", tag: "dog" },
+    );
+    expect(ok.valid).toBe(true);
+
+    const bad = await run(
+      streamValidatorForOperation(petstore("3.0.3"), { method: "post", path: "/pets" }),
+      { tag: "dog" },
+    );
+    expect(bad.valid).toBe(false);
+    expect(bad.violations[0]!.code).toBe("required");
+  });
+
   it("is case-insensitive on the method", () => {
     expect(() =>
       streamValidatorForOperation(petstore(), { method: "POST", path: "/pets" }),
