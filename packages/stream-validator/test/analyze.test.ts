@@ -171,6 +171,18 @@ describe("analyzeStreamability", () => {
     expect(r.positions[0]).toMatchObject({ path: "tags", keyword: "uniqueItems" });
   });
 
+  it("formats an array-item position path with no dot before the bracket", () => {
+    const r = analyze({
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        tags: { type: "array", items: { type: "string", pattern: "^.+$" } },
+      },
+    } as unknown as SchemaObject);
+    // The pattern string inside the array items is at `tags[]`, not `tags.[]`.
+    expect(r.positions.map((p) => p.path)).toContain("tags[]");
+  });
+
   it("throws ClassifierError on an unstreamable schema (same as construction)", () => {
     expect(() => analyze({ type: "object", unevaluatedProperties: false } as SchemaObject)).toThrow(
       ClassifierError,

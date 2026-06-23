@@ -125,7 +125,9 @@ function isObjectSchema(s: unknown): s is SchemaObject {
 
 function joinPath(base: string, rel: string): string {
   if (rel === "") return base;
-  return base === "" ? rel : `${base}.${rel}`;
+  if (base === "") return rel;
+  // An array-index segment (`[]`, `[0]`) reads better with no separating dot.
+  return rel.startsWith("[") ? `${base}${rel}` : `${base}.${rel}`;
 }
 
 function addSize(a: ByteSize, b: ByteSize): ByteSize {
