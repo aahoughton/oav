@@ -5,6 +5,7 @@ import {
   compileSpecCommand,
   defaultCommandIo,
   resolveCommand,
+  streamCheckCommand,
   validateCommand,
   type CommandIo,
   type ValidateMode,
@@ -166,6 +167,63 @@ export function buildProgram(options: BuildProgramOptions = {}): Command {
       );
       exit(res.exitCode);
     });
+
+  program
+    .command("stream-check <spec>")
+    .description(
+      "Report the streaming-buffer budget per operation (which request/response bodies stream vs buffer, and where).",
+    )
+    .option("--overlay <file...>", "apply one or more overlays in order", collectOverlays, [])
+    .option(
+      "--envelope <shape>",
+      "'text' (default; per-operation table) or 'json' (the SpecBudget payload)",
+      (value: string): "text" | "json" => {
+        if (value !== "text" && value !== "json") {
+          throw new Error(`unknown envelope: ${value} (expected "text" or "json")`);
+        }
+        return value;
+      },
+      "text",
+    )
+    .option(
+      "--max-buffered-bytes <n>",
+      "buffer cap to compute the effective peak against",
+      (v: string) => Number.parseInt(v, 10),
+    )
+    .option("--fail-on-unbounded", "exit non-zero if any body has an unbounded peak buffer", false)
+    .option("--verbose", "list each unbounded buffering position with its path", false)
+    .option("-o, --output <file>", "write output to a file instead of stdout")
+    .option("--quiet", "print nothing; exit code only", false)
+    .action(
+      async (
+        spec: string,
+        opts: {
+          overlay: string[];
+          envelope: "text" | "json";
+          maxBufferedBytes?: number;
+          failOnUnbounded: boolean;
+          verbose: boolean;
+          output?: string;
+          quiet: boolean;
+        },
+      ) => {
+        const res = await streamCheckCommand(
+          {
+            spec,
+            overlays: opts.overlay ?? [],
+            envelope: opts.envelope,
+            ...(opts.maxBufferedBytes !== undefined && {
+              maxBufferedBytes: opts.maxBufferedBytes,
+            }),
+            failOnUnbounded: opts.failOnUnbounded,
+            verbose: opts.verbose,
+            options: { format: "text", output: opts.output, quiet: opts.quiet },
+          },
+          io,
+        );
+        exit(res.exitCode);
+      },
+    );
 
   program
     .command("compile-schema <schema>")

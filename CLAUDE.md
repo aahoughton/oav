@@ -215,7 +215,25 @@ string) => boolean>` shaped for `compileSchema`'s `formats` option. A
   sub-validator's subtree with its HTTP location (`body`, `query`, …)
   so error paths are unambiguous. Also exports the Fetch-API adapter
   (`httpRequestFromFetch`, …) for Next.js / Hono / Bun / Deno.
-- **`@oav/cli`**: thin commander wrapper; no business logic.
+- **`@aahoughton/oav-stream-validator`** (incubating, published
+  standalone on the `experimental` dist-tag, not folded into the
+  `oav-core` bundle): a second, push-based streaming engine. Beyond
+  `createStreamValidator`, it exports the **streamability analyzer**:
+  `analyzeStreamability(schema)` returns a peak-buffer budget (where a
+  schema buffers and how much, in wire bytes, `"unbounded"` where a
+  structural bound is missing), and `analyzeSpec(doc)` rolls that up per
+  operation (request + each response body). The analyzer mirrors the
+  spine's `computeKind` (not just the classifier's `strategyOf`), so
+  `contains` / asserting `format` / `uniqueItems` are caught as buffering;
+  it is engine-free (calls neither the spine nor `createStreamValidator`),
+  so a consumer importing only the analyzer does not pull the engine. Body
+  extraction (`carryComponents`, `resolveLocalRef`) lives in the shared
+  engine-free `openapi/body-schema.ts` so both `operation.ts` and the
+  analyzer use it.
+- **`@oav/cli`**: thin commander wrapper. The one place it reaches past
+  pure wiring is `stream-check`, which calls `analyzeSpec` and renders the
+  per-operation table; the business logic stays in the analyzer, the CLI
+  owns only the rendering (`stream-check.ts`).
 - **`@oav/oav-express4` / `oav-express5` / `oav-fastify`**: thin
   framework adapters with identical export names and option shapes
   (`validateRequests`, `httpRequestFrom<Framework>`,
@@ -237,6 +255,7 @@ cli           → validator → router
                          → core
               → spec → core
               → core
+              → stream-validator (the published @aahoughton/oav-stream-validator)
 overlay-spec  → spec → core
               → core
 oav-express4  → validator → ... (same as cli's chain)
@@ -255,6 +274,16 @@ carry their deps at runtime while the published `@aahoughton/*` bundles
 carry the same `@oav/*` as build-only devDeps. Adding a real edge means
 updating both the graph above and the relevant `package.json`; a phantom
 or undeclared edge fails the build.
+
+The `cli → stream-validator` edge is the one exception not asserted by
+`check-deps`: the stream validator is published standalone as
+`@aahoughton/oav-stream-validator` (not an `@oav/*` bundle-member), so the
+CLI imports it by that published name, which `check-deps` (scoped to
+`@oav/*`) does not police. Its source alias lives in `workspace-aliases.ts`
+(consumed by vitest + tsup) and the published `@aahoughton/oav` carries it
+as a real runtime dependency. This crosses the incubation boundary on
+purpose (a CLI-only convenience), so a `stream-validator` bump can ripple
+into a CLI release.
 
 ## Extending the compiler
 

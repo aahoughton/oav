@@ -13,6 +13,7 @@
     }
   },
   "dependencies": {
+    "@aahoughton/oav-stream-validator": "workspace:*",
     "@oav/core": "workspace:*",
     "@oav/formats": "workspace:*",
     "@oav/schema": "workspace:*",
