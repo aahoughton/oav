@@ -124,18 +124,29 @@ locally too (`pnpm pack` + `npm install` in `/tmp`).
 
 ```bash
 pnpm install
-pnpm build                        # tsup: single multi-entry bundle (ESM + CJS + .d.ts)
+pnpm build                        # tsup: oav-core + stream-validator + the oav CLI
 pnpm test                         # vitest for everything
 pnpm vitest run packages/schema   # run a single package's tests (path filter)
 pnpm lint                         # oxlint + oxfmt --check + check:deps
 pnpm check:deps                   # assert the @oav/* dependency graph (see below)
 pnpm fmt                          # oxfmt --write .
 pnpm typecheck                    # tsc -b (composite project references)
+pnpm oav <args>                   # run the built CLI (e.g. pnpm oav stream-check spec.yaml)
 ```
 
 `pnpm test` uses vitest with workspace aliases from `vitest.config.ts` so
 tests run against `packages/*/src` directly; no need to build before
 testing.
+
+`pnpm oav` runs `packages/oav/dist/cli.js`, so it needs a prior `pnpm build`
+(which builds oav-core, the standalone stream-validator, and the CLI). The
+standalone-tsup packages (`oav`, `stream-validator`, the three adapters)
+set `emitDeclarationOnly: true` in their `tsconfig.json`: their `dist/` is
+the tsup-built runtime artifact, and without this `tsc -b` (typecheck)
+would emit per-file `.js` over the tsup bundle, breaking the built CLI
+until the next `pnpm build`. Leave it in place. (The `@oav/*` packages
+bundled into `oav-core` don't need it: their `dist/` is unused, since the
+root tsup bundles them from source.)
 
 Use `pnpm pack` (not `npm pack`) for any workspace package. `npm pack`
 ships unrewritten `workspace:*` deps; the prepack guard rejects it
