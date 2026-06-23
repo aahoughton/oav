@@ -38,9 +38,13 @@ export {
   type ValueEvent,
 } from "./engine/index.js";
 export {
+  analyzeSpec,
   analyzeStreamability,
+  type BodyBudget,
   type BufferPosition,
   type ByteSize,
+  type OperationBudget,
+  type SpecBudget,
   type StreamabilityReport,
   type StreamClass,
 } from "./analyzer/index.js";

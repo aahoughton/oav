@@ -202,6 +202,26 @@ escaping can exceed the per-character assumption), so treat the number as a
 capacity-planning figure, not a runtime meter. An unstreamable schema
 throws the same `ClassifierError` `createStreamValidator` raises.
 
+`analyzeSpec(document, options)` rolls this up over a whole resolved
+OpenAPI document: one budget per operation, for the request body and each
+response body. A body whose schema cannot be classified is reported with
+an `error` field rather than throwing, so a sweep surveys the whole spec.
+The `oav` CLI surfaces it as `oav stream-check <spec>` (a per-operation
+table; `--verbose` lists each unbounded position, `--envelope json` emits
+the `SpecBudget`, `--fail-on-unbounded` exits non-zero for CI):
+
+```ts
+import { analyzeSpec } from "@aahoughton/oav-stream-validator";
+
+const { document } = await resolveSpec(source);
+for (const op of analyzeSpec(document).operations) {
+  for (const body of op.bodies) {
+    const peak = body.report?.peakBytes ?? `error: ${body.error}`;
+    console.log(`${op.method} ${op.path} ${body.role}${body.status ?? ""}: ${peak}`);
+  }
+}
+```
+
 ## Status
 
 Incubating: published to the `experimental` dist-tag (not `latest`) and

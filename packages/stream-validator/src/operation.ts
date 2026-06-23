@@ -21,94 +21,15 @@
  * @packageDocumentation
  */
 
-import type {
-  HttpMethod,
-  OpenAPIDocument,
-  RequestBodyObject,
-  SchemaObject,
-  SchemaOrBoolean,
-} from "@oav/core";
+import type { HttpMethod, OpenAPIDocument, RequestBodyObject } from "@oav/core";
 import { createStreamValidator, type StreamValidator } from "./engine/index.js";
+import {
+  carryComponents,
+  HTTP_METHODS,
+  resolveLocalRef,
+  versionFromDoc,
+} from "./openapi/body-schema.js";
 import type { StreamValidatorOptions } from "./options.js";
-import { resolveRef } from "./ref-resolve.js";
-
-const HTTP_METHODS = new Set<string>([
-  "get",
-  "put",
-  "post",
-  "delete",
-  "options",
-  "head",
-  "patch",
-  "trace",
-  "query",
-]);
-
-// Map an OpenAPI version string ("3.0.3") to the engine's normalization
-// selector. Unknown prefixes return undefined (treated as raw JSON Schema,
-// or overridden via options.openApiVersion).
-function versionFromDoc(openapi: string): StreamValidatorOptions["openApiVersion"] {
-  if (openapi.startsWith("3.0")) return "3.0";
-  if (openapi.startsWith("3.1")) return "3.1";
-  if (openapi.startsWith("3.2")) return "3.2";
-  return undefined;
-}
-
-function isObjectSchema(s: SchemaOrBoolean): s is SchemaObject {
-  return typeof s === "object" && s !== null && !Array.isArray(s);
-}
-
-// Follow a (possibly $ref'd) requestBody to its object form. A local
-// `#/components/requestBodies/...` ref is a normal shape resolveSpec leaves
-// in place, so resolve it here (mirroring @oav/validator's
-// resolveOperationRef) rather than rejecting it. External refs should have
-// been inlined upstream; surface a clear error if one survived.
-function resolveRequestBody(
-  doc: OpenAPIDocument,
-  requestBody: RequestBodyObject | { $ref: string },
-  where: string,
-): RequestBodyObject {
-  let current: unknown = requestBody;
-  for (let hops = 0; hops < 32; hops++) {
-    if (current === null || typeof current !== "object") break;
-    const ref = (current as { $ref?: unknown }).$ref;
-    if (typeof ref !== "string") return current as RequestBodyObject;
-    if (!ref.startsWith("#")) {
-      throw new Error(
-        `streamValidatorForOperation: external requestBody ref "${ref}" for ${where} not resolved; run resolveSpec() over the document first`,
-      );
-    }
-    const target = resolveRef(doc as unknown as SchemaObject, ref);
-    if (target === undefined) {
-      throw new Error(
-        `streamValidatorForOperation: requestBody ref "${ref}" for ${where} does not resolve`,
-      );
-    }
-    current = target;
-  }
-  throw new Error(
-    `streamValidatorForOperation: requestBody $ref chain for ${where} exceeded 32 hops (possible cycle)`,
-  );
-}
-
-// Follow a top-level body `$ref` to its non-`$ref` node form. A bare-`$ref`
-// body schema (`{ $ref }`) cannot carry a `components` sibling: 3.0
-// `$ref`-sibling suppression (normalizeOas30) drops the sibling, leaving the
-// internal ref with nothing to resolve against. Dereferencing first leaves a
-// non-`$ref` root the container can sit beside, and internal refs inside the
-// target still resolve through the carried `components`. Returns the schema
-// unchanged when the top-level node is not a `$ref`, or when the ref does not
-// resolve locally (the classifier then throws a clear `unresolvable $ref`).
-function derefTopLevelSchemaRef(doc: OpenAPIDocument, schema: SchemaOrBoolean): SchemaOrBoolean {
-  let current = schema;
-  for (let hops = 0; hops < 32; hops++) {
-    if (!isObjectSchema(current) || typeof current.$ref !== "string") return current;
-    const target = resolveRef(doc as unknown as SchemaObject, current.$ref);
-    if (target === undefined) return schema;
-    current = target;
-  }
-  return schema;
-}
 
 /**
  * Locates a request body within an {@link OpenAPIDocument}.
@@ -172,7 +93,12 @@ export function streamValidatorForOperation(
   if (operation.requestBody === undefined) {
     throw new Error(`streamValidatorForOperation: ${where} has no requestBody`);
   }
-  const requestBody = resolveRequestBody(doc, operation.requestBody, where);
+  const requestBody = resolveLocalRef<RequestBodyObject>(
+    doc,
+    operation.requestBody,
+    "requestBody",
+    where,
+  );
   const mediaType = locator.mediaType ?? "application/json";
   const mediaTypeObject = requestBody.content[mediaType];
   if (mediaTypeObject === undefined) {
@@ -184,14 +110,8 @@ export function streamValidatorForOperation(
   }
 
   // Carry the document's ref container so an internal `$ref` in the body
-  // schema resolves. Dereference a top-level body `$ref` first so the
-  // container sits beside a non-`$ref` root (see derefTopLevelSchemaRef). A
-  // boolean schema needs nothing and is passed as-is.
-  const resolvedBody = derefTopLevelSchemaRef(doc, bodySchema);
-  const schema: SchemaOrBoolean =
-    isObjectSchema(resolvedBody) && doc.components !== undefined
-      ? ({ ...resolvedBody, components: doc.components } as SchemaObject)
-      : resolvedBody;
+  // schema resolves (deref a top-level `$ref` first; see carryComponents).
+  const schema = carryComponents(doc, bodySchema);
 
   const openApiVersion = options.openApiVersion ?? versionFromDoc(doc.openapi);
   return createStreamValidator(schema, {
