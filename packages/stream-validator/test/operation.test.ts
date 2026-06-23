@@ -91,6 +91,53 @@ describe("streamValidatorForOperation", () => {
     expect(bad.violations[0]!.code).toBe("required");
   });
 
+  it("normalizes a 3.0 component reached by an internal $ref (nullable / exclusive*)", async () => {
+    // A nested $ref into components must hit the 3.0-normalized target, not
+    // the raw 3.0 shape: `nullable` folds to a null union, boolean
+    // `exclusiveMinimum` folds to the numeric form.
+    const doc = {
+      openapi: "3.0.3",
+      info: { title: "t", version: "1" },
+      paths: {
+        "/x": {
+          post: {
+            requestBody: {
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      n: { $ref: "#/components/schemas/Nullable" },
+                      m: { $ref: "#/components/schemas/Excl" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      components: {
+        schemas: {
+          Nullable: { type: "integer", nullable: true },
+          Excl: { type: "integer", minimum: 5, exclusiveMinimum: true },
+        },
+      },
+    } as unknown as OpenAPIDocument;
+
+    const ok = await run(streamValidatorForOperation(doc, { method: "post", path: "/x" }), {
+      n: null,
+      m: 6,
+    });
+    expect(ok.valid).toBe(true);
+
+    const bad = await run(streamValidatorForOperation(doc, { method: "post", path: "/x" }), {
+      n: 1,
+      m: 5, // excluded by exclusiveMinimum: 5
+    });
+    expect(bad.valid).toBe(false);
+  });
+
   it("is case-insensitive on the method", () => {
     expect(() =>
       streamValidatorForOperation(petstore(), { method: "POST", path: "/pets" }),
