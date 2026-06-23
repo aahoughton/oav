@@ -35,6 +35,23 @@ function isObjectSchema(s: unknown): s is SchemaObject {
   return typeof s === "object" && s !== null && !Array.isArray(s);
 }
 
+// Normalize the schema-bearing positions of a carried OpenAPI `components`
+// container. A body schema's internal `$ref` resolves against this container
+// (`#/components/schemas/Name`), so its targets need the same 3.0 -> 2020-12
+// rewrite as the inline body; without this, `nullable` / boolean `exclusive*`
+// inside a referenced component survive un-normalized. Only `schemas` holds
+// JSON Schemas a schema `$ref` can name; the other component sub-objects
+// (responses, parameters, ...) are never schema-ref targets and pass through.
+function normalizeComponents(components: Record<string, unknown>): Record<string, unknown> {
+  const schemas = components.schemas;
+  if (!isObjectSchema(schemas)) return components;
+  const out: Record<string, unknown> = {};
+  for (const [name, sub] of Object.entries(schemas)) {
+    out[name] = normalizeOas30(sub as SchemaOrBoolean);
+  }
+  return { ...components, schemas: out };
+}
+
 // Fold a boolean exclusive bound into its 2020-12 numeric form.
 function foldExclusive(out: Record<string, unknown>, bound: "maximum" | "minimum"): void {
   const exKey = bound === "maximum" ? "exclusiveMaximum" : "exclusiveMinimum";
@@ -64,7 +81,9 @@ export function normalizeOas30(schema: SchemaOrBoolean): SchemaOrBoolean {
   const out: Record<string, unknown> = {};
   for (const [key, val] of Object.entries(schema)) {
     if (key === "nullable") continue; // folded into `type` below
-    if (SINGLE.has(key)) out[key] = normalizeOas30(val as SchemaOrBoolean);
+    if (key === "components" && isObjectSchema(val))
+      out[key] = normalizeComponents(val as Record<string, unknown>);
+    else if (SINGLE.has(key)) out[key] = normalizeOas30(val as SchemaOrBoolean);
     else if (ARRAY.has(key))
       out[key] = Array.isArray(val) ? val.map((v) => normalizeOas30(v as SchemaOrBoolean)) : val;
     else if (MAP.has(key) && isObjectSchema(val)) {

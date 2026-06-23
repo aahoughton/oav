@@ -61,6 +61,25 @@ describe("normalizeOas30", () => {
     }) as SchemaObject;
     expect(out.properties?.a).toEqual({ type: ["integer", "null"] });
   });
+
+  it("normalizes components.schemas reached by an inline body's $ref", () => {
+    const out = normalizeOas30({
+      type: "object",
+      properties: { n: { $ref: "#/components/schemas/Nb" } },
+      components: {
+        schemas: {
+          Nb: { type: "integer", nullable: true },
+          Ex: { minimum: 5, exclusiveMinimum: true },
+        },
+        responses: { NotFound: { description: "absent" } },
+      },
+    } as unknown as SchemaOrBoolean) as SchemaObject;
+    const components = out.components as Record<string, Record<string, unknown>>;
+    expect(components.schemas.Nb).toEqual({ type: ["integer", "null"] });
+    expect(components.schemas.Ex).toEqual({ exclusiveMinimum: 5 });
+    // Non-schema component sub-objects pass through untouched.
+    expect(components.responses.NotFound).toEqual({ description: "absent" });
+  });
 });
 
 describe("OpenAPI 3.0 verdict parity with @oav/schema oas30Dialect", () => {

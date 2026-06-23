@@ -91,6 +91,25 @@ function resolveRequestBody(
   );
 }
 
+// Follow a top-level body `$ref` to its non-`$ref` node form. A bare-`$ref`
+// body schema (`{ $ref }`) cannot carry a `components` sibling: 3.0
+// `$ref`-sibling suppression (normalizeOas30) drops the sibling, leaving the
+// internal ref with nothing to resolve against. Dereferencing first leaves a
+// non-`$ref` root the container can sit beside, and internal refs inside the
+// target still resolve through the carried `components`. Returns the schema
+// unchanged when the top-level node is not a `$ref`, or when the ref does not
+// resolve locally (the classifier then throws a clear `unresolvable $ref`).
+function derefTopLevelSchemaRef(doc: OpenAPIDocument, schema: SchemaOrBoolean): SchemaOrBoolean {
+  let current = schema;
+  for (let hops = 0; hops < 32; hops++) {
+    if (!isObjectSchema(current) || typeof current.$ref !== "string") return current;
+    const target = resolveRef(doc as unknown as SchemaObject, current.$ref);
+    if (target === undefined) return schema;
+    current = target;
+  }
+  return schema;
+}
+
 /**
  * Locates a request body within an {@link OpenAPIDocument}.
  *
@@ -165,11 +184,14 @@ export function streamValidatorForOperation(
   }
 
   // Carry the document's ref container so an internal `$ref` in the body
-  // schema resolves. A boolean schema needs nothing and is passed as-is.
+  // schema resolves. Dereference a top-level body `$ref` first so the
+  // container sits beside a non-`$ref` root (see derefTopLevelSchemaRef). A
+  // boolean schema needs nothing and is passed as-is.
+  const resolvedBody = derefTopLevelSchemaRef(doc, bodySchema);
   const schema: SchemaOrBoolean =
-    isObjectSchema(bodySchema) && doc.components !== undefined
-      ? ({ ...bodySchema, components: doc.components } as SchemaObject)
-      : bodySchema;
+    isObjectSchema(resolvedBody) && doc.components !== undefined
+      ? ({ ...resolvedBody, components: doc.components } as SchemaObject)
+      : resolvedBody;
 
   const openApiVersion = options.openApiVersion ?? versionFromDoc(doc.openapi);
   return createStreamValidator(schema, {
