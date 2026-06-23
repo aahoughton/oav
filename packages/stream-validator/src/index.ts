@@ -37,6 +37,13 @@ export {
   type StreamValidator,
   type ValueEvent,
 } from "./engine/index.js";
+export {
+  analyzeStreamability,
+  type BufferPosition,
+  type ByteSize,
+  type StreamabilityReport,
+  type StreamClass,
+} from "./analyzer/index.js";
 export { type OperationLocator, streamValidatorForOperation } from "./operation.js";
 export { BufferLimitError, UniqueItemsLimitError } from "./spine/index.js";
 export type { StreamVerdict, SchemaViolation } from "./spine/index.js";

@@ -170,6 +170,38 @@ scopes a hook sees depends on the schema's classification. Use the hooks
 for observing/editing forward-decidable structure, not as a general JSON
 visitor over an arbitrary schema.
 
+### Streamability analysis
+
+`analyzeStreamability(schema, options)` is the design-time companion to the
+runtime engine: it classifies a resolved schema and reports where it
+buffers and how much, without reading a byte. The same classification the
+engine runs on, turned into a peak-buffer budget you check before deploy.
+
+```ts
+import { analyzeStreamability } from "@aahoughton/oav-stream-validator";
+
+const report = analyzeStreamability(bodySchema, { openApiVersion: "3.1" });
+report.classification; // "streamable" | "tee" | "buffer"
+report.peakBytes; // schema-intrinsic peak in wire bytes, or "unbounded"
+report.effectivePeakBytes; // peak under maxBufferedBytes (passes clamp to the cap)
+
+// The punch list: positions with no structural bound fall back to the cap.
+for (const p of report.positions.filter((p) => p.maxBytes === "unbounded")) {
+  console.warn(`${p.path || "<root>"}: ${p.keyword} unbounded (${p.unboundedBy})`);
+}
+```
+
+A peak is computable because the engine holds one materialized island at a
+time: sequential positions (array items, object properties) buffer one at a
+time, so the peak across siblings is a **max**, while a TEE's concurrent
+sub-spines **sum**. A BUFFER island is bounded by its subtree's structural
+keywords (`maxLength` / `maxItems` / `maxProperties` / `const` / `enum`),
+and `"unbounded"` where one is missing. Sizes are an upper-bound estimate
+in the same UTF-8 wire bytes `maxBufferedBytes` caps (heavy `\uXXXX`
+escaping can exceed the per-character assumption), so treat the number as a
+capacity-planning figure, not a runtime meter. An unstreamable schema
+throws the same `ClassifierError` `createStreamValidator` raises.
+
 ## Status
 
 Incubating: published to the `experimental` dist-tag (not `latest`) and
