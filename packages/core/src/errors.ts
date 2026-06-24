@@ -320,18 +320,21 @@ export type ErrorParamsFor<Code extends keyof BuiltInErrorParams> = BuiltInError
 export interface ValidationError {
   /** Stable identifier of the keyword or validation layer that produced this error. */
   code: string;
-  /** Path segments pointing at the offending data location. */
-  path: PathSegment[];
+  /**
+   * Path segments pointing at the offending data location. Read-only: the
+   * validator snapshots/freezes these at construction and never mutates them.
+   */
+  readonly path: readonly PathSegment[];
   /** Human-readable description of the failure. */
   message: string;
   /**
    * Keyword-specific machine-readable details. The shape per `code` is
    * documented in {@link BuiltInErrorParams}; consumers can use
-   * {@link ErrorParamsFor} to narrow.
+   * {@link ErrorParamsFor} to narrow. Read-only after construction.
    */
-  params: Record<string, unknown>;
-  /** Child errors; always an array, empty for leaf errors. */
-  children: ValidationError[];
+  readonly params: Readonly<Record<string, unknown>>;
+  /** Child errors; always an array, empty for leaf errors. Read-only after construction. */
+  readonly children: readonly ValidationError[];
 }
 
 /**
@@ -343,13 +346,13 @@ export interface CreateErrorParams {
   /** Stable identifier of the keyword/layer. */
   code: string;
   /** Path segments of the offending data. */
-  path: PathSegment[];
+  path: readonly PathSegment[];
   /** Human-readable message. */
   message: string;
   /** Machine-readable details. Defaults to `{}`. */
-  params?: Record<string, unknown>;
+  params?: Readonly<Record<string, unknown>>;
   /** Child errors. Defaults to `[]`. */
-  children?: ValidationError[];
+  children?: readonly ValidationError[];
 }
 
 /**
@@ -437,21 +440,18 @@ export function createLeafError(
 }
 
 // Shared frozen empty array so leaf errors reuse one `children` value
-// instead of allocating a fresh `[]` per failure. `Object.freeze([])`
-// is typed `readonly never[]` which TS refuses to narrow to
-// `ValidationError[]` directly; the double cast expresses intent:
-// readers treat a leaf's `children` as read-only already, and the
-// freeze is a runtime safety net against accidental mutation.
-const EMPTY_CHILDREN = Object.freeze([]) as unknown as ValidationError[];
+// instead of allocating a fresh `[]` per failure. `children` is
+// `readonly ValidationError[]`, so the frozen empty array assigns
+// directly; the freeze is a runtime safety net against accidental mutation.
+const EMPTY_CHILDREN: readonly ValidationError[] = Object.freeze([]);
 
 // Shared frozen empty params for the common no-details case (branch
 // wrappers like the "schema" node, leaves whose `code` carries no
 // params). Mirrors EMPTY_CHILDREN: one value instead of a fresh `{}`
-// per error. Safe because `params` is read-only by contract (consumers
-// narrow and read it; nothing in the validator mutates it after
-// construction) and the freeze is the runtime safety net. Call sites
+// per error. `params` is `readonly` by type, so the frozen object
+// assigns directly; the freeze is the runtime safety net. Call sites
 // that do carry details pass their own object and never see this.
-const EMPTY_PARAMS = Object.freeze({}) as Record<string, unknown>;
+const EMPTY_PARAMS: Readonly<Record<string, unknown>> = Object.freeze({});
 
 /**
  * Construct a branch error that wraps a list of child errors (e.g. the
@@ -568,7 +568,7 @@ export function collectLeaves(error: ValidationError): ValidationError[] {
  *
  * @public
  */
-export function joinPath(path: PathSegment[]): string {
+export function joinPath(path: readonly PathSegment[]): string {
   let out = "";
   for (const segment of path) {
     if (typeof segment === "number") {
