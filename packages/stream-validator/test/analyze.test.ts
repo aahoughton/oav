@@ -183,6 +183,27 @@ describe("analyzeStreamability", () => {
     expect(r.positions.map((p) => p.path)).toContain("tags[]");
   });
 
+  it("renders composition-branch path segments with a dot, not brackets", () => {
+    // A oneOf whose first branch is an array and second is a scalar: the
+    // unbounded leaves are at `documents.oneOf.0[]` (array item of branch 0)
+    // and `documents.oneOf.1` (branch 1), not `oneOf[0][]` / `oneOf[1]`.
+    const r = analyze({
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        documents: {
+          oneOf: [
+            { type: "array", items: { type: "string", pattern: "^.+$" } },
+            { type: "string", pattern: "^.+$" },
+          ],
+        },
+      },
+    } as unknown as SchemaObject);
+    const paths = r.positions.filter((p) => p.classification === "buffer").map((p) => p.path);
+    expect(paths).toContain("documents.oneOf.0[]");
+    expect(paths).toContain("documents.oneOf.1");
+  });
+
   it("throws ClassifierError on an unstreamable schema (same as construction)", () => {
     expect(() => analyze({ type: "object", unevaluatedProperties: false } as SchemaObject)).toThrow(
       ClassifierError,

@@ -401,12 +401,16 @@ interface Child {
 }
 
 // Composition branches of a TEE node, which run as concurrent sub-spines.
+// A branch index uses a dotted segment (`oneOf.0`), not a bracketed one, so
+// schema navigation (composition branches) reads distinctly from instance
+// navigation (array items `[]` / tuple indices `[0]`) and the two never
+// collide visually (`oneOf.0[]`, not `oneOf[0][]`).
 function teeBranches(node: SchemaObject): Child[] {
   const out: Child[] = [];
   for (const k of ["allOf", "anyOf", "oneOf"] as const) {
     const arr = (node as Record<string, unknown>)[k];
     if (Array.isArray(arr)) {
-      (arr as SchemaOrBoolean[]).forEach((s, i) => out.push({ node: s, rel: `${k}[${i}]` }));
+      (arr as SchemaOrBoolean[]).forEach((s, i) => out.push({ node: s, rel: `${k}.${i}` }));
     }
   }
   if (node.not !== undefined) out.push({ node: node.not as SchemaOrBoolean, rel: "not" });
