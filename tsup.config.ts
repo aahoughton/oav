@@ -41,7 +41,13 @@ export default defineConfig({
   format: ["esm", "cjs"],
   dts: true,
   clean: true,
-  sourcemap: true,
+  // No source maps in published tarballs: they were ~55% of oav-core's
+  // unpacked size (each map embeds the full original TS via sourcesContent),
+  // and bundlers never pull .map into application output, so the cost was all
+  // install-disk and npm sticker size for zero runtime benefit. The build is
+  // unminified, so a consumer debugging into oav still lands in readable JS
+  // with original identifier names and // src/*.ts markers.
+  sourcemap: false,
   splitting: true,
   target: "es2022",
   tsconfig: "tsconfig.build.json",
