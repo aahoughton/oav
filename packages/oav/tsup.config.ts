@@ -87,7 +87,8 @@ export default defineConfig([
     format: ["esm", "cjs"],
     dts: true,
     clean: true,
-    sourcemap: true,
+    // No published source maps; see root tsup.config.ts for the rationale.
+    sourcemap: false,
     target: "es2022",
     tsconfig: "../../tsconfig.build.json",
     external,
@@ -98,7 +99,8 @@ export default defineConfig([
     format: ["esm"],
     dts: false,
     clean: false,
-    sourcemap: true,
+    // No published source maps; see root tsup.config.ts for the rationale.
+    sourcemap: false,
     target: "es2022",
     tsconfig: "../../tsconfig.build.json",
     external,
