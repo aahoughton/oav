@@ -11,6 +11,7 @@
     { "path": "../formats" },
     { "path": "../schema" },
     { "path": "../spec" },
+    { "path": "../stream-validator" },
     { "path": "../validator" }
   ]
 }

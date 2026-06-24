@@ -253,13 +253,15 @@ jobs:
         run: |
           set -euo pipefail
           CORE_TGZ="$(ls "$GITHUB_WORKSPACE/packed"/aahoughton-oav-core-*.tgz | head -n1)"
+          SV_TGZ="$(ls "$GITHUB_WORKSPACE/packed"/aahoughton-oav-stream-validator-*.tgz | head -n1)"
           OAV_TGZ="$(ls "$GITHUB_WORKSPACE/packed"/aahoughton-oav-[0-9]*.tgz | head -n1)"
           rm -rf /tmp/smoke-oav && mkdir -p /tmp/smoke-oav && cd /tmp/smoke-oav
           npm init -y > /dev/null
-          # Install both tarballs in one shot so `@aahoughton/oav`'s
-          # dependency on `@aahoughton/oav-core` resolves against the
-          # locally-packed artifact, not the registry.
-          npm install commander "$CORE_TGZ" "$OAV_TGZ"
+          # Install all tarballs in one shot so `@aahoughton/oav`'s
+          # dependencies on `@aahoughton/oav-core` and
+          # `@aahoughton/oav-stream-validator` (the CLI's stream-check command)
+          # resolve against the locally-packed artifacts, not the registry.
+          npm install commander "$CORE_TGZ" "$SV_TGZ" "$OAV_TGZ"
           cat > smoke.mjs <<'EOF'
           import { createValidator, createYamlFileReader, parseYamlString } from "@aahoughton/oav";
           import { compileSchema, jsonSchemaDialect } from "@aahoughton/oav/schema";
@@ -304,6 +306,13 @@ jobs:
           node smoke.mjs
           # CLI should be present in bin; verify --help exits 0
           npx oav --help > /dev/null
+          # Exercise stream-check: it imports analyzeSpec from
+          # @aahoughton/oav-stream-validator, so this fails if that dependency
+          # is missing or stale in the installed tree.
+          cat > spec.json <<'JSON'
+          {"openapi":"3.1.0","info":{"title":"t","version":"1"},"paths":{"/x":{"post":{"requestBody":{"content":{"application/json":{"schema":{"type":"object"}}}}}}}}
+          JSON
+          npx oav stream-check spec.json > /dev/null
       - name: smoke-import @aahoughton/oav-express4
         run: |
           set -euo pipefail

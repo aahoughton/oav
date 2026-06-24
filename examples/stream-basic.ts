@@ -16,8 +16,7 @@
  * basic-validation.ts.
  *
  * Translation to the published packages: import `createStreamValidator`
- * from `@aahoughton/oav-stream-validator` (incubating, install with
- * `@experimental`). See ./README.md.
+ * from `@aahoughton/oav-stream-validator`. See ./README.md.
  *
  * Run from the repo root:
  *   pnpm dlx tsx examples/stream-basic.ts

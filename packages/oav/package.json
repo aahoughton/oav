@@ -157,6 +157,7 @@
   },
   "dependencies": {
     "@aahoughton/oav-core": "workspace:*",
+    "@aahoughton/oav-stream-validator": "workspace:*",
     "commander": "^15.0.0",
     "yaml": "^2.6.0"
   },

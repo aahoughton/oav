@@ -41,6 +41,9 @@ importers:
 
   packages/cli:
     dependencies:
+      '@aahoughton/oav-stream-validator':
+        specifier: workspace:*
+        version: link:../stream-validator
       '@oav/core':
         specifier: workspace:*
         version: link:../core
@@ -69,6 +72,9 @@ importers:
       '@aahoughton/oav-core':
         specifier: workspace:*
         version: link:../..
+      '@aahoughton/oav-stream-validator':
+        specifier: workspace:*
+        version: link:../stream-validator
       commander:
         specifier: ^15.0.0
         version: 15.0.0

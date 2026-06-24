@@ -34,5 +34,15 @@ export function workspaceAliases(rootDir: string): Record<string, string> {
     (pkg) =>
       [`@oav/${pkg}`, resolve(rootDir, "packages", pkg, "src", "index.ts")] as [string, string],
   );
-  return Object.fromEntries([...subpathEntries, ...packageEntries]);
+  // The stream validator is published standalone as `@aahoughton/oav-stream-validator`
+  // (not folded into the oav-core bundle), so consumers inside the workspace
+  // (the CLI) import it by that published name. Alias it to source too, so
+  // tests / bundling resolve it without a prior build of its dist.
+  const publishedEntries: Array<[string, string]> = [
+    [
+      "@aahoughton/oav-stream-validator",
+      resolve(rootDir, "packages", "stream-validator", "src", "index.ts"),
+    ],
+  ];
+  return Object.fromEntries([...subpathEntries, ...packageEntries, ...publishedEntries]);
 }

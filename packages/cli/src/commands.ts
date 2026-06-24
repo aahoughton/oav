@@ -16,9 +16,11 @@ import {
 } from "@oav/spec";
 import { createValidator } from "@oav/validator";
 import type { OpenAPIDocument } from "@oav/core";
+import { analyzeSpec } from "@aahoughton/oav-stream-validator";
 import { emitStandalone, type StandaloneDialect } from "./emit-standalone.js";
 import { emitSpec } from "./emit-spec.js";
 import { parseHttpFile } from "./http-parser.js";
+import { hasUnbounded, renderStreamBudget } from "./stream-check.js";
 
 /**
  * Input shared by all CLI commands.
@@ -174,6 +176,56 @@ export async function resolveCommand(
   if (args.lint && args.failOn === "warning" && specHygieneIssues.length > 0) {
     return { exitCode: 1 };
   }
+  return { exitCode: 0 };
+}
+
+/**
+ * Implement the `oav stream-check <spec> ...` subcommand: roll up the
+ * streaming-buffer budget for every operation's request / response bodies
+ * and print a per-operation table (or the `SpecBudget` JSON envelope). This
+ * is the streamability analysis (`@oav/stream-validator`) surfaced over a
+ * whole resolved spec, so a deployer can see, before deploy, which bodies
+ * stream and which buffer (and where).
+ *
+ * @returns exit code 0, or 1 when `--fail-on-unbounded` is set and any body
+ *          has an unbounded peak.
+ *
+ * @public
+ */
+export async function streamCheckCommand(
+  args: {
+    spec: string;
+    overlays: string[];
+    envelope: "text" | "json";
+    maxBufferedBytes?: number;
+    failOnUnbounded: boolean;
+    verbose: boolean;
+    options: CommandOptions;
+  },
+  io: CommandIo = defaultCommandIo(),
+): Promise<CommandResult> {
+  const overlayDocs = await Promise.all(
+    args.overlays.map(async (path) => (await io.reader.read(path)) as SpecOverlay),
+  );
+  const { document } = await loadSpec({
+    reader: io.reader,
+    entry: args.spec,
+    overlays: overlayDocs,
+  });
+
+  const budget = analyzeSpec(
+    document,
+    args.maxBufferedBytes === undefined ? {} : { maxBufferedBytes: args.maxBufferedBytes },
+  );
+
+  const sink = primarySink(io, args.options);
+  if (args.envelope === "json") {
+    await sink(JSON.stringify(budget, null, 2) + "\n");
+  } else {
+    await sink(renderStreamBudget(document, budget, { verbose: args.verbose }));
+  }
+
+  if (args.failOnUnbounded && hasUnbounded(budget)) return { exitCode: 1 };
   return { exitCode: 0 };
 }
 

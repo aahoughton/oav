@@ -1,10 +1,9 @@
 /**
- * `@oav/stream-validator` (incubating): a streaming JSON Schema 2020-12
- * validator. It validates a JSON document against a resolved schema as
- * the bytes stream, echoing them through unchanged while reporting
- * violations on a side channel. Memory is bounded for forward-decidable
- * schemas with structural bounds, so multi-GB bodies validate without
- * materializing in heap.
+ * `@oav/stream-validator`: a streaming JSON Schema 2020-12 validator. It
+ * validates a JSON document against a resolved schema as the bytes stream,
+ * echoing them through unchanged while reporting violations on a side
+ * channel. Memory is bounded for forward-decidable schemas with structural
+ * bounds, so multi-GB bodies validate without materializing in heap.
  *
  * This is a second engine, push-based over a token stream, distinct from
  * `@oav/schema`'s pull-based compiler. It reuses `@oav/schema`'s
@@ -12,9 +11,8 @@
  * BUFFER (so format assertion and built-in formats come from that
  * delegate), and reuses `@oav/core`'s flat error model.
  *
- * Published as `@aahoughton/oav-stream-validator` on the `experimental`
- * dist-tag during incubation, versioned independently of the `oav-core`
- * family.
+ * Published as `@aahoughton/oav-stream-validator`, versioned independently
+ * of the `oav-core` family (its own `0.x` line).
  *
  * @packageDocumentation
  */
@@ -37,6 +35,17 @@ export {
   type StreamValidator,
   type ValueEvent,
 } from "./engine/index.js";
+export {
+  analyzeSpec,
+  analyzeStreamability,
+  type BodyBudget,
+  type BufferPosition,
+  type ByteSize,
+  type OperationBudget,
+  type SpecBudget,
+  type StreamabilityReport,
+  type StreamClass,
+} from "./analyzer/index.js";
 export { type OperationLocator, streamValidatorForOperation } from "./operation.js";
 export { BufferLimitError, UniqueItemsLimitError } from "./spine/index.js";
 export type { StreamVerdict, SchemaViolation } from "./spine/index.js";
