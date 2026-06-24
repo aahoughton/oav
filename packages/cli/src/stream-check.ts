@@ -40,10 +40,10 @@ function classLabel(report: StreamabilityReport): string {
 function renderBody(body: BodyBudget, pad: number, verbose: boolean): string[] {
   const role = roleLabel(body).padEnd(pad);
   const media = body.mediaType.padEnd(24);
-  if (body.error !== undefined) {
+  if (body.report === undefined) {
     return [`  ${role} ${media} not-streamable: ${body.error}`];
   }
-  const report = body.report as StreamabilityReport;
+  const report = body.report;
   const buffers = report.positions.filter((p) => p.classification === "buffer");
   const unbounded = buffers.filter((p) => p.maxBytes === "unbounded");
   const bounded = buffers.length - unbounded.length;
@@ -80,11 +80,11 @@ function tally(budget: SpecBudget): Counts {
   for (const op of budget.operations) {
     for (const body of op.bodies) {
       c.bodies++;
-      if (body.error !== undefined) {
+      if (body.report === undefined) {
         c.errors++;
         continue;
       }
-      const r = body.report as StreamabilityReport;
+      const r = body.report;
       if (r.classification === "streamable") c.streamable++;
       else if (r.classification === "tee") c.tee++;
       else c.buffer++;

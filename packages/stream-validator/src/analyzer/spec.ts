@@ -14,6 +14,7 @@
  */
 
 import type {
+  MediaTypeObject,
   OpenAPIDocument,
   OperationObject,
   RequestBodyObject,
@@ -29,26 +30,33 @@ import type { StreamValidatorOptions } from "../options.js";
 import { analyzeStreamability, type StreamabilityReport } from "./analyze.js";
 
 /**
- * The streamability budget for one request or response body of an operation.
- * Exactly one of `report` / `error` is present: `error` holds the message
- * when the body's schema cannot be classified (an unstreamable keyword, an
- * unknown keyword, or an unresolvable `$ref`), the same failure
- * `createStreamValidator` would raise.
+ * Fields common to every {@link BodyBudget} variant.
  *
  * @public
  */
-export interface BodyBudget {
+export interface BodyBudgetBase {
   /** Whether this is the request body or a response body. */
   role: "request" | "response";
   /** Response status key (`"200"`, `"default"`); absent for the request. */
   status?: string;
   /** The body media type (`"application/json"`, ...). */
   mediaType: string;
-  /** The peak-buffer budget, when the schema classifies. */
-  report?: StreamabilityReport;
-  /** The classification error message, when it does not. */
-  error?: string;
 }
+
+/**
+ * The streamability budget for one request or response body of an operation.
+ * Exactly one of `report` / `error` is present (an exclusive union, so a
+ * consumer that narrows on `error` reads `report` without a cast): `error`
+ * holds the message when the body's schema cannot be classified (an
+ * unstreamable keyword, an unknown keyword, or an unresolvable `$ref`), the
+ * same failure `createStreamValidator` would raise; otherwise `report` holds
+ * the peak-buffer budget.
+ *
+ * @public
+ */
+export type BodyBudget =
+  | (BodyBudgetBase & { report: StreamabilityReport; error?: never })
+  | (BodyBudgetBase & { error: string; report?: never });
 
 /**
  * The budget for one operation: every request/response body that carries a
@@ -83,22 +91,21 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 // per-body error so one bad body does not abort the whole sweep.
 function budgetForBody(
   doc: OpenAPIDocument,
-  content: Record<string, unknown> | undefined,
-  base: { role: "request" | "response"; status?: string },
+  content: Record<string, MediaTypeObject> | undefined,
+  base: Omit<BodyBudgetBase, "mediaType">,
   options: StreamValidatorOptions,
 ): BodyBudget[] {
-  if (!isRecord(content)) return [];
+  if (content === undefined) return [];
   const out: BodyBudget[] = [];
   for (const [mediaType, mto] of Object.entries(content)) {
-    const schema = isRecord(mto) ? (mto.schema as unknown) : undefined;
+    const schema = mto.schema;
     if (schema === undefined) continue; // a media type with no schema is unconstrained
-    const entry: BodyBudget = { ...base, mediaType };
     try {
-      entry.report = analyzeStreamability(carryComponents(doc, schema as never), options);
+      const report = analyzeStreamability(carryComponents(doc, schema), options);
+      out.push({ ...base, mediaType, report });
     } catch (e) {
-      entry.error = e instanceof Error ? e.message : String(e);
+      out.push({ ...base, mediaType, error: e instanceof Error ? e.message : String(e) });
     }
-    out.push(entry);
   }
   return out;
 }

@@ -12,7 +12,7 @@
  * delegate), and reuses `@oav/core`'s flat error model.
  *
  * Published as `@aahoughton/oav-stream-validator`, versioned independently
- * of the `oav-core` family (its own `0.x` line).
+ * of the `oav-core` family (its own version line).
  *
  * @packageDocumentation
  */
@@ -39,6 +39,7 @@ export {
   analyzeSpec,
   analyzeStreamability,
   type BodyBudget,
+  type BodyBudgetBase,
   type BufferPosition,
   type ByteSize,
   type OperationBudget,
