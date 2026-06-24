@@ -398,7 +398,10 @@ const METHODS: HttpMethod[] = [
  *
  * @public
  */
-export function applyOverlays(base: OpenAPIDocument, overlays: SpecOverlay[]): OpenAPIDocument {
+export function applyOverlays(
+  base: OpenAPIDocument,
+  overlays: readonly SpecOverlay[],
+): OpenAPIDocument {
   let doc: OpenAPIDocument = structuredClone(base);
   for (const overlay of overlays) doc = applyOverlay(doc, overlay);
   return doc;
