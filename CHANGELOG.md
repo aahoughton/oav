@@ -1,5 +1,27 @@
 # Changelog
 
+## [3.6.0](https://github.com/aahoughton/oav/compare/oav-core-v3.5.0...oav-core-v3.6.0) (2026-06-24)
+
+
+### Features
+
+* **stream-validator:** streamability analyzer + oav stream-check ([#435](https://github.com/aahoughton/oav/issues/435)) ([e2de16b](https://github.com/aahoughton/oav/commit/e2de16b70d36d49119ba1258b5275353c62cd0d7))
+
+
+### Bug Fixes
+
+* **stream-validator:** resolve and normalize 3.0 $ref request bodies ([#433](https://github.com/aahoughton/oav/issues/433)) ([c948bec](https://github.com/aahoughton/oav/commit/c948bec07608e0dfcec411dc7f1f3f35e337d737))
+
+
+### Refactoring
+
+* **stream-validator:** exclusive BodyBudget union and readonly cleanups ([#436](https://github.com/aahoughton/oav/issues/436)) ([7640de6](https://github.com/aahoughton/oav/commit/7640de6796f4af38d5b5aad28ce36445b4b98d55))
+
+
+### Chore
+
+* **stream-validator:** release the streaming validator as 1.0.0 ([d98ed3d](https://github.com/aahoughton/oav/commit/d98ed3da6f4932b92d9bcf9800e6ddd8a008d892))
+
 ## [3.5.0](https://github.com/aahoughton/oav/compare/oav-core-v3.4.0...oav-core-v3.5.0) (2026-06-21)
 
 
