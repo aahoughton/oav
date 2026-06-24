@@ -24,11 +24,11 @@ for `@aahoughton/oav` in import specifiers that don't touch
 
 The streaming examples import from `packages/stream-validator/src`, which
 translates to `@aahoughton/oav-stream-validator`. That is a separate
-package (not part of the `oav` / `oav-core` re-export), incubating on the
-`experimental` dist-tag, so install it by tag:
+package (not part of the `oav` / `oav-core` re-export), versioned
+independently on its own `0.x` line:
 
 ```bash
-npm install @aahoughton/oav-stream-validator@experimental
+npm install @aahoughton/oav-stream-validator
 ```
 
 ## What's in here
@@ -52,8 +52,8 @@ shape and when to use each section (`extendSchemas`, `replaceSchemas`,
 
 ### Streaming
 
-The streaming validator (`@aahoughton/oav-stream-validator`, incubating)
-is a second engine: it validates a JSON body as the bytes flow through,
+The streaming validator (`@aahoughton/oav-stream-validator`) is a second
+engine: it validates a JSON body as the bytes flow through,
 echoing them out unchanged, without buffering the whole document. These
 examples break the load-a-spec / print-a-verdict mold: they pipe a
 lazily generated body through `createStreamValidator` and read the

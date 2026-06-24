@@ -32,7 +32,7 @@ on:
         # release-please creates one tag per package per release
         # (component prefix from release-please-config.json). The five
         # linked packages share a version, so their tags point at the same
-        # commit; oav-stream-validator is unlinked (incubating, 0.x) and
+        # commit; oav-stream-validator is unlinked (its own 0.x line) and
         # carries its own tag at its own commit. Pass whichever package's
         # tag you are republishing; oav-core is the conventional choice for
         # the linked group.

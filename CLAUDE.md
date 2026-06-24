@@ -226,9 +226,9 @@ string) => boolean>` shaped for `compileSchema`'s `formats` option. A
   sub-validator's subtree with its HTTP location (`body`, `query`, …)
   so error paths are unambiguous. Also exports the Fetch-API adapter
   (`httpRequestFromFetch`, …) for Next.js / Hono / Bun / Deno.
-- **`@aahoughton/oav-stream-validator`** (incubating, published
-  standalone on the `experimental` dist-tag, not folded into the
-  `oav-core` bundle): a second, push-based streaming engine. Beyond
+- **`@aahoughton/oav-stream-validator`** (published standalone on its own
+  `0.x` line, not folded into the `oav-core` bundle): a second, push-based
+  streaming engine. Beyond
   `createStreamValidator`, it exports the **streamability analyzer**:
   `analyzeStreamability(schema)` returns a peak-buffer budget (where a
   schema buffers and how much, in wire bytes, `"unbounded"` where a
@@ -292,9 +292,12 @@ The `cli → stream-validator` edge is the one exception not asserted by
 CLI imports it by that published name, which `check-deps` (scoped to
 `@oav/*`) does not police. Its source alias lives in `workspace-aliases.ts`
 (consumed by vitest + tsup) and the published `@aahoughton/oav` carries it
-as a real runtime dependency. This crosses the incubation boundary on
-purpose (a CLI-only convenience), so a `stream-validator` bump can ripple
-into a CLI release.
+as a real runtime dependency (the same shape the framework adapters use for
+`@aahoughton/oav-core`). The `pack-smoke` job installs the locally-packed
+stream-validator tarball alongside oav so this dep resolves to the workspace
+build, not the registry. `stream-validator` is unlinked from the `oav-core`
+release group (its own `0.x` line), so a `stream-validator` bump can ripple
+into a CLI release that picks it up.
 
 ## Extending the compiler
 

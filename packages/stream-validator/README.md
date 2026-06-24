@@ -1,4 +1,4 @@
-# oav-stream-validator (incubating)
+# oav-stream-validator
 
 A streaming JSON Schema 2020-12 validator for
 [`oav-core`](https://www.npmjs.com/package/@aahoughton/oav-core). It
@@ -19,18 +19,14 @@ Thin: this package bundles nothing from `oav-core`. It declares
 `@aahoughton/oav-core` as a regular dependency, so installing the stream
 validator pulls the engine it delegates to along with it.
 
-> **Incubating, on the `experimental` dist-tag.** Published to
-> `experimental` (not `latest`) and versioned independently of the
-> `oav-core` family while the API settles (`0.x`). Install it by tag:
->
-> ```bash
-> npm install @aahoughton/oav-stream-validator@experimental
-> ```
->
-> A plain `npm install @aahoughton/oav-stream-validator` (no tag) will not
-> resolve until it graduates to `latest`. The public surface is small and
-> additive-by-design, but treat `0.x` minor bumps as potentially breaking
-> until then.
+```bash
+npm install @aahoughton/oav-stream-validator
+```
+
+> **Versioned independently of the `oav-core` family.** This package tracks
+> its own `0.x` line rather than the lockstep `oav-core` version, so a minor
+> bump may carry a breaking change while the public surface settles. The
+> surface is small and additive-by-design.
 
 ## Usage
 
@@ -68,7 +64,7 @@ it reports at the closing delimiter. The verdict is identical either way;
 eager enforcement only moves _when_ the violation surfaces (and its byte
 offset points at the cause rather than the delimiter).
 
-### Supported schemas (incubation)
+### Supported schemas
 
 The STREAM keyword set (`type`, scalar/string/number constraints,
 `properties` / `items` / `required` / bounds / `propertyNames` /
@@ -225,8 +221,8 @@ for (const op of analyzeSpec(document).operations) {
 
 ## Status
 
-Incubating: published to the `experimental` dist-tag (not `latest`) and
-versioned independently of the `oav-core` family. The classifier
+Published to the default `latest` dist-tag, on its own `0.x` line
+(versioned independently of the `oav-core` family). The classifier
 co-evolves with `oav-core`'s keyword set inside the monorepo (a CI drift
 test makes a divergence a build failure rather than silent breakage); the
 published bundle pins `@aahoughton/oav-core` so the two move together.
