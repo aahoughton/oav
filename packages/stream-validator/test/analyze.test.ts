@@ -204,6 +204,49 @@ describe("analyzeStreamability", () => {
     expect(paths).toContain("documents.oneOf.1");
   });
 
+  it("counts a composition node's own forced-buffer scalar (the stripComposition sub-spine)", () => {
+    // `{ type: string, pattern, allOf: [{ maxLength }] }` tees: the runtime
+    // validates the own (non-composition) keywords as a required sub-spine, so
+    // the `pattern` string still buffers. The allOf `maxLength` bounds it.
+    const r = analyze({
+      type: "string",
+      pattern: "^a",
+      allOf: [{ maxLength: 100 }],
+    } as unknown as SchemaObject);
+    expect(r.peakBytes).toBe(str(100)); // 100*4 + 2 = 402, not 0
+    expect(r.positions).toContainEqual(
+      expect.objectContaining({ keyword: "pattern", maxBytes: str(100) }),
+    );
+  });
+
+  it("sums a tee node's own member island with its branch islands (concurrent sub-spines)", () => {
+    const island = (max: number) => ({
+      type: "array",
+      uniqueItems: true,
+      maxItems: 2,
+      items: { type: "string", maxLength: max },
+    });
+    // The object has a buffering property AND a oneOf with a buffering branch.
+    // Both run as concurrent sub-spines, so the peak is their sum, not a max.
+    const r = analyze({
+      type: "object",
+      additionalProperties: false,
+      properties: { a: island(3) },
+      oneOf: [island(4), { type: "integer" }],
+    } as unknown as SchemaObject);
+    const ownIsland = uniqueArray(2, str(3)); // property a: 2 + 2*(14+1) = 32
+    const branchIsland = uniqueArray(2, str(4)); // oneOf branch: 2 + 2*(18+1) = 40
+    expect(r.peakBytes).toBe(ownIsland + branchIsland); // summed, not max
+  });
+
+  it("throws on an unbounded schema under enforceBounds (parity with construction)", () => {
+    const schema = { type: "string", pattern: "^.+$" } as SchemaObject; // no maxLength
+    // Default: reports the unbounded position.
+    expect(analyze(schema).peakBytes).toBe("unbounded");
+    // enforceBounds: throws like createStreamValidator would.
+    expect(() => analyze(schema, { enforceBounds: true })).toThrow(ClassifierError);
+  });
+
   it("throws ClassifierError on an unstreamable schema (same as construction)", () => {
     expect(() => analyze({ type: "object", unevaluatedProperties: false } as SchemaObject)).toThrow(
       ClassifierError,
@@ -269,5 +312,23 @@ describe("analyzeStreamability: peakBytes is a sound upper bound on real bufferi
 
     expect(await runWithCap(schema, value, peak)).toBeUndefined();
     expect((await runWithCap(schema, value, 5))?.message).toMatch(/maxBufferedBytes/);
+  });
+
+  it("a composition node's own pattern buffers at runtime (own sub-spine), bounded by the predicted cap", async () => {
+    // The Codex scenario: pattern on the node, maxLength in an allOf branch.
+    // The engine buffers the string in the stripComposition sub-spine; the
+    // analyzer must predict that (peak > 0), and the real buffer stays under it.
+    const schema = {
+      type: "string",
+      pattern: "^a+$",
+      allOf: [{ maxLength: 100 }],
+    } as unknown as SchemaObject;
+    const peak = analyze(schema).peakBytes as number; // 402, not 0
+    expect(peak).toBeGreaterThan(0);
+
+    const value = "aaaa"; // valid: matches pattern, length 4 <= 100
+    expect(await runWithCap(schema, value, peak)).toBeUndefined();
+    // A cap below the real ~6-byte span trips the limit, proving it buffers.
+    expect((await runWithCap(schema, value, 4))?.message).toMatch(/maxBufferedBytes/);
   });
 });

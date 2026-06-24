@@ -447,6 +447,30 @@ function streamMembers(node: SchemaObject): Child[] {
   return out;
 }
 
+// The tightest `maxLength` that bounds a string: the node's own, intersected
+// with any `allOf` branch's (a sibling `allOf: [{ maxLength }]` bounds the
+// same string the node's `pattern` buffers). Undefined when none applies.
+function effectiveMaxLength(node: SchemaObject): number | undefined {
+  let m = typeof node.maxLength === "number" ? node.maxLength : undefined;
+  for (const branch of compositionArray(node, "allOf")) {
+    if (isObjectSchema(branch) && typeof branch.maxLength === "number") {
+      m = m === undefined ? branch.maxLength : Math.min(m, branch.maxLength);
+    }
+  }
+  return m;
+}
+
+// A forced-buffer scalar island for a `pattern` string (the spine buffers the
+// whole string to test the regex), bounded by the effective `maxLength`, or
+// null when the node carries no `pattern`.
+function forcedScalarIsland(node: SchemaObject, path: string): Contribution | null {
+  if (node.pattern === undefined) return null;
+  const max = effectiveMaxLength(node);
+  return max === undefined
+    ? { kind: "island", path, keyword: "pattern", intrinsic: "unbounded", unboundedBy: "maxLength" }
+    : { kind: "island", path, keyword: "pattern", intrinsic: max * BYTES_PER_CHAR + QUOTE_BYTES };
+}
+
 function walk(
   node: SchemaOrBoolean,
   path: string,
@@ -472,22 +496,6 @@ function walk(
     };
   }
 
-  // `pattern` accumulates the whole string to test the regex even on the
-  // STREAM path (the spine's `needText`), so it is a forced-buffer scalar
-  // bounded by `maxLength`. Asserting `format` is already a BUFFER island
-  // above; bounded `enum`/`const` scalars buffer a negligible amount and
-  // are not reported.
-  if (strat === "stream" && node.pattern !== undefined) {
-    const bounded = typeof node.maxLength === "number";
-    return {
-      kind: "island",
-      path,
-      keyword: "pattern",
-      intrinsic: bounded ? (node.maxLength as number) * BYTES_PER_CHAR + QUOTE_BYTES : "unbounded",
-      ...(bounded ? {} : { unboundedBy: "maxLength" }),
-    };
-  }
-
   if (seen.has(node)) return { kind: "zero" }; // recursive STREAM/TEE: counted at first visit
   const next = new Set(seen).add(node);
 
@@ -498,23 +506,31 @@ function walk(
     return walk(target, path, root, cls, next, formatAsserts);
   }
 
-  const memberParts = streamMembers(node).map((m) =>
-    walk(m.node, joinPath(path, m.rel), root, cls, next, formatAsserts),
-  );
+  // The node's own (non-composition) forward obligation: a forced-buffer
+  // scalar (`pattern`, which accumulates the whole string for the regex even
+  // on the STREAM path) plus its per-member islands, which buffer one at a
+  // time (max). Mirrors the spine's `stripComposition` sub-spine. Asserting
+  // `format` / `uniqueItems` / complex `enum`|`const` are BUFFER above;
+  // bounded scalar `enum`/`const` buffer a negligible amount and are dropped.
+  const ownParts: Contribution[] = [];
+  const scalar = forcedScalarIsland(node, path);
+  if (scalar !== null) ownParts.push(scalar);
+  for (const m of streamMembers(node)) {
+    ownParts.push(walk(m.node, joinPath(path, m.rel), root, cls, next, formatAsserts));
+  }
+  const ownPart: Contribution =
+    ownParts.length > 0 ? { kind: "max", parts: ownParts } : { kind: "zero" };
 
   if (strat === "tee") {
-    const sumNode: Contribution = {
-      kind: "sum",
-      path,
-      keyword: teeKeyword(node),
-      parts: teeBranches(node).map((b) =>
-        walk(b.node, joinPath(path, b.rel), root, cls, next, formatAsserts),
-      ),
-    };
-    return { kind: "max", parts: [sumNode, ...memberParts] };
+    // The spine fans every event to concurrent sub-spines: the node's own
+    // obligation plus one per composition branch. Concurrent islands sum.
+    const branchParts = teeBranches(node).map((b) =>
+      walk(b.node, joinPath(path, b.rel), root, cls, next, formatAsserts),
+    );
+    return { kind: "sum", path, keyword: teeKeyword(node), parts: [ownPart, ...branchParts] };
   }
 
-  return memberParts.length > 0 ? { kind: "max", parts: memberParts } : { kind: "zero" };
+  return ownPart;
 }
 
 // --- Public entry point. ---
@@ -528,14 +544,18 @@ function walk(
  * for the same configuration a validator would run under (`openApiVersion`
  * / `dialect` select the keyword set and `format` assertion;
  * `maxBufferedBytes` drives `effectivePeakBytes`; `keywords` / `parity`
- * affect classification). An unstreamable schema throws
- * {@link ClassifierError}, the same error `createStreamValidator` raises.
+ * affect classification; `enforceBounds` makes an unbounded schema throw,
+ * below). An unstreamable schema throws {@link ClassifierError}, the same
+ * error `createStreamValidator` raises.
  *
  * Wire-byte sizes are an upper-bound estimate (see the module overview),
  * not a guaranteed ceiling. An `"unbounded"` position is the headline
  * output: a buffering position with no structural bound, which falls back
- * to `maxBufferedBytes` at runtime. This is the read-only, design-time view
- * of the same bounds `enforceBounds` turns into a construction error.
+ * to `maxBufferedBytes` at runtime. Reporting these is the default; pass
+ * `enforceBounds: true` to instead throw {@link ClassifierError} on the
+ * first unbounded dimension, the design-time equivalent of refusing to
+ * construct an unsafe validator (the same bound `createStreamValidator`
+ * enforces).
  *
  * @public
  */
@@ -554,6 +574,10 @@ export function analyzeStreamability(
     dialect,
     ...(options.keywords === undefined ? {} : { customKeywords: Object.keys(options.keywords) }),
     ...(options.parity === undefined ? {} : { parity: options.parity }),
+    // Honor enforceBounds so `analyzeStreamability(schema, { enforceBounds: true })`
+    // throws on an unbounded schema, the same as `createStreamValidator` would
+    // (the design-time equivalent of refusing to construct an unsafe validator).
+    ...(options.enforceBounds === undefined ? {} : { enforceBounds: options.enforceBounds }),
   });
 
   if (!isObjectSchema(normalized)) {
