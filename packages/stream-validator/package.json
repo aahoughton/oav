@@ -76,5 +76,5 @@
   "engines": {
     "node": ">=22"
   },
-  "//": "Published to the default `latest` dist-tag, pre-1.0 and versioned independently of the lockstep oav-core family (so a minor bump may carry a breaking change while 0.x). No prepublishOnly: release.yml runs `pnpm test` from root before publish."
+  "//": "Published to the default `latest` dist-tag, versioned independently of the lockstep oav-core family (its own 1.x line, semver from 1.0). No prepublishOnly: release.yml runs `pnpm test` from root before publish."
 }

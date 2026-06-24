@@ -24,8 +24,8 @@ npm install @aahoughton/oav-stream-validator
 ```
 
 > **Versioned independently of the `oav-core` family.** This package tracks
-> its own `0.x` line rather than the lockstep `oav-core` version, so a minor
-> bump may carry a breaking change while the public surface settles. The
+> its own version line rather than the lockstep `oav-core` version, and
+> follows semver from `1.0` (a breaking change bumps the major). The public
 > surface is small and additive-by-design.
 
 ## Usage
@@ -221,7 +221,7 @@ for (const op of analyzeSpec(document).operations) {
 
 ## Status
 
-Published to the default `latest` dist-tag, on its own `0.x` line
+Published to the default `latest` dist-tag, on its own `1.x` line
 (versioned independently of the `oav-core` family). The classifier
 co-evolves with `oav-core`'s keyword set inside the monorepo (a CI drift
 test makes a divergence a build failure rather than silent breakage); the
