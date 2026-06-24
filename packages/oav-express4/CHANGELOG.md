@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.6.0](https://github.com/aahoughton/oav/compare/oav-express4-v3.5.0...oav-express4-v3.6.0) (2026-06-24)
+
+
+### Features
+
+* **stream-validator:** streamability analyzer + oav stream-check ([#435](https://github.com/aahoughton/oav/issues/435)) ([e2de16b](https://github.com/aahoughton/oav/commit/e2de16b70d36d49119ba1258b5275353c62cd0d7))
+
 ## [3.5.0](https://github.com/aahoughton/oav/compare/oav-express4-v3.4.0...oav-express4-v3.5.0) (2026-06-21)
 
 
