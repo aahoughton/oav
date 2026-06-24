@@ -269,7 +269,7 @@ export const contentVocabulary: Vocabulary = {
  *
  * @public
  */
-export const defaultVocabularies: Vocabulary[] = [
+export const defaultVocabularies: readonly Vocabulary[] = [
   coreVocabulary,
   validationVocabulary,
   applicatorVocabulary,

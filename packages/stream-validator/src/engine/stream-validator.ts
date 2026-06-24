@@ -145,7 +145,8 @@ type CompiledValidator = (
 function violationFromError(e: ValidationError, byteOffset: number): SchemaViolation {
   return {
     code: e.code,
-    path: e.path,
+    // Copy the read-only error path into the violation's mutable path.
+    path: [...e.path],
     byteOffset,
     message: e.message,
     params: e.params,

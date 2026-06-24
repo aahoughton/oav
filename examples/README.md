@@ -25,7 +25,7 @@ for `@aahoughton/oav` in import specifiers that don't touch
 The streaming examples import from `packages/stream-validator/src`, which
 translates to `@aahoughton/oav-stream-validator`. That is a separate
 package (not part of the `oav` / `oav-core` re-export), versioned
-independently on its own `0.x` line:
+independently on its own version line:
 
 ```bash
 npm install @aahoughton/oav-stream-validator

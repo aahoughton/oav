@@ -495,8 +495,12 @@ export interface KeywordDefinition {
 export interface Vocabulary {
   /** Vocabulary URI (per JSON Schema spec). */
   uri: string;
-  /** Ordered list of keyword definitions. */
-  keywords: KeywordDefinition[];
+  /**
+   * Ordered list of keyword definitions. Read-only: the compiler and the
+   * introspection cache rely on a stable vocabulary keyword order, and an
+   * `as const` keyword array satisfies this directly.
+   */
+  keywords: readonly KeywordDefinition[];
 }
 
 /**

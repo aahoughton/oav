@@ -17,7 +17,7 @@ export interface LoadSpecOptions {
   /** Base directory/URI for resolving relative refs. Defaults to the entry's directory. */
   baseUri?: string;
   /** Overlays to apply in order after resolution. */
-  overlays?: SpecOverlay[];
+  overlays?: readonly SpecOverlay[];
   /**
    * Run spec-hygiene lint passes against the post-overlay document.
    * Findings land in {@link ResolvedSpec.specHygieneIssues}. Defaults
@@ -89,7 +89,7 @@ export interface LoadSpecSyncOptions {
   /** Base directory/URI for resolving relative refs. Defaults to the entry's directory. */
   baseUri?: string;
   /** Overlays to apply in order after resolution. */
-  overlays?: SpecOverlay[];
+  overlays?: readonly SpecOverlay[];
   /**
    * Run spec-hygiene lint passes against the post-overlay document.
    * Findings land in {@link ResolvedSpec.specHygieneIssues}. Defaults
