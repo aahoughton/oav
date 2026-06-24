@@ -14,9 +14,11 @@
  *   - **A TEE fans events to one sub-spine per branch concurrently**, so
  *     within a TEE the peak is the **sum** over branches.
  *   - **A BUFFER island materializes its whole subtree**, bounded by that
- *     subtree's structural bounds (`maxLength` / `maxItems` /
- *     `maxProperties` / `const` / `enum`); **unbounded** if any required
- *     bound is missing.
+ *     subtree's structural bounds (`maxLength` / `maxItems` / `const` /
+ *     `enum`, and a closed object's properties); **unbounded** if any
+ *     required bound is missing. An open object (`additionalProperties` not
+ *     `false`) is unbounded regardless of `maxProperties`, which the byte
+ *     model does not yet read.
  *
  * Sizes are an upper bound in **UTF-8 wire bytes** (the same unit
  * `maxBufferedBytes` caps), computed from the byte model below. They are

@@ -187,7 +187,7 @@ export async function resolveCommand(
  * whole resolved spec, so a deployer can see, before deploy, which bodies
  * stream and which buffer (and where).
  *
- * @returns exit code 0, or 1 when `--fail-on unbounded` is set and any body
+ * @returns exit code 0, or 1 when `--fail-on-unbounded` is set and any body
  *          has an unbounded peak.
  *
  * @public

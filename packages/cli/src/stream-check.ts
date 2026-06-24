@@ -48,7 +48,14 @@ function renderBody(body: BodyBudget, pad: number, verbose: boolean): string[] {
   const unbounded = buffers.filter((p) => p.maxBytes === "unbounded");
   const bounded = buffers.length - unbounded.length;
   const counts = buffers.length > 0 ? `  (${unbounded.length} unbounded, ${bounded} bounded)` : "";
-  const head = `  ${role} ${media} ${classLabel(report).padEnd(11)} peak ${formatBytes(report.peakBytes)}${counts}`;
+  // Surface the configured cap when it actually binds (effective < intrinsic,
+  // or a finite cap over an unbounded peak); equal means no cap is set or the
+  // cap does not bind.
+  const capped =
+    report.effectivePeakBytes === report.peakBytes
+      ? ""
+      : `  (capped to ${formatBytes(report.effectivePeakBytes)})`;
+  const head = `  ${role} ${media} ${classLabel(report).padEnd(11)} peak ${formatBytes(report.peakBytes)}${capped}${counts}`;
   if (!verbose) return [head];
 
   const lines = [head];
@@ -87,7 +94,7 @@ function tally(budget: SpecBudget): Counts {
   return c;
 }
 
-/** True when any body in the budget has an unbounded peak (the `--fail-on unbounded` trigger). */
+/** True when any body in the budget has an unbounded peak (the `--fail-on-unbounded` trigger). */
 export function hasUnbounded(budget: SpecBudget): boolean {
   return budget.operations.some((op) => op.bodies.some((b) => b.report?.peakBytes === "unbounded"));
 }

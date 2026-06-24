@@ -195,8 +195,9 @@ A peak is computable because the engine holds one materialized island at a
 time: sequential positions (array items, object properties) buffer one at a
 time, so the peak across siblings is a **max**, while a TEE's concurrent
 sub-spines **sum**. A BUFFER island is bounded by its subtree's structural
-keywords (`maxLength` / `maxItems` / `maxProperties` / `const` / `enum`),
-and `"unbounded"` where one is missing. Sizes are an upper-bound estimate
+keywords (`maxLength` / `maxItems` / `const` / `enum`, and a closed
+object's properties), and `"unbounded"` where one is missing (an open
+object is unbounded regardless of `maxProperties`). Sizes are an upper-bound estimate
 in the same UTF-8 wire bytes `maxBufferedBytes` caps (heavy `\uXXXX`
 escaping can exceed the per-character assumption), so treat the number as a
 capacity-planning figure, not a runtime meter. An unstreamable schema

@@ -71,6 +71,22 @@ describe("streamCheckCommand", () => {
     expect(budget.operations[0].bodies[0].report.peakBytes).toBe("unbounded");
   });
 
+  it("shows the effective peak in the text output when --max-buffered-bytes binds", async () => {
+    const { io: cmdIo, stdout } = io();
+    await streamCheckCommand(
+      { ...base, envelope: "text", maxBufferedBytes: 1000, options: textOpts },
+      cmdIo,
+    );
+    // The unbounded request body clamps to the cap; the table must surface it.
+    expect(stdout.value).toContain("peak UNBOUNDED  (capped to 1000 B)");
+  });
+
+  it("does not show a cap suffix when no cap is set", async () => {
+    const { io: cmdIo, stdout } = io();
+    await streamCheckCommand({ ...base, envelope: "text", options: textOpts }, cmdIo);
+    expect(stdout.value).not.toContain("capped to");
+  });
+
   it("exits non-zero with --fail-on-unbounded when a body is unbounded", async () => {
     const { io: cmdIo } = io();
     const res = await streamCheckCommand(
