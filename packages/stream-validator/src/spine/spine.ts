@@ -346,7 +346,18 @@ export interface ScopeClose {
   path: PathSegment[];
   kind: "object" | "array";
   valid: boolean;
+  /**
+   * Members (object) or elements (array) seen in the *input*. The observe
+   * count, surfaced verbatim as `ScopeContext.memberCount`.
+   */
   memberCount: number;
+  /**
+   * Members that survive to the *output* after member edits: kept + renamed,
+   * excluding dropped. Equals {@link memberCount} when no member edits apply.
+   * Drives the leading-comma decision in `ScopeContext.field()`, so an
+   * appended field after an all-members drop does not emit a stray comma.
+   */
+  outputMemberCount: number;
   /** Byte offset of the closing delimiter (`}` / `]`). */
   delimiterOffset: number;
 }
@@ -1254,6 +1265,9 @@ export class SpineValidator implements JsonEventHandler {
       kind: "object",
       valid: this.violations.length === frame.violationsAtOpen,
       memberCount: frame.count,
+      // Surviving output members: kept + renamed (a drop never enters
+      // `outputKeys`). Null when member edits are off, where output == input.
+      outputMemberCount: frame.outputKeys !== null ? frame.outputKeys.size : frame.count,
       delimiterOffset: offset,
     });
     this.popSegment();
@@ -1327,6 +1341,8 @@ export class SpineValidator implements JsonEventHandler {
       kind: "array",
       valid: this.violations.length === frame.violationsAtOpen,
       memberCount: frame.count,
+      // Array elements are never member-dropped, so output == input.
+      outputMemberCount: frame.count,
       delimiterOffset: offset,
     });
     this.popSegment();

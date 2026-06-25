@@ -561,7 +561,13 @@ export class StreamValidator extends Transform {
 
   private handleScopeClose(close: ScopeClose): void {
     if (this.scopeHooks.length === 0) return;
-    const ctx = makeScopeContext(close.path, close.kind, close.valid, close.memberCount);
+    const ctx = makeScopeContext(
+      close.path,
+      close.kind,
+      close.valid,
+      close.memberCount,
+      close.outputMemberCount,
+    );
     const parts: Buffer[] = [];
     for (const h of this.scopeHooks) {
       if (!matchPathFilter(h.at, close.path, close.kind)) continue;
@@ -618,8 +624,16 @@ export class StreamValidator extends Transform {
   // The highest offset safe to emit now: nothing held past here is subject
   // to a still-pending edit decision (a key onKey'd but undecided, a mid-key
   // token, or a dropped member awaiting delimiter resolution).
+  //
+  // The tokenizer's mid-key hold only matters when a rename can rewrite the
+  // key, so it is folded in only when member hooks are registered. With
+  // scope-only `editClose` there is no key rewrite, so a chunk-straddling
+  // key must not be held (it would buffer to its closing quote with no
+  // member-prefix cap, regressing the append-only path's memory behavior).
   private editSafeLimit(): number {
-    return Math.min(this.spine.editSafeOffset, this.tokenizer.editHoldOffset(), this.totalBytes);
+    const keyHold =
+      this.memberHooks.length > 0 ? this.tokenizer.editHoldOffset() : Number.POSITIVE_INFINITY;
+    return Math.min(this.spine.editSafeOffset, keyHold, this.totalBytes);
   }
 
   // Flush resolved edits, then dump any still-held tail verbatim and discard

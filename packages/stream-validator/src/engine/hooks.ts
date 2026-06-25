@@ -82,8 +82,11 @@ export interface ScopeContext {
   readonly memberCount: number;
   /**
    * Build an object member to append, handling the leading comma: returns
-   * `"name":value` when the scope is empty, `,"name":value` otherwise.
-   * For object scopes; arrays append their own element bytes.
+   * `"name":value` when no member survives to the output (an empty scope, or
+   * one whose every member was dropped by `editMember`), `,"name":value`
+   * otherwise. The comma tracks surviving output members, not the input
+   * {@link memberCount}. For object scopes; arrays append their own element
+   * bytes.
    */
   field(name: string, value: JsonValue): string;
 }
@@ -168,12 +171,20 @@ export function toBuffer(bytes: Bytes): Buffer {
   return Buffer.from(bytes);
 }
 
-/** Build the {@link ScopeContext} for a closing scope. */
+/**
+ * Build the {@link ScopeContext} for a closing scope. `memberCount` is the
+ * input-observed count surfaced on the context; `outputMemberCount` is the
+ * post-edit surviving count (kept + renamed) that drives `field()`'s leading
+ * comma, so an appended field after all members were dropped does not emit a
+ * stray comma. The two differ only under member edits; otherwise pass the
+ * same value.
+ */
 export function makeScopeContext(
   path: PathSegment[],
   kind: "object" | "array",
   valid: boolean,
   memberCount: number,
+  outputMemberCount: number,
 ): ScopeContext {
   return {
     path,
@@ -181,7 +192,7 @@ export function makeScopeContext(
     verdict: valid ? "valid" : "invalid",
     memberCount,
     field(name: string, value: JsonValue): string {
-      const lead = memberCount > 0 ? "," : "";
+      const lead = outputMemberCount > 0 ? "," : "";
       return `${lead}${JSON.stringify(name)}:${JSON.stringify(value)}`;
     },
   };

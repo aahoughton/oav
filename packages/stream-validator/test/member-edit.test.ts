@@ -437,3 +437,94 @@ describe("editMember collision rule keys on surviving output names", () => {
     expect(r.output).toBe('{"a":2}');
   });
 });
+
+describe("editMember + editClose interaction (cross-hook output-member count)", () => {
+  // `editClose`'s field() leading comma must track *surviving output* members,
+  // not the pre-edit input count: after a member drop the appended field has to
+  // know whether anything is left to comma-separate from. A drop never enters
+  // the output-key set, so an all-members drop leaves a zero output count and
+  // field() omits the comma.
+  it("drop-all + editClose field omits the stray comma (root)", async () => {
+    const r = await run({ type: "object" }, '{"a":1}', (v) => {
+      v.editMember(["a"], drop);
+      v.editClose([], (ctx) => ctx.field("x", 1));
+    });
+    expect(r.err).toBeUndefined();
+    expect(r.output).toBe('{"x":1}');
+  });
+
+  it("drop-all + editClose field omits the comma in a nested object (per-frame count)", async () => {
+    const r = await run({ type: "object" }, '{"outer":{"a":1}}', (v) => {
+      v.editMember(["outer", "a"], drop);
+      v.editClose(["outer"], (ctx) => ctx.field("x", 1));
+    });
+    expect(r.err).toBeUndefined();
+    expect(r.output).toBe('{"outer":{"x":1}}');
+  });
+
+  it("partial drop + editClose field keeps the comma (a survivor remains)", async () => {
+    const r = await run({ type: "object" }, '{"a":1,"b":2}', (v) => {
+      v.editMember(["b"], drop);
+      v.editClose([], (ctx) => ctx.field("x", 1));
+    });
+    expect(r.err).toBeUndefined();
+    expect(r.output).toBe('{"a":1,"x":1}');
+  });
+
+  it("rename-only + editClose field keeps the comma (a renamed member is a survivor)", async () => {
+    const r = await run({ type: "object" }, '{"a":1}', (v) => {
+      v.editMember(["a"], rename("z"));
+      v.editClose([], (ctx) => ctx.field("x", 1));
+    });
+    expect(r.err).toBeUndefined();
+    expect(r.output).toBe('{"z":1,"x":1}');
+  });
+
+  it("observer memberCount stays the pre-edit input count under drop-all", async () => {
+    let observed: number | undefined;
+    const r = await run({ type: "object" }, '{"a":1}', (v) => {
+      v.editMember(["a"], drop);
+      v.onScopeClose([], (ctx) => {
+        observed = ctx.memberCount;
+      });
+    });
+    expect(r.err).toBeUndefined();
+    expect(r.output).toBe("{}");
+    // memberCount is the input observation, not the surviving output count.
+    expect(observed).toBe(1);
+  });
+});
+
+describe("scope-only editClose does not hold a chunk-split key", () => {
+  // The tokenizer mid-key hold exists for rename safety. With only `editClose`
+  // registered (no member hooks), there is no key rewrite, so a key straddling
+  // a chunk boundary must not be held: it would buffer to its closing quote
+  // with no member-prefix cap, regressing the append-only path. Observed
+  // directly: after a chunk that ends mid-key, the bytes preceding the key are
+  // already flushed downstream rather than withheld.
+  it("flushes the pre-key bytes before the split key closes", async () => {
+    const v = createStreamValidator({ type: "object" }, {});
+    v.editClose([], (ctx) => ctx.field("x", 1));
+    v.on("error", () => {});
+    const out: Buffer[] = [];
+    v.on("data", (c: Buffer) => out.push(Buffer.from(c)));
+
+    const longKey = "k".repeat(50000);
+    const json = `{"${longKey}":1}`;
+    const cut = 2 + 25000; // mid-key: past the leading `{"`, inside the key body
+    v.write(Buffer.from(json.slice(0, cut)));
+    await new Promise((resolve) => setImmediate(resolve));
+    // Held (pre-fix) would leave only the opening `{` flushed (~1 byte). With
+    // the hold gated off, everything up to the cut streams through.
+    const flushed = Buffer.concat(out).length;
+    expect(flushed).toBeGreaterThan(20000);
+
+    v.end(Buffer.from(json.slice(cut)));
+    const valid = await v.result.then(
+      (res) => res.valid,
+      () => undefined,
+    );
+    expect(Buffer.concat(out).toString("utf8")).toBe(`{"${longKey}":1,"x":1}`);
+    expect(valid).toBe(true);
+  });
+});
