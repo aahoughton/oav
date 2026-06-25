@@ -218,7 +218,9 @@ export interface StreamValidatorOptions {
    * buffering unbounded. Defaults *finite* ({@link
    * DEFAULT_MAX_CAPTURE_BYTES}, 64 KB), the same "small member" size as
    * scalar capture but an independent knob: raise it to drop a larger
-   * (still bounded) member, e.g. a small array.
+   * (still bounded) scalar member. Dropping a container-valued member is
+   * not supported on the stream path (it throws `MemberEditError`), so
+   * this cap only ever bounds a scalar span.
    */
   maxMemberDropBytes?: number;
 
