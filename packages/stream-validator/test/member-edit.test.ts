@@ -327,3 +327,113 @@ describe("editMember nested objects", () => {
     ]);
   });
 });
+
+describe("editMember on a scalar routed through a BUFFER island", () => {
+  // Under an asserting OpenAPI dialect a `format`-bearing scalar is delegated
+  // to the in-memory engine (a scalar BUFFER island), not stream-checked. The
+  // edit is decided at the value start (pre-classification) and finalized at
+  // the value end; the delegate validates the materialized value but never
+  // emits output, so the echo remains the single output path. These pin that
+  // boundary: edit applies, verdict comes from the delegate. A custom format
+  // (deterministic, definitely asserting) forces the island.
+  const schema = {
+    type: "object",
+    properties: { when: { type: "string", format: "even-len" } },
+  };
+  const opts = {
+    openApiVersion: "3.1",
+    formats: { "even-len": (s: string) => s.length % 2 === 0 },
+  };
+
+  it("renames a delegated format scalar, value verbatim, verdict from the delegate", async () => {
+    const r = await run(
+      schema,
+      '{"when":"abcd","keep":1}',
+      (v) => v.editMember(["when"], rename("ts")),
+      opts,
+    );
+    expect(r.output).toBe('{"ts":"abcd","keep":1}');
+    expect(r.valid).toBe(true);
+  });
+
+  it("drops a delegated format scalar (still validated, then suppressed)", async () => {
+    const r = await run(
+      schema,
+      '{"when":"abcd","keep":1}',
+      (v) => v.editMember(["when"], drop),
+      opts,
+    );
+    expect(r.output).toBe('{"keep":1}');
+    expect(r.valid).toBe(true);
+  });
+
+  it("applies the rename even when the delegated value fails its format", async () => {
+    // decide-before-classification: the key is rewritten at value start, so an
+    // invalid format still renames; the delegate's verdict flows independently.
+    const r = await run(schema, '{"when":"abc"}', (v) => v.editMember(["when"], rename("ts")), {
+      ...opts,
+      maxErrors: Number.POSITIVE_INFINITY,
+      policy: "detach",
+    });
+    expect(r.output).toBe('{"ts":"abc"}');
+    expect(r.valid).toBe(false);
+  });
+});
+
+describe("editMember rename of a container routed through BUFFER/TEE, then trailing drop", () => {
+  // Rename is decided at the key token, independent of how the value
+  // classifies, so a key in front of a non-streamed container renames the same
+  // as in front of a plain array. The load-bearing assertion is that
+  // `noteContainerMemberEnd` records the right `lastKeptValueEnd` on the
+  // finalizeIsland / finalizeTee paths, so a following trailing scalar drop
+  // absorbs the correct comma.
+  it("renames a BUFFER container (uniqueItems) then drops a trailing scalar", async () => {
+    const schema = {
+      type: "object",
+      properties: { tags: { type: "array", uniqueItems: true } },
+    };
+    const r = await run(schema, '{"tags":[1,2,3],"drop_me":1}', (v) => {
+      v.editMember(["tags"], rename("labels"));
+      v.editMember(["drop_me"], drop);
+    });
+    expect(r.output).toBe('{"labels":[1,2,3]}');
+    expect(r.valid).toBe(true);
+  });
+
+  it("renames a TEE container (oneOf) then drops a trailing scalar", async () => {
+    const schema = {
+      type: "object",
+      properties: { val: { oneOf: [{ type: "array" }, { type: "number" }] } },
+    };
+    const r = await run(schema, '{"val":[1,2],"drop_me":1}', (v) => {
+      v.editMember(["val"], rename("value"));
+      v.editMember(["drop_me"], drop);
+    });
+    expect(r.output).toBe('{"value":[1,2]}');
+    expect(r.valid).toBe(true);
+  });
+});
+
+describe("editMember collision rule keys on surviving output names", () => {
+  // The duplicate-key guard polices effective *surviving* output names, not
+  // raw input keys: a rename onto a name whose original is itself dropped is
+  // legal (the original never reaches the output). The symmetric case (rename
+  // onto a surviving key) stays fatal, covered above.
+  it("allows a->b when the original b is dropped", async () => {
+    const r = await run({ type: "object" }, '{"a":1,"b":2}', (v) => {
+      v.editMember(["a"], rename("b"));
+      v.editMember(["b"], drop);
+    });
+    expect(r.err).toBeUndefined();
+    expect(r.output).toBe('{"b":1}');
+  });
+
+  it("allows b->a when the original a is dropped", async () => {
+    const r = await run({ type: "object" }, '{"a":1,"b":2}', (v) => {
+      v.editMember(["a"], drop);
+      v.editMember(["b"], rename("a"));
+    });
+    expect(r.err).toBeUndefined();
+    expect(r.output).toBe('{"a":2}');
+  });
+});
