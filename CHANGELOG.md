@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.7.0](https://github.com/aahoughton/oav/compare/oav-core-v3.6.0...oav-core-v3.7.0) (2026-06-25)
+
+
+### Features
+
+* **stream-validator:** member-level key edit (rename/drop) on the stream path ([#441](https://github.com/aahoughton/oav/issues/441)) ([6b76f08](https://github.com/aahoughton/oav/commit/6b76f08f64e1b31b97b3fd283ccedfaf2bfcc11d))
+* **stream-validator:** report peak buffered bytes on the verdict ([#443](https://github.com/aahoughton/oav/issues/443)) ([dd42050](https://github.com/aahoughton/oav/commit/dd42050c10ae38f7a0aed116a8f629e75b6ff9d8))
+
 ## [3.6.0](https://github.com/aahoughton/oav/compare/oav-core-v3.5.0...oav-core-v3.6.0) (2026-06-24)
 
 
