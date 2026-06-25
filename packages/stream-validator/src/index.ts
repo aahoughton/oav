@@ -21,9 +21,13 @@ export type { JsonPath, PathFilter, StreamValidatorOptions } from "./options.js"
 export {
   createStreamValidator,
   DEFAULT_MAX_CAPTURE_BYTES,
+  DEFAULT_MAX_MEMBER_PREFIX_BYTES,
   MaxTotalBytesError,
   ValidationFailedError,
   type Bytes,
+  type MemberContext,
+  type MemberEdit,
+  type MemberEditor,
   type ScopeContext,
   type ScopeEditor,
   type ScopeObserver,
@@ -48,6 +52,6 @@ export {
   type StreamClass,
 } from "./analyzer/index.js";
 export { type OperationLocator, streamValidatorForOperation } from "./operation.js";
-export { BufferLimitError, UniqueItemsLimitError } from "./spine/index.js";
+export { BufferLimitError, MemberEditError, UniqueItemsLimitError } from "./spine/index.js";
 export type { StreamVerdict, SchemaViolation } from "./spine/index.js";
 export { toValidationError } from "./violation.js";

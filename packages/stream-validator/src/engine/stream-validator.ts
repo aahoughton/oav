@@ -44,6 +44,8 @@ import { classify } from "../classifier/index.js";
 import {
   BudgetReached,
   type IslandDelegate,
+  type MemberDecision,
+  MemberEditError,
   type ScopeClose,
   SpineValidator,
   type StreamVerdict,
@@ -53,7 +55,10 @@ import { JsonTokenizer } from "../tokenizer/index.js";
 import type { JsonPath, PathFilter, StreamValidatorOptions } from "../options.js";
 import {
   DEFAULT_MAX_CAPTURE_BYTES,
+  DEFAULT_MAX_MEMBER_PREFIX_BYTES,
+  makeMemberContext,
   makeScopeContext,
+  type MemberEditor,
   type ScopeEditor,
   type ScopeObserver,
   toBuffer,
@@ -85,6 +90,14 @@ function matchValueFilter(
     filter.length === scopePath.length + 1 &&
     filter.every((seg, i) => (i < scopePath.length ? seg === scopePath[i] : seg === key))
   );
+}
+
+// Two member decisions agree (so multiple matching hooks are not a
+// conflict): both drop, or both rename to the same key.
+function sameDecision(a: MemberDecision, b: MemberDecision): boolean {
+  if (a.kind !== b.kind) return false;
+  if (a.kind === "rename" && b.kind === "rename") return a.key === b.key;
+  return true;
 }
 
 /**
@@ -261,7 +274,25 @@ export class StreamValidator extends Transform {
   private readonly scopeHooks: Array<
     { at: PathFilter; observe: ScopeObserver } | { at: PathFilter; edit: ScopeEditor }
   > = [];
-  private pendingInjections: Array<{ offset: number; bytes: Buffer }> = [];
+
+  // Member-edit hooks (rename/drop a matched object member), in
+  // registration order. Their presence routes a chunk through the
+  // collect-then-echo path, the same as scope hooks.
+  private readonly memberHooks: Array<{ at: PathFilter; edit: MemberEditor }> = [];
+  private readonly maxMemberPrefixBytes: number;
+  private readonly maxMemberDropBytes: number;
+
+  // The editing echo: input bytes are held from `heldBase` until the spine
+  // resolves any edit that could touch them, then flushed (verbatim or with
+  // the resolved edits spliced in). `pendingEdits` are span edits in
+  // absolute input offsets: `bytes === null` is a deletion (drop), a
+  // non-null `bytes` with `start < end` is a replacement (rename), and
+  // `start === end` is an insertion (an `editClose` append). Held bytes are
+  // bounded by the pending key / drop span, so the bounded-heap property
+  // holds.
+  private pendingEdits: Array<{ start: number; end: number; bytes: Buffer | null }> = [];
+  private heldBytes: Buffer = Buffer.alloc(0);
+  private heldBase = 0;
 
   /** Resolves with the final verdict (rejects on a fatal parse / I/O error). */
   readonly result: Promise<StreamVerdict>;
@@ -297,6 +328,18 @@ export class StreamValidator extends Transform {
         "Omit it to use the default capture cap.",
       );
     }
+    assertPositiveIntOption(
+      "maxMemberPrefixBytes",
+      options.maxMemberPrefixBytes,
+      "Omit it to use the default member-prefix cap.",
+    );
+    assertPositiveIntOption(
+      "maxMemberDropBytes",
+      options.maxMemberDropBytes,
+      "Omit it to use the default member-drop cap.",
+    );
+    this.maxMemberPrefixBytes = options.maxMemberPrefixBytes ?? DEFAULT_MAX_MEMBER_PREFIX_BYTES;
+    this.maxMemberDropBytes = options.maxMemberDropBytes ?? DEFAULT_MAX_CAPTURE_BYTES;
     this.maxErrors = options.maxErrors ?? 1;
     this.policy = options.policy ?? "terminate";
     this.maxTotalBytes = options.maxTotalBytes;
@@ -388,6 +431,15 @@ export class StreamValidator extends Transform {
           }
         : {}),
       onScopeClose: (close: ScopeClose) => this.handleScopeClose(close),
+      // Member edits: wired unconditionally (cheap closures), but the spine
+      // ignores them until `editMember` flips it on, so a stream with no
+      // member hooks pays nothing.
+      memberEdit: (scopePath, key, valueType) => this.resolveMemberEdit(scopePath, key, valueType),
+      emitReplace: (start, end, bytes) =>
+        this.pendingEdits.push({ start, end, bytes: Buffer.from(bytes, "utf8") }),
+      emitDelete: (start, end) => this.pendingEdits.push({ start, end, bytes: null }),
+      maxMemberPrefixBytes: this.maxMemberPrefixBytes,
+      maxMemberDropBytes: this.maxMemberDropBytes,
     });
     this.tokenizer = new JsonTokenizer(this.spine);
     this.result = new Promise<StreamVerdict>((resolve, reject) => {
@@ -460,6 +512,53 @@ export class StreamValidator extends Transform {
     this.scopeHooks.push({ at, edit });
   }
 
+  /**
+   * Rename or drop a matched object member as it streams. The hook fires
+   * at the member's value start (after its key, before the value), so it
+   * can decide `keep` / `rename` / `drop` with the value type known.
+   * `rename` rewrites the key token only and streams the value verbatim
+   * (no value buffering, any value size); `drop` suppresses the member
+   * and one delimiter. Register before piping. The matched member's
+   * value is still validated against the input schema (a `drop` removes
+   * it from the output, not from the verdict). Return `null` for a no-op.
+   *
+   * A rename whose target collides with another key in the same object,
+   * and two hooks returning conflicting edits for one member, are both
+   * fatal.
+   */
+  editMember(at: PathFilter, edit: MemberEditor): void {
+    this.memberHooks.push({ at, edit });
+    if (this.memberHooks.length === 1) this.spine.enableMemberEdits();
+  }
+
+  // Resolve the registered member hooks for one member into a single
+  // decision. Multiple matching hooks must agree (a rename to the same key,
+  // or all keep); a genuine conflict (rename-vs-drop, or two different
+  // rename targets) is fatal, since the order would otherwise silently pick
+  // a winner.
+  private resolveMemberEdit(
+    scopePath: readonly PathSegment[],
+    key: string,
+    valueType: "object" | "array" | "string" | "number" | "boolean" | "null",
+  ): MemberDecision | null {
+    let decision: MemberDecision | null = null;
+    for (const h of this.memberHooks) {
+      if (!matchValueFilter(h.at, scopePath, key)) continue;
+      const r = h.edit(makeMemberContext([...scopePath, key], key, valueType));
+      if (r === null || r.action === "keep") continue;
+      const d: MemberDecision =
+        r.action === "rename" ? { kind: "rename", key: r.key } : { kind: "drop" };
+      if (decision !== null && !sameDecision(decision, d)) {
+        throw new MemberEditError(
+          `conflicting member edits for ${JSON.stringify([...scopePath, key])}`,
+          0,
+        );
+      }
+      decision = d;
+    }
+    return decision;
+  }
+
   private handleScopeClose(close: ScopeClose): void {
     if (this.scopeHooks.length === 0) return;
     const ctx = makeScopeContext(close.path, close.kind, close.valid, close.memberCount);
@@ -473,24 +572,67 @@ export class StreamValidator extends Transform {
       }
     }
     if (parts.length > 0) {
-      this.pendingInjections.push({ offset: close.delimiterOffset, bytes: Buffer.concat(parts) });
+      // An append before the closing delimiter is an insertion (start === end).
+      const at = close.delimiterOffset;
+      this.pendingEdits.push({ start: at, end: at, bytes: Buffer.concat(parts) });
     }
   }
 
-  // Echo a chunk, splicing each scope-close injection in before its
-  // delimiter byte. Injections arrive in ascending offset order (scopes
-  // close child-before-parent).
-  private emitWithInjections(chunk: Buffer, base: number): void {
-    let local = 0;
-    for (const inj of this.pendingInjections) {
-      const cut = inj.offset - base;
-      if (cut < local || cut > chunk.length) continue;
-      if (cut > local) this.push(chunk.subarray(local, cut));
-      this.push(inj.bytes);
-      local = cut;
+  // Whether any editing hook is registered; routes a chunk through the
+  // collect-then-flush echo instead of the verbatim fast path.
+  private get editsActive(): boolean {
+    return this.scopeHooks.length > 0 || this.memberHooks.length > 0;
+  }
+
+  // Emit held bytes up to `limit` (absolute), splicing in any pending edit
+  // fully resolved within that range. Edits past `limit` and bytes at or
+  // past `limit` stay held for a later flush. Edits are applied in offset
+  // order; overlapping deletions (a trailing drop that re-covers an earlier
+  // following-comma delete) merge via the running cursor.
+  private flushEdits(limit: number): void {
+    if (limit <= this.heldBase) return;
+    const ready: Array<{ start: number; end: number; bytes: Buffer | null }> = [];
+    const rest: Array<{ start: number; end: number; bytes: Buffer | null }> = [];
+    for (const e of this.pendingEdits) (e.end <= limit ? ready : rest).push(e);
+    this.pendingEdits = rest;
+    ready.sort((a, b) => a.start - b.start || b.end - a.end);
+    const base = this.heldBase;
+    const buf = this.heldBytes;
+    let cur = base;
+    for (const e of ready) {
+      if (e.start < cur) {
+        // Overlapped by an earlier (wider) edit: extend the cursor for a
+        // delete/replace, drop an insertion that fell inside a deleted span.
+        if (e.end > cur) cur = e.end;
+        continue;
+      }
+      if (e.start > cur) this.push(buf.subarray(cur - base, e.start - base));
+      if (e.bytes !== null) this.push(e.bytes);
+      cur = Math.max(cur, e.end);
     }
-    if (local < chunk.length) this.push(chunk.subarray(local));
-    this.pendingInjections = [];
+    if (cur < limit) this.push(buf.subarray(cur - base, limit - base));
+    this.heldBytes = buf.subarray(limit - base);
+    this.heldBase = limit;
+  }
+
+  // The highest offset safe to emit now: nothing held past here is subject
+  // to a still-pending edit decision (a key onKey'd but undecided, a mid-key
+  // token, or a dropped member awaiting delimiter resolution).
+  private editSafeLimit(): number {
+    return Math.min(this.spine.editSafeOffset, this.tokenizer.editHoldOffset(), this.totalBytes);
+  }
+
+  // Flush resolved edits, then dump any still-held tail verbatim and discard
+  // unresolved edits. Used when sealing (detach budget) or finishing: no
+  // further edit decisions will arrive, so the remainder echoes as-is.
+  private flushHeldVerbatim(): void {
+    this.flushEdits(this.editSafeLimit());
+    if (this.heldBytes.length > 0) {
+      this.push(this.heldBytes);
+      this.heldBase += this.heldBytes.length;
+      this.heldBytes = Buffer.alloc(0);
+    }
+    this.pendingEdits = [];
   }
 
   override _transform(chunk: Buffer, _enc: BufferEncoding, cb: TransformCallback): void {
@@ -511,21 +653,24 @@ export class StreamValidator extends Transform {
       return;
     }
 
-    // With edit hooks, tokenize first (collecting injections), then echo
-    // with the injections spliced in. Without hooks, echo verbatim up
-    // front (the fast path).
-    if (this.scopeHooks.length > 0) {
-      this.pendingInjections = [];
+    // With edit hooks, hold the chunk, tokenize (the spine collects edits),
+    // then flush the bytes the spine has cleared, with edits spliced in.
+    // Without hooks, echo verbatim up front (the fast path).
+    if (this.editsActive) {
+      this.heldBytes = this.heldBytes.length === 0 ? chunk : Buffer.concat([this.heldBytes, chunk]);
+      if (this.heldBytes.length === chunk.length) this.heldBase = base;
       let err: unknown;
       try {
         this.tokenizer.write(chunk);
       } catch (e) {
         err = e;
       }
-      this.emitWithInjections(chunk, base);
       if (err === undefined) {
+        this.flushEdits(this.editSafeLimit());
         cb();
       } else if (err instanceof BudgetReached) {
+        // Detach echoes the tail verbatim; flush whatever is held first.
+        this.flushHeldVerbatim();
         this.applyBudget(cb);
       } else {
         this.finished = true;
@@ -563,6 +708,9 @@ export class StreamValidator extends Transform {
     if (!this.sealed) {
       try {
         this.tokenizer.end();
+        // End of input: all scopes closed, so every edit is resolved. Flush
+        // the held tail with edits spliced in.
+        if (this.editsActive) this.flushEdits(this.totalBytes);
       } catch (err) {
         // BudgetReached at close just finalizes (below); other throws are fatal.
         if (!(err instanceof BudgetReached)) {

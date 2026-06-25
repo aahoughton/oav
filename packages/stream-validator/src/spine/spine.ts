@@ -101,6 +101,28 @@ export class UniqueItemsLimitError extends Error {
   }
 }
 
+/**
+ * A member edit could not be applied. Fatal (the `error` channel), distinct
+ * from a {@link SchemaViolation}: the input may be valid, but the requested
+ * rename/drop cannot be carried out safely or unambiguously.
+ *
+ * Covers the member-edit failure modes:
+ *   - the held key-to-value span exceeded `maxMemberPrefixBytes`;
+ *   - a dropped member's span exceeded `maxMemberDropBytes`;
+ *   - a rename produced a duplicate key in the same object;
+ *   - a `drop` targeted a container value (not supported on the stream
+ *     path yet).
+ */
+export class MemberEditError extends Error {
+  /** Stream-absolute byte offset at which the failure was detected. */
+  readonly byteOffset: number;
+  constructor(message: string, byteOffset: number) {
+    super(message);
+    this.name = "MemberEditError";
+    this.byteOffset = byteOffset;
+  }
+}
+
 /** Validates a materialized island value against schemas; returns flat violations. */
 export type IslandDelegate = (
   schemas: SchemaObject[],
@@ -230,7 +252,35 @@ export interface SpineOptions {
    * verdict is not final at the streaming close.
    */
   onScopeClose?: (close: ScopeClose) => void;
+  /**
+   * Resolve a member-edit decision for a STREAM object member, called at
+   * the member's value start (so the value type is known). Returns the
+   * effective edit, or `null`/`{kind:"keep"}` for a pass-through. Set only
+   * when member-edit hooks are registered; the engine owns hook matching
+   * and conflict resolution, the spine owns offsets, the prefix cap, and
+   * same-scope output-key collision.
+   */
+  memberEdit?: (
+    scopePath: readonly PathSegment[],
+    key: string,
+    valueType: "object" | "array" | "string" | "number" | "boolean" | "null",
+  ) => MemberDecision | null;
+  /** Emit a key-token replacement (rename): replace input `[start, end)` with `bytes`. */
+  emitReplace?: (start: number, end: number, bytes: string) => void;
+  /** Emit a member deletion (drop): delete input `[start, end)` (delimiter ownership resolved by the spine). */
+  emitDelete?: (start: number, end: number) => void;
+  /** Cap on the held key-to-value span for a member edit; over-cap is fatal. */
+  maxMemberPrefixBytes?: number;
+  /** Cap on a dropped member's withheld span; over-cap is fatal. */
+  maxMemberDropBytes?: number;
 }
+
+/**
+ * A resolved member-edit decision (engine-resolved from the registered
+ * hooks). `keep` passes through; `rename` rewrites the key token and
+ * streams the value; `drop` suppresses the member.
+ */
+export type MemberDecision = { kind: "keep" } | { kind: "rename"; key: string } | { kind: "drop" };
 
 /** The verdict of a streaming validation. */
 export interface StreamVerdict {
@@ -252,6 +302,21 @@ interface ObjectFrame {
   count: number;
   pendingKey: string | null;
   violationsAtOpen: number;
+  // Member-edit bookkeeping (set only when member edits are active).
+  // Byte span of the pending key's token, for a rename replacement.
+  pendingKeyStart: number;
+  pendingKeyEnd: number;
+  // Effective output names seen in this object, each flagged whether it
+  // came from a rename, to make a rename-induced duplicate key fatal while
+  // leaving a pre-existing input duplicate alone.
+  outputKeys: Map<string, boolean> | null;
+  // Offset just past the last kept/renamed member's value (the left bound
+  // when deleting a trailing dropped member, to absorb its leading comma).
+  // Initialized to the offset just after the opening `{`.
+  lastKeptValueEnd: number;
+  // A dropped member awaiting delimiter resolution (at the next member key
+  // or the object close).
+  pendingDrop: { keyStart: number; valueEnd: number } | null;
 }
 
 interface ArrayFrame {
@@ -354,6 +419,22 @@ export class SpineValidator implements JsonEventHandler {
     | undefined;
   private readonly maxCaptureBytes: number | undefined;
   private readonly onScopeClose: ((close: ScopeClose) => void) | undefined;
+  private readonly memberEdit: SpineOptions["memberEdit"];
+  private readonly emitReplace: SpineOptions["emitReplace"];
+  private readonly emitDelete: SpineOptions["emitDelete"];
+  // Off until `enableMemberEdits()`; gates all member-edit work so a stream
+  // with no hooks pays nothing.
+  private memberEditActive = false;
+  private readonly maxMemberPrefixBytes: number;
+  private readonly maxMemberDropBytes: number;
+  // A key seen (onKey) whose member-edit decision is pending until its
+  // value starts; the editing echo holds bytes from here so a rename can
+  // rewrite the key. `+Infinity` when no decision is pending.
+  private pendingDecisionKeyStart = Number.POSITIVE_INFINITY;
+  // A string value member's resolved decision, carried from its start
+  // (`onStringStart`) to its end (`onStringEnd`, where the value end
+  // finalizes a drop span); null when no decision is pending.
+  private pendingStringDecision: MemberDecision | null = null;
   // Verdict-only mode (TEE branch sub-spines): track a single invalid flag
   // instead of retaining a violation per failure, so a branch over a huge
   // array stays O(1) memory. The parent only reads `verdict().valid`.
@@ -409,6 +490,9 @@ export class SpineValidator implements JsonEventHandler {
     depth: number;
     inString: boolean;
     started: boolean;
+    // The tee'd value opened a container (so it is a container member): used
+    // to record its value-end for a later trailing-drop delete.
+    sawContainer: boolean;
   } | null = null;
 
   constructor(root: SchemaOrBoolean, options: SpineOptions = {}) {
@@ -430,6 +514,131 @@ export class SpineValidator implements JsonEventHandler {
     this.shouldCapture = options.shouldCapture;
     this.maxCaptureBytes = options.maxCaptureBytes;
     this.onScopeClose = options.onScopeClose;
+    this.memberEdit = options.memberEdit;
+    this.emitReplace = options.emitReplace;
+    this.emitDelete = options.emitDelete;
+    this.maxMemberPrefixBytes = options.maxMemberPrefixBytes ?? Number.POSITIVE_INFINITY;
+    this.maxMemberDropBytes = options.maxMemberDropBytes ?? Number.POSITIVE_INFINITY;
+  }
+
+  /**
+   * Turn on member-edit processing. Off by default so a stream with no
+   * `editMember` hooks pays nothing (the per-value decision, key-offset
+   * tracking, and output-key sets are all gated on this). Called by the
+   * engine when the first member hook registers.
+   */
+  enableMemberEdits(): void {
+    this.memberEditActive = true;
+  }
+
+  /**
+   * The lowest input-byte offset whose emission must wait for a member-edit
+   * decision: a key onKey'd but not yet decided, or a dropped member awaiting
+   * delimiter resolution. `+Infinity` when nothing is pending. Combined with
+   * the tokenizer's mid-key hold offset by the editing echo.
+   */
+  get editSafeOffset(): number {
+    let s = this.pendingDecisionKeyStart;
+    const top = this.frames[this.frames.length - 1];
+    if (top !== undefined && top.kind === "object" && top.pendingDrop !== null) {
+      s = Math.min(s, top.pendingDrop.keyStart);
+    }
+    return s;
+  }
+
+  // Record a member's effective output name, making a rename-induced
+  // duplicate within the same object fatal. A pre-existing input duplicate
+  // (two kept members with the same key) is left alone; we only police
+  // collisions an edit introduced.
+  private recordOutputKey(top: ObjectFrame, name: string, fromRename: boolean): void {
+    const keys = top.outputKeys as Map<string, boolean>;
+    const existing = keys.get(name);
+    if (existing !== undefined && (fromRename || existing)) {
+      throw new MemberEditError(
+        `member rename produced a duplicate key ${JSON.stringify(name)} in the same object`,
+        this.curOffset,
+      );
+    }
+    keys.set(name, fromRename || (existing ?? false));
+  }
+
+  // Resolve a member-edit decision at the member's value start: enforce the
+  // prefix cap, consult the engine, apply collision rules, and emit a rename
+  // replacement. Returns the decision so the caller can finalize the member
+  // (a drop's span, or advancing `lastKeptValueEnd`) once its value end is
+  // known. A no-op `keep` decision when member edits are off or this is not
+  // an object member.
+  private decideMember(
+    valueType: "object" | "array" | "string" | "number" | "boolean" | "null",
+    valueStart: number,
+  ): MemberDecision {
+    this.pendingDecisionKeyStart = Number.POSITIVE_INFINITY;
+    const top = this.frames[this.frames.length - 1];
+    if (!this.memberEditActive || top === undefined || top.kind !== "object") {
+      return { kind: "keep" };
+    }
+    const key = top.pendingKey as string;
+    if (valueStart - top.pendingKeyEnd > this.maxMemberPrefixBytes) {
+      throw new MemberEditError(
+        `member ${JSON.stringify(key)} key-to-value span exceeded maxMemberPrefixBytes=${this.maxMemberPrefixBytes}`,
+        valueStart,
+      );
+    }
+    const decision = this.memberEdit!(this.path, key, valueType) ?? { kind: "keep" };
+    switch (decision.kind) {
+      case "keep":
+        this.recordOutputKey(top, key, false);
+        break;
+      case "rename":
+        this.recordOutputKey(top, decision.key, true);
+        this.emitReplace!(top.pendingKeyStart, top.pendingKeyEnd, JSON.stringify(decision.key));
+        break;
+      case "drop":
+        if (valueType === "object" || valueType === "array") {
+          throw new MemberEditError(
+            `dropping a container-valued member (${JSON.stringify(key)}) is not supported on the stream path`,
+            valueStart,
+          );
+        }
+        // Hold from the key right away (value end filled in at finalize), so
+        // the dropped value's bytes are not flushed before the delete is
+        // resolved at the next sibling key or the object close.
+        top.pendingDrop = { keyStart: top.pendingKeyStart, valueEnd: -1 };
+        break;
+    }
+    return decision;
+  }
+
+  // After a container value (object/array) member closes, advance the
+  // enclosing object's `lastKeptValueEnd` to just past it. Container members
+  // are always kept (a container drop is unsupported), so this records the
+  // value-end that a later trailing-drop delete needs as its left bound.
+  private noteContainerMemberEnd(closeOffset: number): void {
+    if (!this.memberEditActive) return;
+    const parent = this.frames[this.frames.length - 1];
+    if (parent !== undefined && parent.kind === "object") parent.lastKeptValueEnd = closeOffset + 1;
+  }
+
+  // Finalize a scalar member once its value end is known: record a dropped
+  // member's span (bounded by `maxMemberDropBytes`) for delimiter resolution,
+  // or advance `lastKeptValueEnd` for a kept/renamed member.
+  private finalizeScalarMember(decision: MemberDecision, valueEnd: number): void {
+    if (!this.memberEditActive) return;
+    const top = this.frames[this.frames.length - 1];
+    if (top === undefined || top.kind !== "object") return;
+    if (decision.kind === "drop") {
+      // `pendingDrop` was opened at the decision (value start) to hold the
+      // value's bytes; fill in its end and enforce the span cap.
+      if (valueEnd - top.pendingKeyStart > this.maxMemberDropBytes) {
+        throw new MemberEditError(
+          `dropped member ${JSON.stringify(top.pendingKey)} span exceeded maxMemberDropBytes=${this.maxMemberDropBytes}`,
+          valueEnd,
+        );
+      }
+      if (top.pendingDrop !== null) top.pendingDrop.valueEnd = valueEnd;
+    } else {
+      top.lastKeptValueEnd = valueEnd;
+    }
   }
 
   // The enclosing object member's key, when the value about to / just
@@ -741,6 +950,9 @@ export class SpineValidator implements JsonEventHandler {
     }
     this.popSegment();
     this.advance();
+    // A container island is always a kept member (container drop is
+    // unsupported); record its value-end for a later trailing-drop delete.
+    this.noteContainerMemberEnd(this.curOffset);
   }
 
   // A sub-spine validating the same value against one composition branch.
@@ -799,7 +1011,14 @@ export class SpineValidator implements JsonEventHandler {
       ),
     ];
     this.pushSegment();
-    this.tee = { obligations, subs, depth: 0, inString: false, started: false };
+    this.tee = {
+      obligations,
+      subs,
+      depth: 0,
+      inString: false,
+      started: false,
+      sawContainer: false,
+    };
   }
 
   private teeFeed(feed: (s: SpineValidator) => void): void {
@@ -812,11 +1031,17 @@ export class SpineValidator implements JsonEventHandler {
   }
 
   private finalizeTee(): void {
-    const o = (this.tee as NonNullable<typeof this.tee>).obligations;
+    const t = this.tee as NonNullable<typeof this.tee>;
+    const o = t.obligations;
+    const sawContainer = t.sawContainer;
     this.tee = null;
     if (!combineTee(o)) this.fail("composition");
     this.popSegment();
     this.advance();
+    // A container-valued tee'd member is kept; record its value-end. A
+    // scalar/string tee'd member already had its end recorded at the scalar
+    // finalize, so skip it here to avoid overshooting.
+    if (sawContainer) this.noteContainerMemberEnd(this.curOffset);
   }
 
   // A scalar value at a TEE position: feed the single event to every sub
@@ -928,12 +1153,17 @@ export class SpineValidator implements JsonEventHandler {
       this.teeFeed((s) => s.onStartObject(offset));
       this.tee.depth += 1;
       this.tee.started = true;
+      this.tee.sawContainer = true;
       return;
     }
     if (this.island !== null) {
       this.forwardIsland((b) => b.onStartObject());
       return;
     }
+    // A rename of this object-valued member rewrites only its key (the value
+    // streams); a drop of a container value is not supported on the stream
+    // path. Decided before the value's own classification.
+    if (this.memberEditActive) this.decideMember("object", offset);
     const app = this.schemasForValue();
     if (this.needsIsland(app)) {
       this.beginContainerIsland(app);
@@ -945,6 +1175,7 @@ export class SpineValidator implements JsonEventHandler {
       this.teeFeed((s) => s.onStartObject(offset));
       this.tee!.depth = 1;
       this.tee!.started = true;
+      this.tee!.sawContainer = true;
       return;
     }
     this.checkDepth();
@@ -959,6 +1190,11 @@ export class SpineValidator implements JsonEventHandler {
       count: 0,
       pendingKey: null,
       violationsAtOpen: this.violations.length,
+      pendingKeyStart: 0,
+      pendingKeyEnd: 0,
+      outputKeys: this.memberEditActive ? new Map() : null,
+      lastKeptValueEnd: offset + 1,
+      pendingDrop: null,
     });
   }
 
@@ -975,6 +1211,13 @@ export class SpineValidator implements JsonEventHandler {
       return;
     }
     const frame = this.frames.pop() as ObjectFrame;
+    if (this.memberEditActive && frame.pendingDrop !== null) {
+      // A trailing dropped member (last in the object): delete from the last
+      // kept value's end through the dropped member, absorbing the preceding
+      // comma and leaving valid JSON.
+      this.emitDelete!(frame.lastKeptValueEnd, frame.pendingDrop.valueEnd);
+      frame.pendingDrop = null;
+    }
     for (const s of frame.schemas) {
       if (Array.isArray(s.required)) {
         for (const r of s.required) if (!frame.seen.has(r)) this.fail("required");
@@ -1015,6 +1258,7 @@ export class SpineValidator implements JsonEventHandler {
     });
     this.popSegment();
     this.advance();
+    this.noteContainerMemberEnd(offset);
   }
 
   onStartArray(offset: number): void {
@@ -1023,12 +1267,16 @@ export class SpineValidator implements JsonEventHandler {
       this.teeFeed((s) => s.onStartArray(offset));
       this.tee.depth += 1;
       this.tee.started = true;
+      this.tee.sawContainer = true;
       return;
     }
     if (this.island !== null) {
       this.forwardIsland((b) => b.onStartArray());
       return;
     }
+    // Renaming an array-valued member rewrites only its key; the array
+    // streams unbuffered (the headline case). A container drop is unsupported.
+    if (this.memberEditActive) this.decideMember("array", offset);
     const app = this.schemasForValue();
     if (this.needsIsland(app)) {
       this.beginContainerIsland(app);
@@ -1040,6 +1288,7 @@ export class SpineValidator implements JsonEventHandler {
       this.teeFeed((s) => s.onStartArray(offset));
       this.tee!.depth = 1;
       this.tee!.started = true;
+      this.tee!.sawContainer = true;
       return;
     }
     this.checkDepth();
@@ -1082,9 +1331,10 @@ export class SpineValidator implements JsonEventHandler {
     });
     this.popSegment();
     this.advance();
+    this.noteContainerMemberEnd(offset);
   }
 
-  onKey(value: string, codePoints: number, startOffset: number): void {
+  onKey(value: string, codePoints: number, startOffset: number, endOffset = startOffset): void {
     this.curOffset = startOffset;
     if (this.tee !== null) {
       this.teeFeed((s) => s.onKey(value, codePoints, startOffset));
@@ -1096,6 +1346,17 @@ export class SpineValidator implements JsonEventHandler {
     }
     this.keyEvent?.(this.path, value, startOffset);
     const top = this.frames[this.frames.length - 1] as ObjectFrame;
+    if (this.memberEditActive) {
+      // A preceding dropped member ends at this sibling's key: delete it
+      // through to here, absorbing the following comma + whitespace.
+      if (top.pendingDrop !== null) {
+        this.emitDelete!(top.pendingDrop.keyStart, startOffset);
+        top.pendingDrop = null;
+      }
+      top.pendingKeyStart = startOffset;
+      top.pendingKeyEnd = endOffset;
+      this.pendingDecisionKeyStart = startOffset;
+    }
     for (const s of top.schemas) {
       if (s.propertyNames !== undefined) this.checkPropertyName(s.propertyNames, value, codePoints);
       // Over-limit is decided at the (max+1)th key, before its value
@@ -1147,6 +1408,11 @@ export class SpineValidator implements JsonEventHandler {
       this.forwardIsland((b) => b.onStringStart());
       return;
     }
+    // Decide the member edit at value start (key known, value type known),
+    // before the value's own classification (a tee'd or island string value
+    // is still an editable member of a streamed object). Carry the decision
+    // to onStringEnd, where the value end finalizes a drop span.
+    this.pendingStringDecision = this.memberEditActive ? this.decideMember("string", offset) : null;
     const app = this.schemasForValue();
     if (this.needsTee(app)) {
       this.beginTee(app);
@@ -1252,6 +1518,14 @@ export class SpineValidator implements JsonEventHandler {
 
   onStringEnd(codePoints: number, startOffset: number, endOffset: number): void {
     this.curOffset = endOffset;
+    // Finalize a string member's edit at its value end, which is known here
+    // regardless of how the value itself classifies (a tee'd or island value
+    // still completes via this handler). Runs before the value's own
+    // tee/island handling below.
+    if (this.pendingStringDecision !== null) {
+      this.finalizeScalarMember(this.pendingStringDecision, endOffset);
+      this.pendingStringDecision = null;
+    }
     if (this.tee !== null) {
       this.teeFeed((s) => s.onStringEnd(codePoints, startOffset, endOffset));
       this.tee.inString = false;
@@ -1323,6 +1597,8 @@ export class SpineValidator implements JsonEventHandler {
       this.forwardIsland((b) => b.onNumber(value));
       return;
     }
+    if (this.memberEditActive)
+      this.finalizeScalarMember(this.decideMember("number", startOffset), endOffset);
     const app = this.schemasForValue();
     const type = Number.isInteger(value) ? "integer" : "number";
     if (this.needsTee(app)) {
@@ -1346,6 +1622,8 @@ export class SpineValidator implements JsonEventHandler {
       this.forwardIsland((b) => b.onBoolean(value));
       return;
     }
+    if (this.memberEditActive)
+      this.finalizeScalarMember(this.decideMember("boolean", startOffset), endOffset);
     const app = this.schemasForValue();
     if (this.needsTee(app)) {
       this.teeScalar(app, (s) => s.onBoolean(value, startOffset, endOffset));
@@ -1368,6 +1646,8 @@ export class SpineValidator implements JsonEventHandler {
       this.forwardIsland((b) => b.onNull());
       return;
     }
+    if (this.memberEditActive)
+      this.finalizeScalarMember(this.decideMember("null", startOffset), endOffset);
     const app = this.schemasForValue();
     if (this.needsTee(app)) {
       this.teeScalar(app, (s) => s.onNull(startOffset, endOffset));

@@ -94,6 +94,74 @@ export type ScopeObserver = (ctx: ScopeContext) => void;
 /** An edit hook: returns bytes to append before the delimiter, or null for no-op. */
 export type ScopeEditor = (ctx: ScopeContext) => Bytes | null;
 
+/**
+ * Default cap on the held key-to-value span (key bytes + colon +
+ * whitespace) for a `editMember` hook, applied when `maxMemberPrefixBytes`
+ * is unset. JSON allows unbounded whitespace between the colon and the
+ * value, so this span needs its own bound: a legitimate key plus even
+ * deep pretty-print indentation is well under this, while a whitespace-
+ * padding attack trips it. Unlike the schema-bound resource limits
+ * (`maxBufferedBytes`, ...), the edit caps default finite, because they
+ * bound buffers the edit itself introduces. Over-cap is fatal.
+ */
+export const DEFAULT_MAX_MEMBER_PREFIX_BYTES = 4096;
+
+/**
+ * Context passed to a member-edit hook. Fires at the member's value start
+ * (after its key, before the value streams), so {@link valueType} is
+ * known.
+ *
+ * @public
+ */
+export interface MemberContext {
+  /**
+   * Full path to the member: the enclosing object's path plus the member
+   * key. The same coordinate `editMember`'s `at` filter matches (a
+   * top-level member `{version}` is `["version"]`), so the filter and the
+   * context speak one path. The last segment equals {@link key}.
+   */
+  readonly path: PathSegment[];
+  /** The member's current (pre-edit) key. */
+  readonly key: string;
+  /** JSON type of the member's value. */
+  readonly valueType: "object" | "array" | "string" | "number" | "boolean" | "null";
+}
+
+/**
+ * The edit a member-edit hook returns.
+ *
+ *   - `keep`: pass the member through unchanged (also the `null` no-op).
+ *   - `rename`: substitute the key token (`JSON.stringify(key)`); the
+ *     value streams verbatim, so a rename never buffers the value.
+ *   - `drop`: suppress the member (key + value + one delimiter).
+ *
+ * A rename whose target collides with another key in the same object, and
+ * two hooks returning conflicting edits for one member, are both fatal.
+ *
+ * @public
+ */
+export type MemberEdit =
+  | { action: "keep" }
+  | { action: "rename"; key: string }
+  | { action: "drop" };
+
+/**
+ * A member-edit hook: decides whether to keep, rename, or drop a matched
+ * object member. Returns `null` for a no-op (equivalent to `keep`).
+ *
+ * @public
+ */
+export type MemberEditor = (member: MemberContext) => MemberEdit | null;
+
+/** Build the {@link MemberContext} for a member at its value start. */
+export function makeMemberContext(
+  path: PathSegment[],
+  key: string,
+  valueType: MemberContext["valueType"],
+): MemberContext {
+  return { path, key, valueType };
+}
+
 /** Coerce hook output to a Buffer (a string is UTF-8 encoded). */
 export function toBuffer(bytes: Bytes): Buffer {
   if (typeof bytes === "string") return Buffer.from(bytes, "utf8");
