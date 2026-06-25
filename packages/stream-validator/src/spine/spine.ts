@@ -286,6 +286,25 @@ export type MemberDecision = { kind: "keep" } | { kind: "rename"; key: string } 
 export interface StreamVerdict {
   valid: boolean;
   violations: SchemaViolation[];
+  /**
+   * High-water buffered wire bytes (UTF-8 source span), the runtime companion
+   * to `analyzeStreamability().peakBytes`. This is an upper-bound *estimate*
+   * in the analyzer's concurrency model, not an exact live-heap gauge: a
+   * single BUFFER island is exact, sibling buffers take the max, and a TEE
+   * sums its branch peaks (conservative, since branches overlap but the sum
+   * assumes full concurrency). The engine adds its edit-retention echo on top.
+   * Interpret it as the analyzer-model peak, comparable to the predicted
+   * `peakBytes`:
+   *
+   *   - `0` means no buffering happened (a fully-streamable validation with no
+   *     edit hooks).
+   *   - A non-zero value is how close real traffic came to the buffer budget
+   *     (`maxBufferedBytes`), in the same unit.
+   *
+   * A proportional proxy for heap, not a heap figure (the materialized value
+   * is larger than its source span).
+   */
+  peakBufferedBytes: number;
 }
 
 type JsonType = "object" | "array" | "string" | "number" | "integer" | "boolean" | "null";
@@ -407,6 +426,10 @@ export class SpineValidator implements JsonEventHandler {
   private readonly delegate: IslandDelegate | undefined;
   private readonly maxErrors: number;
   private readonly maxBufferedBytes: number | undefined;
+  // High-water mark of buffered wire bytes (see {@link StreamVerdict.peakBufferedBytes}).
+  // Bumped where a buffer's span is known: the island cap check, the
+  // forced-buffer scalar close, and a TEE close (sum of branch peaks).
+  private peakBufferedBytes = 0;
   private readonly maxUniqueItems: number | undefined;
   private readonly maxDepth: number | undefined;
   private readonly regexCompiler: RegexCompiler | undefined;
@@ -713,8 +736,23 @@ export class SpineValidator implements JsonEventHandler {
 
   /** The verdict so far (final once `end` has been called on the tokenizer). */
   verdict(): StreamVerdict {
-    if (this.verdictOnly) return { valid: !this.invalid, violations: this.violations };
-    return { valid: this.violations.length === 0, violations: this.violations };
+    const peakBufferedBytes = this.peakBufferedBytes;
+    if (this.verdictOnly)
+      return { valid: !this.invalid, violations: this.violations, peakBufferedBytes };
+    return { valid: this.violations.length === 0, violations: this.violations, peakBufferedBytes };
+  }
+
+  /** The buffered-bytes high-water reached so far. Read by an enclosing TEE
+   * to sum its branch sub-spines' peaks. */
+  peakBuffered(): number {
+    return this.peakBufferedBytes;
+  }
+
+  // Raise the buffered-bytes high-water to `bytes` if it exceeds the current
+  // mark. Called where a buffer's span is known (island cap check, scalar
+  // close, TEE close).
+  private notePeakBuffered(bytes: number): void {
+    if (bytes > this.peakBufferedBytes) this.peakBufferedBytes = bytes;
   }
 
   private fail(code: string, path: PathSegment[] = this.path): void {
@@ -935,10 +973,14 @@ export class SpineValidator implements JsonEventHandler {
   private forwardIsland(feed: (b: ValueBuilder) => void): void {
     const island = this.island as NonNullable<typeof this.island>;
     feed(island.builder);
-    if (
-      this.maxBufferedBytes !== undefined &&
-      this.curOffset - island.byteStart > this.maxBufferedBytes
-    ) {
+    // The island's source span grows monotonically as it buffers; the last
+    // event before close carries its full span, so noting it per event lands
+    // the peak without a separate close hook. On the completing event
+    // `curOffset` is the closing `}` / `]`, whose own byte is part of the
+    // buffered span, so add it (the cap check keeps the pre-close convention).
+    const span = this.curOffset - island.byteStart;
+    this.notePeakBuffered(island.builder.complete ? span + 1 : span);
+    if (this.maxBufferedBytes !== undefined && span > this.maxBufferedBytes) {
       throw new BufferLimitError(this.maxBufferedBytes, this.curOffset);
     }
     // The island's root array grows one entry per top-level element; refuse
@@ -1045,6 +1087,13 @@ export class SpineValidator implements JsonEventHandler {
     const t = this.tee as NonNullable<typeof this.tee>;
     const o = t.obligations;
     const sawContainer = t.sawContainer;
+    // The branches buffered concurrently, so their peak is the sum of the
+    // per-branch peaks: a safe upper bound that does not chase exact overlap
+    // under nested tees. Each sub-spine ran its own buffering (islands,
+    // scalars, nested tees), so this rolls those up recursively.
+    let branchSum = 0;
+    for (const sub of t.subs) branchSum += sub.peakBuffered();
+    this.notePeakBuffered(branchSum);
     this.tee = null;
     if (!combineTee(o)) this.fail("composition");
     this.popSegment();
@@ -1556,6 +1605,11 @@ export class SpineValidator implements JsonEventHandler {
     }
     const s = this.str as NonNullable<typeof this.str>;
     this.str = null;
+    // A forced-buffer scalar held its full text (`s.text`); its source span
+    // is the buffered-byte cost, known in full only now. (Capture-only
+    // retention is bounded by `maxCaptureBytes`, a separate budget, and is
+    // not counted here.)
+    if (s.needText) this.notePeakBuffered(endOffset - s.offset);
     // Close the single-chunk bypass: cap the forced-buffer scalar on its
     // full source-byte span, known only now.
     if (

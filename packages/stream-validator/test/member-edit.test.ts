@@ -15,6 +15,7 @@ interface RunResult {
   output: string;
   err: Error | undefined;
   valid: boolean | undefined;
+  peakBufferedBytes: number | undefined;
 }
 
 async function run(
@@ -48,10 +49,15 @@ async function run(
     err = e as Error;
   }
   const verdict = await v.result.then(
-    (r) => r.valid,
+    (r) => r,
     () => undefined,
   );
-  return { output: Buffer.concat(out).toString("utf8"), err, valid: verdict };
+  return {
+    output: Buffer.concat(out).toString("utf8"),
+    err,
+    valid: verdict?.valid,
+    peakBufferedBytes: verdict?.peakBufferedBytes,
+  };
 }
 
 const rename = (key: string) => (): MemberEdit => ({ action: "rename", key });
@@ -115,14 +121,15 @@ describe("editMember rename", () => {
 });
 
 describe("editMember rename does not buffer the value", () => {
-  it("renames a key over a large array under a tiny maxBufferedBytes", async () => {
+  const schema = {
+    type: "object",
+    properties: { ids: { type: "array", items: { type: "number" } } },
+  };
+  const big = Array.from({ length: 20000 }, (_, i) => i).join(",");
+  const json = `{"ids":[${big}]}`; // ~109 KB, dominated by the array
+
+  it("renames a key over a large array buffering nothing at realistic chunking", async () => {
     // A value far larger than the cap: if rename buffered it, the cap would trip.
-    const schema = {
-      type: "object",
-      properties: { ids: { type: "array", items: { type: "number" } } },
-    };
-    const big = Array.from({ length: 20000 }, (_, i) => i).join(",");
-    const json = `{"ids":[${big}]}`;
     const r = await run(
       schema,
       json,
@@ -133,6 +140,22 @@ describe("editMember rename does not buffer the value", () => {
     expect(r.valid).toBe(true);
     expect(r.err).toBeUndefined();
     expect(r.output).toBe(`{"records":[${big}]}`);
+    // The exact meter (#439): the `"ids":` key resolves within one chunk, so
+    // nothing is held across a boundary. The array streams; peak is zero.
+    expect(r.peakBufferedBytes).toBe(0);
+  });
+
+  it("holds only the key span, never the array, even byte-at-a-time", async () => {
+    // Pathological 1-byte chunks force the key token to straddle boundaries;
+    // the held high-water is the `"ids":` span (~6 bytes), orders of magnitude
+    // below the ~109 KB array. This is the #441 no-array-buffering promise,
+    // now asserted exactly rather than via a `maxBufferedBytes` ceiling.
+    const r = await run(schema, json, (v) => v.editMember(["ids"], rename("records")), {}, 1);
+    expect(r.valid).toBe(true);
+    expect(r.output).toBe(`{"records":[${big}]}`);
+    expect(r.peakBufferedBytes).toBeGreaterThan(0);
+    expect(r.peakBufferedBytes).toBeLessThanOrEqual('"ids":'.length);
+    expect(r.peakBufferedBytes).toBeLessThan(json.length / 1000);
   });
 });
 
