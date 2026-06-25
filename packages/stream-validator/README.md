@@ -47,7 +47,7 @@ try {
 
 // Or observe the side channel directly:
 validator.on("violation", (v) => console.warn(v.code, v.path, v.byteOffset));
-const verdict = await validator.result; // { valid, violations }
+const verdict = await validator.result; // { valid, violations, peakBufferedBytes }
 ```
 
 Output bytes are the input verbatim (provisional until a clean finish).
@@ -231,6 +231,13 @@ in the same UTF-8 wire bytes `maxBufferedBytes` caps (heavy `\uXXXX`
 escaping can exceed the per-character assumption), so treat the number as a
 capacity-planning figure, not a runtime meter. An unstreamable schema
 throws the same `ClassifierError` `createStreamValidator` raises.
+
+The runtime meter is `verdict.peakBufferedBytes` on `validator.result`: the
+high-water buffered wire bytes an actual stream reached, in the same model
+(`0` when nothing buffered, a single island exact, sibling buffers maxed, a
+TEE's branches summed, plus any edit-hook retention). Compare it to this
+report's `peakBytes` to see how close real traffic came to the predicted
+peak. The analyzer bounds the schema; `peakBufferedBytes` reports the input.
 
 `analyzeSpec(document, options)` rolls this up over a whole resolved
 OpenAPI document: one budget per operation, for the request body and each

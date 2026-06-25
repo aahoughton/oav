@@ -293,6 +293,10 @@ export class StreamValidator extends Transform {
   private pendingEdits: Array<{ start: number; end: number; bytes: Buffer | null }> = [];
   private heldBytes: Buffer = Buffer.alloc(0);
   private heldBase = 0;
+  // High-water mark of the edit-retention echo: the residual held across
+  // `_transform` calls (a member-prefix / drop / cross-chunk span awaiting an
+  // edit decision). Folded into the spine's buffered-byte peak on the verdict.
+  private peakHeldBytes = 0;
 
   /** Resolves with the final verdict (rejects on a fatal parse / I/O error). */
   readonly result: Promise<StreamVerdict>;
@@ -450,6 +454,29 @@ export class StreamValidator extends Transform {
     // rejecting instead). Mark it handled so a rejection here is not an
     // unhandled-rejection warning; explicit awaiters still observe it.
     this.result.catch(() => {});
+  }
+
+  // The post-flush residual is the bytes that could not be emitted yet (held
+  // for a pending edit decision); its high-water across `_transform` calls is
+  // the edit-retention cost.
+  private noteHeldPeak(): void {
+    if (this.heldBytes.length > this.peakHeldBytes) this.peakHeldBytes = this.heldBytes.length;
+  }
+
+  // The spine's verdict with the engine's edit-retention high-water folded
+  // into `peakBufferedBytes`. The spine's analyzer-model peak and the
+  // edit-retention residual peak are *summed*, not maxed: they are distinct
+  // retention sites, so a conservative total is the honest number for a
+  // budget meter (matching how a TEE sums its concurrent branch peaks). A
+  // `max` would under-report, the wrong failure mode here. The cost is one
+  // add. Note the edit side is the held residual high-water, not exact
+  // concurrent live bytes.
+  private sealedVerdict(): StreamVerdict {
+    const v = this.spine.verdict();
+    return {
+      ...v,
+      peakBufferedBytes: v.peakBufferedBytes + this.peakHeldBytes,
+    };
   }
 
   private handleViolation(violation: SchemaViolation): void {
@@ -681,9 +708,13 @@ export class StreamValidator extends Transform {
       }
       if (err === undefined) {
         this.flushEdits(this.editSafeLimit());
+        this.noteHeldPeak();
         cb();
       } else if (err instanceof BudgetReached) {
-        // Detach echoes the tail verbatim; flush whatever is held first.
+        // The budget tripped on this chunk: record the held residual before
+        // `flushHeldVerbatim` dumps it, so the edit-retention peak this chunk
+        // reached still reaches `sealedVerdict` (applyBudget resolves there).
+        this.noteHeldPeak();
         this.flushHeldVerbatim();
         this.applyBudget(cb);
       } else {
@@ -735,7 +766,7 @@ export class StreamValidator extends Transform {
         }
       }
     }
-    const verdict = this.spine.verdict();
+    const verdict = this.sealedVerdict();
     this.finished = true;
     this.emit("verdict", verdict);
     this.resolveResult(verdict);
@@ -751,7 +782,7 @@ export class StreamValidator extends Transform {
   // The validation budget was reached mid-write: under `terminate`, fail
   // the stream now; under `detach`, seal the verdict and echo the tail.
   private applyBudget(cb: TransformCallback): void {
-    const verdict = this.spine.verdict();
+    const verdict = this.sealedVerdict();
     if (this.policy === "terminate") {
       this.finished = true;
       this.emit("verdict", verdict);
