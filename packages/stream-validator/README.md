@@ -12,8 +12,9 @@ This is a second engine, not a mode of the in-memory validator.
 `oav-core`'s compiler is pull-based over a fully-parsed value; this engine
 is push-based over a token stream. It reuses `oav-core`'s in-memory
 validator for the subtrees a compile-time classifier marks BUFFER (so
-format assertion and built-in formats come from that delegate), and reuses
-its flat error model.
+`format` assertion runs in that delegate, against the formats you register
+through the `formats` option; no format library is bundled by default),
+and reuses its flat error model.
 
 Thin: this package bundles nothing from `oav-core`. It declares
 `@aahoughton/oav-core` as a regular dependency, so installing the stream
