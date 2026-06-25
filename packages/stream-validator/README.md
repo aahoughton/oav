@@ -12,8 +12,9 @@ This is a second engine, not a mode of the in-memory validator.
 `oav-core`'s compiler is pull-based over a fully-parsed value; this engine
 is push-based over a token stream. It reuses `oav-core`'s in-memory
 validator for the subtrees a compile-time classifier marks BUFFER (so
-format assertion and built-in formats come from that delegate), and reuses
-its flat error model.
+`format` assertion runs in that delegate, against the formats you register
+through the `formats` option; no format library is bundled by default),
+and reuses its flat error model.
 
 Thin: this package bundles nothing from `oav-core`. It declares
 `@aahoughton/oav-core` as a regular dependency, so installing the stream
@@ -117,6 +118,35 @@ bytes before a scope's closing delimiter (append-only; appended bytes are
 not validated). A `ScopeContext` carries the scope path, verdict, member
 count, and a `field(name, value)` helper.
 
+Reshaping the envelope: `editMember(at, cb)` renames or drops an object
+member as it streams, the in-place edit `editClose` cannot do. The hook
+fires at the member's value start (so it knows the value type) and returns
+`{ action: "rename", key }`, `{ action: "drop" }`, or `{ action: "keep" }`
+(or `null`). A `rename` rewrites the key token only and streams the value
+verbatim, so renaming a key in front of a multi-GB array never buffers the
+array. A `drop` suppresses the member and absorbs one delimiter, leaving
+valid JSON.
+
+```ts
+const validator = createStreamValidator(bodySchema);
+validator.editMember(["message_ids"], () => ({ action: "rename", key: "records" }));
+validator.editMember(["legacy_field"], () => ({ action: "drop" }));
+// {"message_ids":[...big...],"legacy_field":1,"keep":2}
+//   -> {"records":[...big...],"keep":2}
+```
+
+`at` matches the member's **full path** (the enclosing scope plus the key),
+the same coordinate `valueEvents.at` uses. Validation is pre-edit: the
+input shape is validated as received (a dropped member is still validated;
+the edit only changes the output). A rename whose target collides with a
+key in the same object, and two hooks returning conflicting edits for one
+member, are fatal. Two caps bound the buffering the edit introduces and
+default finite (unlike the resource limits above): `maxMemberPrefixBytes`
+(the held key-to-value span, default 4 KiB) and `maxMemberDropBytes` (a
+dropped member's span, default 64 KiB); over-cap is fatal. Dropping a
+container-valued member is not supported on the stream path; rename works
+for any value type.
+
 Recovering scalar fields: `valueEvents` emits a `value` event when a
 scalar object-member value completes, carrying the member's absolute
 input-byte span (`valueStart` / `valueEnd`). Code that needs a few small
@@ -158,11 +188,14 @@ not fire. `capture` retains a matched member's decoded bytes bounded by
 already buffered for its own check, so there `maxCaptureBytes` only gates
 delivery (the memory bound is `maxBufferedBytes`).
 
-`onScopeClose` / `editClose` fire for STREAM scopes only. A scope the
-classifier routes to a BUFFER island (`uniqueItems`, `contains`, an
-object-valued `const`) or a TEE composition branch
-(`oneOf`/`anyOf`/`allOf`) does not emit a scope-close hook, so which
-scopes a hook sees depends on the schema's classification. Use the hooks
+`onScopeClose` / `editClose` / `editMember` fire for STREAM structure
+only. A member whose enclosing object the classifier routes to a BUFFER
+island (`uniqueItems`, `contains`, an object-valued `const`) or a TEE
+composition branch (`oneOf`/`anyOf`/`allOf`) does not emit a hook, so which
+scopes and members a hook sees depends on the schema's classification.
+(A streamed-object member whose own value is a scalar BUFFER island, e.g.
+a `format`-bearing scalar, is still editable: the enclosing object streams
+and the edit is decided at the value start.) Use the hooks
 for observing/editing forward-decidable structure, not as a general JSON
 visitor over an arbitrary schema.
 

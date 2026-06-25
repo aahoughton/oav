@@ -200,6 +200,31 @@ export interface StreamValidatorOptions {
   maxUniqueItems?: number;
 
   /**
+   * Cap on the held key-to-value span (key bytes + colon + whitespace)
+   * for an `editMember` hook. JSON permits unbounded whitespace between
+   * the colon and the value, so this span is bounded separately from the
+   * value itself; over-cap is fatal. Unlike the schema-bound resource
+   * limits above, this defaults *finite*
+   * ({@link DEFAULT_MAX_MEMBER_PREFIX_BYTES}, 4 KB), because it bounds a
+   * buffer the edit itself introduces. Raise it only for unusually
+   * whitespace-heavy input.
+   */
+  maxMemberPrefixBytes?: number;
+
+  /**
+   * Cap on the withheld span of a dropped member (key + value +
+   * delimiter), for an `editMember` hook that returns `drop`. A member
+   * whose span exceeds the cap fails the stream fatally rather than
+   * buffering unbounded. Defaults *finite* ({@link
+   * DEFAULT_MAX_CAPTURE_BYTES}, 64 KB), the same "small member" size as
+   * scalar capture but an independent knob: raise it to drop a larger
+   * (still bounded) scalar member. Dropping a container-valued member is
+   * not supported on the stream path (it throws `MemberEditError`), so
+   * this cap only ever bounds a scalar span.
+   */
+  maxMemberDropBytes?: number;
+
+  /**
    * Turn the classifier's unbounded-* warnings into compile errors: an
    * unbounded `pattern` / `format` string, an unbounded BUFFER island,
    * unbounded depth, or `uniqueItems` with no `maxItems`. The recommended
