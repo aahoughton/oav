@@ -14,6 +14,7 @@
  * 4. Consecutive validate() calls share state across the shared-array.
  */
 
+import type { ValidationError } from "@oav/core";
 import { describe, expect, it } from "vitest";
 import { compileSchema } from "../src/compiler/compiler.js";
 import { jsonSchemaDialect } from "../src/keywords/vocabulary.js";
@@ -210,11 +211,9 @@ describe("path sharing: correctness under stress", () => {
 
 // Helper: walk the tree and collect leaves (nodes with empty children)
 // in pre-order traversal, preserving tree structure.
-function flattenLeaves(
-  root: import("@oav/core").ValidationError,
-): import("@oav/core").ValidationError[] {
-  const out: import("@oav/core").ValidationError[] = [];
-  const visit = (node: import("@oav/core").ValidationError): void => {
+function flattenLeaves(root: ValidationError): ValidationError[] {
+  const out: ValidationError[] = [];
+  const visit = (node: ValidationError): void => {
     if (node.children.length === 0) {
       out.push(node);
     } else {
