@@ -1,4 +1,4 @@
-import type { FastifyRequest, preValidationHookHandler } from "fastify";
+import type { FastifyRequest, preValidationAsyncHookHandler } from "fastify";
 import { collectLeaves, type HttpRequest, type ValidationError } from "@oav/core";
 import type { TreeValidator, Validator } from "@oav/validator";
 import { httpRequestFromFastify } from "./extract.js";
@@ -74,7 +74,7 @@ export interface ValidateRequestsOptions {
 export function validateRequests(
   validator: Validator | TreeValidator,
   options: ValidateRequestsOptions = {},
-): preValidationHookHandler {
+): preValidationAsyncHookHandler {
   // A predicate validator returns a bare boolean, so there are no errors
   // to render. Fail loudly at construction rather than emitting empty 400s.
   if (validator.output === "predicate") {
