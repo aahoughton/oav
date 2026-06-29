@@ -29,6 +29,10 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
+      # Type-aware lint (tsgolint) over shipped packages + their tests.
+      # Kept separate from `pnpm lint`: it needs the oxlint-tsgolint binary
+      # and runs a type checker, so it is slower than the syntactic pass.
+      - run: pnpm lint:type-aware
 
   typecheck:
     runs-on: ubuntu-latest
