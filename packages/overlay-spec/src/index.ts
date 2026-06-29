@@ -81,6 +81,7 @@ export function translateOverlay(doc: OverlayDocument): SpecOverlay {
       if (err instanceof Error) {
         throw new Error(
           `overlay action #${i} (target ${JSON.stringify(action.target)}): ${err.message}`,
+          { cause: err },
         );
       }
       throw err;

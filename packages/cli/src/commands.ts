@@ -404,6 +404,7 @@ async function bundleEmitted(source: string, resolveDir: string): Promise<string
           "  Install it alongside @aahoughton/oav, e.g.:\n" +
           "    npm install esbuild\n" +
           "    pnpm add esbuild",
+        { cause: err },
       );
     }
     throw err;
