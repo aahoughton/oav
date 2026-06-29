@@ -37,6 +37,10 @@ import { createStreamValidator } from "@aahoughton/oav-stream-validator";
 
 const validator = createStreamValidator(schema); // throws here if the schema can't be streamed
 
+// Attach side-channel observers before piping: violations are emitted as
+// the stream flows, so a listener added after `pipeline` would miss them.
+validator.on("violation", (v) => console.warn(v.code, v.path, v.byteOffset));
+
 try {
   await pipeline(request, validator, fs.createWriteStream(tmp));
   await rename(tmp, final); // reached only on a clean finish = valid
@@ -45,8 +49,6 @@ try {
   await unlink(tmp).catch(() => {});
 }
 
-// Or observe the side channel directly:
-validator.on("violation", (v) => console.warn(v.code, v.path, v.byteOffset));
 const verdict = await validator.result; // { valid, violations, peakBufferedBytes }
 ```
 
@@ -94,17 +96,27 @@ body that is (or contains) an internal ref like
 (`components` / `$defs` / `definitions`) alongside it, or construction
 throws `unresolvable $ref`. Routing, content negotiation, OpenAPI version
 detection, and body-schema lookup stay the caller's job; this package
-validates one resolved schema, so those concerns sit above it. The
-bridge from a resolved document is short:
+validates one resolved schema, so those concerns sit above it.
+
+For the common OpenAPI case, reach for `streamValidatorForOperation`: it
+extracts the request-body schema for a `{ method, path }`, carries the
+document's ref containers so internal `$ref`s resolve, and reads the
+OpenAPI version off `doc.openapi`. (Your router still picks the
+operation; the locator is an exact path-template key, not a match.)
 
 ```ts
-import { resolveSpec } from "@aahoughton/oav-core/spec";
-import { createStreamValidator } from "@aahoughton/oav-stream-validator";
+import { createFileReader, resolveSpec } from "@aahoughton/oav-core/spec";
+import { streamValidatorForOperation } from "@aahoughton/oav-stream-validator";
 
-const doc = await resolveSpec(source); // inlines external refs; internal refs stay
-const op = doc.paths["/pets"].post; // your router selects the operation
-const bodySchema = op.requestBody.content["application/json"].schema;
+const { document } = await resolveSpec({ reader: createFileReader(), entry: "openapi.json" });
+const validator = streamValidatorForOperation(document, { method: "post", path: "/pets" });
+await pipeline(request, validator, sink);
+```
 
+If you already hold a bare body schema rather than a whole document,
+construct the engine directly and carry the ref container yourself:
+
+```ts
 const validator = createStreamValidator(
   { ...bodySchema, components: doc.components }, // carry the ref container
   { openApiVersion: "3.1" },
@@ -248,9 +260,10 @@ table; `--verbose` lists each unbounded position, `--envelope json` emits
 the `SpecBudget`, `--fail-on-unbounded` exits non-zero for CI):
 
 ```ts
+import { createFileReader, resolveSpec } from "@aahoughton/oav-core/spec";
 import { analyzeSpec } from "@aahoughton/oav-stream-validator";
 
-const { document } = await resolveSpec(source);
+const { document } = await resolveSpec({ reader: createFileReader(), entry: "openapi.json" });
 for (const op of analyzeSpec(document).operations) {
   for (const body of op.bodies) {
     const peak = body.report?.peakBytes ?? `error: ${body.error}`;
