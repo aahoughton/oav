@@ -1,5 +1,5 @@
 {
-  "plugins": ["typescript", "unicorn", "oxc"],
+  "plugins": ["typescript", "unicorn", "oxc", "import"],
   "categories": {
     "correctness": "error"
   },
@@ -10,8 +10,13 @@
       { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }
     ],
     "no-console": "error",
+    "preserve-caught-error": "error",
     "unicorn/no-new-array": "off",
-    "unicorn/prefer-module": "off"
+    "unicorn/prefer-module": "off",
+    "@typescript-eslint/no-explicit-any": "error",
+    "@typescript-eslint/consistent-type-imports": "error",
+    "unicorn/prefer-node-protocol": "error",
+    "import/no-default-export": "error"
   },
   "overrides": [
     {
@@ -25,6 +30,12 @@
       ],
       "rules": {
         "no-console": "off"
+      }
+    },
+    {
+      "files": ["**/*.config.ts", "**/*.config.js", "**/vitest.config.ts", "**/tsup.config.ts"],
+      "rules": {
+        "import/no-default-export": "off"
       }
     }
   ],

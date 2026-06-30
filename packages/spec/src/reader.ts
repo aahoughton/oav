@@ -118,7 +118,7 @@ export function createHttpReader(): DocumentReader {
  *
  * @public
  */
-export function createMemoryReader(sources: Map<string, string | unknown>): DocumentReader {
+export function createMemoryReader(sources: Map<string, unknown>): DocumentReader {
   return {
     canRead(uri) {
       return sources.has(uri);

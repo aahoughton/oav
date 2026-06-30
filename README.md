@@ -95,7 +95,8 @@ npx @aahoughton/oav validate openapi.yaml --path "POST /pets" --body pet.json
 ```
 
 A valid request prints nothing and exits `0`; validation errors print to
-stderr and exit non-zero.
+stdout and exit non-zero. (Redirect with `--output <file>`, or silence the
+report and rely on the exit code with `--quiet`.)
 
 `oav` re-exports `oav-core` at five subpath entrypoints (`/schema`,
 `/spec`, `/overlay-spec`, `/formats`, `/core`); on the lean package,

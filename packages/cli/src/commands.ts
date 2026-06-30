@@ -15,6 +15,7 @@ import {
   type SpecOverlay,
 } from "@oav/spec";
 import { createValidator } from "@oav/validator";
+import type * as Esbuild from "esbuild";
 import type { OpenAPIDocument } from "@oav/core";
 import { analyzeSpec } from "@aahoughton/oav-stream-validator";
 import { emitStandalone, type StandaloneDialect } from "./emit-standalone.js";
@@ -393,7 +394,7 @@ export async function compileSchemaCommand(
  * install-hint message when esbuild isn't resolvable.
  */
 async function bundleEmitted(source: string, resolveDir: string): Promise<string> {
-  let esbuild: typeof import("esbuild");
+  let esbuild: typeof Esbuild;
   try {
     esbuild = await import("esbuild");
   } catch (err) {
@@ -403,6 +404,7 @@ async function bundleEmitted(source: string, resolveDir: string): Promise<string
           "  Install it alongside @aahoughton/oav, e.g.:\n" +
           "    npm install esbuild\n" +
           "    pnpm add esbuild",
+        { cause: err },
       );
     }
     throw err;

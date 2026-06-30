@@ -1,0 +1,14 @@
+{
+  "extends": ["./.oxlintrc.json"],
+  "rules": {
+    "@typescript-eslint/unbound-method": "off"
+  },
+  "overrides": [
+    {
+      "files": ["packages/schema/**"],
+      "rules": {
+        "@typescript-eslint/no-implied-eval": "off"
+      }
+    }
+  ]
+}

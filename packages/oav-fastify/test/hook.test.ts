@@ -67,7 +67,6 @@ describe("validateRequests", () => {
         body: { name: "Fido" },
       }),
       reply,
-      () => {},
     );
     expect(reply.code).not.toHaveBeenCalled();
     expect(reply.send).not.toHaveBeenCalled();
@@ -85,7 +84,6 @@ describe("validateRequests", () => {
         body: {},
       }),
       reply,
-      () => {},
     );
     expect(reply.code).toHaveBeenCalledWith(400);
     expect(reply.type).toHaveBeenCalledWith("application/problem+json");
@@ -107,7 +105,6 @@ describe("validateRequests", () => {
         body: {},
       }),
       reply,
-      () => {},
     );
     expect(onError).toHaveBeenCalledTimes(1);
     const [errors, ctx] = onError.mock.calls[0]!;
@@ -136,7 +133,6 @@ describe("validateRequests", () => {
         verifiedBody: { name: "Fido" },
       } as Partial<FastifyRequest> & { verifiedBody: unknown }),
       reply,
-      () => {},
     );
     expect(toHttpRequest).toHaveBeenCalledTimes(1);
     expect(reply.send).not.toHaveBeenCalled();
@@ -178,7 +174,6 @@ describe("validateRequests", () => {
         body: {},
       }),
       reply,
-      () => {},
     );
     expect(asyncWorkComplete).toBe(true);
     expect(reply.code).toHaveBeenCalledWith(422);
