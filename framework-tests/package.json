@@ -14,7 +14,7 @@
     "@types/node": "26.0.0",
     "express-4": "npm:express@4.22.2",
     "express-5": "npm:express@5.2.1",
-    "fastify": "5.8.5",
+    "fastify": "5.9.0",
     "typescript": "5.9.3",
     "vitest": "4.1.9"
   },
