@@ -7,6 +7,9 @@
 
 Validate HTTP requests and responses against your OpenAPI spec.
 OpenAPI 3.0, 3.1, and 3.2, for JavaScript and TypeScript services.
+Large JSON bodies stream through a separate validator that checks
+them as they arrive, and a design-time analyzer reports which bodies
+stream and which must buffer before you ship.
 
 ```ts
 import { createValidator } from "@aahoughton/oav";
@@ -34,6 +37,14 @@ thrown exception, and `oav` never mutates your `req` / `res`.
 
 **Reach for oav when you want**
 
+- A pre-deploy answer to "which request and response bodies can stream,
+  which must buffer, and how large can a buffer get?" `analyzeSpec`
+  reports a per-operation peak-buffer budget from the spec alone;
+  `oav stream-check openapi.yaml` prints it as a table.
+- To validate large JSON bodies as they arrive, without holding a
+  multi-GB payload in heap. A separate streaming engine
+  (`@aahoughton/oav-stream-validator`) checks the body against its
+  operation schema while echoing the bytes through.
 - Structured errors with stable codes and paths, ready for
   `application/problem+json`, logs, or your own client messages.
 - A spec compiled to a single zero-dependency module that runs where
@@ -49,6 +60,8 @@ thrown exception, and `oav` never mutates your `req` / `res`.
 | Generic JSON Schema validation across many drafts   | Ajv                       |
 | Turnkey Express middleware with uploads + auth      | express-openapi-validator |
 | Framework-neutral OpenAPI request/response checking | oav                       |
+| Streaming validation of large JSON bodies           | oav                       |
+| A pre-deploy report of which bodies can stream      | oav                       |
 | Per-tenant or per-deployment spec overlays          | oav                       |
 | A standalone validator for edge / serverless        | oav                       |
 
@@ -65,14 +78,15 @@ Express 4 / 5 + Fastify integration. See
 Pick the package that matches what you need. (`oav` is the shorthand
 used elsewhere in the docs for `@aahoughton/oav`.)
 
-| You need                                         | Install                                        |
-| ------------------------------------------------ | ---------------------------------------------- |
-| YAML specs, HTTP/YAML readers, and the `oav` CLI | `@aahoughton/oav`                              |
-| JSON or pre-parsed specs with zero runtime deps  | `@aahoughton/oav-core`                         |
-| Express 4 request middleware                     | `@aahoughton/oav` + `@aahoughton/oav-express4` |
-| Express 5 request middleware                     | `@aahoughton/oav` + `@aahoughton/oav-express5` |
-| Fastify `preValidation` hook                     | `@aahoughton/oav` + `@aahoughton/oav-fastify`  |
-| Edge/serverless validator emitted at build time  | `@aahoughton/oav` as a dev/build dependency    |
+| You need                                         | Install                                                                                             |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| YAML specs, HTTP/YAML readers, and the `oav` CLI | `@aahoughton/oav`                                                                                   |
+| JSON or pre-parsed specs with zero runtime deps  | `@aahoughton/oav-core`                                                                              |
+| Express 4 request middleware                     | `@aahoughton/oav` + `@aahoughton/oav-express4`                                                      |
+| Express 5 request middleware                     | `@aahoughton/oav` + `@aahoughton/oav-express5`                                                      |
+| Fastify `preValidation` hook                     | `@aahoughton/oav` + `@aahoughton/oav-fastify`                                                       |
+| Streaming large bodies + buffer-budget analysis  | `@aahoughton/oav-stream-validator` (+ `@aahoughton/oav` or `@aahoughton/oav-core` to load the spec) |
+| Edge/serverless validator emitted at build time  | `@aahoughton/oav` as a dev/build dependency                                                         |
 
 `oav` is a superset of `oav-core`: same programmatic surface plus YAML
 readers and the `oav` CLI. The CLI's `commander` and `esbuild` deps
@@ -85,6 +99,7 @@ npm install @aahoughton/oav-core       # JSON only, zero runtime deps
 npm install @aahoughton/oav-express4   # Express 4 adapter (transitively pulls oav-core)
 npm install @aahoughton/oav-express5   # Express 5 adapter
 npm install @aahoughton/oav-fastify    # Fastify adapter
+npm install @aahoughton/oav-stream-validator   # streaming body validation + analyzeSpec
 ```
 
 Want to try it against your own spec before wiring anything in? The CLI
@@ -159,21 +174,61 @@ For a multi-file spec or a spec hosted over HTTP, compose readers:
 `composeReaders([createYamlFileReader(), createSmartHttpReader(), createFileReader()])`
 handles local YAML, remote JSON / YAML, and local JSON transparently.
 
-`validateRequest` / `validateResponse` return `{ valid: true }` on
-success, or `{ valid: false, errors, truncated }` on failure. The
-zero-config default is a flat `errors` list that stops at the first
-problem (`maxErrors: 1`); raise `maxErrors` to collect more, or pass
-`output: "tree"` for a nested error tree under
-`error` (or `output: "predicate"` for a bare boolean). Every error
-carries a stable `code` (e.g. `"type"`, `"required"`, `"content-type"`,
-`"oneOf"`), a `path` rooted at the HTTP frame (e.g. `["body", "pets", 3,
-"name"]`), a human-readable `message`, and a machine-readable `params`
-object whose shape per code is documented in `BuiltInErrorParams`.
+`validateRequest` / `validateResponse` return `{ valid: true }`, or
+`{ valid: false, errors, truncated }` on failure. The default is a flat
+`errors` list that stops at the first problem (`maxErrors: 1`);
+`maxErrors` and `output: "tree" | "predicate"` tune count and shape.
+Each leaf carries a stable `code`, an HTTP-rooted `path` (e.g.
+`["body", "pets", 3, "name"]`), a `message`, and a `params` object; see
+[docs/configuration.md](https://github.com/aahoughton/oav/blob/main/docs/configuration.md)
+and the `ValidatorOptions` TSDoc for the full contract.
 
 Runnable end-to-end demos in [`examples/`](https://github.com/aahoughton/oav/blob/main/examples/README.md):
 custom formats, custom keywords, cross-field constraints, error
 budgets, version differences, overlays, and spec-derived middleware
 config.
+
+### Streaming large bodies
+
+`createValidator` validates a fully-parsed value. For a body too large
+to hold in memory, the separate `@aahoughton/oav-stream-validator`
+package validates it as it streams, echoing the bytes through to a sink
+while reporting violations on a side channel. It is a second engine,
+not a mode of `createValidator`: your router still picks the operation,
+and the validator checks one resolved schema.
+
+```ts
+import { pipeline } from "node:stream/promises";
+import { streamValidatorForOperation } from "@aahoughton/oav-stream-validator";
+
+// `document` is the parsed spec from loadSpec, as above.
+const validator = streamValidatorForOperation(document, { method: "post", path: "/pets" });
+validator.on("violation", (v) => console.warn(v.code, v.path, v.byteOffset));
+
+await pipeline(request, validator, sink);
+const { valid, peakBufferedBytes } = await validator.result;
+```
+
+Not every schema can stream: `uniqueItems`, `contains`, an
+object-level `const`, or an asserting `format` force a subtree to
+buffer. `analyzeSpec` answers which bodies stream and which buffer (and
+how large a buffer can get) from the spec alone, before any traffic:
+
+```ts
+import { analyzeSpec } from "@aahoughton/oav-stream-validator";
+
+for (const op of analyzeSpec(document).operations) {
+  for (const body of op.bodies) {
+    console.log(`${op.method} ${op.path} ${body.role}: ${body.report?.peakBytes ?? body.error}`);
+  }
+}
+```
+
+`oav stream-check openapi.yaml` prints the same per-operation budget as
+a table (`--fail-on-unbounded` makes it a CI gate). The stream validator
+versions independently of the `oav-core` family on its own `1.x` line;
+see [`packages/stream-validator/README.md`](https://github.com/aahoughton/oav/blob/main/packages/stream-validator/README.md)
+for the engine, the buffer model, and the edit hooks.
 
 ### Overlay quickstart
 
@@ -226,14 +281,15 @@ shapes live in [`docs/integration.md`](https://github.com/aahoughton/oav/blob/ma
 
 ## Where to go next
 
-| Task                                      | Read                                                                                                             |
-| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Wire into Express, Fastify, Next.js, Hono | [docs/integration.md](https://github.com/aahoughton/oav/blob/main/docs/integration.md)                           |
-| Patch a spec you do not own               | [docs/overlays.md](https://github.com/aahoughton/oav/blob/main/docs/overlays.md)                                 |
-| Emit standalone validators                | [packages/cli/README.md](https://github.com/aahoughton/oav/blob/main/packages/cli/README.md#compile-spec-output) |
-| Compare against Ajv and other tools       | [docs/comparison.md](https://github.com/aahoughton/oav/blob/main/docs/comparison.md)                             |
-| Migrate from express-openapi-validator    | [docs/migration-from-eov.md](https://github.com/aahoughton/oav/blob/main/docs/migration-from-eov.md)             |
-| Use custom formats, keywords, or limits   | [docs/configuration.md](https://github.com/aahoughton/oav/blob/main/docs/configuration.md)                       |
+| Task                                       | Read                                                                                                                   |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| Wire into Express, Fastify, Next.js, Hono  | [docs/integration.md](https://github.com/aahoughton/oav/blob/main/docs/integration.md)                                 |
+| Stream large bodies / check buffer budgets | [packages/stream-validator/README.md](https://github.com/aahoughton/oav/blob/main/packages/stream-validator/README.md) |
+| Patch a spec you do not own                | [docs/overlays.md](https://github.com/aahoughton/oav/blob/main/docs/overlays.md)                                       |
+| Emit standalone validators                 | [packages/cli/README.md](https://github.com/aahoughton/oav/blob/main/packages/cli/README.md#compile-spec-output)       |
+| Compare against Ajv and other tools        | [docs/comparison.md](https://github.com/aahoughton/oav/blob/main/docs/comparison.md)                                   |
+| Migrate from express-openapi-validator     | [docs/migration-from-eov.md](https://github.com/aahoughton/oav/blob/main/docs/migration-from-eov.md)                   |
+| Use custom formats, keywords, or limits    | [docs/configuration.md](https://github.com/aahoughton/oav/blob/main/docs/configuration.md)                             |
 
 ## How it compares
 
@@ -241,20 +297,17 @@ The JavaScript ecosystem already has solid OpenAPI validation tools:
 Ajv for JSON Schema, `express-openapi-validator` for Express,
 `openapi-backend` for operationId routing plus validation, and smaller
 request/response validators for custom stacks. oav is aimed at
-HTTP-aware validation with structured errors, overlays, and standalone
+HTTP-aware validation with structured errors, streaming validation of
+large bodies plus design-time buffer budgets, overlays, and standalone
 OpenAPI validator output. See [docs/comparison.md](https://github.com/aahoughton/oav/blob/main/docs/comparison.md)
 for the feature map, and [docs/migration-from-eov.md](https://github.com/aahoughton/oav/blob/main/docs/migration-from-eov.md)
 if you are migrating from `express-openapi-validator`.
 
-On raw speed, oav wins some and loses some against Ajv. oav compiles
-schemas far faster (tens of microseconds against milliseconds),
-validates competitively on typical request bodies, and carries a
-slightly smaller steady-state memory footprint than
-`express-openapi-validator`. Ajv is faster on fast-fail validation of
-some ordinary object shapes. At normal request volumes these gaps are
-nanoseconds per call; they only start to matter at extreme volume or
-against pathological shapes (very large `uniqueItems` arrays, very long
-length-bounded strings).
+On raw speed, oav and Ajv trade wins: oav compiles schemas one to two
+orders of magnitude faster, validates competitively on typical bodies,
+and runs a touch lighter on memory than `express-openapi-validator`;
+Ajv leads on fast-fail rejection of some plain object shapes. At normal
+request volumes these gaps are nanoseconds per call.
 
 For the host-stamped per-shape numbers, the memory comparison, and the
 methodology, see [docs/comparison.md](https://github.com/aahoughton/oav/blob/main/docs/comparison.md).
@@ -293,12 +346,14 @@ oav validate openapi.yaml --path "POST /pets" --body payload.json
 oav validate openapi.yaml --path "GET /pets" --response --status 200 --body resp.json
 oav compile-schema schema.json -o validator.mjs             # JSON Schema -> standalone validator
 oav compile-spec openapi.yaml  -o validator.mjs             # OpenAPI   -> standalone HTTP validator (edge / Lambda)
+oav stream-check openapi.yaml                               # per-operation streamability + peak-buffer budget
 ```
 
 Flags: `--format text|json|summary`, `--depth n`, `--overlay file`
 (repeatable), `-o file`, `--quiet`, `--dialect` (compile-schema /
 compile-spec), `--requests-only` (compile-spec), `--only METHOD PATH`
-(compile-spec, repeatable). See
+(compile-spec, repeatable), `--verbose` / `--fail-on-unbounded` /
+`--envelope json` (stream-check). See
 [packages/cli/README.md](https://github.com/aahoughton/oav/blob/main/packages/cli/README.md) for the full
 surface, the `.http` file format, and both compile commands' output
 contracts.
