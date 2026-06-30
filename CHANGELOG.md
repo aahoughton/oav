@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.7.1](https://github.com/aahoughton/oav/compare/oav-core-v3.7.0...oav-core-v3.7.1) (2026-06-30)
+
+
+### Documentation
+
+* reframe README around streaming validation and buffer budgets ([#449](https://github.com/aahoughton/oav/issues/449)) ([f2eded7](https://github.com/aahoughton/oav/commit/f2eded7fcb51e61173e465239fc67d21eb004614))
+
 ## [3.7.0](https://github.com/aahoughton/oav/compare/oav-core-v3.6.0...oav-core-v3.7.0) (2026-06-25)
 
 
