@@ -227,7 +227,7 @@ string) => boolean>` shaped for `compileSchema`'s `formats` option. A
   so error paths are unambiguous. Also exports the Fetch-API adapter
   (`httpRequestFromFetch`, …) for Next.js / Hono / Bun / Deno.
 - **`@aahoughton/oav-stream-validator`** (published standalone on its own
-  `0.x` line, not folded into the `oav-core` bundle): a second, push-based
+  independent `1.x` line, not folded into the `oav-core` bundle): a second, push-based
   streaming engine. Beyond
   `createStreamValidator`, it exports the **streamability analyzer**:
   `analyzeStreamability(schema)` returns a peak-buffer budget (where a
@@ -296,8 +296,8 @@ as a real runtime dependency (the same shape the framework adapters use for
 `@aahoughton/oav-core`). The `pack-smoke` job installs the locally-packed
 stream-validator tarball alongside oav so this dep resolves to the workspace
 build, not the registry. `stream-validator` is unlinked from the `oav-core`
-release group (its own `0.x` line), so a `stream-validator` bump can ripple
-into a CLI release that picks it up.
+release group (its own independent line, currently `1.x`), so a
+`stream-validator` bump can ripple into a CLI release that picks it up.
 
 ## Extending the compiler
 

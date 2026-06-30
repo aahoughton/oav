@@ -41,6 +41,10 @@ oav compile-schema <schema.json> --dialect openapi-3.0
 oav compile-spec <openapi.yaml> -o v.mjs                 # OpenAPI spec -> standalone HTTP validator
 oav compile-spec <openapi.yaml> --requests-only -o v.mjs
 oav compile-spec <openapi.yaml> --only "POST /pets" -o v.mjs
+
+oav stream-check <openapi.yaml>                          # per-operation streaming-buffer budget
+oav stream-check <openapi.yaml> --verbose                # list each unbounded buffering position
+oav stream-check <openapi.yaml> --fail-on-unbounded      # CI gate: exit 1 if any body is unbounded
 ```
 
 Pass `-` as the file path to read from stdin (e.g. `--body -`).
@@ -54,21 +58,24 @@ below for the expected shape.
 
 ## Flags
 
-| Flag                                          | Command                           | Meaning                                                                                              |
-| --------------------------------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `--format text\|json\|summary`                | validate                          | Error rendering. Default `text`. `summary` is one line per leaf; `flat` is its deprecated alias.     |
-| `--depth <n>`                                 | validate                          | Truncate error tree depth (text format).                                                             |
-| `--overlay <file>`                            | resolve / validate / compile-spec | Repeatable; applies overlays in order.                                                               |
-| `--lint`                                      | resolve                           | Run spec-hygiene checks; findings to stderr (or JSON envelope with `--envelope json`).               |
-| `--fail-on <level>`                           | resolve                           | Non-zero exit on any finding at or above `<level>`. Requires `--lint`. Currently only `warning`.     |
-| `--envelope text\|json`                       | resolve                           | `text` (default; document on stdout, findings on stderr) or `json` (single payload).                 |
-| `--dialect 2020-12\|openapi-3.1\|openapi-3.0` | compile-schema / compile-spec     | Schema dialect. Defaults: 2020-12 (compile-schema), auto-detect from `openapi` field (compile-spec). |
-| `--requests-only`                             | compile-spec                      | Skip response-validator emit. Smaller output.                                                        |
-| `--only <method-path...>`                     | compile-spec                      | Repeatable; restrict emit to given ops, e.g. `--only "POST /pets"`.                                  |
-| `--output-mode flat\|tree\|predicate`         | compile-spec                      | Result shape of the emitted validators. Default `flat`. Mirrors `output`.                            |
-| `--max-errors <n>`                            | compile-spec                      | Leaf-error cap baked in: a positive integer or `all`. Default `1`. Mirrors `maxErrors`.              |
-| `-o <file>`                                   | all                               | Write output to a file instead of stdout.                                                            |
-| `--quiet`                                     | resolve / validate                | Exit code only, no stdout.                                                                           |
+| Flag                                          | Command                                          | Meaning                                                                                                                                                       |
+| --------------------------------------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--format text\|json\|summary`                | validate                                         | Error rendering. Default `text`. `summary` is one line per leaf; `flat` is its deprecated alias.                                                              |
+| `--depth <n>`                                 | validate                                         | Truncate error tree depth (text format).                                                                                                                      |
+| `--overlay <file>`                            | resolve / validate / compile-spec / stream-check | Repeatable; applies overlays in order.                                                                                                                        |
+| `--lint`                                      | resolve                                          | Run spec-hygiene checks; findings to stderr (or JSON envelope with `--envelope json`).                                                                        |
+| `--fail-on <level>`                           | resolve                                          | Non-zero exit on any finding at or above `<level>`. Requires `--lint`. Currently only `warning`.                                                              |
+| `--envelope text\|json`                       | resolve / stream-check                           | resolve: `text` (document on stdout, findings on stderr) or `json` (single payload). stream-check: `text` (per-operation table) or `json` (the `SpecBudget`). |
+| `--dialect 2020-12\|openapi-3.1\|openapi-3.0` | compile-schema / compile-spec                    | Schema dialect. Defaults: 2020-12 (compile-schema), auto-detect from `openapi` field (compile-spec).                                                          |
+| `--requests-only`                             | compile-spec                                     | Skip response-validator emit. Smaller output.                                                                                                                 |
+| `--only <method-path...>`                     | compile-spec                                     | Repeatable; restrict emit to given ops, e.g. `--only "POST /pets"`.                                                                                           |
+| `--output-mode flat\|tree\|predicate`         | compile-spec                                     | Result shape of the emitted validators. Default `flat`. Mirrors `output`.                                                                                     |
+| `--max-errors <n>`                            | compile-spec                                     | Leaf-error cap baked in: a positive integer or `all`. Default `1`. Mirrors `maxErrors`.                                                                       |
+| `--fail-on-unbounded`                         | stream-check                                     | Exit non-zero if any request/response body has an unbounded peak buffer. CI gate.                                                                             |
+| `--verbose`                                   | stream-check                                     | List each unbounded buffering position with its path under its body.                                                                                          |
+| `--max-buffered-bytes <n>`                    | stream-check                                     | Buffer cap the effective peak is computed against (clamps over-cap positions to the cap).                                                                     |
+| `-o <file>`                                   | all                                              | Write output to a file instead of stdout.                                                                                                                     |
+| `--quiet`                                     | resolve / validate / stream-check                | Exit code only, no stdout.                                                                                                                                    |
 
 ## `compile-schema` output
 
@@ -188,14 +195,36 @@ parameter deserialisation (style / explode), response status
 matching, and shape-only security checks, emitted directly rather
 than hand-built over a standalone schema validator.
 
+## `stream-check` output
+
+`oav stream-check <openapi.yaml>` reports the streaming-buffer budget
+for every operation: for the request body and each response body, which
+bodies stream, which must buffer, and how large a buffer can get. It is
+the streamability analysis (`@aahoughton/oav-stream-validator`'s
+`analyzeSpec`) surfaced over a whole resolved spec, so a deployer can
+see before deploy where a body would be materialized in heap.
+
+The default `text` envelope is a per-operation table. `--verbose` lists
+each unbounded buffering position with its path and the keyword that
+left it unbounded. `--envelope json` emits the `SpecBudget` payload for
+machine consumers. `--fail-on-unbounded` exits `1` when any body has an
+unbounded peak, so CI can reject a spec that can't stream within a
+fixed memory bound; `--max-buffered-bytes <n>` computes the effective
+peak against a chosen cap. Overlays apply first (`--overlay`, same
+semantics as `oav resolve`).
+
+A body whose schema can't be classified is reported with an error
+rather than aborting the sweep, so one unclassifiable body doesn't hide
+the budget for the rest of the spec.
+
 ## Exit codes
 
-| Code | Meaning               |
-| ---- | --------------------- |
-| 0    | valid                 |
-| 1    | validation errors     |
-| 2    | spec resolution error |
-| 3    | input / usage error   |
+| Code | Meaning                                                               |
+| ---- | --------------------------------------------------------------------- |
+| 0    | valid                                                                 |
+| 1    | validation errors, or `stream-check --fail-on-unbounded` gate failure |
+| 2    | spec resolution error                                                 |
+| 3    | input / usage error                                                   |
 
 ## `.http` file format
 

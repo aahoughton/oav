@@ -23,15 +23,15 @@ comes down to the shape of integration you want.
 
 ## Ecosystem map
 
-| Tool family                                    | Best fit                                                                                      |
-| ---------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| Ajv                                            | JSON Schema validation, many drafts, maximum ecosystem maturity                               |
-| `express-openapi-validator`                    | Existing Express apps that want one middleware to validate requests/responses                 |
-| `openapi-backend`                              | OperationId routing, auth handlers, validation, and mocking together                          |
-| `openapi-enforcer` / middleware                | OpenAPI 2.0 / 3.0 services that want validation plus serialization/mocking                    |
-| `openapi-request-validator` / response sibling | Lower-level request or response checks around your own routing                                |
-| Spec validators/parsers                        | Validating the OpenAPI document, resolving refs, linting, or tooling                          |
-| oav                                            | HTTP-aware validation with structured errors, overlays, and standalone OpenAPI validator emit |
+| Tool family                                    | Best fit                                                                              |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Ajv                                            | JSON Schema validation, many drafts, maximum ecosystem maturity                       |
+| `express-openapi-validator`                    | Existing Express apps that want one middleware to validate requests/responses         |
+| `openapi-backend`                              | OperationId routing, auth handlers, validation, and mocking together                  |
+| `openapi-enforcer` / middleware                | OpenAPI 2.0 / 3.0 services that want validation plus serialization/mocking            |
+| `openapi-request-validator` / response sibling | Lower-level request or response checks around your own routing                        |
+| Spec validators/parsers                        | Validating the OpenAPI document, resolving refs, linting, or tooling                  |
+| oav                                            | HTTP-aware validation, streamability budgets, overlays, and standalone validator emit |
 
 This document is about behavior and capabilities. For raw numbers
 and methodology see [`performance/README.md`](../performance/README.md);
@@ -202,6 +202,26 @@ Capabilities that the Ajv stack covers and oav does not.
 Capabilities oav has that Ajv (alone or with
 `express-openapi-validator`) doesn't.
 
+- **Streaming body validation.** The separate
+  `@aahoughton/oav-stream-validator` package validates a JSON body
+  against its operation schema as it streams, echoing the input bytes
+  through to a sink and reporting violations on a side channel. Memory
+  stays bounded for schemas with structural bounds (or configured
+  caps), so a multi-GB body validates without materializing in heap. A
+  second, push-based engine that reuses oav's keyword set and flat error
+  model. Ajv and `express-openapi-validator` validate a fully-parsed
+  value; there is no streaming path.
+- **Design-time buffer budgets.** `analyzeSpec(document)` reports, per
+  operation, which request and response bodies can stream, which must
+  buffer, and how large a buffer can get (in wire bytes, or
+  `"unbounded"` where the schema has no structural cap), without reading
+  a byte of traffic. It runs the same classifier the streaming engine
+  uses, so the budget matches runtime behavior. The CLI surfaces it as
+  `oav stream-check <spec>`, with `--fail-on-unbounded` as a CI gate.
+  An Ajv + middleware stack can validate the parsed body, but a buffer
+  budget needs the resolved (and overlaid) operation schema and the
+  streaming classifier in one place; in a split stack no one layer
+  normally holds that whole view.
 - **HTTP-aware validation.** Route matching, content-type negotiation,
   parameter `style` / `explode` deserialisation, response status
   matching (exact, then NXX class, then default) are part of one
@@ -310,13 +330,14 @@ operation handlers should be driven by the spec. Pick
 `openapi-enforcer` when its OpenAPI 2.0 / 3.0 validation,
 serialization, and mocking model fits your service.
 
-Pick oav when you want a structured error tree, overlays over specs you
-don't own, an OpenAPI 3.0 dialect built into the validator, explicit
-control over where validation runs in your HTTP stack, or standalone
-OpenAPI HTTP validator output for edge/serverless deployments. It also
-fits compile-heavy workloads: the benchmarks show one to two orders
-of magnitude faster schema compile than Ajv; see the Performance
-section above.
+Pick oav when you want a structured error tree, streaming validation of
+large bodies with a design-time buffer budget you can check before
+deploy, overlays over specs you don't own, an OpenAPI 3.0 dialect built
+into the validator, explicit control over where validation runs in your
+HTTP stack, or standalone OpenAPI HTTP validator output for
+edge/serverless deployments. It also fits compile-heavy workloads: the
+benchmarks show one to two orders of magnitude faster schema compile
+than Ajv; see the Performance section above.
 
 For benchmark numbers rather than feature comparisons, see
 [`performance/README.md`](../performance/README.md).
